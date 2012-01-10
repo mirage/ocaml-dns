@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2005-2011 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2005-2012 Anil Madhavapeddy <anil@recoil.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -61,32 +61,60 @@ let get_answer_memo qname qtype id =
   in
   DP.({ r with id })
 
-let no_memo mgr src dst bits =
+let no_memo fd ~src ~dst bits =
   let names = Hashtbl.create 8 in
   DP.(
     let d = parse_dns names bits in
     let q = List.hd d.questions in
     let r = get_answer q.q_name q.q_type d.id in
-    let p = marshal r in
-    Net.Datagram.UDPv4.send mgr ~src dst p
+    let buf,boff,blen = marshal r in
+    let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
+    return ()
   )
 
-let leaky mgr src dst bits =
+let leaky fd ~src ~dst bits =
   let names = Hashtbl.create 8 in
   DP.(
     let d = DP.parse_dns names bits in
     let q = List.hd d.questions in
     let r = get_answer_memo q.q_name q.q_type d.id in
-    let p = marshal r in
+    let buf,boff,blen = marshal r in
+    let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
+    return ()
+  )
 
-    Net.Datagram.UDPv4.send mgr ~src dst p
-  )
-   
-let listen ?(mode=`none) ~zonebuf mgr src =
-  Dnsserver.load_zone [] zonebuf;
-  Net.Datagram.UDPv4.(recv mgr src
-                        (match mode with
-                          |`none -> no_memo mgr src
-                          |`leaky -> leaky mgr src
-                        )
-  )
+type spec = {
+  zonebuf: string;
+  address: string;
+  port: int;
+  mode: [`leaky|`none];
+}
+
+let listen spec =
+  Dnsserver.load_zone [] spec.zonebuf;
+  let build_sockaddr (addr, port) =
+    try_lwt
+      (* should this be lwt hent = Lwt_lib.gethostbyname addr ? *)
+      let hent = Unix.gethostbyname addr in
+      return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), port))
+    with _ ->
+      raise_lwt (Failure ("cannot resolve " ^ spec.address))
+  in
+  lwt src = build_sockaddr (spec.address, spec.port) in
+  let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
+  let () = Lwt_unix.bind fd src in
+  let cont = ref true in
+  let bufs = Lwt_pool.create 64 (fun () -> return (String.make 1024 '\000')) in
+  let iofn = match spec.mode with |`none -> no_memo |`leaky -> leaky in
+  let _ =
+    while_lwt !cont do
+      Lwt_pool.use bufs (fun buf ->
+        lwt len, dst = Lwt_unix.recvfrom fd buf 0 (String.length buf) [] in
+        let bits = buf, 0, (len*8) in
+        iofn fd ~src ~dst bits
+      )
+    done
+  in
+  let t,u = Lwt.task () in
+  Lwt.on_cancel t (fun () -> cont := false);
+  t
