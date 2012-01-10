@@ -1,0 +1,47 @@
+# OASIS_START
+# DO NOT EDIT (digest: 38f4255079dab5e51ece28ec4e059507)
+# Ignore VCS directories, you can use the same kind of rule outside 
+# OASIS_START/STOP if you want to exclude directories that contains 
+# useless stuff for the build process
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library dns
+"lib": include
+"lib/dnslexer.cmx": for-pack(Dns)
+"lib/Dnslexer.cmx": for-pack(Dns)
+"lib/dnsparser.cmx": for-pack(Dns)
+"lib/Dnsparser.cmx": for-pack(Dns)
+"lib/dnsloader.cmx": for-pack(Dns)
+"lib/Dnsloader.cmx": for-pack(Dns)
+"lib/dnspacket.cmx": for-pack(Dns)
+"lib/Dnspacket.cmx": for-pack(Dns)
+"lib/dnsquery.cmx": for-pack(Dns)
+"lib/Dnsquery.cmx": for-pack(Dns)
+"lib/dnsrr.cmx": for-pack(Dns)
+"lib/Dnsrr.cmx": for-pack(Dns)
+"lib/dnsserver.cmx": for-pack(Dns)
+"lib/Dnsserver.cmx": for-pack(Dns)
+"lib/dnstrie.cmx": for-pack(Dns)
+"lib/Dnstrie.cmx": for-pack(Dns)
+"lib/hashcons.cmx": for-pack(Dns)
+"lib/Hashcons.cmx": for-pack(Dns)
+"lib/server.cmx": for-pack(Dns)
+"lib/Server.cmx": for-pack(Dns)
+<lib/*.ml{,i}>: pkg_re
+<lib/*.ml{,i}>: pkg_lwt.unix
+<lib/*.ml{,i}>: pkg_lwt.syntax
+<lib/*.ml{,i}>: pkg_lwt
+<lib/*.ml{,i}>: pkg_bitstring.syntax
+<lib/*.ml{,i}>: pkg_bitstring
+# OASIS_STOP
+<lib/*>: syntax_camlp4o
+<lib/*>: pkg_lwt.syntax
+<lib/*>: bitstring.syntax

@@ -1,0 +1,22 @@
+OASISFormat: 0.2
+Name:        dns
+Version:     0.9-dev
+Synopsis:    DNS protocol library for Lwt
+Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier
+License:     LGPL-2.0 with OCaml linking exception
+Plugins:     META (0.2)
+BuildTools:  ocamlbuild
+
+Library dns
+  Path: lib 
+  Findlibname: dns
+  Pack: true
+  Modules: Dnslexer,Dnsparser,Dnsloader,Dnspacket,Dnsquery,Dnsrr,Dnsserver,Dnstrie,Hashcons,Server
+  BuildDepends:	lwt.syntax, lwt, lwt.unix, bitstring, bitstring.syntax, re
+
+Document dns
+  Title:                DNS docs
+  Type:                 ocamlbuild (0.2)
+  BuildTools+:          ocamldoc
+  XOCamlbuildPath:      lib
+  XOCamlbuildLibraries: dns

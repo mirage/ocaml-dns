@@ -1,0 +1,10 @@
+# OASIS_START
+# DO NOT EDIT (digest: fcc8a584391aa561c9fa95f6af108539)
+version = "0.9-dev"
+description = "DNS protocol library for Lwt"
+requires = "lwt.syntax lwt lwt.unix bitstring bitstring.syntax re"
+archive(byte) = "dns.cma"
+archive(native) = "dns.cmxa"
+exists_if = "dns.cma"
+# OASIS_STOP
+
