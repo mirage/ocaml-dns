@@ -102,6 +102,8 @@ let parse_wks proto services =
 
 (* Parse an IPv6 address.  (RFC 3513 section 2.2) *)
 let parse_ipv6 s = 
+  failwith "notyet"
+  (* XXX TODO use the parsing regexps from ocaml-uri here? 
   let singledot = Regexp.Re.from_string "\\." in
   let singlecolon = Regexp.Re.from_string ":" in
   let doublecolon = Regexp.Re.from_string "::" in
@@ -154,6 +156,7 @@ let parse_ipv6 s =
       if len > 16 then raise Parsing.Parse_error;
       l ^ (String.make (16 - len) '\000') ^ r
   | _ -> raise Parsing.Parse_error
+  *)
 
 %}
 
