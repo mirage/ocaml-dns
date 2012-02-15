@@ -11,8 +11,15 @@ Library dns
   Path: lib 
   Findlibname: dns
   Pack: true
-  Modules: Dnslexer,Dnsparser,Dnsloader,Dnspacket,Dnsquery,Dnsrr,Dnsserver,Dnstrie,Hashcons,Server
-  BuildDepends:	lwt.syntax, lwt, lwt.unix, bitstring, bitstring.syntax, re
+  Modules: Dnslexer,Dnsparser,Dnsloader,Dnspacket,Dnsquery,Dnsrr,Dnsserver,Dnstrie,Hashcons
+  BuildDepends:	bitstring, bitstring.syntax, re
+
+Library server
+  Path: server
+  Findlibname: server
+  Modules: Dns_server
+  BuildDepends: lwt.syntax, lwt, lwt.unix,bitstring, bitstring.syntax
+  FindlibParent: dns
 
 Document dns
   Title:                DNS docs
@@ -20,3 +27,22 @@ Document dns
   BuildTools+:          ocamldoc
   XOCamlbuildPath:      lib
   XOCamlbuildLibraries: dns
+
+Flag tests
+  Description:        Build and run tests
+  Default:            true
+
+Executable lwt_server
+  Path:               lib_test
+  MainIs:             lwt_server.ml
+  Build$:             flag(tests)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str
+
+Test lwt_server
+  Run$:               flag(tests)
+  Command:            $lwt_server
+  WorkingDirectory:   lib_test
+

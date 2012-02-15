@@ -31,7 +31,9 @@ let load_zone origin buf =
     state.owner <- state.origin;
     Dnsparser.zfile Dnslexer.token lexbuf
   with
-  | Parsing.Parse_error -> ()
+  | Parsing.Parse_error ->
+     Printf.eprintf "Parse error: line %d\n%!" state.lineno;
+     ()
 
 
 (* Testing *)

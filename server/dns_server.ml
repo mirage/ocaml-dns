@@ -91,6 +91,7 @@ type spec = {
 }
 
 let listen spec =
+  Printf.eprintf "listen: start\n%!";
   Dnsserver.load_zone [] spec.zonebuf;
   let build_sockaddr (addr, port) =
     try_lwt
@@ -116,5 +117,8 @@ let listen spec =
     done
   in
   let t,u = Lwt.task () in
-  Lwt.on_cancel t (fun () -> cont := false);
+  Lwt.on_cancel t (fun () ->
+     Printf.eprintf "listen: canceled\n%!";
+    cont := false);
+  Printf.eprintf "listen: done\n%!";
   t
