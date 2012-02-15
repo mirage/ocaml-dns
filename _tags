@@ -54,6 +54,7 @@
 <lib_test/*.ml{,i}>: pkg_bitstring
 <lib_test/lwt_server.{native,byte}>: custom
 # OASIS_STOP
+true: annot
 <lib/*>: syntax_camlp4o
 <lib/*>: bitstring.syntax
 <lib/*>: pkg_lwt.syntax
