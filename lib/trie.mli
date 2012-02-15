@@ -31,24 +31,24 @@ val canon2key : string list -> key
 val new_trie : unit -> dnstrie
 
 (* Simple lookup function: just walk the trie *)
-val simple_lookup : key -> dnstrie -> Dnsrr.dnsnode option
+val simple_lookup : key -> dnstrie -> RR.dnsnode option
 
 (* Look up a DNS entry in the trie, with full return *)
 val lookup : key -> dnstrie ->
-    [> `Delegated of bool * Dnsrr.dnsnode
-     | `Found of bool * Dnsrr.dnsnode * Dnsrr.dnsnode
-     | `NXDomain of Dnsrr.dnsnode
-     | `NXDomainNSEC of Dnsrr.dnsnode * Dnsrr.dnsnode * Dnsrr.dnsnode
-     | `NoError of Dnsrr.dnsnode
-     | `NoErrorNSEC of Dnsrr.dnsnode * Dnsrr.dnsnode
-     | `Wildcard of Dnsrr.dnsnode * Dnsrr.dnsnode
-     | `WildcardNSEC of Dnsrr.dnsnode * Dnsrr.dnsnode * Dnsrr.dnsnode ]
+    [> `Delegated of bool * RR.dnsnode
+     | `Found of bool * RR.dnsnode * RR.dnsnode
+     | `NXDomain of RR.dnsnode
+     | `NXDomainNSEC of RR.dnsnode * RR.dnsnode * RR.dnsnode
+     | `NoError of RR.dnsnode
+     | `NoErrorNSEC of RR.dnsnode * RR.dnsnode
+     | `Wildcard of RR.dnsnode * RR.dnsnode
+     | `WildcardNSEC of RR.dnsnode * RR.dnsnode * RR.dnsnode ]
 
 (* Return the data mapped from this key, making new data if there is
    none there yet. *)
 val lookup_or_insert : key -> dnstrie -> ?parent:dnstrie
-  -> (unit -> Dnsrr.dnsnode) 
-    -> Dnsrr.dnsnode
+  -> (unit -> RR.dnsnode) 
+    -> RR.dnsnode
 
 (* Sort out flags for a key's node: call after adding or removing 
    NS, SOA and KEY RRs  *)

@@ -14,8 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-module DT = Dnstrie
-module DL = Dnsloader
+module DT = Trie
+module DL = Loader
 
 module Bitstring = struct
   include Bitstring
@@ -336,7 +336,7 @@ let string_of_rdata r =
     | _     -> failwith "string_of_rdata: unknown rdata type"
 
 let parse_rdata names base t bits = 
-  Dnsrr.(
+  RR.(
     match t with
       | `A -> `A (bits |> bytes_of_bitstring |> ipv4_addr_of_bytes)
       | `NS -> `NS (bits |> parse_name names base |> stop)

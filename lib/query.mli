@@ -18,12 +18,12 @@
  *)
 
 type query_answer = {
-  rcode : Dnspacket.rcode;
+  rcode : Packet.rcode;
   aa: bool;
-  answer: Dnspacket.rsrc_record list;
-  authority: Dnspacket.rsrc_record list;
-  additional: Dnspacket.rsrc_record list;
+  answer: Packet.rsrc_record list;
+  authority: Packet.rsrc_record list;
+  additional: Packet.rsrc_record list;
 }
 
 val answer_query : string list -> 
-  Dnspacket.q_type -> Dnstrie.dnstrie -> query_answer
+  Packet.q_type -> Trie.dnstrie -> query_answer

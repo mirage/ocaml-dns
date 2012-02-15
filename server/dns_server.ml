@@ -17,10 +17,10 @@
 open Lwt 
 open Printf
 
-module DL = Dnsloader
-module DQ = Dnsquery
-module DR = Dnsrr
-module DP = Dnspacket
+module DL = Loader
+module DQ = Query
+module DR = RR
+module DP = Packet
 
 let dnstrie = DL.(state.db.trie)
 
@@ -92,7 +92,7 @@ type spec = {
 
 let listen spec =
   Printf.eprintf "listen: start\n%!";
-  Dnsserver.load_zone [] spec.zonebuf;
+  Zone.load_zone [] spec.zonebuf;
   let build_sockaddr (addr, port) =
     try_lwt
       (* should this be lwt hent = Lwt_lib.gethostbyname addr ? *)

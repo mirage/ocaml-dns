@@ -17,8 +17,8 @@
  *
  *)
 
-open Dnsrr
-open Dnstrie
+open RR
+open Trie
 
 (* Loader database: the DNS trie plus a hash table of other names in use *)
 type db = {

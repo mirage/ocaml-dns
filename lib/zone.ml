@@ -17,7 +17,7 @@
  *
  *)
 
-open Dnsloader
+open Loader
 
 (* Load a zone from a string buffer *)
 let load_zone origin buf =
@@ -29,7 +29,7 @@ let load_zone origin buf =
     state.origin <- List.map String.lowercase origin;
     state.ttl <- Int32.of_int 3600;
     state.owner <- state.origin;
-    Dnsparser.zfile Dnslexer.token lexbuf
+    Zone_parser.zfile Zone_lexer.token lexbuf
   with
   | Parsing.Parse_error ->
      Printf.eprintf "Parse error: line %d\n%!" state.lineno;

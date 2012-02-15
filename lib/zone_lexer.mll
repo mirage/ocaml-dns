@@ -22,8 +22,8 @@
    
 {
 
-open Dnsloader
-open Dnsparser
+open Loader
+open Zone_parser
 open Lexing
 
 (* Remove magic escapes from a string *)

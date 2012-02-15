@@ -17,10 +17,10 @@
  *
  *)
 
-open Dnsrr
-open Dnstrie
+open RR
+open Trie
 
-module DP = Dnspacket
+module DP = Packet
 module H = Hashcons
 
 (* We answer a query with RCODE, AA, ANSWERS, AUTHORITY and ADDITIONAL *)

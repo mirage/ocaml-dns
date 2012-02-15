@@ -1,12 +1,11 @@
 # OASIS_START
-# DO NOT EDIT (digest: b7b450840fafb6533c4938d9ed0bed3f)
-Dnslexer
-Dnsparser
-Dnsloader
-Dnspacket
-Dnsquery
-Dnsrr
-Dnsserver
-Dnstrie
+# DO NOT EDIT (digest: cc31933ee435cee365e9e4dc562266c1)
+Zone_lexer
+Zone_parser
+Loader
+Packet
+Query
+RR
+Trie
 Hashcons
 # OASIS_STOP

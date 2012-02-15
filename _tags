@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: b41a7049160297510cbf929bab024ba4)
+# DO NOT EDIT (digest: bddb5ddc13969f48861d0997718076b0)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -15,22 +15,20 @@
 "_darcs": not_hygienic
 # Library dns
 "lib": include
-"lib/dnslexer.cmx": for-pack(Dns)
-"lib/Dnslexer.cmx": for-pack(Dns)
-"lib/dnsparser.cmx": for-pack(Dns)
-"lib/Dnsparser.cmx": for-pack(Dns)
-"lib/dnsloader.cmx": for-pack(Dns)
-"lib/Dnsloader.cmx": for-pack(Dns)
-"lib/dnspacket.cmx": for-pack(Dns)
-"lib/Dnspacket.cmx": for-pack(Dns)
-"lib/dnsquery.cmx": for-pack(Dns)
-"lib/Dnsquery.cmx": for-pack(Dns)
-"lib/dnsrr.cmx": for-pack(Dns)
-"lib/Dnsrr.cmx": for-pack(Dns)
-"lib/dnsserver.cmx": for-pack(Dns)
-"lib/Dnsserver.cmx": for-pack(Dns)
-"lib/dnstrie.cmx": for-pack(Dns)
-"lib/Dnstrie.cmx": for-pack(Dns)
+"lib/zone_lexer.cmx": for-pack(Dns)
+"lib/Zone_lexer.cmx": for-pack(Dns)
+"lib/zone_parser.cmx": for-pack(Dns)
+"lib/Zone_parser.cmx": for-pack(Dns)
+"lib/loader.cmx": for-pack(Dns)
+"lib/Loader.cmx": for-pack(Dns)
+"lib/packet.cmx": for-pack(Dns)
+"lib/Packet.cmx": for-pack(Dns)
+"lib/query.cmx": for-pack(Dns)
+"lib/Query.cmx": for-pack(Dns)
+"lib/rR.cmx": for-pack(Dns)
+"lib/RR.cmx": for-pack(Dns)
+"lib/trie.cmx": for-pack(Dns)
+"lib/Trie.cmx": for-pack(Dns)
 "lib/hashcons.cmx": for-pack(Dns)
 "lib/Hashcons.cmx": for-pack(Dns)
 <lib/*.ml{,i}>: pkg_re

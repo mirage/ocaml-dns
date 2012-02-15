@@ -17,7 +17,7 @@
  *
  *)
 
-open Dnsrr;;
+open RR
 
 (* 
    Non-standard behaviour: 
