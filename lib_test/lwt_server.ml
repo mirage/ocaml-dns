@@ -27,7 +27,7 @@ let t =
   in
   let spec = {
      zonebuf;
-     port=53;
+     port=5354;
      address="0.0.0.0";
      mode=`none;
   } in
