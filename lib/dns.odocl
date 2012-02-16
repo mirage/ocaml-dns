@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: cc31933ee435cee365e9e4dc562266c1)
+# DO NOT EDIT (digest: a6f84495ff65dea0d9da7f2536b823e2)
 Zone_lexer
 Zone_parser
 Loader
@@ -8,4 +8,5 @@ Query
 RR
 Trie
 Hashcons
+Operators
 # OASIS_STOP

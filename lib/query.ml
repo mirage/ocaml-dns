@@ -19,6 +19,7 @@
 
 open RR
 open Trie
+open Operators
 
 module DP = Packet
 module H = Hashcons

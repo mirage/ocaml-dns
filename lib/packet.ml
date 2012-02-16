@@ -16,6 +16,7 @@
 
 module DT = Trie
 module DL = Loader
+open Operators
 
 module Bitstring = struct
   include Bitstring
@@ -28,18 +29,6 @@ let pr = Printf.printf
 let ep = Printf.eprintf
 
 exception Unparsable of string * Bitstring.bitstring
-
-let (|>) x f = f x (* pipe *)
-let (>>) f g x = g (f x) (* functor pipe *)
-let (||>) l f = List.map f l (* element-wise pipe *)
-
-let (+++) x y = Int32.add x y
-
-let (&&&) x y = Int32.logand x y
-let (|||) x y = Int32.logor x y
-let (^^^) x y = Int32.logxor x y
-let (<<<) x y = Int32.shift_left x y
-let (>>>) x y = Int32.shift_right_logical x y
 
 let join c l = String.concat c l
 let stop (x, bits) = x (* drop remainder to stop parsing and demuxing *) 
