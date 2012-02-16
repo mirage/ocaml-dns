@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: bddb5ddc13969f48861d0997718076b0)
+# DO NOT EDIT (digest: b5640d89db0cbf285e0f47a3f7408d41)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -34,6 +34,13 @@
 <lib/*.ml{,i}>: pkg_re
 <lib/*.ml{,i}>: pkg_bitstring.syntax
 <lib/*.ml{,i}>: pkg_bitstring
+# Executable time_server
+<lib_test/time_server.{native,byte}>: pkg_re.str
+<lib_test/time_server.{native,byte}>: pkg_re
+<lib_test/time_server.{native,byte}>: pkg_lwt.unix
+<lib_test/time_server.{native,byte}>: pkg_lwt
+<lib_test/time_server.{native,byte}>: pkg_bitstring
+<lib_test/time_server.{native,byte}>: custom
 # Library server
 "server": include
 <server/*.ml{,i}>: pkg_lwt.unix

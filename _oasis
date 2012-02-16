@@ -41,8 +41,17 @@ Executable lwt_server
   Install:            false
   BuildDepends:       lwt, lwt.unix, bitstring, re, re.str
 
+Executable time_server
+  Path:               lib_test
+  MainIs:             time_server.ml
+  Build$:             flag(tests)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str
+
 Test lwt_server
   Run$:               flag(tests)
   Command:            $lwt_server
   WorkingDirectory:   lib_test
-
+  
