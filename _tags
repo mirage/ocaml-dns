@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 6df16bcde8b6a57462b8c9bc0846869a)
+# DO NOT EDIT (digest: 5abc271cfa524fe0baaf4b15a5401844)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -35,6 +35,7 @@
 "lib/Hashcons.cmx": for-pack(Dns)
 "lib/operators.cmx": for-pack(Dns)
 "lib/Operators.cmx": for-pack(Dns)
+<lib/*.ml{,i}>: pkg_re.str
 <lib/*.ml{,i}>: pkg_re
 <lib/*.ml{,i}>: pkg_bitstring.syntax
 <lib/*.ml{,i}>: pkg_bitstring

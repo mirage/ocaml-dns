@@ -12,7 +12,7 @@ Library dns
   Findlibname: dns
   Pack: true
   Modules: Zone,Zone_lexer,Zone_parser,Loader,Packet,Query,RR,Trie,Hashcons,Operators
-  BuildDepends:	bitstring, bitstring.syntax, re
+  BuildDepends:	bitstring, bitstring.syntax, re, re.str
 
 Library server
   Path: server
