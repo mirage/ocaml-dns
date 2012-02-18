@@ -22,7 +22,8 @@ module DQ = Dns.Query
 module DR = Dns.RR
 module DP = Dns.Packet
 
-type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> Dns.Packet.dns -> Dns.Packet.dns option Lwt.t
+type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr ->
+  Dns.Packet.dns -> Dns.Query.query_answer option Lwt.t
 
 let bind_fd ~address ~port =
   lwt src = try_lwt
@@ -51,7 +52,11 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
         match answer with
         |None -> return ()
         |Some answer ->
-          let buf, boff, blen = DP.marshal answer in
+          let detail = DP.(build_detail { qr=`Answer; opcode=`Query; aa=answer.DQ.aa;
+            tc=false; rd=false; ra=false; rcode=answer.DQ.rcode }) in
+          let response = DP.({ id=query.id; detail; questions=query.questions; answers=answer.DQ.answer;
+            authorities=answer.DQ.authority; additionals=answer.DQ.additional }) in
+          let buf, boff, blen = DP.marshal response in
           (* TODO transmit queue, rather than ignoring result here *)
           let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
           return ()
@@ -73,14 +78,7 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
   let dnstrie = DL.(state.db.trie) in
   let get_answer qname qtype id =
     let qname = List.map String.lowercase qname in  
-    let ans = DQ.answer_query qname qtype dnstrie in
-    let detail = DP.(build_detail { qr=`Answer; opcode=`Query; 
-      aa=ans.DQ.aa; tc=false; rd=false; ra=false; rcode=ans.DQ.rcode;  })      
-    in
-    let questions = [ DP.({ q_name=qname; q_type=qtype; q_class=`IN }) ] in
-    DP.({ id; detail; questions; answers=ans.DQ.answer; 
-          authorities=ans.DQ.authority; additionals=ans.DQ.additional; 
-    })
+    DQ.answer_query qname qtype dnstrie
   in
   let (dnsfn:dnsfn) =
     match mode with

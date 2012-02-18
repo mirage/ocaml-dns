@@ -32,12 +32,7 @@ let dnsfn ~src ~dst query =
   |q::_ -> (* Just take the first question *)
     let answer = [ time_rsrc_record () ] in
     let ans = { DQ.rcode=`NoError; aa=true; authority=[]; additional=[]; answer } in
-    let detail = (build_detail { qr=`Answer; opcode=`Query; 
-      aa=ans.DQ.aa; tc=false; rd=false; ra=false; rcode=ans.DQ.rcode }) in
-    let questions = [ ({ q_name=q.q_name; q_type=q.q_type; q_class=`IN }) ] in
-    let response = ({ id=query.id; detail; questions; answers=ans.DQ.answer; 
-        authorities=ans.DQ.authority; additionals=ans.DQ.additional }) in
-    return (Some response)
+    return (Some ans)
   |_ -> return None (* No questions in packet *)
 
 let listen ~address ~port =

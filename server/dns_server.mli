@@ -25,7 +25,8 @@ val bind_fd : address:string -> port:int -> (Lwt_unix.file_descr * Lwt_unix.sock
   * @param Query packet
   * @return Answer packet
   *)
-type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> Dns.Packet.dns -> Dns.Packet.dns option Lwt.t
+type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr ->
+  Dns.Packet.dns -> Dns.Query.query_answer option Lwt.t
 
 (** General listening function for dynamic DNS servers.  Pass in the [fd] and [src] from
   * calling [bind_fd] and supply a [dnsfn] which responds with a response DNS packet
