@@ -19,8 +19,9 @@ Packages:
 
 * `lib/` contains the core DNS protocol, which is packed into the `Dns` module.
 * `server/` contains an Lwt-based server library that can act as an
-  authoritative server.  `lib_test/` contains unit tests and sample uses of the
-* library. In particular, the `time_server` example is a simple dynamic responder.
+  authoritative server.
+* `lib_test/` contains unit tests and sample uses of the library.
+  In particular, `time_server` is a simple dynamic responder.
 
 Areas that need work:
 
