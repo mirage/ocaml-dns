@@ -22,7 +22,7 @@ module DQ = Dns.Query
 module DR = Dns.RR
 module DP = Dns.Packet
 
-type dnsfn = fd:Lwt_unix.file_descr -> src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> Dns.Packet.dns -> unit Lwt.t
+type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> Dns.Packet.dns -> Dns.Packet.dns Lwt.t
 
 let bind_fd ~address ~port =
   lwt src = try_lwt
@@ -36,7 +36,7 @@ let bind_fd ~address ~port =
   let () = Lwt_unix.bind fd src in
   return (fd,src)
 
-let listen ~fd ~src ~dnsfn =
+let listen ~fd ~src ~(dnsfn:dnsfn) =
   let cont = ref true in
   let bufs = Lwt_pool.create 64 (fun () -> return (String.make 1024 '\000')) in
   let _ =
@@ -46,8 +46,12 @@ let listen ~fd ~src ~dnsfn =
         lwt len, dst = Lwt_unix.recvfrom fd buf 0 (String.length buf) [] in
         let bits = buf, 0, (len*8) in
         (* TODO exception handler *)
-        let packet = DP.parse_dns names bits in
-        dnsfn ~fd ~src ~dst packet
+        let query = DP.parse_dns names bits in
+        lwt answer = dnsfn ~src ~dst query in
+        let buf, boff, blen = DP.marshal answer in
+        (* TODO transmit queue, rather than ignoring result here *)
+        let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
+        return ()
       )
     done
   in
@@ -78,13 +82,11 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
   let (dnsfn:dnsfn) =
     match mode with
     |`none ->
-      (fun ~fd ~src ~dst d ->
+      (fun ~src ~dst d ->
          let open DP in
          let q = List.hd d.questions in
          let r = get_answer q.q_name q.q_type d.id in
-         let buf, boff, blen = marshal r in
-         let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
-         return ()
+         return r
       )
   in
   listen ~fd ~src ~dnsfn

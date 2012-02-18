@@ -20,15 +20,15 @@
 val bind_fd : address:string -> port:int -> (Lwt_unix.file_descr * Lwt_unix.sockaddr) Lwt.t
 
 (** DNS responder function.
-  * @param fd File descriptor to respond to
   * @param src Server sockaddr
   * @param dst Client sockaddr 
   * @param Query packet
+  * @return Answer packet
   *)
-type dnsfn = fd:Lwt_unix.file_descr -> src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> Dns.Packet.dns -> unit Lwt.t
+type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> Dns.Packet.dns -> Dns.Packet.dns Lwt.t
 
 (** General listening function for dynamic DNS servers.  Pass in the [fd] and [src] from
-  * calling [bind_fd] and supply a [dnsfn] which responds on the [fd]
+  * calling [bind_fd] and supply a [dnsfn] which responds with a response DNS packet
   *)
 val listen : fd:Lwt_unix.file_descr -> src:Lwt_unix.sockaddr -> dnsfn:dnsfn -> unit Lwt.t
 
