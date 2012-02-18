@@ -17,10 +17,10 @@
 open Lwt 
 open Printf
 
-module DL = Loader
-module DQ = Query
-module DR = RR
-module DP = Packet
+module DL = Dns.Loader
+module DQ = Dns.Query
+module DR = Dns.RR
+module DP = Dns.Packet
 
 type dnsfn = fd:Lwt_unix.file_descr -> src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> Dns.Packet.dns -> unit Lwt.t
 
@@ -61,7 +61,7 @@ let listen ~fd ~src ~dnsfn =
   t
 
 let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
-  Zone.load_zone [] zonebuf;
+  Dns.Zone.load_zone [] zonebuf;
   lwt fd, src = bind_fd ~address ~port in
   let dnstrie = DL.(state.db.trie) in
   let get_answer qname qtype id =

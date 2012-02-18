@@ -15,25 +15,7 @@
  *)
 
 open Lwt
-open Dns_server
 
-let t =
-  try_lwt
-  lwt zonebuf =
-     let lines = Lwt_io.lines_of_file "test.zone" in
-     let buf = Buffer.create 1024 in
-     lwt () = Lwt_stream.iter (fun l -> Buffer.add_string buf l; Buffer.add_char buf '\n') lines in
-     return (Buffer.contents buf)
-  in
-  let spec = {
-     zonebuf;
-     port=5354;
-     address="0.0.0.0";
-     mode=`none;
-  } in
-    listen spec
-  with exn ->
-    Printf.eprintf "exn: %s\n%!" (Printexc.to_string exn);
-    return ()
+let t = Dns_server.listen_with_zonefile ~address:"0.0.0.0" ~port:5354 ~zonefile:"test.zone" 
 
 let _ = Lwt_unix.run t

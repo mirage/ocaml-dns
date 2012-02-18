@@ -11,7 +11,7 @@ Library dns
   Path: lib 
   Findlibname: dns
   Pack: true
-  Modules: Zone_lexer,Zone_parser,Loader,Packet,Query,RR,Trie,Hashcons,Operators
+  Modules: Zone,Zone_lexer,Zone_parser,Loader,Packet,Query,RR,Trie,Hashcons,Operators
   BuildDepends:	bitstring, bitstring.syntax, re
 
 Library server
