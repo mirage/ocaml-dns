@@ -1,7 +1,8 @@
 .PHONY: all clean install build
 all: build test doc
 
-NAME=cohttp
+NAME=dns
+J=4
 
 export OCAMLRUNPARAM=b
 
@@ -13,10 +14,10 @@ setup.data: setup.bin
 	./setup.bin -configure
 
 build: setup.data setup.bin
-	./setup.bin -build
+	./setup.bin -build -j $(J)
 
 doc: setup.data setup.bin
-	./setup.bin -doc
+	./setup.bin -doc -j $(J)
 
 install: setup.bin
 	./setup.bin -install
