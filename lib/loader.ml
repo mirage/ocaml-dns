@@ -193,7 +193,7 @@ type parserstate = {
     mutable owner: string list;
   }
 
-let state = {
+let new_state () = {
   db = new_db ();
   paren = 0;
   filename = "";
@@ -202,3 +202,8 @@ let state = {
   origin = [];
   owner = [];
 }
+
+(* TODO: turn this into a reference so we can load multiple zone files
+   and only use this temporarily in the lexer *)
+let state = new_state ()
+
