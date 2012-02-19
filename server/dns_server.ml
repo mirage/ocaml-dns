@@ -46,20 +46,24 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
       Lwt_pool.use bufs (fun buf ->
         lwt len, dst = Lwt_unix.recvfrom fd buf 0 (String.length buf) [] in
         let bits = buf, 0, (len*8) in
-        (* TODO exception handler *)
-        let query = DP.parse_dns names bits in
-        lwt answer = dnsfn ~src ~dst query in
-        match answer with
+        let query = try Some (DP.parse_dns names bits)
+          with exn -> eprintf "dns parse exn: %s\n%!" (Printexc.to_string exn); None in
+        match query with
         |None -> return ()
-        |Some answer ->
-          let detail = DP.(build_detail { qr=`Answer; opcode=`Query; aa=answer.DQ.aa;
-            tc=false; rd=false; ra=false; rcode=answer.DQ.rcode }) in
-          let response = DP.({ id=query.id; detail; questions=query.questions; answers=answer.DQ.answer;
-            authorities=answer.DQ.authority; additionals=answer.DQ.additional }) in
-          let buf, boff, blen = DP.marshal response in
-          (* TODO transmit queue, rather than ignoring result here *)
-          let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
-          return ()
+        |Some query -> begin
+          lwt answer = dnsfn ~src ~dst query in
+          match answer with
+          |None -> return ()
+          |Some answer ->
+            let detail = DP.(build_detail { qr=`Answer; opcode=`Query; aa=answer.DQ.aa;
+              tc=false; rd=false; ra=false; rcode=answer.DQ.rcode }) in
+            let response = DP.({ id=query.id; detail; questions=query.questions; answers=answer.DQ.answer;
+              authorities=answer.DQ.authority; additionals=answer.DQ.additional }) in
+            let buf, boff, blen = DP.marshal response in
+            (* TODO transmit queue, rather than ignoring result here *)
+            let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
+            return ()
+        end
       )
     done
   in
