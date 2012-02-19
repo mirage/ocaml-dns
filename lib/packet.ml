@@ -378,7 +378,7 @@ and rr_class_of_int : int -> rr_class = function
   | 2   -> `CS
   | 3   -> `CH
   | 4   -> `HS
-  | _   -> invalid_arg "rr_class_of_int"
+  | x   -> `IN (* TODO edns0 hack (#2) invalid_arg "rr_class_of_int" *)
 and string_of_rr_class : rr_class -> string = function
   | `IN -> "IN"
   | `CS -> "CS"
