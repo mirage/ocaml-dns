@@ -546,6 +546,26 @@ and int_of_rcode = function
   | `BadName -> 20
   | `BadAlg -> 21
   | _ -> failwith "dnspacket: unknown rcode"
+and string_of_rcode = function
+  | `NoError -> "NoError"
+  | `FormErr -> "FormErr"
+  | `ServFail -> "ServFail"
+  | `NXDomain -> "NXDomain"
+  | `NotImp -> "NotImp"
+  | `Refused -> "Refused"
+  | `YXDomain -> "YXDomain"
+  | `YXRRSet -> "YXRRSet"
+  | `NXRRSet -> "NXRRSet"
+  | `NotAuth -> "NotAuth"
+  | `NotZone -> "NotZone"
+    
+  | `BadVers -> "BadVers"
+  | `BadKey -> "BadKey"
+  | `BadTime -> "BadTime"
+  | `BadMode -> "BadMode"
+  | `BadName -> "BadName"
+  | `BadAlg -> "BadAlg"
+  | _ -> failwith "dnspacket: unknown rcode"
 
 type detail = {
   qr: qr;

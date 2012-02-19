@@ -130,6 +130,7 @@ type rcode =
 
 val rcode_of_int : int -> rcode
 val int_of_rcode : rcode -> int
+val string_of_rcode : rcode -> string
 
 type detail = {
   qr : qr;
