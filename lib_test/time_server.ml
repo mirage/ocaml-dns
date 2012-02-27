@@ -17,77 +17,29 @@
 open Lwt 
 open Printf
 
-module DL = Loader
-module DQ = Query
-module DR = RR
-module DP = Packet
-
 let time_rsrc_record () =
   let rr_name = ["time";"com"] in
   let rr_class = `IN in
   let rr_ttl = 100l in
   let time = string_of_float (Unix.gettimeofday ()) in
   let rr_rdata = `TXT [ "the"; "time"; "is"; time] in
-  { DP.rr_name; rr_class; rr_ttl; rr_rdata }
+  { Dns.Packet.rr_name; rr_class; rr_ttl; rr_rdata }
 
-let get_answer qname qtype id =
-  let qname = List.map String.lowercase qname in  
-  let answer = [ time_rsrc_record () ] in
-  let ans = { DQ.rcode=`NoError; aa=true; authority=[]; additional=[]; answer } in
-  let detail = 
-    DP.(build_detail { qr=`Answer; opcode=`Query; 
-                       aa=ans.DQ.aa; tc=false; rd=false; ra=false; 
-                       rcode=ans.DQ.rcode;  
-                     })      
-  in
-  let questions = [ DP.({ q_name=qname; q_type=qtype; q_class=`IN }) ] in
-  DP.({ id; detail; questions;
-        answers=ans.DQ.answer; 
-        authorities=ans.DQ.authority; 
-        additionals=ans.DQ.additional; 
-      })
+let dnsfn ~src ~dst query =
+  let open Dns.Packet in
+  let module DQ = Dns.Query in
+  match query.questions with
+  |q::_ -> (* Just take the first question *)
+    let answer = [ time_rsrc_record () ] in
+    let ans = { DQ.rcode=`NoError; aa=true; authority=[]; additional=[]; answer } in
+    return (Some ans)
+  |_ -> return None (* No questions in packet *)
 
-let send_answer fd ~src ~dst bits =
-  let names = Hashtbl.create 8 in
-  DP.(
-    let d = parse_dns names bits in
-    let q = List.hd d.questions in
-    Printf.eprintf "query: %s\n%!" (DP.question_to_string q);
-    let r = get_answer q.q_name q.q_type d.id in
-    let buf,boff,blen = marshal r in
-    let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
-    return ()
-  )
-
-let listen (addr,port) =
-  let build_sockaddr (addr, port) =
-    try_lwt
-      (* should this be lwt hent = Lwt_lib.gethostbyname addr ? *)
-      let hent = Unix.gethostbyname addr in
-      return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), port))
-    with _ ->
-      raise_lwt (Failure ("cannot resolve " ^ addr))
-  in
-  lwt src = build_sockaddr (addr, port) in
-  let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
-  let () = Lwt_unix.bind fd src in
-  let cont = ref true in
-  let bufs = Lwt_pool.create 64 (fun () -> return (String.make 1024 '\000')) in
-  let _ =
-    while_lwt !cont do
-      Lwt_pool.use bufs (fun buf ->
-        lwt len, dst = Lwt_unix.recvfrom fd buf 0 (String.length buf) [] in
-        let bits = buf, 0, (len*8) in
-        send_answer fd ~src ~dst bits
-      )
-    done
-  in
-  let t,u = Lwt.task () in
-  Lwt.on_cancel t (fun () ->
-     Printf.eprintf "listen: canceled\n%!";
-    cont := false);
-  Printf.eprintf "listen: done\n%!";
-  t
+let listen ~address ~port =
+  lwt fd, src = Dns_server.bind_fd ~address ~port in
+  Dns_server.listen ~fd ~src ~dnsfn
 
 let _ =
-  Lwt_main.run (listen ("0.0.0.0",5354))
+  let address = "0.0.0.0" in
+  let port = 5354 in
+  Lwt_main.run (listen ~address ~port)

@@ -14,13 +14,26 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-type spec = {
-  zonebuf: string;
-  address: string;
-  port: int;
-  mode: [`leaky|`none];
-}
+(** Given a source address and a port, return a bound file descriptor
+  * and source sockaddr suitable for passing to the [listen] functions
+  *)
+val bind_fd : address:string -> port:int -> (Lwt_unix.file_descr * Lwt_unix.sockaddr) Lwt.t
 
-(* Listening thread that parses the zonebuf (in BIND zonefile format)
-   and replies to clients on the specified Flow *)
-val listen : spec -> unit Lwt.t
+(** DNS responder function.
+  * @param src Server sockaddr
+  * @param dst Client sockaddr 
+  * @param Query packet
+  * @return Answer packet
+  *)
+type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr ->
+  Dns.Packet.dns -> Dns.Query.query_answer option Lwt.t
+
+(** General listening function for dynamic DNS servers.  Pass in the [fd] and [src] from
+  * calling [bind_fd] and supply a [dnsfn] which responds with a response DNS packet
+  *)
+val listen : fd:Lwt_unix.file_descr -> src:Lwt_unix.sockaddr -> dnsfn:dnsfn -> unit Lwt.t
+
+val listen_with_zonebuf : address:string -> port:int -> zonebuf:string -> mode:[ `none ] -> unit Lwt.t
+
+val listen_with_zonefile : address:string -> port:int -> zonefile:string -> unit Lwt.t
+

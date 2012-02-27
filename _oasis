@@ -11,14 +11,14 @@ Library dns
   Path: lib 
   Findlibname: dns
   Pack: true
-  Modules: Zone_lexer,Zone_parser,Loader,Packet,Query,RR,Trie,Hashcons,Operators
-  BuildDepends:	bitstring, bitstring.syntax, re
+  Modules: Zone,Zone_lexer,Zone_parser,Loader,Packet,Query,RR,Trie,Hashcons,Operators
+  BuildDepends:	bitstring, bitstring.syntax, re, re.str
 
 Library server
   Path: server
   Findlibname: server
   Modules: Dns_server
-  BuildDepends: lwt.syntax, lwt, lwt.unix,bitstring, bitstring.syntax
+  BuildDepends: lwt.syntax, lwt, lwt.unix,bitstring, bitstring.syntax, dns
   FindlibParent: dns
 
 Document dns

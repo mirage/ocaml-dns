@@ -378,7 +378,7 @@ and rr_class_of_int : int -> rr_class = function
   | 2   -> `CS
   | 3   -> `CH
   | 4   -> `HS
-  | _   -> invalid_arg "rr_class_of_int"
+  | x   -> `IN (* TODO edns0 hack (#2) invalid_arg "rr_class_of_int" *)
 and string_of_rr_class : rr_class -> string = function
   | `IN -> "IN"
   | `CS -> "CS"
@@ -545,6 +545,26 @@ and int_of_rcode = function
   | `BadMode -> 19
   | `BadName -> 20
   | `BadAlg -> 21
+  | _ -> failwith "dnspacket: unknown rcode"
+and string_of_rcode = function
+  | `NoError -> "NoError"
+  | `FormErr -> "FormErr"
+  | `ServFail -> "ServFail"
+  | `NXDomain -> "NXDomain"
+  | `NotImp -> "NotImp"
+  | `Refused -> "Refused"
+  | `YXDomain -> "YXDomain"
+  | `YXRRSet -> "YXRRSet"
+  | `NXRRSet -> "NXRRSet"
+  | `NotAuth -> "NotAuth"
+  | `NotZone -> "NotZone"
+    
+  | `BadVers -> "BadVers"
+  | `BadKey -> "BadKey"
+  | `BadTime -> "BadTime"
+  | `BadMode -> "BadMode"
+  | `BadName -> "BadName"
+  | `BadAlg -> "BadAlg"
   | _ -> failwith "dnspacket: unknown rcode"
 
 type detail = {
