@@ -752,13 +752,13 @@ let marshal dns =
       | _ -> failwith "not done yet"
     in
 
-    let name = mn r.rr_name in 
+    let name = mn r.rr_name in
     pos := !pos + 2+2+4+2;
-    let rdata, rtype = mrd r.rr_rdata in    
+    let rdata, rr_type = mrd r.rr_rdata in
     let rdlength = Bitstring.bitstring_length rdata in
     (BITSTRING {
       name:-1:bitstring;
-      (int_of_rr_type rtype):16;
+      (int_of_rr_type rr_type):16;
       (int_of_rr_class r.rr_class):16;
       r.rr_ttl:32;
       (rdlength/8):16;

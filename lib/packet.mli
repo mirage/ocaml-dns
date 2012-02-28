@@ -15,6 +15,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+(** *)
 exception Unparsable of string * Bitstring.bitstring
 
 type domain_name = string list
@@ -34,7 +35,7 @@ val bytes_to_hex_string : char array -> string array
 val bytes_of_bitstring : Bitstring.bitstring -> string
 
 (* TODO move to ocaml-uri *)
-val ipv4_addr_of_bytes : bytes -> int32
+(* val ipv4_addr_of_bytes : bytes -> int32 *) 
 
 type label
 (*
@@ -43,6 +44,7 @@ val parse_charstr : string * int * int -> string * (string * int * int)
 val parse_label : int -> Bitstring.bitstring -> label * (string * int * int)
 val parse_name : (int, label) Hashtbl.t -> int -> Bitstring.bitstring -> string list * Bitstring.bitstring
 *)
+
 type rr_type =
     [ `A | `A6 | `AAAA | `AFSDB | `APL | `ATMA | `CERT | `CNAME | `DNAME | `DNSKEY
     | `DS | `EID | `GID | `GPOS | `HINFO | `IPSECKEY | `ISDN | `KEY | `KM | `LOC
