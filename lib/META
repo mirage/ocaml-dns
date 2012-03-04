@@ -1,15 +1,15 @@
 # OASIS_START
-# DO NOT EDIT (digest: e795a41d2224445faba7b9bd67a0ec2e)
+# DO NOT EDIT (digest: a1ad0256fb14f304ba8ca1de94ba0431)
 version = "0.9-dev"
 description = "DNS protocol library for Lwt"
-requires = "bitstring bitstring.syntax re re.str"
+requires = "bitstring bitstring.syntax re re.str uri"
 archive(byte) = "dns.cma"
 archive(native) = "dns.cmxa"
 exists_if = "dns.cma"
 package "server" (
  version = "0.9-dev"
  description = "DNS protocol library for Lwt"
- requires = "lwt.syntax lwt lwt.unix bitstring bitstring.syntax dns"
+ requires = "lwt.syntax lwt lwt.unix bitstring bitstring.syntax dns uri"
  archive(byte) = "server.cma"
  archive(native) = "server.cmxa"
  exists_if = "server.cma"

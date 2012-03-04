@@ -11,14 +11,16 @@ Library dns
   Path: lib 
   Findlibname: dns
   Pack: true
-  Modules: Zone,Zone_lexer,Zone_parser,Loader,Packet,Query,RR,Trie,Hashcons,Operators
-  BuildDepends:	bitstring, bitstring.syntax, re, re.str
+  Modules: 
+    Zone,Zone_lexer,Zone_parser,Loader,Packet,Query,RR,Trie,Hashcons,Operators
+  BuildDepends:	bitstring, bitstring.syntax, re, re.str, uri
 
 Library server
   Path: server
   Findlibname: server
   Modules: Dns_server
-  BuildDepends: lwt.syntax, lwt, lwt.unix,bitstring, bitstring.syntax, dns
+  BuildDepends: 
+    lwt.syntax, lwt, lwt.unix,bitstring, bitstring.syntax, dns, uri
   FindlibParent: dns
 
 Document dns
@@ -39,7 +41,7 @@ Executable lwt_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri
 
 Executable time_server
   Path:               lib_test
@@ -48,7 +50,7 @@ Executable time_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri
 
 Test lwt_server
   Run$:               flag(tests)

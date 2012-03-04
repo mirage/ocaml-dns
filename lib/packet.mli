@@ -21,17 +21,13 @@ exception Unparsable of string * Bitstring.bitstring
 type domain_name = string list
 
 type int16 = int
-type ipv4 = int32
-val ipv4_to_string : int32 -> string
 
 type byte = char
 val byte : int -> byte
 val int_of_byte : char -> int
 val int32_of_byte : char -> int32
-val int32_of_int : int -> int32
 
 type bytes = string
-val bytes_to_hex_string : char array -> string array
 val bytes_of_bitstring : Bitstring.bitstring -> string
 
 (* TODO move to ocaml-uri *)
