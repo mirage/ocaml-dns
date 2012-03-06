@@ -20,8 +20,11 @@ open Uri_IP
 
 exception Unparsable of string * Bitstring.bitstring
 
+let fwe s = eprintf "EXC: %s\n%!" s ; failwith s
+
 (** Drop remainder bitstring to stop parsing and demuxing. *) 
 let stop (x, bits) = x 
+
 (** Extract offset from {! Bitstring }. *)
 let offset_of_bitstring bits = 
     let (_, offset, _) = bits in offset
@@ -35,7 +38,14 @@ let int32_of_byte b = b |> int_of_byte |> Int32.of_int
 
 type bytes = string
 let bytes_of_bitstring bits = Bitstring.string_of_bitstring bits
-
+let string_of_bytes (bs:bytes) =
+  let s = ref [] in 
+  let l = String.length bs in
+  for i = 0 to (l-1) do 
+    s := (sprintf "%02x" (int_of_byte bs.[i])) :: !s
+  done;
+  String.concat "." !s
+                            
 type label = 
   | L of string * int (* string *)
   | P of int * int (* pointer *)
@@ -43,8 +53,7 @@ type label =
 
 let parse_charstr bits = 
   bitmatch bits with
-    | { len: 8; str: (len*8): string; bits: -1: bitstring }
-      -> str, bits
+    | { len: 8; str: (len*8): string; bits: -1: bitstring } -> str, bits
 
 let parse_label base bits = 
   let cur = offset_of_bitstring bits in
@@ -271,38 +280,60 @@ and string_of_rr_type:rr_type -> string = function
   | `Unknown (i, _) -> sprintf "Unknown (%d)" i
 
 type rr_rdata = [
-| `A of int32
-| `NS of domain_name
+| `A of ipv4
+| `AAAA of bytes
+| `AFSDB of int16 * domain_name
+| `CNAME of domain_name
+| `HINFO of string * string
+| `ISDN of string
+| `MB of domain_name
 | `MD of domain_name
 | `MF of domain_name
-| `CNAME of domain_name
-| `SOA of 
-    domain_name * domain_name * int32 * int32 * int32 * int32 * int32 
-| `HINFO of string * string
-| `MB of domain_name
 | `MG of domain_name
-| `MR of domain_name
 | `MINFO of domain_name * domain_name
+| `MR of domain_name
 | `MX of int16 * domain_name
+| `NS of domain_name
 | `PTR of domain_name
-| `TXT of string list
-| `WKS of int32 * byte * string
 | `RP of domain_name * domain_name
-| `AFSDB of int16 * domain_name
-| `X25 of string
-| `ISDN of string
 | `RT of int16 * domain_name
-| `AAAA of bytes
+| `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | `SRV of int16 * int16 * int16 * domain_name
-| `UNSPEC of bytes
+| `TXT of string list
 | `UNKNOWN of int * bytes
+| `UNSPEC of bytes
+| `WKS of int32 * byte * string
+| `X25 of string 
 ]
 
 let string_of_rdata r = 
   match r with
     | `A ip -> sprintf "A (%s)" (string_of_ipv4 ip)
+    | `AAAA bs -> sprintf "AAAA (%s)" (string_of_bytes bs)
+    | `AFSDB (x, n) -> sprintf "AFSDB (%d, %s)" x (join "." n)
+    | `CNAME n -> sprintf "CNAME (%s)" (join "." n)
+    | `HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
+    | `ISDN n -> sprintf "ISDN (%s)" n
+    | `MB n -> sprintf "MB (%s)" (join "." n)
+    | `MD n -> sprintf "MD (%s)" (join "." n)
+    | `MF n -> sprintf "MF (%s)" (join "." n)
+    | `MG n -> sprintf "MG (%s)" (join "." n)
+    | `MINFO (rm, em) -> sprintf "MINFO (%s, %s)" (join "." rm) (join "." em)
+    | `MR n -> sprintf "MR (%s)" (join "." n)
+    | `MX (pref, name) -> sprintf "MX (%d, %s)" pref (join "." name)
     | `NS n -> sprintf "NS (%s)" (join "." n)
-    | _     -> failwith "string_of_rdata: unknown rdata type"
+    | `PTR n -> sprintf "PTR (%s)" (join "." n)
+    | `RP (mn, nn) -> sprintf "RP (%s, %s)" (join "." mn) (join "." nn)
+    | `RT (x, n) -> sprintf "RT (%d, %s)" x (join "." n)
+    | `SOA (mn, rn, serial, refresh, retry, expire, minimum)
+      -> (sprintf "SOA (%s,%s, %ld,%ld,%ld,%ld,%ld)"
+            (join "." mn) (join "." rn) serial refresh retry expire minimum)
+    | `SRV (x, y, z, n) -> sprintf "SRV (%d,%d,%d, %s)" x y z (join "." n)
+    | `TXT sl -> sprintf "TXT (%s)" (join "" sl)
+    | `UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (string_of_bytes bs)
+    | `UNSPEC bs -> sprintf "UNSPEC (%s)" (string_of_bytes bs)
+    | `WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x (int_of_byte y) s
+    | `X25 s -> sprintf "X25 (%s)" s
 
 let parse_rdata names base t bits = 
   RR.(
@@ -468,7 +499,7 @@ let opcode_of_int = function
   | 3 -> `Reserved
   | 4 -> `Notify
   | 5 -> `Update
-  | _ -> failwith "dnspacket: unknown opcode"
+  | _ -> fwe "dnspacket: unknown opcode"
 let int_of_opcode = function
   | `Query -> 0
   | `Answer -> 1
@@ -476,7 +507,7 @@ let int_of_opcode = function
   | `Reserved -> 3
   | `Notify -> 4
   | `Update -> 5
-  | _ -> failwith "dnspacket: unknown opcode"
+  | _ -> fwe "dnspacket: unknown opcode"
 
 type rcode = [
 | `NoError  | `FormErr
@@ -542,7 +573,7 @@ and string_of_rcode = function
   | `BadMode -> "BadMode"
   | `BadName -> "BadName"
   | `BadAlg -> "BadAlg"
-  | _ -> failwith "dnspacket: unknown rcode"
+  | _ -> fwe "dnspacket: unknown rcode"
 
 type detail = {
   qr: qr;
@@ -610,39 +641,48 @@ let parse_dns names bits =
         qdcount:16; ancount:16; nscount:16; arcount:16;
         bits:-1:bitstring
       }
-      -> (let questions, bits = parsen parse_question names base qdcount bits in
+      -> (let questions, bits = parsen parse_question names base qdcount bits
+          in
           let answers, bits = parsen parse_rr names base ancount bits in
           let authorities, bits = parsen parse_rr names base nscount bits in
           let additionals, _ = parsen parse_rr names base arcount bits in 
-          let dns = { id; detail; questions; answers; authorities; additionals } in
+          let dns = 
+            { id; detail; questions; answers; authorities; additionals } 
+          in
           dns
       )
   )
 
 let marshal dns = 
   eprintf "resp: %s\n%!" (dns_to_string dns);
+  
+  (** Current position in buffer. *)
   let pos = ref 0 in
+  
+  (** map name (list of labels) to an offset. *)
   let (names:(string list,int) Hashtbl.t) = Hashtbl.create 8 in
 
-  let lookup h k =
-    if Hashtbl.mem h k then Some (Hashtbl.find h k) else None
-  in
-
+  (** Encode string as label by prepending length. *)
   let charstr s =
     sprintf "%c%s" (s |> String.length |> byte) s 
   in
 
-  let pointer off = 
-    let ptr = (0b11_l <<< 14) +++ (Int32.of_int off) in
-    let hi = ((ptr &&& 0xff00_l) >>> 8) |> Int32.to_int |> byte in
-    let lo =  (ptr &&& 0x00ff_l)        |> Int32.to_int |> byte in
-    sprintf "%c%c" hi lo
-  in
-  
+  (** Marshal names, and compress. *)
   let mn_compress (labels:domain_name) = 
+    let pointer off = 
+      let ptr = (0b11_l <<< 14) +++ (Int32.of_int off) in
+      let hi = ((ptr &&& 0xff00_l) >>> 8) |> Int32.to_int |> byte in
+      let lo =  (ptr &&& 0x00ff_l)        |> Int32.to_int |> byte in
+      sprintf "%c%c" hi lo
+    in
+    
+    let lookup h k =
+      if Hashtbl.mem h k then Some (Hashtbl.find h k) else None
+    in
+
     let lset = 
       let rec aux = function
-        | [] -> [] (* don't double up the terminating null *)
+        | [] -> [] (* don't double up the terminating null? *)
         | x :: [] -> [ x :: [] ]
         | hd :: tl -> (hd :: tl) :: (aux tl)
       in aux labels
@@ -650,25 +690,30 @@ let marshal dns =
 
     let bits = ref [] in    
     let pointed = ref false in
-    List.iter (fun l ->
+    List.iter (fun ls ->
       if (not !pointed) then (
-        match lookup names l with
+        eprintf "\tlabel:%s\n%!" (ls |> join "/");
+        match lookup names ls with
           | None 
-            -> (Hashtbl.add names l !pos;
-                match l with 
+            -> (eprintf "\t\tnot found! pos:%d ls:%s\n%!" !pos (join "/" ls);
+                Hashtbl.add names ls !pos;
+                match ls with 
                   | [] 
-                    -> (bits := "\000" :: !bits; 
+                    -> (eprintf "\t\t\t[]\n%!";
+                        bits := "\000" :: !bits; 
                         pos := !pos + 1
                     )
                   | label :: tail
-                    -> (let len = String.length label in
+                    -> (eprintf "\t\t\tlabel:%s tail:'%s'\n%!" label (join "/" tail);
+                        let len = String.length label in
                         assert(len < 64);
                         bits := (charstr label) :: !bits;
                         pos := !pos + len +1
                     )
             )
           | Some off
-            -> (bits := (pointer off) :: !bits;
+            -> (eprintf "\t\tfound! pos:%d off:%d ls:%s\n%!" !pos off (join "/" ls);
+                bits := (pointer off) :: !bits;
                 pos := !pos + 2;
                 pointed := true
             )
@@ -697,43 +742,44 @@ let marshal dns =
            )
   in
   let mn ls = 
-    eprintf "labels: %s\n%!" (join ", " ls);
+    eprintf "labels: %s\n%!" (join "/" ls);
     mn_compress ls
   in
 
   let mr r = 
-    let mrd (rd:rr_rdata) = match rd with
-      | `A ip -> BITSTRING { ip:32 }, `A
-      | `NS n -> BITSTRING { (mn n):-1:bitstring }, `NS
-      | `MD n -> BITSTRING { (mn n):-1:bitstring }, `MD
-      | `MF n -> BITSTRING { (mn n):-1:bitstring }, `MF
-      | `CNAME n -> BITSTRING { (mn n):-1:bitstring }, `CNAME
+    let mrdata = function
+      | `A ip -> (BITSTRING { ip:32 }, `A)
+      | `NS n -> (BITSTRING { (mn n):-1:bitstring }, `NS)
+      | `MD n -> (BITSTRING { (mn n):-1:bitstring }, `MD)
+      | `MF n -> (BITSTRING { (mn n):-1:bitstring }, `MF)
+      | `CNAME n -> (BITSTRING { (mn n):-1:bitstring }, `CNAME)
       | `SOA (mname, rname, serial, refresh, retry, expire, minimum)
-        -> BITSTRING { (mn mname):-1:bitstring;
-                       (mn rname):-1:bitstring;
-                       serial:32; refresh:32; retry:32; expire:32; minimum:32 
-                     }, `SOA
-      | `HINFO (cpu, os) 
-        -> BITSTRING { cpu:-1:string; os:-1:string }, `HINFO
-      | `MB n -> BITSTRING { (mn n):-1:bitstring }, `MB
-      | `MG n -> BITSTRING { (mn n):-1:bitstring }, `MG
-      | `MR n -> BITSTRING { (mn n):-1:bitstring }, `MR
+        -> (BITSTRING { (mn mname):-1:bitstring;
+                        (mn rname):-1:bitstring;
+                        serial:32; refresh:32; retry:32; expire:32; 
+                        minimum:32 }, `SOA
+        )
+      | `HINFO (cpu, os) -> BITSTRING { cpu:-1:string; os:-1:string }, `HINFO
+      | `MB n -> (BITSTRING { (mn n):-1:bitstring }, `MB)
+      | `MG n -> (BITSTRING { (mn n):-1:bitstring }, `MG)
+      | `MR n -> (BITSTRING { (mn n):-1:bitstring }, `MR)
       | `MINFO (rm,em) 
-        -> BITSTRING { (mn rm):-1:bitstring; (mn em):-1:bitstring }, `MINFO
+        -> (BITSTRING { (mn rm):-1:bitstring; (mn em):-1:bitstring }, `MINFO)
       | `MX (pref, exchange) 
         -> BITSTRING { pref:16; (mn exchange):-1:bitstring }, `MX
-      | `TXT sl
-        -> (let s = sl ||> charstr |> join "" in
-            (BITSTRING { s:-1:string }), `TXT
-        )
+      | `TXT sl -> (
+        let s = sl ||> charstr |> join "" in
+        (BITSTRING { s:-1:string }, `TXT)
+      )
         
-      | _ -> failwith "not done yet"
+      | _ -> fwe "mrd: unknown rdata type"; 
     in
 
     let name = mn r.rr_name in
     pos := !pos + 2+2+4+2;
-    let rdata, rr_type = mrd r.rr_rdata in
+    let rdata, rr_type = mrdata r.rr_rdata in
     let rdlength = Bitstring.bitstring_length rdata in
+    pos := !pos + (rdlength/8);
     (BITSTRING {
       name:-1:bitstring;
       (int_of_rr_type rr_type):16;
@@ -755,6 +801,7 @@ let marshal dns =
   in
 
   let header = 
+    pos := !pos + 2+2+2+2+2+2;
     (BITSTRING {
       dns.id:16; 
       dns.detail:16:bitstring; 
@@ -764,13 +811,10 @@ let marshal dns =
       (List.length dns.additionals):16
     })
   in
-  let hl = 2+2+2+2+2+2 in  
-  pos := !pos + hl;
 
   let qs = dns.questions ||> mq in
   let ans = dns.answers ||> mr in
   let auths = dns.authorities ||> mr in
   let adds = dns.additionals ||> mr in
 
-  let bs = Bitstring.concat (header :: qs @ ans @ auths @ adds) in 
-  bs
+  Bitstring.concat (header :: qs @ ans @ auths @ adds)
