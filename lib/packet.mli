@@ -37,6 +37,19 @@ val bytes_of_bitstring : Bitstring.bitstring -> string
 val ipv4_addr_of_bytes : bytes -> int32
 
 type label
+
+type dnssec_alg = 
+    | RSAMD5 
+    | DH
+    | DSA
+    | ECC
+    | RSASHA1
+    | RSASHA256
+    | RSASHA512
+    | UNK
+val dnssec_alg_of_char : int -> dnssec_alg
+val char_of_dnssec_alg : dnssec_alg -> int
+
 (*
 type label = L of string * int | P of int * int | Z of int
 val parse_charstr : string * int * int -> string * (string * int * int)
@@ -52,6 +65,7 @@ type rr_type =
     | `Unknown of int * bytes | `WKS | `X25 ]
 val int_of_rr_type : rr_type -> int
 val rr_type_of_int : int -> rr_type
+val rr_type_of_string : string -> rr_type
 val string_of_rr_type : rr_type -> string
 
 type rr_rdata =
@@ -75,11 +89,13 @@ type rr_rdata =
     | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
     | `SRV of int16 * int16 * int16 * domain_name
     | `TXT of string list
+    | `DNSKEY of int * dnssec_alg * string 
     | `UNKNOWN of int * bytes
     | `UNSPEC of bytes
     | `WKS of int32 * byte * string
     | `X25 of string ]
-val string_of_rdata : [> `A of int32 | `NS of string list ] -> string
+val string_of_rdata : [> `A of int32 | `NS of string list |`DNSKEY of int *
+    dnssec_alg * string ] -> string
 val parse_rdata : (int, label) Hashtbl.t -> int -> rr_type -> Bitstring.bitstring -> rr_rdata
 
 type rr_class = [ `CH | `CS | `HS | `IN ]
@@ -107,6 +123,7 @@ type q_type = [ `A | `A6 | `AAAA | `AFSDB | `ANY | `APL | `ATMA | `AXFR | `CERT 
 val int_of_q_type : q_type -> int
 val q_type_of_int : int -> q_type
 val string_of_q_type : q_type -> string
+val q_type_of_string : string -> q_type
 type q_class = [ `ANY | `CH | `CS | `HS | `IN | `NONE ]
 val int_of_q_class : q_class -> int
 val q_class_of_int : int -> q_class

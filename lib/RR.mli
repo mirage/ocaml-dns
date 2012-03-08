@@ -45,6 +45,7 @@ and rdata =
   | AAAA of cstr list
   | SRV of (int * int * int * dnsnode) list
   | UNSPEC of cstr list
+(*   | DNSKEY of bool * dnssec_alg * string *)
   | Unknown of int * cstr list
 
 (* Hashcons values *)
