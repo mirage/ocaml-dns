@@ -110,6 +110,43 @@ let parse_name names base bits =
   let name, bits = aux [] [] bits in
   (List.rev name, bits)
 
+  type dnssec_alg = 
+    | RSAMD5 
+    | DH
+    | DSA
+    | ECC
+    | RSASHA1
+    | RSASHA256
+    | RSASHA512
+    | UNK
+let dnssec_alg_of_char = function
+    | 1  -> RSAMD5 
+    | 2  -> DH
+    | 3  -> DSA
+    | 4  -> ECC
+    | 5  -> RSASHA1
+    | 8  -> RSASHA256
+    | 10 -> RSASHA512
+    | _  -> UNK
+let char_of_dnssec_alg = function
+    | RSAMD5    -> 1 
+    | DH        -> 2 
+    | DSA       -> 3
+    | ECC       -> 4
+    | RSASHA1   -> 5
+    | RSASHA256 -> 8
+    | RSASHA512 -> 10
+    | UNK       -> 6
+let string_of_dnssec_alg = function
+    | RSAMD5    -> "RSAMD5"  
+    | DH        -> "DH"
+    | DSA       -> "DSA"
+    | ECC       -> "ECC"
+    | RSASHA1   -> "RSASHA1"
+    | RSASHA256 -> "RSASHA256"
+    | RSASHA512 -> "RSASHA512"
+    | UNK       -> "UNK"
+
 type rr_type = [
 | `A | `NS | `MD | `MF | `CNAME | `SOA | `MB | `MG | `MR | `NULL 
 | `WKS | `PTR | `HINFO | `MINFO | `MX | `TXT | `RP | `AFSDB | `X25 
@@ -234,6 +271,62 @@ and rr_type_of_int : int -> rr_type = function
   | 103 -> `UNSPEC
 
   | _ -> invalid_arg "rr_type_of_int"
+and rr_type_of_string : string -> rr_type = function
+  | "A"        -> `A
+  | "NS"       -> `NS
+  | "MD"       -> `MD
+  | "MF"       -> `MF
+  | "CNAME"    -> `CNAME
+  | "SOA"      -> `SOA
+  | "MB"       -> `MB
+  | "MG"       -> `MG
+  | "MR"       -> `MR
+  | "NULL"     -> `NULL
+  | "WKS"      -> `WKS
+  | "PTR"      -> `PTR
+  | "HINFO"    -> `HINFO
+  | "MINFO"    -> `MINFO
+  | "MX"       -> `MX
+  | "TXT"      -> `TXT
+  | "RP"       -> `RP
+  | "AFSDB"    -> `AFSDB 
+  | "X25"      -> `X25 
+  | "ISDN"     -> `ISDN 
+  | "RT"       -> `RT
+  | "NSAP"     -> `NSAP 
+  | "NSAP_PTR" -> `NSAP_PTR 
+  | "SIG"      -> `SIG 
+  | "KEY"      -> `KEY
+  | "PX"       -> `PX 
+  | "GPOS"     -> `GPOS 
+  | "AAAA"     -> `AAAA 
+  | "LOC"      -> `LOC
+  | "NXT"      -> `NXT 
+  | "EID"      -> `EID 
+  | "NIMLOC"   -> `NIMLOC 
+  | "SRV"      -> `SRV 
+  | "ATMA"     -> `ATMA 
+  | "NAPTR"    -> `NAPTR 
+  | "KM"       -> `KM 
+  | "CERT"     -> `CERT 
+  | "A6"       -> `A6 
+  | "DNAME"    -> `DNAME 
+  | "SINK"     -> `SINK 
+  | "OPT"      -> `OPT 
+  | "APL"      -> `APL 
+  | "DS"       -> `DS 
+  | "SSHFP"    -> `SSHFP 
+  | "IPSECKEY" -> `IPSECKEY 
+  | "RRSIG"    -> `RRSIG 
+  | "NSEC"     -> `NSEC 
+  | "DNSKEY"   -> `DNSKEY 
+    
+  | "SPF"      -> `SPF 
+  | "UINFO"    -> `UINFO 
+  | "UID"      -> `UID 
+  | "GID"      -> `GID 
+  | "UNSPEC"   -> `UNSPEC
+  | _ -> invalid_arg "rr_type_of_int"
 and string_of_rr_type:rr_type -> string = function
   | `A        -> "A"
   | `NS       -> "NS"
@@ -314,6 +407,7 @@ type rr_rdata = [
 | `RT of int16 * domain_name
 | `AAAA of bytes
 | `SRV of int16 * int16 * int16 * domain_name
+| `DNSKEY of int * dnssec_alg * string 
 | `UNSPEC of bytes
 | `UNKNOWN of int * bytes
 ]
@@ -322,6 +416,9 @@ let string_of_rdata r =
   match r with
     | `A ip -> sp "A (%s)" (ipv4_to_string ip)
     | `NS n -> sp "NS (%s)" (join "." n)
+    | `DNSKEY (flags, alg, key) ->
+            sp "DNSKEY (%x %s %s)" flags (string_of_dnssec_alg alg)
+            (Base64.str_encode key)
     | _     -> failwith "string_of_rdata: unknown rdata type"
 
 let parse_rdata names base t bits = 
@@ -364,6 +461,18 @@ let parse_rdata names base t bits =
                   aux [] bits
                 in
                 `TXT names
+      | `DNSKEY -> ( 
+(*               let data = (Bitstring.string_of_bitstring bits) in  *)
+              bitmatch bits with 
+              | {flags:16;3:8;alg:8; key:-1:string} -> 
+                      `DNSKEY(flags,(dnssec_alg_of_char alg), key)
+(*
+              | {flags:16; ksk:1;_:8;alg:8; key:-1:string} -> 
+                      `DNSKEY(flags,(dnssec_alg_of_char alg), key)
+*)
+              | { _ } -> Printf.printf "DNSKEY data cannot be parsed\n%!";
+              Bitstring.hexdump_bitstring stdout bits;
+                      `UNSPEC(Bitstring.string_of_bitstring bits))
       | t -> `UNKNOWN (int_of_rr_type t, Bitstring.string_of_bitstring bits)
   )
 
@@ -436,6 +545,14 @@ and string_of_q_type:q_type -> string = function
   | `TA           -> "TA"
   | `DLV          -> "DLV"
   | #rr_type as t -> string_of_rr_type t
+and q_type_of_string : string -> q_type = function
+  | "AXFR"        -> `AXFR  
+  | "MAILB"       -> `MAILB
+  | "MAILA"       -> `MAILA
+  | "ANY"         -> `ANY  
+  | "TA"          -> `TA   
+  | "DLV"         -> `DLV  
+  | t             -> (rr_type_of_string t :> q_type)
 
 type q_class = [ rr_class | `NONE | `ANY ]
 
