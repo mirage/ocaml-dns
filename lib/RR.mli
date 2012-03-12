@@ -21,11 +21,10 @@
     @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
+open Uri_IP
+
 (** DNS serial number -- 32 bits. *)
 type serial = int32 
-
-(** IPv4 address -- 32 bits. *)
-and ipv4 = int32
 
 (** Character-string, memoised via {! Hashcons}. *)
 and cstr = string Hashcons.hash_consed
@@ -50,7 +49,7 @@ and rrset = { ttl : int32; rdata : rdata; }
     {! Packet} represents each RR as a variant type with the same name.
 *)
 and rdata =
-    A of ipv4 list
+  | A of ipv4 list
   | NS of dnsnode list
   | CNAME of dnsnode list
   | SOA of (dnsnode * dnsnode * serial * int32 * int32 * int32 * int32) list

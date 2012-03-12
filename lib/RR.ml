@@ -17,6 +17,8 @@
  *
  *)
   
+open Uri_IP
+  
 (* Hash-consing: character strings *)
 module CSH = Hashcons.Make (struct 
   type t = string 
@@ -54,7 +56,6 @@ let clear_cons_tables () =
 
 (* Mnemonicity! *)
 type serial = int32
-and ipv4 = int32
 and cstr = string Hashcons.hash_consed
 
 (* DNS node: everything we know about a domain name *)
