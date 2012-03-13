@@ -63,7 +63,6 @@ and rdata =
   | Unknown of int * cstr list
   | WKS of (int32 * byte * cstr) list 
   | X25 of cstr list
-  | Unknown of int * cstr list
 
 (* XXX add other RR types *)
 (* wire-domain type for non-rfc1035 rdata? *)

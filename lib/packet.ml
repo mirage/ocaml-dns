@@ -31,7 +31,7 @@ type dnssec_alg =
   | RSASHA256
   | RSASHA512
   | UNKNOWN
-let byte_to_dnssec_alg = function
+let int_to_dnssec_alg = function
   | 1  -> RSAMD5 
   | 2  -> DH
   | 3  -> DSA
@@ -40,7 +40,7 @@ let byte_to_dnssec_alg = function
   | 8  -> RSASHA256
   | 10 -> RSASHA512
   | _  -> UNKNOWN
-let dnssec_alg_to_byte = function
+let dnssec_alg_to_int = function
   | RSAMD5    -> 1 
   | DH        -> 2 
   | DSA       -> 3
@@ -48,7 +48,7 @@ let dnssec_alg_to_byte = function
   | RSASHA1   -> 5
   | RSASHA256 -> 8
   | RSASHA512 -> 10
-  | UNK       -> 6
+  | UNKNOWN   -> 6
 let dnssec_alg_to_string = function
   | RSAMD5    -> "RSAMD5"  
   | DH        -> "DH"
@@ -57,7 +57,7 @@ let dnssec_alg_to_string = function
   | RSASHA1   -> "RSASHA1"
   | RSASHA256 -> "RSASHA256"
   | RSASHA512 -> "RSASHA512"
-  | UNK       -> "UNK"
+  | UNKNOWN   -> "UNK"
 
 type rr_type = [
 | `A | `NS | `MD | `MF | `CNAME | `SOA | `MB | `MG | `MR | `NULL 
@@ -69,7 +69,7 @@ type rr_type = [
 | `Unknown of int * bytes
 ]
 
-let rr_type_to_int : rr_type -> int = function
+let rr_type_to_int = function
   | `A        -> 1
   | `NS       -> 2
   | `MD       -> 3
@@ -126,7 +126,7 @@ let rr_type_to_int : rr_type -> int = function
   | `UNSPEC   -> 103
    
   | `Unknown _ -> -1
-and int_to_rr_type : int -> rr_type = function
+and int_to_rr_type = function
   | 1  -> `A
   | 2  -> `NS
   | 3  -> `MD
@@ -183,7 +183,7 @@ and int_to_rr_type : int -> rr_type = function
   | 103 -> `UNSPEC
 
   | _ -> invalid_arg "int_to_rr_type"
-and rr_type_to_string:rr_type -> string = function
+and rr_type_to_string = function
   | `A        -> "A"
   | `NS       -> "NS"
   | `MD       -> "MD"
@@ -206,7 +206,7 @@ and rr_type_to_string:rr_type -> string = function
   | `ISDN     -> "ISDN"
   | `RT       -> "RT"
   | `NSAP     -> "NSAP"
-  | `NSAP_PTR -> "NSAP"
+  | `NSAP_PTR -> "NSAP_PTR"
   | `SIG      -> "SIG"
   | `KEY      -> "KEY"
   | `PX       -> "PX"
@@ -238,13 +238,68 @@ and rr_type_to_string:rr_type -> string = function
   | `GID      -> "GID"
   | `UNSPEC   -> "UNSPEC"
   | `Unknown (i, _) -> sprintf "Unknown (%d)" i
+and string_to_rr_type = function
+  | "A"        -> `A
+  | "NS"       -> `NS
+  | "MD"       -> `MD
+  | "MF"       -> `MF
+  | "CNAME"    -> `CNAME
+  | "SOA"      -> `SOA
+  | "MB"       -> `MB
+  | "MG"       -> `MG
+  | "MR"       -> `MR
+  | "NULL"     -> `NULL
+  | "WKS"      -> `WKS
+  | "PTR"      -> `PTR
+  | "HINFO"    -> `HINFO
+  | "MINFO"    -> `MINFO
+  | "MX"       -> `MX
+  | "TXT"      -> `TXT
+  | "RP"       -> `RP
+  | "AFSDB"    -> `AFSDB
+  | "X25"      -> `X25
+  | "ISDN"     -> `ISDN
+  | "RT"       -> `RT
+  | "NSAP"     -> `NSAP
+  | "NSAP_PTR" -> `NSAP_PTR
+  | "SIG"      -> `SIG
+  | "KEY"      -> `KEY
+  | "PX"       -> `PX
+  | "GPOS"     -> `GPOS
+  | "AAAA"     -> `AAAA
+  | "LOC"      -> `LOC
+  | "NXT"      -> `NXT
+  | "EID"      -> `EID
+  | "NIMLOC"   -> `NIMLOC
+  | "SRV"      -> `SRV
+  | "ATMA"     -> `ATMA
+  | "NAPTR"    -> `NAPTR
+  | "KM"       -> `KM
+  | "CERT"     -> `CERT
+  | "A6"       -> `A6
+  | "DNAME"    -> `DNAME
+  | "SINK"     -> `SINK
+  | "OPT"      -> `OPT
+  | "APL"      -> `APL
+  | "DS"       -> `DS
+  | "SSHFP"    -> `SSHFP
+  | "IPSECKEY" -> `IPSECKEY
+  | "RRSIG"    -> `RRSIG
+  | "NSEC"     -> `NSEC
+  | "DNSKEY"   -> `DNSKEY
+  | "SPF"      -> `SPF
+  | "UINFO"    -> `UINFO
+  | "UID"      -> `UID
+  | "GID"      -> `GID
+  | "UNSPEC"   -> `UNSPEC
+  | _ -> invalid_arg "string_to_rr_type"
 
 type rr_rdata = [
 | `A of ipv4
 | `AAAA of bytes
 | `AFSDB of int16 * domain_name
 | `CNAME of domain_name
-| `DNSKEY of byte * dnssec_alg * string 
+| `DNSKEY of int16 * dnssec_alg * string 
 | `HINFO of string * string
 | `ISDN of string * string option
 | `MB of domain_name
@@ -269,15 +324,15 @@ type rr_rdata = [
 
 let rdata_to_string r = 
   match r with
-      <<<<<<< HEAD
     | `A ip -> sprintf "A (%s)" (ipv4_to_string ip)
     | `AAAA bs -> sprintf "AAAA (%s)" (bytes_to_string bs)
     | `AFSDB (x, n)
       -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
     | `CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
-    | `DNSKEY (flags, alg, key) ->
-        sp "DNSKEY (%x %s %s)" flags (string_of_dnssec_alg alg)
-          (Base64.str_encode key)
+    | `DNSKEY (flags, alg, key) 
+      -> (sprintf "DNSKEY (%x, %s, %s)" 
+            flags (dnssec_alg_to_string alg) (Base64.str_encode key)
+      )
     | `HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
     | `ISDN (a, sa)
       -> sprintf "ISDN (%s, %s)" a (match sa with None -> "" | Some sa -> sa)
@@ -328,8 +383,8 @@ let parse_rdata names base t bits =
     | `CNAME -> `CNAME (bits |> parse_name names base |> stop)
     | `DNSKEY -> (
       bitmatch bits with 
-        | {flags:16;3:8;alg:8; key:-1:string} -> 
-            `DNSKEY (flags, (dnssec_alg_of_char alg), key)
+        | {flags:16; 3:8; alg:8; key:-1:string } -> 
+            `DNSKEY (flags, (int_to_dnssec_alg alg), key)
     )
     | `SOA -> let mn, bits = parse_name names base bits in
               let rn, bits = parse_name names base bits in 
@@ -368,18 +423,21 @@ let parse_rdata names base t bits =
     | t -> `UNKNOWN (rr_type_to_int t, bits_to_bytes bits)
 
 type rr_class = [ `IN | `CS | `CH | `HS ]
-let rr_class_to_int : rr_class -> int = function
+let rr_class_to_int = function
   | `IN -> 1
   | `CS -> 2
   | `CH -> 3
   | `HS -> 4
-and int_to_rr_class : int -> rr_class = function
+and int_to_rr_class = function
   | 1   -> `IN
   | 2   -> `CS
   | 3   -> `CH
   | 4   -> `HS
-  | x   -> `IN (* TODO edns0 hack (#2) invalid_arg "int_to_rr_class" *)
-and rr_class_to_string : rr_class -> string = function
+(*
+   | x   -> `IN (* TODO edns0 hack (#2) invalid_arg "int_to_rr_class" *)
+*)
+  | _ -> invalid_arg "int_to_rr_class"
+and rr_class_to_string = function
   | `IN -> "IN"
   | `CS -> "CS"
   | `CH -> "CH"
@@ -428,7 +486,7 @@ and int_to_q_type : int -> q_type = function
   | 32768         -> `TA
   | 32769         -> `DLV
   | n             -> (int_to_rr_type n :> q_type)
-and q_type_to_string:q_type -> string = function
+and q_type_to_string : q_type -> string = function
   | `AXFR         -> "AXFR"
   | `MAILB        -> "MAILB"
   | `MAILA        -> "MAILA"
@@ -436,9 +494,16 @@ and q_type_to_string:q_type -> string = function
   | `TA           -> "TA"
   | `DLV          -> "DLV"
   | #rr_type as t -> rr_type_to_string t
+and string_to_q_type : string -> q_type = function
+  | "AXFR"         -> `AXFR
+  | "MAILB"        -> `MAILB
+  | "MAILA"        -> `MAILA
+  | "ANY"          -> `ANY
+  | "TA"           -> `TA
+  | "DLV"          -> `DLV
+  | s -> string_to_rr_type s
 
 type q_class = [ rr_class | `NONE | `ANY ]
-
 let q_class_to_int : q_class -> int = function
   | `NONE          -> 254
   | `ANY           -> 255
@@ -748,6 +813,12 @@ let marshal_dns dns =
       | `AFSDB (t, n) 
         -> BITSTRING { t:16; (mn ~off:2 n):-1:bitstring }, `AFSDB
       | `CNAME n -> BITSTRING { (mn n):-1:bitstring }, `CNAME
+      | `DNSKEY (flags, alg, key)
+         -> (BITSTRING { flags:16; 3:8; (dnssec_alg_to_int alg):8; 
+                         (Base64.str_encode key):-1:string 
+                       }, 
+             `DNSKEY
+         )
       | `HINFO (cpu, os) -> BITSTRING { cpu:-1:string; os:-1:string }, `HINFO
       | `ISDN (a, sa) -> (
         (match sa with 
@@ -792,7 +863,8 @@ let marshal_dns dns =
       | `UNKNOWN _ -> failwith (sprintf "UNKNOWN")
       | `UNSPEC _ -> failwith (sprintf "UNSPEC")
         
-      | `WKS (a, p, bm) -> BITSTRING { a:32; (byte_to_int p):8; bm:-1:string }, `WKS
+      | `WKS (a, p, bm) 
+        -> BITSTRING { a:32; (byte_to_int p):8; bm:-1:string }, `WKS
       | `X25 s -> BITSTRING { (charstr s):-1:string }, `X25
     in
 

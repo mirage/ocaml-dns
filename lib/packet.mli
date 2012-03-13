@@ -20,8 +20,8 @@ open Uri_IP
 open Wire
 
 type dnssec_alg
-val byte_to_dnssec_alg : byte -> dnssec_alg
-val dnssec_alg_to_byte : dnssec_alg -> byte
+val int_to_dnssec_alg : int -> dnssec_alg
+val dnssec_alg_to_int : dnssec_alg -> int
 val dnssec_alg_to_string : dnssec_alg -> string
 
 type rr_type = [ 
@@ -87,8 +87,9 @@ type q_type = [ rr_type | `AXFR | `MAILB | `MAILA | `ANY | `TA | `DLV ]
 val int_to_q_type : int -> q_type
 val q_type_to_int : q_type -> int
 val q_type_to_string : q_type -> string
+val string_to_q_type : string -> q_type
 
-type q_class
+type q_class = [ rr_class | `NONE | `ANY ]
 val int_to_q_class : int -> q_class
 val q_class_to_int : q_class -> int
 val q_class_to_string : q_class -> string

@@ -21,7 +21,7 @@ Library server
   Findlibname: server
   Modules: Dns_server
   BuildDepends: 
-    lwt.syntax, lwt, lwt.unix,bitstring, bitstring.syntax, uri, dns, extlib
+    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns, extlib
   FindlibParent: dns
 
 Document dns
@@ -61,8 +61,8 @@ Executable ocaml_dig
   CompiledObject:     best
   Install:            false
   BuildDepends:       
-    lwt, lwt.unix, bitstring, re, re.str, uri, dns, lwt.syntax, 
-    bitstring.syntax, extlib
+    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, 
+    re, re.str, uri, dns, extlib
 
 Test lwt_server
   Run$:               flag(tests)
