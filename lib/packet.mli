@@ -88,16 +88,20 @@ val int_to_q_class : int -> q_class
 val q_class_to_int : q_class -> int
 val q_class_to_string : q_class -> string
 
-type question
+type question = {
+  q_name  : domain_name;
+  q_type  : q_type;
+  q_class : q_class;
+}
 val question_to_string : question -> string
 val parse_question :
   (int, label) Hashtbl.t -> int -> Bitstring.t -> question * Bitstring.t
 
-type qr
+type qr = [ `Query | `Answer ]
 val bool_to_qr : bool -> qr
 val qr_to_bool : qr -> bool
 
-type opcode
+type opcode = [ qr | `Status | `Reserved | `Notify | `Update ]
 val int_to_opcode : int -> opcode
 val opcode_to_int : opcode -> int
 
@@ -112,12 +116,27 @@ val int_to_rcode : int -> rcode
 val rcode_to_int : rcode -> int
 val rcode_to_string : rcode -> string
 
-type detail
+type detail = {
+  qr: qr;
+  opcode: opcode;
+  aa: bool; 
+  tc: bool; 
+  rd: bool; 
+  ra: bool;
+  rcode: rcode;
+}
 val detail_to_string : detail -> string
 val parse_detail : Bitstring.t -> detail
 val build_detail : detail -> Bitstring.t
 
-type dns
+type dns = {
+  id          : int16;
+  detail      : Bitstring.t;
+  questions   : question list;
+  answers     : rr list;
+  authorities : rr list;
+  additionals : rr list;
+}
 val dns_to_string : dns -> string
 val parse_dns : (int, label) Hashtbl.t -> Bitstring.t-> dns
 val marshal_dns : dns -> Bitstring.t

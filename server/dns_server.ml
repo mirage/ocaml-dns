@@ -55,11 +55,19 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
           match answer with
           |None -> return ()
           |Some answer ->
-            let detail = DP.(build_detail { qr=`Answer; opcode=`Query; aa=answer.DQ.aa;
-              tc=false; rd=false; ra=false; rcode=answer.DQ.rcode }) in
-            let response = DP.({ id=query.id; detail; questions=query.questions; answers=answer.DQ.answer;
-              authorities=answer.DQ.authority; additionals=answer.DQ.additional }) in
-            let buf, boff, blen = DP.marshal response in
+            let detail = DP.(build_detail { 
+              qr=`Answer; opcode=`Query; aa=answer.DQ.aa;
+              tc=false; rd=false; ra=false; rcode=answer.DQ.rcode 
+            }) 
+            in
+            let response = DP.({ 
+              id=query.id; detail; 
+              questions=query.questions; 
+              answers=answer.DQ.answer;
+              authorities=answer.DQ.authority; 
+              additionals=answer.DQ.additional }) 
+            in
+            let buf, boff, blen = DP.marshal_dns response in
             (* TODO transmit queue, rather than ignoring result here *)
             let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
             return ()
