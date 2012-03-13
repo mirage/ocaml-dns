@@ -122,7 +122,7 @@ let answer_query qname qtype trie =
           
       | WKS l -> 
 	    List.iter (fun (address, protocol, bitmap) -> 
-	      addrr (`WKS (address, byte protocol, bitmap.H.node))) l
+	      addrr (`WKS (address, protocol, bitmap.H.node))) l
 
       | PTR l -> 
 	    List.iter (fun d -> 
@@ -140,7 +140,7 @@ let answer_query qname qtype trie =
 	    List.iter (fun (preference, d) -> 
 	      enqueue_additional d `A;
 	      enqueue_additional d `AAAA;
-	      addrr (`MX (int16 preference, d.owner.H.node))) l
+	      addrr (`MX (preference, d.owner.H.node))) l
           
       | TXT l ->
 	    List.iter (fun sl -> (* XXX handle multiple TXT cstrings properly *)
@@ -155,26 +155,32 @@ let answer_query qname qtype trie =
 	    List.iter (fun (t, d) -> 
 	      enqueue_additional d `A;
 	      enqueue_additional d `AAAA;
-	      addrr (`AFSDB (int16 t, d.owner.H.node))) l
+	      addrr (`AFSDB (t, d.owner.H.node))) l
           
       | X25 l -> log_rrset owner `X25;
 	    List.iter (fun s -> 
 	      addrr (`X25 s.H.node)) l
           
       | ISDN l -> log_rrset owner `ISDN;
-	    List.iter (function (* XXX handle multiple cstrings properly *)
+	    List.iter (fun (a, sa) ->
+          let sa = match sa with None -> None | Some sa -> Some sa.H.node in
+          addrr (`ISDN (a.H.node, sa))) l
+
+        (*
+          (function (* XXX handle multiple cstrings properly *)
           | (addr, None) 
             -> addrr (`ISDN addr.H.node)
           | (addr, Some sa) (* XXX Handle multiple charstrings properly *)
             -> addrr (`ISDN (addr.H.node ^ sa.H.node))) l
-          
+        *)
+  
       | RT l -> 
 	    List.iter (fun (preference, d) -> 
 	      enqueue_additional d `A;
 	      enqueue_additional d `AAAA;
 	      enqueue_additional d `X25;
 	      enqueue_additional d `ISDN;
-	      addrr (`RT (int16 preference, d.owner.H.node))) l
+	      addrr (`RT (preference, d.owner.H.node))) l
           
       | AAAA l -> log_rrset owner `AAAA;
 	    List.iter (fun i -> addrr (`AAAA (bytes i.H.node))) l 
@@ -183,8 +189,7 @@ let answer_query qname qtype trie =
         -> List.iter (fun (priority, weight, port, d) -> 
 	      enqueue_additional d `A;
 	      enqueue_additional d `AAAA;
-	      addrr (`SRV (int16 priority, int16 weight, int16 port, 
-                       d.owner.H.node))) l
+	      addrr (`SRV (priority, weight, port, d.owner.H.node))) l
         
       | UNSPEC l 
         -> List.iter (fun s -> addrr (`UNSPEC (bytes s.H.node))) l

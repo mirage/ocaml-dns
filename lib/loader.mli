@@ -19,6 +19,7 @@
 
 open Name
 open Uri_IP
+open Wire
 
 (* Loader database: the DNS trie plus a hash table of other names in use *)
 type db = { trie : Trie.dnstrie; 
@@ -42,7 +43,7 @@ val add_soa_rr :
 val add_mb_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_mg_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_mr_rr : domain_name -> int32 -> domain_name -> db -> unit
-val add_wks_rr : int32 -> int -> string -> int32 -> domain_name -> db -> unit
+val add_wks_rr : int32 -> int16 -> string -> int32 -> domain_name -> db -> unit
 val add_ptr_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_hinfo_rr : string -> string -> int32 -> domain_name -> db -> unit
 val add_minfo_rr : 

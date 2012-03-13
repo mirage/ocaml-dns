@@ -1,10 +1,10 @@
 val offset_of_bitstring : Bitstring.t -> int
 
 (** For bit manipulation. *)
-type int16
+type int16 = int
 (** Convert {! int } to {! byte }; useful in pipelines. *)
 val int16 : int -> int16
-val int16_to_int : int16 -> int
+(* val int16_to_int : int16 -> int *)
 
 (** Single octet, for bit manipulation. *)
 type byte

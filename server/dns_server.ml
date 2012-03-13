@@ -108,7 +108,9 @@ let listen_with_zonefile ~address ~port ~zonefile =
   lwt zonebuf =
      let lines = Lwt_io.lines_of_file zonefile in
      let buf = Buffer.create 1024 in
-     lwt () = Lwt_stream.iter (fun l -> Buffer.add_string buf l; Buffer.add_char buf '\n') lines in
+     lwt () = Lwt_stream.iter (fun l -> 
+       Buffer.add_string buf l; Buffer.add_char buf '\n') lines 
+     in
      return (Buffer.contents buf)
   in
   listen_with_zonebuf ~address ~port ~zonebuf ~mode:`none

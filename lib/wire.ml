@@ -7,7 +7,7 @@ let offset_of_bitstring bits =
     let (_, offset, _) = bits in offset
 
 type int16 = int
-let int16 (i:int) : int16 = i
+let int16 (i:int) : int16 = min i 0xffff
 let int16_to_int (i:int16) : int = i
                                     
 type byte = char

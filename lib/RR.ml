@@ -18,6 +18,7 @@
  *)
   
 open Name
+open Wire
   
 (* Mnemonicity! *)
 type serial = int32
@@ -37,28 +38,28 @@ and rrset = {
 
 and rdata = 
   | A of Uri_IP.ipv4 list (* always length = 1 *)
-  | NS of dnsnode list
-(* MD and MF are obsolete; use MX for them *)
-  | CNAME of dnsnode list
-  | SOA of (dnsnode * dnsnode * serial * int32 * int32 * int32 * int32) list
-  | MB of dnsnode list
-  | MG of dnsnode list
-  | MR of dnsnode list
-  | WKS of (int32 * int * cstr) list 
-  | PTR of dnsnode list
-  | HINFO of (cstr * cstr) list
-  | MINFO of (dnsnode * dnsnode) list
-  | MX of (int * dnsnode) list 
-  | TXT of (cstr list) list
-  | RP of (dnsnode * dnsnode) list
-  | AFSDB of (int * dnsnode) list
-  | X25 of cstr list
-  | ISDN of (cstr * cstr option) list
-  | RT of (int * dnsnode) list
   | AAAA of cstr list
-  | SRV of (int * int * int * dnsnode) list
+  | AFSDB of (int16 * dnsnode) list
+  | CNAME of dnsnode list
+  | HINFO of (cstr * cstr) list
+  | ISDN of (cstr * cstr option) list
+  | MB of dnsnode list
+  (* MD and MF are obsolete; use MX for them *)
+  | MG of dnsnode list
+  | MINFO of (dnsnode * dnsnode) list
+  | MR of dnsnode list
+  | MX of (int16 * dnsnode) list 
+  | NS of dnsnode list
+  | PTR of dnsnode list
+  | RP of (dnsnode * dnsnode) list
+  | RT of (int16 * dnsnode) list
+  | SOA of (dnsnode * dnsnode * serial * int32 * int32 * int32 * int32) list
+  | SRV of (int16 * int16 * int16 * dnsnode) list
+  | TXT of (cstr list) list
   | UNSPEC of cstr list
   | Unknown of int * cstr list
+  | WKS of (int32 * byte * cstr) list 
+  | X25 of cstr list
 
 (* XXX add other RR types *)
 (* wire-domain type for non-rfc1035 rdata? *)

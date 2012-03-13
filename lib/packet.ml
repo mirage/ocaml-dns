@@ -14,6 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+(* RFC1035, RFC1186 *)
+
 open Printf
 open Operators
 open Uri_IP
@@ -307,7 +309,7 @@ type rr_rdata = [
 | `AFSDB of int16 * domain_name
 | `CNAME of domain_name
 | `HINFO of string * string
-| `ISDN of string
+| `ISDN of string * string option
 | `MB of domain_name
 | `MD of domain_name
 | `MF of domain_name
@@ -333,10 +335,11 @@ let rdata_to_string r =
     | `A ip -> sprintf "A (%s)" (ipv4_to_string ip)
     | `AAAA bs -> sprintf "AAAA (%s)" (bytes_to_string bs)
     | `AFSDB (x, n)
-      -> sprintf "AFSDB (%d, %s)" (int16_to_int x) (domain_name_to_string n)
+      -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
     | `CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
     | `HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
-    | `ISDN n -> sprintf "ISDN (%s)" n
+    | `ISDN (a, sa)
+      -> sprintf "ISDN (%s, %s)" a (match sa with None -> "" | Some sa -> sa)
     | `MB n -> sprintf "MB (%s)" (domain_name_to_string n)
     | `MD n -> sprintf "MD (%s)" (domain_name_to_string n)
     | `MF n -> sprintf "MF (%s)" (domain_name_to_string n)
@@ -347,7 +350,7 @@ let rdata_to_string r =
       )
     | `MR n -> sprintf "MR (%s)" (domain_name_to_string n)
     | `MX (pref, name)
-      -> sprintf "MX (%d, %s)" (int16_to_int pref) (domain_name_to_string name)
+      -> sprintf "MX (%d, %s)" pref (domain_name_to_string name)
     | `NS n -> sprintf "NS (%s)" (domain_name_to_string n)
     | `PTR n -> sprintf "PTR (%s)" (domain_name_to_string n)
     | `RP (mn, nn)
@@ -355,15 +358,13 @@ let rdata_to_string r =
             (domain_name_to_string mn) (domain_name_to_string nn)
       )
     | `RT (x, n) 
-      -> sprintf "RT (%d, %s)" (int16_to_int x) (domain_name_to_string n)
+      -> sprintf "RT (%d, %s)" x (domain_name_to_string n)
     | `SOA (mn, rn, serial, refresh, retry, expire, minimum)
       -> (sprintf "SOA (%s,%s, %ld,%ld,%ld,%ld,%ld)"
             (domain_name_to_string mn) (domain_name_to_string rn) 
             serial refresh retry expire minimum)
     | `SRV (x, y, z, n) 
-      -> (sprintf "SRV (%d,%d,%d, %s)" 
-            (int16_to_int x) (int16_to_int y) (int16_to_int z)
-            (domain_name_to_string n)
+      -> (sprintf "SRV (%d,%d,%d, %s)" x y z (domain_name_to_string n)
       )
     | `TXT sl -> sprintf "TXT (%s)" (join "" sl)
     | `UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (bytes_to_string bs)
@@ -371,54 +372,55 @@ let rdata_to_string r =
     | `WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x (byte_to_int y) s
     | `X25 s -> sprintf "X25 (%s)" s
 
-(** Drop remainder bitstring to stop parsing and demuxing. *) 
-
 let parse_rdata names base t bits = 
+  (** Drop remainder bitstring to stop parsing and demuxing. *) 
   let stop (x, bits) = x in
+  (** Extract (length, string) encoded strings, with remainder for
+      chaining. *)
   let parse_charstr bits = 
     bitmatch bits with
       | { len: 8; str: (len*8): string; bits: -1: bitstring } -> str, bits
   in
-    match t with
-      | `A -> `A (bits |> bits_to_bytes |> bytes_to_ipv4)
-      | `NS -> `NS (bits |> parse_name names base |> stop)
-      | `CNAME -> `CNAME (bits |> parse_name names base |> stop)
-        
-      | `SOA -> let mn, bits = parse_name names base bits in
-                let rn, bits = parse_name names base bits in 
-                (bitmatch bits with
-                  | { serial: 32; refresh: 32; retry: 32; expire: 32;
-                      minimum: 32 }
-                    -> `SOA (mn, rn, serial, refresh, retry, expire, minimum)
-                )
-                  
-      | `WKS -> (
-        bitmatch bits with 
-          | { addr: 32; proto: 8; bitmap: -1: string } 
-            -> `WKS (addr, byte proto, bitmap)
-      )
-      | `PTR -> `PTR (bits |> parse_name names base |> stop)
-      | `HINFO -> let cpu, bits = parse_charstr bits in
-                  let os = bits |> parse_charstr |> stop in
-                  `HINFO (cpu, os)
-      | `MINFO -> let rm, bits = parse_name names base bits in
-                  let em = bits |> parse_name names base |> stop in
-                  `MINFO (rm, em)
-      | `MX -> (
-        bitmatch bits with
-          | { preference: 16; bits: -1: bitstring } 
-            -> `MX ((int16 preference, 
-                     bits |> parse_name names base |> stop))
-      )
-      | `TXT -> let names, _ = 
-                  let rec aux ns bits = 
-                    let n, bits = parse_name names base bits in
-                    aux (n :: ns) bits
-                  in
-                  aux [] bits
+  match t with
+    | `A -> `A (bits |> bits_to_bytes |> bytes_to_ipv4)
+    | `NS -> `NS (bits |> parse_name names base |> stop)
+    | `CNAME -> `CNAME (bits |> parse_name names base |> stop)
+      
+    | `SOA -> let mn, bits = parse_name names base bits in
+              let rn, bits = parse_name names base bits in 
+              (bitmatch bits with
+                | { serial: 32; refresh: 32; retry: 32; expire: 32;
+                    minimum: 32 }
+                  -> `SOA (mn, rn, serial, refresh, retry, expire, minimum)
+              )
+                
+    | `WKS -> (
+      bitmatch bits with 
+        | { addr: 32; proto: 8; bitmap: -1: string } 
+          -> `WKS (addr, byte proto, bitmap)
+    )
+    | `PTR -> `PTR (bits |> parse_name names base |> stop)
+    | `HINFO -> let cpu, bits = parse_charstr bits in
+                let os = bits |> parse_charstr |> stop in
+                `HINFO (cpu, os)
+    | `MINFO -> let rm, bits = parse_name names base bits in
+                let em = bits |> parse_name names base |> stop in
+                `MINFO (rm, em)
+    | `MX -> (
+      bitmatch bits with
+        | { preference: 16; bits: -1: bitstring } 
+          -> `MX ((int16 preference, 
+                   bits |> parse_name names base |> stop))
+    )
+    | `TXT -> let names, _ = 
+                let rec aux ns bits = 
+                  let n, bits = parse_name names base bits in
+                  aux (n :: ns) bits
                 in
-                `TXT names
-      | t -> `UNKNOWN (rr_type_to_int t, bits_to_bytes bits)
+                aux [] bits
+              in
+              `TXT names
+    | t -> `UNKNOWN (rr_type_to_int t, bits_to_bytes bits)
 
 type rr_class = [ `IN | `CS | `CH | `HS ]
 let rr_class_to_int : rr_class -> int = function
@@ -660,7 +662,7 @@ type dns = {
 
 let dns_to_string d = 
   sprintf "%04x %s <qs:%s> <an:%s> <au:%s> <ad:%s>"
-    (int16_to_int d.id) (d.detail |> parse_detail |> detail_to_string)
+    d.id (d.detail |> parse_detail |> detail_to_string)
     (d.questions ||> question_to_string |> join ",")
     (d.answers ||> rr_to_string |> join ",")
     (d.authorities ||> rr_to_string |> join ",")
@@ -787,39 +789,42 @@ let marshal_dns dns =
     let mrdata = function
       | `A ip -> (BITSTRING { ip:32 }, `A)
       | `AAAA _ -> failwith (sprintf "AAAA")
-      | `AFSDB _ -> failwith (sprintf "AFSDB")
-      | `CNAME n -> (BITSTRING { (mn n):-1:bitstring }, `CNAME)
+      | `AFSDB (t, n) -> BITSTRING { t:16; (mn n):-1:bitstring }, `AFSDB
+      | `CNAME n -> BITSTRING { (mn n):-1:bitstring }, `CNAME
       | `HINFO (cpu, os) -> BITSTRING { cpu:-1:string; os:-1:string }, `HINFO
-      | `ISDN _ -> failwith (sprintf "ISDN")
-      | `MB n -> (BITSTRING { (mn n):-1:bitstring }, `MB)
-      | `MD n -> (BITSTRING { (mn n):-1:bitstring }, `MD)
-      | `MF n -> (BITSTRING { (mn n):-1:bitstring }, `MF)
-      | `MG n -> (BITSTRING { (mn n):-1:bitstring }, `MG)
+      | `ISDN (a, sa) -> 
+        (match sa with 
+          | None -> BITSTRING { (charstr a):-1:string }
+          | Some sa
+            -> BITSTRING { (charstr a):-1:string; (charstr sa):-1:string }
+        ), `ISDN
+      | `MB n -> BITSTRING { (mn n):-1:bitstring }, `MB
+      | `MD n -> BITSTRING { (mn n):-1:bitstring }, `MD
+      | `MF n -> BITSTRING { (mn n):-1:bitstring }, `MF
+      | `MG n -> BITSTRING { (mn n):-1:bitstring }, `MG
       | `MINFO (rm,em)
-        -> (BITSTRING { (mn rm):-1:bitstring; (mn em):-1:bitstring }, `MINFO)
-      | `MR n -> (BITSTRING { (mn n):-1:bitstring }, `MR)
-      | `MX (pref, exchange) 
-        -> BITSTRING { (int16_to_int pref):16; 
-                       (mn exchange):-1:bitstring }, `MX
-      | `NS n -> (BITSTRING { (mn n):-1:bitstring }, `NS)
-      | `PTR _ -> failwith (sprintf "PTR")
-      | `RP _ -> failwith (sprintf "RP")
-      | `RT _ -> failwith (sprintf "RT")
+        -> BITSTRING { (mn rm):-1:bitstring; (mn em):-1:bitstring }, `MINFO
+      | `MR n -> BITSTRING { (mn n):-1:bitstring }, `MR
+      | `MX (pref, exchange)
+        -> BITSTRING { pref:16; (mn exchange):-1:bitstring }, `MX
+      | `NS n -> BITSTRING { (mn n):-1:bitstring }, `NS
+      | `PTR n -> BITSTRING { (mn n):-1:bitstring }, `PTR
+      | `RP (mbox, txt) 
+        -> BITSTRING { (mn mbox):-1:bitstring; (mn txt):-1:bitstring }, `RP
+      | `RT (p, ih) -> BITSTRING { p:16; (mn ih):-1:bitstring }, `RT
       | `SOA (mname, rname, serial, refresh, retry, expire, minimum) 
-        -> (BITSTRING { (mn mname):-1:bitstring; 
-                        (mn rname):-1:bitstring; 
-                        serial:32; 
-                        refresh:32; retry:32; expire:32; minimum:32 }, `SOA
-        )
-      | `SRV _ -> failwith (sprintf "SRC")
-      | `TXT sl
-        -> (let s = sl ||> charstr |> join "" in
-            (BITSTRING { s:-1:string }, `TXT)
-        )
+        -> BITSTRING { (mn mname):-1:bitstring; 
+                       (mn rname):-1:bitstring; 
+                       serial:32; 
+                       refresh:32; retry:32; expire:32; minimum:32 }, `SOA
+      | `SRV (prio, weight, port, target)
+        -> BITSTRING { prio:16; weight:16; port:16;
+                       (mn target):-1:bitstring }, `SRV
+      | `TXT sl -> BITSTRING { (sl ||> charstr |> join ""):-1:string }, `TXT
       | `UNKNOWN _ -> failwith (sprintf "UNKNOWN")
       | `UNSPEC _ -> failwith (sprintf "UNSPEC")
-      | `WKS _ -> failwith (sprintf "WKS")
-      | `X25 _ -> failwith (sprintf "X25")
+      | `WKS (a, p, bm) -> BITSTRING { a:32; (byte_to_int p):8; bm:-1:string }, `WKS
+      | `X25 s -> BITSTRING { (charstr s):-1:string }, `X25
     in
 
     let name = mn r.rr_name in
@@ -850,7 +855,7 @@ let marshal_dns dns =
   let header = 
     pos := !pos + 2+2+2+2+2+2;
     (BITSTRING {
-      (int16_to_int dns.id):16; 
+      dns.id:16; 
       dns.detail:16:bitstring; 
       (List.length dns.questions):16;
       (List.length dns.answers):16;

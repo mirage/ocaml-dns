@@ -38,7 +38,7 @@ type rr_rdata = [
 | `AFSDB of int16 * domain_name
 | `CNAME of domain_name
 | `HINFO of string * string
-| `ISDN of string
+| `ISDN of string * string option
 | `MB of domain_name
 | `MD of domain_name
 | `MF of domain_name
