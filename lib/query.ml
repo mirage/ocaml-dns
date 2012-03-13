@@ -17,21 +17,22 @@
  *
  *)
 
+open Wire
+open Operators
 open RR
 open Trie
-open Operators
+open Name
 
-module DP = Packet
 module H = Hashcons
 
 (* We answer a query with RCODE, AA, ANSWERS, AUTHORITY and ADDITIONAL *)
 
 type query_answer = {
-  rcode : DP.rcode;
+  rcode : Packet.rcode;
   aa: bool;
-  answer: DP.rsrc_record list;
-  authority: DP.rsrc_record list;
-  additional: DP.rsrc_record list;
+  answer: Packet.rr list;
+  authority: Packet.rr list;
+  additional: Packet.rr list;
 } 
 
 let answer_query qname qtype trie = 
@@ -73,10 +74,10 @@ let answer_query qname qtype trie =
         | Some x -> x
         | None   -> failwith "unknown rrclass"
       in
-      let rr = DP.({ rr_name = owner; 
-                     rr_class = rrclass; 
-                     rr_ttl = ttl; 
-                     rr_rdata = rr }) 
+      let rr = Packet.({ rr_name = owner; 
+                         rr_class = rrclass; 
+                         rr_ttl = ttl; 
+                         rr_rdata = rr }) 
       in
       match section with 
         | `Answer     -> ans_rrs  := rr :: !ans_rrs 
@@ -121,7 +122,7 @@ let answer_query qname qtype trie =
           
       | WKS l -> 
 	    List.iter (fun (address, protocol, bitmap) -> 
-	      addrr (`WKS (address, DP.byte protocol, bitmap.H.node))) l
+	      addrr (`WKS (address, byte protocol, bitmap.H.node))) l
 
       | PTR l -> 
 	    List.iter (fun d -> 
@@ -139,7 +140,7 @@ let answer_query qname qtype trie =
 	    List.iter (fun (preference, d) -> 
 	      enqueue_additional d `A;
 	      enqueue_additional d `AAAA;
-	      addrr (`MX (preference, d.owner.H.node))) l
+	      addrr (`MX (int16 preference, d.owner.H.node))) l
           
       | TXT l ->
 	    List.iter (fun sl -> (* XXX handle multiple TXT cstrings properly *)
@@ -154,7 +155,7 @@ let answer_query qname qtype trie =
 	    List.iter (fun (t, d) -> 
 	      enqueue_additional d `A;
 	      enqueue_additional d `AAAA;
-	      addrr (`AFSDB (t, d.owner.H.node))) l
+	      addrr (`AFSDB (int16 t, d.owner.H.node))) l
           
       | X25 l -> log_rrset owner `X25;
 	    List.iter (fun s -> 
@@ -173,26 +174,26 @@ let answer_query qname qtype trie =
 	      enqueue_additional d `AAAA;
 	      enqueue_additional d `X25;
 	      enqueue_additional d `ISDN;
-	      addrr (`RT (~preference, d.owner.H.node))) l
+	      addrr (`RT (int16 preference, d.owner.H.node))) l
           
       | AAAA l -> log_rrset owner `AAAA;
-	    List.iter (fun i -> addrr (`AAAA i.H.node)) l 
+	    List.iter (fun i -> addrr (`AAAA (bytes i.H.node))) l 
           
       | SRV l 
         -> List.iter (fun (priority, weight, port, d) -> 
 	      enqueue_additional d `A;
 	      enqueue_additional d `AAAA;
-	      addrr (`SRV (priority, weight, port, d.owner.H.node))) l
+	      addrr (`SRV (int16 priority, int16 weight, int16 port, 
+                       d.owner.H.node))) l
         
       | UNSPEC l 
-        -> List.iter (fun s -> addrr (`UNSPEC s.H.node)) l
+        -> List.iter (fun s -> addrr (`UNSPEC (bytes s.H.node))) l
 
       | Unknown (t,l)
-        -> DP.(
-          let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
-          addrr (`UNKNOWN (t, s))
+        -> 
+        let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
+        addrr (`UNKNOWN (t, bytes s)
         )
-
   in
   
   (* Get an RRSet, which may not exist *)
@@ -225,7 +226,7 @@ let answer_query qname qtype trie =
   in
 
   (* Fill in the ANSWER section *)
-  let rec add_answer_rrsets owner ?(lc = 5) rrsets rrtype  = 
+  let rec add_answer_rrsets owner ?(lc = 5) rrsets rrtype = 
     let add_answer_rrset s = 
       match s with 
 	      { rdata = CNAME (d::_) } -> (* Only follow the first CNAME in a set *)
@@ -242,12 +243,12 @@ let answer_query qname qtype trie =
   let main_lookup qname qtype trie = 
     let key = canon2key qname in
     match lookup key trie with
-        `Found (sec, node, zonehead) ->	  (* Name has RRs, and we own it. *)
+        `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
 	      add_answer_rrsets node.owner.H.node node.rrsets qtype;
 	      add_opt_rrset zonehead `NS `Authority;
 	      `NoError
 	        
-      | `NoError (zonehead) ->	 	  (* Name "exists", but has no RRs. *)
+      | `NoError (zonehead) ->          (* Name "exists", but has no RRs. *)
 	    add_negative_soa_rrset zonehead;
 	    `NoError
 
@@ -256,13 +257,13 @@ let answer_query qname qtype trie =
 	    (* add_opt_rrset nsec `NSEC `Authority; *)
 	    `NoError
 	      
-      | `Delegated (sec, cutpoint) ->	  (* Name is delegated. *)
+      | `Delegated (sec, cutpoint) ->   (* Name is delegated. *)
 	    add_req_rrset cutpoint `NS `Authority; 
 	    aa_flag := false; 
 	    (* DNSSEC child zone keys *)
 	    `NoError
 
-      | `Wildcard (source, zonehead) ->	  (* Name is matched by a wildcard. *)
+      | `Wildcard (source, zonehead) -> (* Name is matched by a wildcard. *)
 	    add_answer_rrsets qname source.rrsets qtype; 
 	    add_opt_rrset zonehead `NS `Authority;
 	    `NoError
@@ -273,7 +274,7 @@ let answer_query qname qtype trie =
 	    (* add_opt_rrset nsec `NSEC `Authority; *)
 	    `NoError
 
-      | `NXDomain (zonehead) ->		  (* Name doesn't exist. *)
+      | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
 	    add_negative_soa_rrset zonehead;
 	    `NXDomain
 

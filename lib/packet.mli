@@ -15,38 +15,25 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-(** *)
-exception Unparsable of string * Bitstring.bitstring
+open Name
+open Uri_IP
+open Wire
 
-type domain_name = string list
-
-type int16 = int
-
-type byte = char
-val byte : int -> byte
-val int_of_byte : char -> int
-val int32_of_byte : char -> int32
-
-type bytes = string
-val bytes_of_bitstring : Bitstring.bitstring -> string
-val string_of_bytes : bytes -> string
-type label
-
-type rr_type = [ 
-| `A | `A6 | `AAAA | `AFSDB | `APL | `ATMA | `CERT | `CNAME | `DNAME | `DNSKEY
-| `DS | `EID | `GID | `GPOS | `HINFO | `IPSECKEY | `ISDN | `KEY | `KM | `LOC
-| `MB | `MD | `MF | `MG | `MINFO | `MR | `MX | `NAPTR | `NIMLOC | `NS | `NSAP
-| `NSAP_PTR | `NSEC | `NULL | `NXT | `OPT | `PTR | `PX | `RP | `RRSIG | `RT 
-| `SIG | `SINK | `SOA | `SPF | `SRV | `SSHFP | `TXT | `UID | `UINFO | `UNSPEC 
-| `Unknown of int * bytes | `WKS | `X25 
+type rr_type = [
+| `A | `NS | `MD | `MF | `CNAME | `SOA | `MB | `MG | `MR | `NULL 
+| `WKS | `PTR | `HINFO | `MINFO | `MX | `TXT | `RP | `AFSDB | `X25 
+| `ISDN | `RT | `NSAP | `NSAP_PTR | `SIG | `KEY | `PX | `GPOS | `AAAA 
+| `LOC | `NXT | `EID | `NIMLOC | `SRV | `ATMA | `NAPTR | `KM | `CERT 
+| `A6 | `DNAME | `SINK | `OPT | `APL | `DS | `SSHFP | `IPSECKEY 
+| `RRSIG | `NSEC | `DNSKEY | `SPF | `UINFO | `UID | `GID | `UNSPEC
+| `Unknown of int * bytes
 ]
+val int_to_rr_type : int -> rr_type
+val rr_type_to_int : rr_type -> int
+val rr_type_to_string : rr_type -> string
 
-val int_of_rr_type : rr_type -> int
-val rr_type_of_int : int -> rr_type
-val string_of_rr_type : rr_type -> string
-
-type rr_rdata = [ 
-| `A of int32
+type rr_rdata = [
+| `A of ipv4
 | `AAAA of bytes
 | `AFSDB of int16 * domain_name
 | `CNAME of domain_name
@@ -66,92 +53,71 @@ type rr_rdata = [
 | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | `SRV of int16 * int16 * int16 * domain_name
 | `TXT of string list
-| `UNKNOWN of int * bytes
 | `UNSPEC of bytes
 | `WKS of int32 * byte * string
 | `X25 of string 
-]
 
-val string_of_rdata : rr_rdata -> string
-val parse_rdata : (int, label) Hashtbl.t -> int -> rr_type -> Bitstring.bitstring -> rr_rdata
+| `UNKNOWN of int * bytes
+]
+val rdata_to_string : rr_rdata -> string
+val parse_rdata : 
+  (int, label) Hashtbl.t -> int -> rr_type -> Bitstring.t-> rr_rdata
 
 type rr_class = [ `CH | `CS | `HS | `IN ]
-val int_of_rr_class : rr_class -> int
-val rr_class_of_int : int -> rr_class
-val string_of_rr_class : rr_class -> string
+val int_to_rr_class : int -> rr_class
+val rr_class_to_int : rr_class -> int
+val rr_class_to_string : rr_class -> string
 
-type rsrc_record = {
-  rr_name : domain_name;
+type rr = {
+  rr_name  : domain_name;
   rr_class : rr_class;
-  rr_ttl : int32;
+  rr_ttl   : int32;
   rr_rdata : rr_rdata;
 }
-val rr_to_string : rsrc_record -> string
-val parse_rr : (int, label) Hashtbl.t -> int -> Bitstring.bitstring -> rsrc_record * Bitstring.bitstring
+val rr_to_string : rr -> string
+val parse_rr :
+  (int, label) Hashtbl.t -> int -> Bitstring.t -> rr * Bitstring.t
 
-type q_type = [ 
-|`A | `A6 | `AAAA | `AFSDB | `ANY | `APL | `ATMA | `AXFR | `CERT | `CNAME
-| `DLV | `DNAME | `DNSKEY | `DS | `EID | `GID | `GPOS | `HINFO | `IPSECKEY
-| `ISDN | `KEY | `KM | `LOC | `MAILA | `MAILB | `MB | `MD | `MF | `MG
-| `MINFO | `MR | `MX | `NAPTR | `NIMLOC | `NS | `NSAP | `NSAP_PTR | `NSEC
-| `NULL | `NXT | `OPT | `PTR | `PX | `RP | `RRSIG | `RT | `SIG | `SINK | `SOA
-| `SPF | `SRV | `SSHFP | `TA | `TXT | `UID | `UINFO | `UNSPEC
-| `Unknown of int * bytes | `WKS | `X25 
-]
+type q_type = [ rr_type | `AXFR | `MAILB | `MAILA | `ANY | `TA | `DLV ]
+val int_to_q_type : int -> q_type
+val q_type_to_int : q_type -> int
+val q_type_to_string : q_type -> string
 
-val int_of_q_type : q_type -> int
-val q_type_of_int : int -> q_type
-val string_of_q_type : q_type -> string
+type q_class
+val int_to_q_class : int -> q_class
+val q_class_to_int : q_class -> int
+val q_class_to_string : q_class -> string
 
-type q_class = [ `ANY | `CH | `CS | `HS | `IN | `NONE ]
-val int_of_q_class : q_class -> int
-val q_class_of_int : int -> q_class
-val string_of_q_class : q_class -> string
-
-type question = { q_name : domain_name; q_type : q_type; q_class : q_class; }
+type question
 val question_to_string : question -> string
-val parse_question : (int, label) Hashtbl.t -> int -> Bitstring.bitstring -> question * Bitstring.bitstring
+val parse_question :
+  (int, label) Hashtbl.t -> int -> Bitstring.t -> question * Bitstring.t
 
-type qr = [ `Answer | `Query ]
-val qr_of_bool : bool -> [> `Answer | `Query ]
-val bool_of_qr : [< `Answer | `Query ] -> bool
+type qr
+val bool_to_qr : bool -> qr
+val qr_to_bool : qr -> bool
 
-type opcode = [ `Answer | `Notify | `Query | `Reserved | `Status | `Update ]
-val opcode_of_int : int -> opcode
-val int_of_opcode : opcode -> int
+type opcode
+val int_to_opcode : int -> opcode
+val opcode_to_int : opcode -> int
 
-type rcode = [ 
-| `BadAlg | `BadKey | `BadMode | `BadName | `BadTime | `BadVers | `FormErr
-| `NXDomain | `NXRRSet | `NoError | `NotAuth | `NotImp | `NotZone | `Refused
-| `ServFail | `YXDomain | `YXRRSet 
+type rcode = [
+| `NoError  | `FormErr
+| `ServFail | `NXDomain | `NotImp  | `Refused
+| `YXDomain | `YXRRSet  | `NXRRSet | `NotAuth
+| `NotZone  | `BadVers  | `BadKey  | `BadTime
+| `BadMode  | `BadName  | `BadAlg 
 ]
+val int_to_rcode : int -> rcode
+val rcode_to_int : rcode -> int
+val rcode_to_string : rcode -> string
 
-val rcode_of_int : int -> rcode
-val int_of_rcode : rcode -> int
-val string_of_rcode : rcode -> string
-
-type detail = {
-  qr : qr;
-  opcode : opcode;
-  aa : bool;
-  tc : bool;
-  rd : bool;
-  ra : bool;
-  rcode : rcode;
-}
+type detail
 val detail_to_string : detail -> string
-val parse_detail : Bitstring.bitstring -> detail
-val build_detail : detail -> Bitstring.bitstring
+val parse_detail : Bitstring.t -> detail
+val build_detail : detail -> Bitstring.t
 
-type dns = {
-  id : int16;
-  detail : Bitstring.t;
-  questions : question list;
-  answers : rsrc_record list;
-  authorities : rsrc_record list;
-  additionals : rsrc_record list;
-}
+type dns
 val dns_to_string : dns -> string
-val parse_dns : (int, label) Hashtbl.t -> Bitstring.bitstring -> dns
-
-val marshal : dns -> Bitstring.bitstring
+val parse_dns : (int, label) Hashtbl.t -> Bitstring.t-> dns
+val marshal_dns : dns -> Bitstring.t

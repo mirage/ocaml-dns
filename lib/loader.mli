@@ -17,11 +17,12 @@
  *
  *)
 
+open Name
 open Uri_IP
 
 (* Loader database: the DNS trie plus a hash table of other names in use *)
 type db = { trie : Trie.dnstrie; 
-	    mutable names : (Trie.key, RR.dnsnode) Hashtbl.t; } 
+	    mutable names : (Name.key, RR.dnsnode) Hashtbl.t; } 
 
 (* Make a new, empty database *)
 val new_db : unit -> db
@@ -30,34 +31,34 @@ val new_db : unit -> db
 val no_more_updates : db -> unit
 
 (* Insert RRs in the database: args are rdata, ttl, owner, db *)
-val add_generic_rr : int -> string -> int32 -> string list -> db -> unit
-val add_a_rr : ipv4 -> int32 -> string list -> db -> unit
-val add_ns_rr : string list -> int32 -> string list -> db -> unit
-val add_cname_rr : string list -> int32 -> string list -> db -> unit
+val add_generic_rr : int -> string -> int32 -> domain_name -> db -> unit
+val add_a_rr : ipv4 -> int32 -> domain_name -> db -> unit
+val add_ns_rr : domain_name -> int32 -> domain_name -> db -> unit
+val add_cname_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_soa_rr : 
-    string list -> string list -> RR.serial -> 
+    domain_name -> domain_name -> RR.serial -> 
       int32 -> int32 -> int32 -> int32 -> 
-	int32 -> string list -> db -> unit
-val add_mb_rr : string list -> int32 -> string list -> db -> unit
-val add_mg_rr : string list -> int32 -> string list -> db -> unit
-val add_mr_rr : string list -> int32 -> string list -> db -> unit
-val add_wks_rr : int32 -> int -> string -> int32 -> string list -> db -> unit
-val add_ptr_rr : string list -> int32 -> string list -> db -> unit
-val add_hinfo_rr : string -> string -> int32 -> string list -> db -> unit
+	int32 -> domain_name -> db -> unit
+val add_mb_rr : domain_name -> int32 -> domain_name -> db -> unit
+val add_mg_rr : domain_name -> int32 -> domain_name -> db -> unit
+val add_mr_rr : domain_name -> int32 -> domain_name -> db -> unit
+val add_wks_rr : int32 -> int -> string -> int32 -> domain_name -> db -> unit
+val add_ptr_rr : domain_name -> int32 -> domain_name -> db -> unit
+val add_hinfo_rr : string -> string -> int32 -> domain_name -> db -> unit
 val add_minfo_rr : 
-    string list -> string list -> int32 -> string list -> db -> unit
-val add_mx_rr : int -> string list -> int32 -> string list -> db -> unit
-val add_txt_rr : string list -> int32 -> string list -> db -> unit
+    domain_name -> domain_name -> int32 -> domain_name -> db -> unit
+val add_mx_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
+val add_txt_rr : string list -> int32 -> domain_name -> db -> unit
 val add_rp_rr :
-    string list -> string list -> int32 -> string list -> db -> unit
-val add_afsdb_rr : int -> string list -> int32 -> string list -> db -> unit
-val add_x25_rr : string -> int32 -> string list -> db -> unit
-val add_isdn_rr : string -> string option -> int32 -> string list -> db -> unit
-val add_rt_rr : int -> string list -> int32 -> string list -> db -> unit
-val add_aaaa_rr : string -> int32 -> string list -> db -> unit
+    domain_name -> domain_name -> int32 -> domain_name -> db -> unit
+val add_afsdb_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
+val add_x25_rr : string -> int32 -> domain_name -> db -> unit
+val add_isdn_rr : string -> string option -> int32 -> domain_name -> db -> unit
+val add_rt_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
+val add_aaaa_rr : string -> int32 -> domain_name -> db -> unit
 val add_srv_rr :
-  int -> int -> int -> string list -> int32 -> string list -> db -> unit
-val add_unspec_rr : string -> int32 -> string list -> db -> unit
+  int -> int -> int -> domain_name -> int32 -> domain_name -> db -> unit
+val add_unspec_rr : string -> int32 -> domain_name -> db -> unit
 
 
 (* Raised if we already had an RRSet for this name and type, but with 

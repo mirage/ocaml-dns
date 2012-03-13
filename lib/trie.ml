@@ -16,20 +16,7 @@
  *)
 
 open RR
-
-type key = string
-exception BadDomainName of string
-
-let canon2key string_list = 
-  let labelize s = 
-    if String.contains s '\000' then 
-      raise (BadDomainName "contains null character");
-    if String.length s = 0 then 
-      raise (BadDomainName "zero-length label");
-    if String.length s > 63 then 
-      raise (BadDomainName ("label too long: " ^ s));
-    s 
-  in List.fold_left (fun s l -> (labelize l) ^ "\000" ^ s) "" string_list
+open Name
 
 (* A "compressed" 256-way radix trie, with edge information provided
    explicitly in the trie nodes rather than with forward pointers. 
@@ -61,7 +48,6 @@ let bad_node = { data = None; edge = ""; byte = -1;
 		 flags = Nothing; }
 
 exception TrieCorrupt			(* Missing data from a soa/cut node *)
-
 
 (* Utility for trie ops: compare the remaining bytes of key with the 
    inbound edge to this trie node *)
@@ -183,7 +169,7 @@ let new_trie () =
 (* Simple lookup function: just walk the trie *)
 let rec simple_lookup key node = 
   if not (cmp_edge node key = `Match) then None
-  else if ((String.length key) = node.byte) then node.data
+  else if (String.length key = node.byte) then node.data
   else match (child_lookup key.[node.byte] node) with
     None -> None
   | Some child -> simple_lookup key child

@@ -25,31 +25,20 @@
     @author Tim Deegan
 *)
 
-(** Node of the trie *)
-type dnstrie
-
-(** Lookup key for the trie. *)
-type key
-
-(** Malformed input to {! canon2key}. *)
-exception BadDomainName of string
-
 (** Missing data from a SOA/cut node. *)
 exception TrieCorrupt
 
-(** Convert a canonical [[ "www"; "example"; "com" ]] domain name into a key.
-    N.B. Requires that the input is already lower-case!  
-*)
-val canon2key : string list -> key
+(** Node of the trie *)
+type dnstrie
 
 (** Make a new, empty trie. *) 
 val new_trie : unit -> dnstrie
 
 (** Simple lookup function: just walk the trie. *)
-val simple_lookup : key -> dnstrie -> RR.dnsnode option
+val simple_lookup : Name.key -> dnstrie -> RR.dnsnode option
 
 (** Look up a DNS entry in the trie, with full return. *)
-val lookup : key -> dnstrie ->
+val lookup : Name.key -> dnstrie ->
     [> `Delegated of bool * RR.dnsnode
      | `Found of bool * RR.dnsnode * RR.dnsnode
      | `NXDomain of RR.dnsnode
@@ -61,10 +50,9 @@ val lookup : key -> dnstrie ->
 
 (** Return the data mapped from this key, making new data if there is none
     there yet. *)
-val lookup_or_insert : key -> dnstrie -> ?parent:dnstrie
-  -> (unit -> RR.dnsnode) 
-  -> RR.dnsnode
+val lookup_or_insert : 
+  Name.key -> dnstrie -> ?parent:dnstrie -> (unit -> RR.dnsnode) -> RR.dnsnode
 
 (** Sort out flags for a key's node: call after adding or removing NS, SOA and
     KEY RRs *)
-val fix_flags : key -> dnstrie -> unit
+val fix_flags : Name.key -> dnstrie -> unit

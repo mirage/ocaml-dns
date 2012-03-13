@@ -17,50 +17,15 @@
  *
  *)
   
-open Uri_IP
+open Name
   
-(* Hash-consing: character strings *)
-module CSH = Hashcons.Make (struct 
-  type t = string 
-  let equal a b = (a = b)
-  let hash s = Hashtbl.hash s
-end)
-let cstr_hash = ref (CSH.create 101)
-let hashcons_charstring s = CSH.hashcons !cstr_hash s
-
-(* 
-   Hash-consing: domain names (string lists).  This requires a little
-   more subtlety than the Hashcons module gives us directly: we want to 
-   merge common suffixes, and we're downcasing everything. 
-   N.B. RFC 4343 says we shouldn't do this downcasing.
-*)
-module DNH = Hashcons.Make (struct 
-  type t = string list
-  let equal a b = (a = b)
-  let hash s = Hashtbl.hash s
-end)
-let dn_hash = ref (DNH.create 101)
-let rec hashcons_domainname = function 
-    [] -> DNH.hashcons !dn_hash []
-  | h :: t -> 
-      let th = hashcons_domainname t 
-      in DNH.hashcons !dn_hash 
-	(((hashcons_charstring (String.lowercase h)).Hashcons.node) 
-	 :: (th.Hashcons.node))
-
-let clear_cons_tables () = 
-  DNH.clear !dn_hash;
-  CSH.clear !cstr_hash;
-  dn_hash := DNH.create 1;
-  cstr_hash := CSH.create 1
-
 (* Mnemonicity! *)
 type serial = int32
-and cstr = string Hashcons.hash_consed
+type cstr = string Hashcons.hash_consed
 
 (* DNS node: everything we know about a domain name *)
 and dnsnode = {
-    owner: string list Hashcons.hash_consed;
+    owner: Name.domain_name Hashcons.hash_consed;
     mutable rrsets: rrset list;
 }
 
@@ -71,7 +36,7 @@ and rrset = {
   }
 
 and rdata = 
-  | A of ipv4 list (* always length = 1 *)
+  | A of Uri_IP.ipv4 list (* always length = 1 *)
   | NS of dnsnode list
 (* MD and MF are obsolete; use MX for them *)
   | CNAME of dnsnode list

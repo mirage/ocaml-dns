@@ -19,6 +19,7 @@
 
 open RR
 open Trie
+open Name
 
 (* Loader database: the DNS trie plus a hash table of other names in use *)
 type db = {
@@ -73,7 +74,7 @@ let add_rrset rrset owner db =
 
 let add_generic_rr tcode str ttl owner db =
   let s = hashcons_charstring str in 
-  add_rrset { ttl = ttl; rdata = Unknown (tcode, [ s ]) } owner db
+  add_rrset { ttl; rdata = Unknown (tcode, [ s ]) } owner db
 
 let add_a_rr ip ttl owner db =
   add_rrset { ttl = ttl; rdata = A [ ip ] } owner db

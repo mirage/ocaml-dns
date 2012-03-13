@@ -21,17 +21,15 @@
     @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
-open Uri_IP
+open Name
 
 (** DNS serial number -- 32 bits. *)
 type serial = int32 
-
-(** Character-string, memoised via {! Hashcons}. *)
-and cstr = string Hashcons.hash_consed
+type cstr = string Hashcons.hash_consed
 
 (** A node in the trie. *)
 and dnsnode = { 
-  owner : string list Hashcons.hash_consed;
+  owner : Name.domain_name Hashcons.hash_consed;
   (** The name for which the node contains memoised attributes. *)
   mutable rrsets : rrset list; 
 (** The set of attributes as  resource records. *)
@@ -49,7 +47,7 @@ and rrset = { ttl : int32; rdata : rdata; }
     {! Packet} represents each RR as a variant type with the same name.
 *)
 and rdata =
-  | A of ipv4 list
+  | A of Uri_IP.ipv4 list
   | NS of dnsnode list
   | CNAME of dnsnode list
   | SOA of (dnsnode * dnsnode * serial * int32 * int32 * int32 * int32) list
@@ -72,27 +70,11 @@ and rdata =
   | UNSPEC of cstr list
   | Unknown of int * cstr list
 
-(* Hashcons values *)
-
-(** Construct a {! Hashcons} character-string from a string. *)
-val hashcons_charstring : string -> cstr
-
-(** Construct a {! Hashcons} domain name (list of labels) from a domain
-    name. *)
-val hashcons_domainname : string list -> string list Hashcons.hash_consed
-
-(** Clear the {! Hashcons} table. *)
-val clear_cons_tables : unit -> unit
-
 (** Extract relevant RRSets given a query type, a list of RRSets and a flag to
     say whether to return CNAMEs too. 
 
     @return the list of extracted {! rrset}s *)
-val get_rrsets : 
-  [> `A | `AAAA | `AFSDB | `ANY | `CNAME | `HINFO | `ISDN | `MAILB | `MB 
-  | `MG | `MINFO | `MR | `MX | `NS | `PTR | `RP | `RT | `SOA 
-  | `SRV | `TXT | `UNSPEC | `Unknown of int * string | `WKS | `X25 ] -> 
-  rrset list -> bool -> rrset list
+val get_rrsets : Packet.q_type -> rrset list -> bool -> rrset list
 
 (** Merge a new RRSet into a list of RRSets, reversing the order of the RRsets
     in the list.
