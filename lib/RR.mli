@@ -67,6 +67,7 @@ and rdata =
   | SRV of (int16 * int16 * int16 * dnsnode) list
   | TXT of cstr list list
   | UNSPEC of cstr list
+(*   | DNSKEY of bool * dnssec_alg * string *)
   | Unknown of int * cstr list
   | WKS of (int32 * byte * cstr) list
   | X25 of cstr list

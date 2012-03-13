@@ -19,15 +19,18 @@ open Name
 open Uri_IP
 open Wire
 
-type rr_type = [
-| `A | `NS | `MD | `MF | `CNAME | `SOA | `MB | `MG | `MR | `NULL 
-| `WKS | `PTR | `HINFO | `MINFO | `MX | `TXT | `RP | `AFSDB | `X25 
-| `ISDN | `RT | `NSAP | `NSAP_PTR | `SIG | `KEY | `PX | `GPOS | `AAAA 
-| `LOC | `NXT | `EID | `NIMLOC | `SRV | `ATMA | `NAPTR | `KM | `CERT 
-| `A6 | `DNAME | `SINK | `OPT | `APL | `DS | `SSHFP | `IPSECKEY 
-| `RRSIG | `NSEC | `DNSKEY | `SPF | `UINFO | `UID | `GID | `UNSPEC
-| `Unknown of int * bytes
-]
+type dnssec_alg
+val byte_to_dnssec_alg : byte -> dnssec_alg
+val dnssec_alg_to_byte : dnssec_alg -> byte
+val dnssec_alg_to_string : dnssec_alg -> string
+
+type rr_type = [ 
+|`A | `A6 | `AAAA | `AFSDB | `APL | `ATMA | `CERT | `CNAME | `DNAME | `DNSKEY
+| `DS | `EID | `GID | `GPOS | `HINFO | `IPSECKEY | `ISDN | `KEY | `KM | `LOC
+| `MB | `MD | `MF | `MG | `MINFO | `MR | `MX | `NAPTR | `NIMLOC | `NS | `NSAP
+| `NSAP_PTR | `NSEC | `NULL | `NXT | `OPT | `PTR | `PX | `RP | `RRSIG | `RT 
+| `SIG | `SINK | `SOA | `SPF | `SRV | `SSHFP | `TXT | `UID | `UINFO | `UNSPEC 
+| `Unknown of int * bytes | `WKS | `X25 ]
 val int_to_rr_type : int -> rr_type
 val rr_type_to_int : rr_type -> int
 val rr_type_to_string : rr_type -> string
@@ -37,6 +40,7 @@ type rr_rdata = [
 | `AAAA of bytes
 | `AFSDB of int16 * domain_name
 | `CNAME of domain_name
+| `DNSKEY of int * dnssec_alg * string 
 | `HINFO of string * string
 | `ISDN of string * string option
 | `MB of domain_name
@@ -74,6 +78,7 @@ type rr = {
   rr_ttl   : int32;
   rr_rdata : rr_rdata;
 }
+
 val rr_to_string : rr -> string
 val parse_rr :
   (int, label) Hashtbl.t -> int -> Bitstring.t -> rr * Bitstring.t
