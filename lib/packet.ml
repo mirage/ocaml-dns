@@ -707,8 +707,6 @@ let parse_dns names bits =
   )
 
 let marshal_dns dns = 
-  eprintf "resp: %s\n%!" (dns_to_string dns);
-  
   (** Alias {! Bitstring.bitstring_length}, but in bytes. *)
   let bsl b = (Bitstring.bitstring_length b)/8 in 
 
@@ -744,28 +742,23 @@ let marshal_dns dns =
     let pointed = ref false in
     List.iter (fun ls ->
       if (not !pointed) then (
-        eprintf "\tlabel:%s\n%!" (ls |> join "/");
         match lookup names ls with
           | None 
-            -> (eprintf "\t\tnot found! pos:%d ls:%s\n%!" !pos (join "/" ls);
-                Hashtbl.add names ls !pos;
+            -> (Hashtbl.add names ls !pos;
                 match ls with 
                   | [] 
-                    -> (eprintf "\t\t\t[]\n%!";
-                        bits := "\000" :: !bits; 
+                    -> (bits := "\000" :: !bits; 
                         pos := !pos + 1
                     )
                   | label :: tail
-                    -> (eprintf "\t\t\tlabel:%s tail:'%s'\n%!" label (join "/" tail);
-                        let len = String.length label in
+                    -> (let len = String.length label in
                         assert(len < 64);
                         bits := (charstr label) :: !bits;
                         pos := !pos + len +1
                     )
             )
           | Some off
-            -> (eprintf "\t\tfound! pos:%d off:%d ls:%s\n%!" !pos off (join "/" ls);
-                bits := (pointer off) :: !bits;
+            -> (bits := (pointer off) :: !bits;
                 pos := !pos + 2;
                 pointed := true
             )
@@ -793,14 +786,9 @@ let marshal_dns dns =
   in
   
   let mn ?(off = 0) ls = 
-    eprintf "labels:%s\n%!"
-      (ls |> domain_name_to_string_list |> join "/");
-
-    eprintf "IN: pos:%d off:%d\n%!" !pos off;
     pos := !pos + off;
     let n = mn_compress ls in
     (pos := !pos - off; 
-     eprintf "OUT:  pos:%d off:%d\n%!" !pos off;
      n)
   in
 
