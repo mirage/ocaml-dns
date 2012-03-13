@@ -46,8 +46,14 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
       Lwt_pool.use bufs (fun buf ->
         lwt len, dst = Lwt_unix.recvfrom fd buf 0 (String.length buf) [] in
         let bits = buf, 0, (len*8) in
-        let query = try Some (DP.parse_dns names bits)
-          with exn -> eprintf "dns parse exn: %s\n%!" (Printexc.to_string exn); None in
+        let query =
+          try Some (DP.parse_dns names bits)
+          with 
+            | exn 
+              -> (eprintf "dns parse exn: %s\n%!" (Printexc.to_string exn); 
+                  None 
+              )
+        in
         match query with
         |None -> return ()
         |Some query -> begin
@@ -67,10 +73,20 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
               authorities=answer.DQ.authority; 
               additionals=answer.DQ.additional }) 
             in
-            let buf, boff, blen = DP.marshal_dns response in
+            let bits = 
+              try Some (DP.marshal_dns response)
+              with exn -> (
+                eprintf "dns marshal exn: %s\n%!" (Printexc.to_string exn); 
+                None 
+              )
+            in
+            match bits with
+              | None -> return ()
+              | Some (buf, boff, blen) -> (
             (* TODO transmit queue, rather than ignoring result here *)
-            let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
-            return ()
+                let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
+                return ()
+              )
         end
       )
     done
@@ -98,8 +114,14 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
       (fun ~src ~dst d ->
          let open DP in
          let q = List.hd d.questions in
-         let r = get_answer q.q_name q.q_type d.id in
-         return (Some r)
+         let r = 
+           try Some (get_answer q.q_name q.q_type d.id )
+           with exn -> (
+             eprintf "dns parse exn: %s\n%!" (Printexc.to_string exn); 
+             None 
+           )
+         in
+         return r
       )
   in
   listen ~fd ~src ~dnsfn

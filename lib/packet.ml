@@ -699,10 +699,13 @@ let parse_dns names bits =
 let marshal_dns dns = 
   eprintf "resp: %s\n%!" (dns_to_string dns);
   
+  (** Alias {! Bitstring.bitstring_length}, but in bytes. *)
+  let bsl b = (Bitstring.bitstring_length b)/8 in 
+
   (** Current position in buffer. *)
   let pos = ref 0 in
   
-  (** map name (list of labels) to an offset. *)
+  (** Map name (list of labels) to an offset. *)
   let (names:(string list,int) Hashtbl.t) = Hashtbl.create 8 in
 
   (** Encode string as label by prepending length. *)
@@ -710,8 +713,10 @@ let marshal_dns dns =
     sprintf "%c%s" (s |> String.length |> char_of_int) s 
   in
 
-  (** Marshal names, and compress. *)
+  (** Marshall names, with compression. *)
   let mn_compress (labels:domain_name) = 
+    let pos = ref (!pos) in
+
     let pointer off = 
       let ptr = (0b11_l <<< 14) +++ (Int32.of_int off) in
       let hi = ((ptr &&& 0xff00_l) >>> 8) |> Int32.to_int |> char_of_int in
@@ -767,9 +772,7 @@ let marshal_dns dns =
   let mn_nocompress (labels:domain_name) =
     let bits = ref [] in
     labels |> domain_name_to_string_list 
-           |> List.iter (fun s -> let cs = charstr s in
-                                  bits := cs :: !bits
-           );
+           |> List.iter (fun s -> bits := (charstr s) :: !bits);
     !bits |> List.rev |> String.concat ""
            |> (fun s -> 
              if String.length s > 0 then
@@ -779,72 +782,93 @@ let marshal_dns dns =
            )
   in
   
-  let mn ls = 
-    eprintf "labels: %s\n%!"
+  let mn ?(off = 0) ls = 
+    eprintf "labels:%s\n%!"
       (ls |> domain_name_to_string_list |> join "/");
-    mn_compress ls
+
+    eprintf "IN: pos:%d off:%d\n%!" !pos off;
+    pos := !pos + off;
+    let n = mn_compress ls in
+    (pos := !pos - off; 
+     eprintf "OUT:  pos:%d off:%d\n%!" !pos off;
+     n)
   in
 
   let mr r = 
     let mrdata = function
       | `A ip -> (BITSTRING { ip:32 }, `A)
+        
       | `AAAA _ -> failwith (sprintf "AAAA")
-      | `AFSDB (t, n) -> BITSTRING { t:16; (mn n):-1:bitstring }, `AFSDB
+        
+      | `AFSDB (t, n) 
+        -> BITSTRING { t:16; (mn ~off:2 n):-1:bitstring }, `AFSDB
       | `CNAME n -> BITSTRING { (mn n):-1:bitstring }, `CNAME
       | `HINFO (cpu, os) -> BITSTRING { cpu:-1:string; os:-1:string }, `HINFO
-      | `ISDN (a, sa) -> 
+      | `ISDN (a, sa) -> (
         (match sa with 
           | None -> BITSTRING { (charstr a):-1:string }
           | Some sa
             -> BITSTRING { (charstr a):-1:string; (charstr sa):-1:string }
         ), `ISDN
+      )
       | `MB n -> BITSTRING { (mn n):-1:bitstring }, `MB
       | `MD n -> BITSTRING { (mn n):-1:bitstring }, `MD
       | `MF n -> BITSTRING { (mn n):-1:bitstring }, `MF
       | `MG n -> BITSTRING { (mn n):-1:bitstring }, `MG
       | `MINFO (rm,em)
-        -> BITSTRING { (mn rm):-1:bitstring; (mn em):-1:bitstring }, `MINFO
+        -> (let rm = mn rm in
+            let em = mn ~off:(bsl rm) em in
+            BITSTRING { rm:-1:bitstring; em:-1:bitstring }, `MINFO
+        )
       | `MR n -> BITSTRING { (mn n):-1:bitstring }, `MR
       | `MX (pref, exchange)
-        -> BITSTRING { pref:16; (mn exchange):-1:bitstring }, `MX
+        -> BITSTRING { pref:16; (mn ~off:2 exchange):-1:bitstring }, `MX
       | `NS n -> BITSTRING { (mn n):-1:bitstring }, `NS
       | `PTR n -> BITSTRING { (mn n):-1:bitstring }, `PTR
       | `RP (mbox, txt) 
-        -> BITSTRING { (mn mbox):-1:bitstring; (mn txt):-1:bitstring }, `RP
-      | `RT (p, ih) -> BITSTRING { p:16; (mn ih):-1:bitstring }, `RT
+        -> (let mbox = mn mbox in
+            let txt = mn ~off:(bsl mbox) txt in
+            BITSTRING { mbox:-1:bitstring; txt:-1:bitstring }, `RP
+        )
+      | `RT (p, ih) -> BITSTRING { p:16; (mn ~off:2 ih):-1:bitstring }, `RT
       | `SOA (mname, rname, serial, refresh, retry, expire, minimum) 
-        -> BITSTRING { (mn mname):-1:bitstring; 
-                       (mn rname):-1:bitstring; 
-                       serial:32; 
-                       refresh:32; retry:32; expire:32; minimum:32 }, `SOA
+        -> (let mname = mn mname in 
+            let rname = mn ~off:(bsl mname) rname in 
+            BITSTRING { mname:-1:bitstring; 
+                        rname:-1:bitstring; 
+                        serial:32; 
+                        refresh:32; retry:32; expire:32; minimum:32 }, `SOA
+        )
       | `SRV (prio, weight, port, target)
         -> BITSTRING { prio:16; weight:16; port:16;
-                       (mn target):-1:bitstring }, `SRV
+                       (mn ~off:6 target):-1:bitstring }, `SRV
       | `TXT sl -> BITSTRING { (sl ||> charstr |> join ""):-1:string }, `TXT
+        
       | `UNKNOWN _ -> failwith (sprintf "UNKNOWN")
       | `UNSPEC _ -> failwith (sprintf "UNSPEC")
+        
       | `WKS (a, p, bm) -> BITSTRING { a:32; (byte_to_int p):8; bm:-1:string }, `WKS
       | `X25 s -> BITSTRING { (charstr s):-1:string }, `X25
     in
 
     let name = mn r.rr_name in
-    pos := !pos + 2+2+4+2;
+    pos := !pos + (bsl name)+2+2+4+2;
     let rdata, rr_type = mrdata r.rr_rdata in
-    let rdlength = Bitstring.bitstring_length rdata in
-    pos := !pos + (rdlength/8);
+    let rdlength = bsl rdata in
+    pos := !pos + rdlength;
     (BITSTRING {
       name:-1:bitstring;
       (rr_type_to_int rr_type):16;
       (rr_class_to_int r.rr_class):16;
       r.rr_ttl:32;
-      (rdlength/8):16;
+      rdlength:16;
       rdata:rdlength:bitstring
     }) 
   in
 
   let mq q =
     let bits = mn q.q_name in
-    pos := !pos + 2+2;
+    pos := !pos + (bsl bits)+2+2;
     (BITSTRING {
       bits:-1:bitstring; 
       (q_type_to_int q.q_type):16;
