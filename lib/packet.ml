@@ -862,7 +862,7 @@ let marshal_dns dns =
       (rr_class_to_int r.rr_class):16;
       r.rr_ttl:32;
       rdlength:16;
-      rdata:rdlength:bitstring
+      rdata:(rdlength*8):bitstring
     }) 
   in
 
