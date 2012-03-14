@@ -14,14 +14,14 @@ Library dns
   Modules: 
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, 
     Zone, Zone_lexer, Zone_parser
-  BuildDepends:	bitstring, bitstring.syntax, re, re.str, uri, extlib
+  BuildDepends:	bitstring, bitstring.syntax, re, re.str, uri, cryptokit
 
 Library server
   Path: server
   Findlibname: server
   Modules: Dns_server
   BuildDepends: 
-    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns, extlib
+    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns
   FindlibParent: dns
 
 Document dns
@@ -43,7 +43,7 @@ Executable lwt_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, extlib
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, dns
 
 Executable time_server
   Path:               lib_test
@@ -52,7 +52,7 @@ Executable time_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, extlib
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, dns
 
 Executable ocaml_dig
   Path:               client
@@ -63,7 +63,7 @@ Executable ocaml_dig
   Install:            false
   BuildDepends:       
     lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, 
-    re, re.str, uri, dns, extlib
+    re, re.str, uri, dns
 
 Test lwt_server
   Run$:               flag(tests)
