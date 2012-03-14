@@ -14,7 +14,7 @@
  * (enclosed in the file LGPL).
  *)
 
-(*s Hash tables for hash consing. 
+(** Hash tables for hash consing. 
 
     Hash consed values are of the
     following type [hash_consed]. The field [tag] contains a unique
@@ -25,15 +25,17 @@
     itself. 
 
     Hash consing tables are using weak pointers, so that values that are no
-    more referenced from anywhere else can be erased by the GC. *)
+    more referenced from anywhere else can be erased by the GC. 
+
+    @author  Jean-Christophe FILLIATRE
+*)
 
 type 'a hash_consed = private { 
   hkey : int;
   tag : int;
   node : 'a }
 
-(*s Generic part, using ocaml generic equality and hash function. *)
-
+(** Generic part, using ocaml generic equality and hash function. *)
 type 'a t
 
 val create : int -> 'a t
@@ -54,7 +56,7 @@ val stats : 'a t -> int * int * int * int * int * int
       table length, number of entries, sum of bucket lengths,
       smallest bucket length, median bucket length, biggest bucket length. *)
 
-(*s Functorial interface. *) 
+(** Functorial interface. *) 
 
 module type HashedType =
   sig
