@@ -1,13 +1,15 @@
 # OASIS_START
-# DO NOT EDIT (digest: da88cf7f4047ef7ce1a65437710e02e8)
-Zone
-Zone_lexer
-Zone_parser
+# DO NOT EDIT (digest: 9d0630c624dd326c4105c6c1b0fd7620)
+Hashcons
 Loader
+Name
+Operators
 Packet
 Query
 RR
 Trie
-Hashcons
-Operators
+Wire
+Zone
+Zone_lexer
+Zone_parser
 # OASIS_STOP

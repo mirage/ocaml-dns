@@ -15,15 +15,34 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-let (|>) x f = f x (* pipe *)
-let (>>) f g x = g (f x) (* functor pipe *)
-let (||>) l f = List.map f l (* element-wise pipe *)
+(** Some widely used operators.
 
+    @author Richard Mortier <mort\@cantab.net>
+    @author Anil Madhavapeddy <anil\@recoil.org>
+*)
+
+(** Pipe. *)
+let (|>) x f = f x
+(** Functor pipe. *)
+let (>>) f g x = g (f x) 
+(** Element-wise pipe. *)
+let (||>) l f = List.map f l 
+
+(** 32 bit arithmetic and logic operations. *)
+
+(** Addition. *)
 let (+++) x y = Int32.add x y
-
+(** Logical AND. *)
 let (&&&) x y = Int32.logand x y
+(** Logical OR. *)
 let (|||) x y = Int32.logor x y
+(** Logical XOR. *)
 let (^^^) x y = Int32.logxor x y
+(** Logical shift-left. *)
 let (<<<) x y = Int32.shift_left x y
+(** Logical shift-right. *)
 let (>>>) x y = Int32.shift_right_logical x y
 
+(** Miscellaneous. *)
+let join c l = String.concat c l
+(* let join c l = List.fold_left (fun x y -> x ^ c ^ y) "" l *)

@@ -11,22 +11,26 @@ Library dns
   Path: lib 
   Findlibname: dns
   Pack: true
-  Modules: Zone,Zone_lexer,Zone_parser,Loader,Packet,Query,RR,Trie,Hashcons,Operators
-  BuildDepends:	bitstring, bitstring.syntax, re, re.str
+  Modules: 
+    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, 
+    Zone, Zone_lexer, Zone_parser
+  BuildDepends:	bitstring, bitstring.syntax, re, re.str, uri, extlib
 
 Library server
   Path: server
   Findlibname: server
   Modules: Dns_server
-  BuildDepends: lwt.syntax, lwt, lwt.unix,bitstring, bitstring.syntax, dns
+  BuildDepends: 
+    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns, extlib
   FindlibParent: dns
 
 Document dns
   Title:                DNS docs
   Type:                 ocamlbuild (0.2)
   BuildTools+:          ocamldoc
-  XOCamlbuildPath:      lib
-  XOCamlbuildLibraries: dns
+  XOCamlbuildPath:      lib  
+  XOCamlbuildModules:     
+    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, Zone
 
 Flag tests
   Description:        Build and run tests
@@ -39,7 +43,7 @@ Executable lwt_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, extlib
 
 Executable time_server
   Path:               lib_test
@@ -48,10 +52,21 @@ Executable time_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, extlib
+
+Executable ocaml_dig
+  Path:               client
+  MainIs:             ocaml_dig.ml
+  Build$:             flag(tests)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       
+    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, 
+    re, re.str, uri, dns, extlib
 
 Test lwt_server
   Run$:               flag(tests)
   Command:            $lwt_server
   WorkingDirectory:   lib_test
-  
+

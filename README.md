@@ -14,14 +14,17 @@ To build it, the following packages are required:
   This is not packaged up officially yet, so just grab the Github trunk.
 * Re: http://github.com/avsm/ocaml-re
   This is not packaged up officially yet, so just grab the Github trunk.
+* Extlib: http://github.com/mor1/ocaml-extlib
+  This is not packaged up officially yet, so just grab the Github trunk.
 
 Packages:
 
 * `lib/` contains the core DNS protocol, which is packed into the `Dns` module.
-* `server/` contains an Lwt-based server library that can act as an
-  authoritative server.
 * `lib_test/` contains unit tests and sample uses of the library.
   In particular, `time_server` is a simple dynamic responder.
+* `server/` contains an Lwt-based server library that can act as an
+  authoritative server.
+* `client/` contains the beginnings of a `dig`-like client.
 
 Areas that need work:
 
