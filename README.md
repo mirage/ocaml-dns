@@ -14,8 +14,7 @@ To build it, the following packages are required:
   This is not packaged up officially yet, so just grab the Github trunk.
 * Re: http://github.com/avsm/ocaml-re
   This is not packaged up officially yet, so just grab the Github trunk.
-* Extlib: http://github.com/mor1/ocaml-extlib
-  This is not packaged up officially yet, so just grab the Github trunk.
+* Cryptokit: http://forge.ocamlcore.org/projects/cryptokit/
 
 Packages:
 
