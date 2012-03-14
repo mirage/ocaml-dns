@@ -2,7 +2,7 @@ OASISFormat: 0.2
 Name:        dns
 Version:     0.9-dev
 Synopsis:    DNS protocol library for Lwt
-Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier
+Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos
 License:     LGPL-2.0 with OCaml linking exception
 Plugins:     META (0.2)
 BuildTools:  ocamlbuild
