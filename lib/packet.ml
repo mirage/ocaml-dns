@@ -331,7 +331,7 @@ let rdata_to_string r =
     | `CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
     | `DNSKEY (flags, alg, key) 
       -> (sprintf "DNSKEY (%x, %s, %s)" 
-            flags (dnssec_alg_to_string alg) (Base64.str_encode key)
+            flags (dnssec_alg_to_string alg) (Cryptokit.(transform_string (Base64.encode_compact ()) key))
       )
     | `HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
     | `ISDN (a, sa)
@@ -807,11 +807,9 @@ let marshal_dns dns =
         -> BITSTRING { t:16; (mn ~off:2 n):-1:bitstring }, `AFSDB
       | `CNAME n -> BITSTRING { (mn n):-1:bitstring }, `CNAME
       | `DNSKEY (flags, alg, key)
-         -> (BITSTRING { flags:16; 3:8; (dnssec_alg_to_int alg):8; 
-                         (Base64.str_encode key):-1:string 
-                       }, 
-             `DNSKEY
-         )
+         -> 
+          let bkey = Cryptokit.(transform_string (Base64.encode_compact ()) key) in
+          (BITSTRING { flags:16; 3:8; (dnssec_alg_to_int alg):8; bkey:-1:string }, `DNSKEY)
       | `HINFO (cpu, os) -> BITSTRING { cpu:-1:string; os:-1:string }, `HINFO
       | `ISDN (a, sa) -> (
         (match sa with 
