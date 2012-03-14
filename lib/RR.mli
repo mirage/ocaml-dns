@@ -26,6 +26,8 @@ open Wire
 
 (** DNS serial number -- 32 bits. *)
 type serial = int32 
+
+(** DNS {! Hashcons}d character string. *)
 type cstr = string Hashcons.hash_consed
 
 (** A node in the trie. *)

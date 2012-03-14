@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 9320136260949b3cddd43f6cc05ee81f)
+# DO NOT EDIT (digest: b580b70fe94b7825414f602587991c48)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -15,14 +15,14 @@
 "_darcs": not_hygienic
 # Library dns
 "lib": include
-"lib/zone.cmx": for-pack(Dns)
-"lib/Zone.cmx": for-pack(Dns)
-"lib/zone_lexer.cmx": for-pack(Dns)
-"lib/Zone_lexer.cmx": for-pack(Dns)
-"lib/zone_parser.cmx": for-pack(Dns)
-"lib/Zone_parser.cmx": for-pack(Dns)
+"lib/hashcons.cmx": for-pack(Dns)
+"lib/Hashcons.cmx": for-pack(Dns)
 "lib/loader.cmx": for-pack(Dns)
 "lib/Loader.cmx": for-pack(Dns)
+"lib/name.cmx": for-pack(Dns)
+"lib/Name.cmx": for-pack(Dns)
+"lib/operators.cmx": for-pack(Dns)
+"lib/Operators.cmx": for-pack(Dns)
 "lib/packet.cmx": for-pack(Dns)
 "lib/Packet.cmx": for-pack(Dns)
 "lib/query.cmx": for-pack(Dns)
@@ -31,14 +31,14 @@
 "lib/RR.cmx": for-pack(Dns)
 "lib/trie.cmx": for-pack(Dns)
 "lib/Trie.cmx": for-pack(Dns)
-"lib/hashcons.cmx": for-pack(Dns)
-"lib/Hashcons.cmx": for-pack(Dns)
-"lib/operators.cmx": for-pack(Dns)
-"lib/Operators.cmx": for-pack(Dns)
 "lib/wire.cmx": for-pack(Dns)
 "lib/Wire.cmx": for-pack(Dns)
-"lib/name.cmx": for-pack(Dns)
-"lib/Name.cmx": for-pack(Dns)
+"lib/zone.cmx": for-pack(Dns)
+"lib/Zone.cmx": for-pack(Dns)
+"lib/zone_lexer.cmx": for-pack(Dns)
+"lib/Zone_lexer.cmx": for-pack(Dns)
+"lib/zone_parser.cmx": for-pack(Dns)
+"lib/Zone_parser.cmx": for-pack(Dns)
 <lib/*.ml{,i}>: pkg_uri
 <lib/*.ml{,i}>: pkg_re.str
 <lib/*.ml{,i}>: pkg_re

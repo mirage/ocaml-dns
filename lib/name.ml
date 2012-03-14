@@ -100,15 +100,6 @@ let canon2key domain_name =
     s 
   in List.fold_left (fun s l -> (labelize l) ^ "\000" ^ s) "" domain_name
 
-let label_set labels = 
-  let rec aux = function
-    | [] -> [] (* don't double up the terminating null? *)
-    | x :: [] -> [ x :: [] ]
-    | hd :: tl -> (hd :: tl) :: (aux tl)
-  in aux labels
-
-let domain_name_to_string_list (n:domain_name) : (string list) = n
-
 
 
 

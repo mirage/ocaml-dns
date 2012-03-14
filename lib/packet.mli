@@ -15,14 +15,26 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+(** DNS packet manipulation using the {! Bitstring} library. Something of a
+    catch-all for the time being.
+
+    @author Richard Mortier <mort\@cantab.net>
+    @author Anil Madhavapeddy anil\@recoil.org>
+    @author Haris Rotsos
+*)
+
 open Name
 open Uri_IP
 open Wire
+
+(** Represent a DNSSEC algorithm, with the usual conversion functions. *)
 
 type dnssec_alg
 val int_to_dnssec_alg : int -> dnssec_alg
 val dnssec_alg_to_int : dnssec_alg -> int
 val dnssec_alg_to_string : dnssec_alg -> string
+
+(** Represent the {! rr} type, with the usual conversion functions. *)
 
 type rr_type = [ 
 |`A | `A6 | `AAAA | `AFSDB | `APL | `ATMA | `CERT | `CNAME | `DNAME | `DNSKEY
@@ -34,6 +46,9 @@ type rr_type = [
 val int_to_rr_type : int -> rr_type
 val rr_type_to_int : rr_type -> int
 val rr_type_to_string : rr_type -> string
+
+(** Represent RDATA elements; a variant type to avoid collision with the
+    compact {! Trie} representation from {! RR}. *)
 
 type rr_rdata = [
 | `A of ipv4
@@ -64,13 +79,20 @@ type rr_rdata = [
 | `UNKNOWN of int * bytes
 ]
 val rdata_to_string : rr_rdata -> string
+
+(** Parse an RDATA element from a packet, given the set of already encountered
+    names, a starting index, and the type of the RDATA. *)
 val parse_rdata : 
   (int, label) Hashtbl.t -> int -> rr_type -> Bitstring.t-> rr_rdata
+
+(** The class of a {! rr}, and usual conversion functions. *)
 
 type rr_class = [ `CH | `CS | `HS | `IN ]
 val int_to_rr_class : int -> rr_class
 val rr_class_to_int : rr_class -> int
 val rr_class_to_string : rr_class -> string
+
+(** A [resource record], with usual conversion and parsing functions. *)
 
 type rr = {
   rr_name  : domain_name;
@@ -78,10 +100,11 @@ type rr = {
   rr_ttl   : int32;
   rr_rdata : rr_rdata;
 }
-
 val rr_to_string : rr -> string
 val parse_rr :
   (int, label) Hashtbl.t -> int -> Bitstring.t -> rr * Bitstring.t
+
+(** A question type, with the usual conversion functions. *)
 
 type q_type = [ rr_type | `AXFR | `MAILB | `MAILA | `ANY | `TA | `DLV ]
 val int_to_q_type : int -> q_type
@@ -89,10 +112,14 @@ val q_type_to_int : q_type -> int
 val q_type_to_string : q_type -> string
 val string_to_q_type : string -> q_type
 
+(** A question class, with the usual conversion functions. *)
+
 type q_class = [ rr_class | `NONE | `ANY ]
 val int_to_q_class : int -> q_class
 val q_class_to_int : q_class -> int
 val q_class_to_string : q_class -> string
+
+(** A question, with the usual conversion functions. *)
 
 type question = {
   q_name  : domain_name;
@@ -103,13 +130,19 @@ val question_to_string : question -> string
 val parse_question :
   (int, label) Hashtbl.t -> int -> Bitstring.t -> question * Bitstring.t
 
+(** The [qr] field from the DNS header {! detail}. *)
+
 type qr = [ `Query | `Answer ]
 val bool_to_qr : bool -> qr
 val qr_to_bool : qr -> bool
 
+(** A DNS opcode, with the usual conversion functions. *)
+
 type opcode = [ qr | `Status | `Reserved | `Notify | `Update ]
 val int_to_opcode : int -> opcode
 val opcode_to_int : opcode -> int
+
+(** A DNS response code, with the usual conversion functions. *)
 
 type rcode = [
 | `NoError  | `FormErr
@@ -122,6 +155,9 @@ val int_to_rcode : int -> rcode
 val rcode_to_int : rcode -> int
 val rcode_to_string : rcode -> string
 
+(** The [detail] field from the DNS header, with the usual conversion
+    functions. *)
+                 
 type detail = {
   qr: qr;
   opcode: opcode;
@@ -135,6 +171,8 @@ val detail_to_string : detail -> string
 val parse_detail : Bitstring.t -> detail
 val build_detail : detail -> Bitstring.t
 
+(** And finally, the DNS packet itself, with conversion functions. *)
+
 type dns = {
   id          : int16;
   detail      : Bitstring.t;
@@ -145,4 +183,9 @@ type dns = {
 }
 val dns_to_string : dns -> string
 val parse_dns : (int, label) Hashtbl.t -> Bitstring.t-> dns
+
+(** The marshalling entry point, given a {! dns} structure. 
+
+    @return the marshalled packet
+*)
 val marshal_dns : dns -> Bitstring.t

@@ -19,7 +19,6 @@
 
 open Loader
 
-(* Load a zone from a string buffer *)
 let load_zone origin buf =
   try 
     let lexbuf = Lexing.from_string buf in
@@ -31,34 +30,7 @@ let load_zone origin buf =
     state.owner <- state.origin;
     Zone_parser.zfile Zone_lexer.token lexbuf
   with
-  | Parsing.Parse_error ->
-     Printf.eprintf "Parse error: line %d\n%!" state.lineno;
-     ()
-
-
-(* Testing *)
-(* 
-
-open Dnsloader;;
-open Dnsquery;;
-open Dnsserver;;
-module L = Dnslexer;;
-
-let do_lookup qname qtype = 
-  print_string (";; QUERY " ^ (String.concat "." qname) ^ " "
-		^ (qtype_to_string qtype) ^ "\n");
-  let answer = answer_query qname qtype `IN L.state.L.db.trie
-  in print_string (answer_to_string answer)
-;;
-
-load_zone [] "root.hints";;
-load_zone ["example";"COM"] "test.zone";;
-
-do_lookup ["example";"com"] `MX;; 
-
-do_lookup ["lists";"example";"com"] `ANY;; 
-
-do_lookup ["badname";"example";"com"] `TXT;;
-do_lookup ["one";"example";"com"] `ANY;;
-
-*)
+    | Parsing.Parse_error -> (
+      Printf.eprintf "Parse error: line %d\n%!" state.lineno;
+      ()
+    )

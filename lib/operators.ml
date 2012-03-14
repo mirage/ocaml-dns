@@ -21,8 +21,6 @@
     @author Anil Madhavapeddy <anil\@recoil.org>
 *)
 
-(** Pipes. *)
-
 (** Pipe. *)
 let (|>) x f = f x
 (** Functor pipe. *)

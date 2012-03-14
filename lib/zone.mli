@@ -13,8 +13,13 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * dnsserver.ml -- an authoritative DNS server
- *
  *)
 
+(** Load a zone file.
+
+    @author Tim Deegan <tjd\@phlegethon.org>
+    @author Richard Mortier <mort\@cantab.net> (documentation)
+*)
+
+(** Load a domain's zone from a string buffer, into static [state]. *)
 val load_zone : string list -> string -> unit

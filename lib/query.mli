@@ -21,10 +21,8 @@
      @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
-(** Partially-marshalled query response.
-
-    By "partially-marshalled" I mean that this has been uncompacted from the
-    compact {! Trie} representation, but not yet rendered into a {!
+(** Partially-marshalled query response; that is, it has been uncompacted from
+    the compact {! Trie} representation, but not yet rendered into a {!
     Bitstring.t }.
 *)
 type query_answer = {
@@ -35,7 +33,7 @@ type query_answer = {
   additional: Packet.rr list;
 }
 
-(** Answer a query about {! domain_name}, given a query type{! q_type} and a
+(** Answer a query about {! domain_name}, given a query type {! q_type} and a
     {! Trie} of DNS data.
 
     @return the {! query_answer}

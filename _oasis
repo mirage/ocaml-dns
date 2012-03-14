@@ -12,8 +12,8 @@ Library dns
   Findlibname: dns
   Pack: true
   Modules: 
-    Zone,Zone_lexer,Zone_parser,Loader,Packet,Query,RR,Trie,Hashcons,
-    Operators,Wire,Name
+    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, 
+    Zone, Zone_lexer, Zone_parser
   BuildDepends:	bitstring, bitstring.syntax, re, re.str, uri, extlib
 
 Library server
@@ -28,8 +28,9 @@ Document dns
   Title:                DNS docs
   Type:                 ocamlbuild (0.2)
   BuildTools+:          ocamldoc
-  XOCamlbuildPath:      lib
-  XOCamlbuildLibraries: dns
+  XOCamlbuildPath:      lib  
+  XOCamlbuildModules:     
+    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, Zone
 
 Flag tests
   Description:        Build and run tests

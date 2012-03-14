@@ -736,7 +736,13 @@ let marshal_dns dns =
       if Hashtbl.mem h k then Some (Hashtbl.find h k) else None
     in
 
-    let lset = label_set labels in 
+    let lset = 
+      let rec aux = function
+        | [] -> [] (* don't double up the terminating null? *)
+        | x :: [] -> [ x :: [] ]
+        | hd :: tl -> (hd :: tl) :: (aux tl)
+      in aux labels
+    in
 
     let bits = ref [] in    
     let pointed = ref false in
@@ -774,8 +780,7 @@ let marshal_dns dns =
 
   let mn_nocompress (labels:domain_name) =
     let bits = ref [] in
-    labels |> domain_name_to_string_list 
-           |> List.iter (fun s -> bits := (charstr s) :: !bits);
+    labels |> List.iter (fun s -> bits := (charstr s) :: !bits);
     !bits |> List.rev |> String.concat ""
            |> (fun s -> 
              if String.length s > 0 then
