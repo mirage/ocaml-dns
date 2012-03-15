@@ -91,6 +91,7 @@ type rr_class = [ `CH | `CS | `HS | `IN ]
 val int_to_rr_class : int -> rr_class
 val rr_class_to_int : rr_class -> int
 val rr_class_to_string : rr_class -> string
+val string_to_rr_class : string -> rr_class
 
 (** A [resource record], with usual conversion and parsing functions. *)
 
@@ -118,6 +119,7 @@ type q_class = [ rr_class | `NONE | `ANY ]
 val int_to_q_class : int -> q_class
 val q_class_to_int : q_class -> int
 val q_class_to_string : q_class -> string
+val string_to_q_class : string -> q_class
 
 (** A question, with the usual conversion functions. *)
 

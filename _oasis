@@ -62,16 +62,16 @@ Executable time_server
   Install:            false
   BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, dns
 
-Executable ocaml_dig
+Executable odig
   Path:               client
-  MainIs:             ocaml_dig.ml
+  MainIs:             dig.ml
   Build$:             flag(tests)
   Custom:             true
   CompiledObject:     best
   Install:            false
   BuildDepends:       
     lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, 
-    re, re.str, uri, dns
+    re, re.str, uri, dns, resolver
 
 Test lwt_server
   Run$:               flag(tests)

@@ -23,13 +23,13 @@ open Dns.Packet
 
     @return the corresponding {! ipv4 } addresses.
 *)
-val gethostbyname : domain_name -> ipv4 list Lwt.t
+val gethostbyname : string -> ipv4 list Lwt.t
 
 (** Reverse lookup an {! ipv4 } address. 
 
     @return the corresponding {! domain_name }s.
 *)
-val gethostbyaddr : ipv4 -> domain_name Lwt.t
+val gethostbyaddr : ipv4 -> string Lwt.t
 
 (** Resolve a fully specified query, {! q_class }, {! q_type } and {!
     domain_name }.

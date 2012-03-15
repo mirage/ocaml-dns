@@ -17,19 +17,20 @@
 open Lwt
 open Name
 open Uri_IP
-open Dns.Packet
+
+module DP = Dns.Packet
 
 let gethostbyname name = 
   return [ 0xDEADBEEF_l ]
 
 let gethostbyaddr addr = 
-  return [ "DEADBEEF" ]
+  return "DEADBEEF"
 
 let resolve
-    ?(q_class:q_class = `IN)
-    ?(q_type:q_type = `ANY) 
+    ?(q_class:DP.q_class = `IN)
+    ?(q_type:DP.q_type = `ANY) 
     (name:domain_name) 
     = 
-  return { id=0; detail=("", 0, 0); 
-           questions=[]; answers=[]; authorities=[]; additionals=[];
-         }
+  return DP.({ id=0; detail=("", 0, 0); 
+               questions=[]; answers=[]; authorities=[]; additionals=[];
+             })

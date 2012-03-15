@@ -1,12 +1,34 @@
+(*
+ * Copyright (c) 2012 Richard Mortier <mort@cantab.net>
+ * Copyright (c) 2012 Haris Rotsos <charalampos.rotsos@cl.cam.ac.uk>
+ * Copyright (c) 2012 Anil Madhavapeddy <anil@recoil.org>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *)
+
 open Lwt
+open Operators
 open Printf
 open Re_str
+open Uri_IP
 
+module DR = Dns_resolver
 module DP = Dns.Packet
 
 let ns = ref "8.8.8.8"
 let domain = ref "google.com"
-let rr_type = ref DP.(`A)
+let q_class = ref DP.(`IN)
+let q_type = ref DP.(`A)
 
 let usage () = 
   eprintf "Usage: %s <node-name> <node-ip> <node-signalling-port>\n%!" 
@@ -18,14 +40,21 @@ let _ =
     try
       ns := Sys.argv.(1);
       domain := Sys.argv.(2);
-      rr_type := DP.string_to_q_type Sys.argv.(3);
-    with exn -> (
-      eprintf "EXN: %s\n%!" (Printexc.to_string exn);
-      usage()
-    )
+      q_type := DP.string_to_q_type Sys.argv.(3);
+      q_class := DP.string_to_q_class  Sys.argv.(4);
+    with exn -> (eprintf "EXN: %s\n%!" (Printexc.to_string exn); usage())
   );
   
+  Lwt_main.run (
+
+    let a = DR.gethostbyname(!domain) in 
+    printf "%s -> %s\n%!" !domain (a ||> ipv4_to_string |> join "; ");
+
+    return () 
+  )
+(*
   try
+    
     let ns_fd = 
       let ns_fd = Unix.(socket PF_INET SOCK_DGRAM 0) in
       let src = Unix.ADDR_INET(Unix.inet_addr_any, 25000) in 
@@ -60,9 +89,7 @@ let _ =
     let lbl = Hashtbl.create 64 in
     let reply = (DP.parse_dns lbl (Bitstring.bitstring_of_string buf)) in
     printf "dns reply: \n%s\n%!" (DP.dns_to_string reply);
-    return () 
+
   with
-    | exn -> (
-      eprintf "Exception caught: %s\n%!" (Printexc.to_string exn);
-      raise exn
-    )
+    | exn -> (eprintf "EXC: %s\n%!" (Printexc.to_string exn); raise exn)
+*)
