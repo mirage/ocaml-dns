@@ -24,6 +24,14 @@ Library server
     lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns
   FindlibParent: dns
 
+Library resolver
+  Path: resolver
+  Findlibname: server
+  Modules: Dns_resolver
+  BuildDepends: 
+    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns
+  FindlibParent: dns
+
 Document dns
   Title:                DNS docs
   Type:                 ocamlbuild (0.2)
