@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 05c05f3053712c82c8232d331bb7ff12)
+# DO NOT EDIT (digest: 9ada5e789e96168da7c0e1681bae8a89)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -45,6 +45,28 @@
 <lib/*.ml{,i}>: pkg_cryptokit
 <lib/*.ml{,i}>: pkg_bitstring.syntax
 <lib/*.ml{,i}>: pkg_bitstring
+# Executable odig
+<client/odig.{native,byte}>: use_dns
+<client/odig.{native,byte}>: pkg_uri
+<client/odig.{native,byte}>: pkg_re.str
+<client/odig.{native,byte}>: pkg_re
+<client/odig.{native,byte}>: pkg_lwt.unix
+<client/odig.{native,byte}>: pkg_lwt.syntax
+<client/odig.{native,byte}>: pkg_lwt
+<client/odig.{native,byte}>: pkg_cryptokit
+<client/odig.{native,byte}>: pkg_bitstring.syntax
+<client/odig.{native,byte}>: pkg_bitstring
+<client/*.ml{,i}>: use_dns
+<client/*.ml{,i}>: pkg_uri
+<client/*.ml{,i}>: pkg_re.str
+<client/*.ml{,i}>: pkg_re
+<client/*.ml{,i}>: pkg_lwt.unix
+<client/*.ml{,i}>: pkg_lwt.syntax
+<client/*.ml{,i}>: pkg_lwt
+<client/*.ml{,i}>: pkg_cryptokit
+<client/*.ml{,i}>: pkg_bitstring.syntax
+<client/*.ml{,i}>: pkg_bitstring
+<client/odig.{native,byte}>: custom
 # Library resolver
 "resolver": include
 <resolver/*.ml{,i}>: use_dns
@@ -80,28 +102,6 @@
 <server/*.ml{,i}>: pkg_cryptokit
 <server/*.ml{,i}>: pkg_bitstring.syntax
 <server/*.ml{,i}>: pkg_bitstring
-# Executable ocaml_dig
-<client/ocaml_dig.{native,byte}>: use_dns
-<client/ocaml_dig.{native,byte}>: pkg_uri
-<client/ocaml_dig.{native,byte}>: pkg_re.str
-<client/ocaml_dig.{native,byte}>: pkg_re
-<client/ocaml_dig.{native,byte}>: pkg_lwt.unix
-<client/ocaml_dig.{native,byte}>: pkg_lwt.syntax
-<client/ocaml_dig.{native,byte}>: pkg_lwt
-<client/ocaml_dig.{native,byte}>: pkg_cryptokit
-<client/ocaml_dig.{native,byte}>: pkg_bitstring.syntax
-<client/ocaml_dig.{native,byte}>: pkg_bitstring
-<client/*.ml{,i}>: use_dns
-<client/*.ml{,i}>: pkg_uri
-<client/*.ml{,i}>: pkg_re.str
-<client/*.ml{,i}>: pkg_re
-<client/*.ml{,i}>: pkg_lwt.unix
-<client/*.ml{,i}>: pkg_lwt.syntax
-<client/*.ml{,i}>: pkg_lwt
-<client/*.ml{,i}>: pkg_cryptokit
-<client/*.ml{,i}>: pkg_bitstring.syntax
-<client/*.ml{,i}>: pkg_bitstring
-<client/ocaml_dig.{native,byte}>: custom
 # Executable lwt_server
 <lib_test/lwt_server.{native,byte}>: use_dns
 <lib_test/lwt_server.{native,byte}>: pkg_uri
