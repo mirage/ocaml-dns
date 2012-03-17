@@ -30,6 +30,9 @@ type domain_name = string list
 (** Render a {! domain_name} to a simple string. *)
 val domain_name_to_string : domain_name -> string
 
+(** Convert a standard domain {! string} to a {! domain_name}. *)
+val string_to_domain_name : string -> domain_name
+
 (** Parse a {! domain_name} out of a {! Bitstring.t} given a set of already
     observed names from the packet, and the offset we are into the packet.
     

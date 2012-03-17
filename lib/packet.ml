@@ -292,7 +292,7 @@ and string_to_rr_type = function
   | "UID"      -> `UID
   | "GID"      -> `GID
   | "UNSPEC"   -> `UNSPEC
-  | _ -> invalid_arg "string_to_rr_type"
+  | s -> invalid_arg (sprintf "string_to_rr_type [%s]" s)
 
 type rr_rdata = [
 | `A of ipv4
