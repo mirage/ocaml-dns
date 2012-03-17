@@ -17,79 +17,21 @@
  *)
 
 open Lwt
-open Operators
+open Dns.Operators
 open Printf
 open Re_str
 open Uri_IP
 
-module DR = Dns_resolver
 module DP = Dns.Packet
 
-let ns = ref "8.8.8.8"
-let domain = ref "google.com"
-let q_class = ref DP.(`IN)
-let q_type = ref DP.(`A)
-
 let usage () = 
-  eprintf "Usage: %s <node-name> <node-ip> <node-signalling-port>\n%!" 
-    Sys.argv.(0); 
+  eprintf "Usage: %s <domain-name>\n%!" Sys.argv.(0); 
   exit 1
 
-let _ =
-  ignore(
-    try
-      ns := Sys.argv.(1);
-      domain := Sys.argv.(2);
-      q_type := DP.string_to_q_type Sys.argv.(3);
-      q_class := DP.string_to_q_class  Sys.argv.(4);
-    with exn -> (eprintf "EXN: %s\n%!" (Printexc.to_string exn); usage())
-  );
-  
-  Lwt_main.run (
-
-    let a = DR.gethostbyname(!domain) in 
-    printf "%s -> %s\n%!" !domain (a ||> ipv4_to_string |> join "; ");
-
-    return () 
-  )
-(*
-  try
-    
-    let ns_fd = 
-      let ns_fd = Unix.(socket PF_INET SOCK_DGRAM 0) in
-      let src = Unix.ADDR_INET(Unix.inet_addr_any, 25000) in 
-      Unix.bind ns_fd src;
-      ns_fd
-    in
-    
-    let detail = DP.({
-      qr=DP.(`Query); opcode=DP.(`Query);
-      aa=true; tc=false; rd=true; ra=false; rcode=DP.(`NoError);
-    })
-    in
-    let question = DP.({ 
-      q_name  = Re_str.split (Re_str.regexp "\\.") !domain;
-      q_type  = !rr_type; 
-      q_class = DP.(`IN);
-    }) 
-    in 
-    let packet = DP.({
-      id=0xBEEF; detail=(DP.build_detail detail);
-      questions=[question]; answers=[]; authorities=[]; additionals=[];
-    }) 
-    in 
-    let data = Bitstring.string_of_bitstring (DP.marshal_dns packet) in
-    let dst = Unix.ADDR_INET((Unix.inet_addr_of_string !ns), 53) in
-    let _ = Unix.sendto ns_fd data 0 (String.length data) [] dst in
-    let buf = 
-      let buf = String.create 1514 in
-      let (len, _) = Unix.recvfrom ns_fd buf 0 1514 [] in
-      String.sub buf 0 len
-    in
-    let lbl = Hashtbl.create 64 in
-    let reply = (DP.parse_dns lbl (Bitstring.bitstring_of_string buf)) in
-    printf "dns reply: \n%s\n%!" (DP.dns_to_string reply);
-
-  with
-    | exn -> (eprintf "EXC: %s\n%!" (Printexc.to_string exn); raise exn)
-*)
+let t = 
+  lwt ans = Dns_resolver.gethostbyname Sys.argv.(1) in 
+  let s = (ans ||> ipv4_to_string |> String.concat "; ") in
+  printf "%s\n%!" s;
+  return ()
+           
+let _ = Lwt_unix.(run (pick [sleep 2.0; t]))

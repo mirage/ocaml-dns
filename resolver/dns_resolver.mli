@@ -15,8 +15,8 @@
  *)
 
 open Lwt
-open Name
 open Uri_IP
+open Dns.Name
 open Dns.Packet
 
 (** Lookup a {! domain_name }.
@@ -36,4 +36,6 @@ val gethostbyaddr : ipv4 -> string Lwt.t
 
     @return the full a {! dns } structure.
 *)
-val resolve : ?q_class:q_class -> ?q_type:q_type -> domain_name -> dns Lwt.t
+val resolve : 
+  ?server:string -> ?q_class:q_class -> ?q_type:q_type -> domain_name
+  -> dns Lwt.t
