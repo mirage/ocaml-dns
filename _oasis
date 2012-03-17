@@ -77,4 +77,3 @@ Test lwt_server
   Run$:               flag(tests)
   Command:            $lwt_server
   WorkingDirectory:   lib_test
-

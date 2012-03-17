@@ -131,3 +131,7 @@ true: annot
 <server/*>: pkg_lwt.syntax
 <lib_test/*>: syntax_camlp4o
 <lib_test/*>: pkg_lwt.syntax
+<resolver/*>: syntax_camlp4o
+<resolver/*>: pkg_lwt.syntax
+<client/*>: syntax_camlp4o
+<client/*>: pkg_lwt.syntax
