@@ -331,7 +331,8 @@ let rdata_to_string r =
     | `CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
     | `DNSKEY (flags, alg, key) 
       -> (sprintf "DNSKEY (%x, %s, %s)" 
-            flags (dnssec_alg_to_string alg) (Cryptokit.(transform_string (Base64.encode_compact ()) key))
+            flags (dnssec_alg_to_string alg) 
+            (Cryptokit.(transform_string (Base64.encode_compact ()) key))
       )
     | `HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
     | `ISDN (a, sa)

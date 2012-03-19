@@ -28,10 +28,10 @@ let usage () =
   eprintf "Usage: %s <domain-name>\n%!" Sys.argv.(0); 
   exit 1
 
-let t = 
-  lwt ans = Dns_resolver.gethostbyname Sys.argv.(1) in 
+let t s = 
+  lwt ans = Dns_resolver.gethostbyname s in 
   let s = (ans ||> ipv4_to_string |> String.concat "; ") in
   printf "%s\n%!" s;
   return ()
            
-let _ = Lwt_unix.(run (pick [sleep 2.0; t]))
+let _ = Lwt_unix.(run (t Sys.argv.(1) <&> t Sys.argv.(2) ))
