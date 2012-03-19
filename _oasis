@@ -24,6 +24,14 @@ Library server
     lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns
   FindlibParent: dns
 
+Library resolver
+  Path: resolver
+  Findlibname: server
+  Modules: Dns_resolver
+  BuildDepends: 
+    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns
+  FindlibParent: dns
+
 Document dns
   Title:                DNS docs
   Type:                 ocamlbuild (0.2)
@@ -54,9 +62,9 @@ Executable time_server
   Install:            false
   BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, dns
 
-Executable ocaml_dig
+Executable odig
   Path:               client
-  MainIs:             ocaml_dig.ml
+  MainIs:             odig.ml
   Build$:             flag(tests)
   Custom:             true
   CompiledObject:     best
@@ -69,4 +77,3 @@ Test lwt_server
   Run$:               flag(tests)
   Command:            $lwt_server
   WorkingDirectory:   lib_test
-

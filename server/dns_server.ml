@@ -94,7 +94,7 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
   let t,u = Lwt.task () in
   Lwt.on_cancel t
     (fun () ->
-       Printf.eprintf "listen: canceled\n%!";
+       Printf.eprintf "listen: cancelled\n%!";
        cont := false
     );
   Printf.eprintf "listen: done\n%!";

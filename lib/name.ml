@@ -1,5 +1,23 @@
+(*
+ * Copyright (c) 2012 Richard Mortier <mort@cantab.net>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *)
+
 open Wire
 open Operators
+open Re_str
+open Uri_IP
 
 type label =              
   | L of string * int (* string *)
@@ -24,6 +42,12 @@ type domain_name = string list
 let domain_name (sl:string list) : domain_name = sl
 let empty_domain_name = []
 let domain_name_to_string dn = join "." dn
+let string_to_domain_name (s:string) : domain_name = 
+  Re_str.split (Re_str.regexp "\\.") s
+                                          
+let for_reverse ip = 
+  (".arpa.in-addr." ^ ipv4_to_string ip) |> string_to_domain_name |> List.rev 
+                                          
 let parse_name names base bits = 
   (* what. a. mess. *)
   let rec aux offsets name bits = 
@@ -99,13 +123,4 @@ let canon2key domain_name =
       raise (BadDomainName ("label too long: " ^ s));
     s 
   in List.fold_left (fun s l -> (labelize l) ^ "\000" ^ s) "" domain_name
-
-
-
-
-
-
-
-
-
 

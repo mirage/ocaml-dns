@@ -292,7 +292,7 @@ and string_to_rr_type = function
   | "UID"      -> `UID
   | "GID"      -> `GID
   | "UNSPEC"   -> `UNSPEC
-  | _ -> invalid_arg "string_to_rr_type"
+  | s -> invalid_arg (sprintf "string_to_rr_type [%s]" s)
 
 type rr_rdata = [
 | `A of ipv4
@@ -331,7 +331,8 @@ let rdata_to_string r =
     | `CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
     | `DNSKEY (flags, alg, key) 
       -> (sprintf "DNSKEY (%x, %s, %s)" 
-            flags (dnssec_alg_to_string alg) (Cryptokit.(transform_string (Base64.encode_compact ()) key))
+            flags (dnssec_alg_to_string alg) 
+            (Cryptokit.(transform_string (Base64.encode_compact ()) key))
       )
     | `HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
     | `ISDN (a, sa)
@@ -442,6 +443,12 @@ and rr_class_to_string = function
   | `CS -> "CS"
   | `CH -> "CH"
   | `HS -> "HS"
+and string_to_rr_class = function
+  | "IN" -> `IN
+  | "CS" -> `CS
+  | "CH" -> `CH
+  | "HS" -> `HS
+  | _    -> invalid_arg "string_to_rr_class"
 
 type rr = {
   rr_name  : domain_name;
@@ -509,13 +516,17 @@ let q_class_to_int : q_class -> int = function
   | `ANY           -> 255
   | #rr_class as c -> rr_class_to_int c
 and int_to_q_class : int -> q_class = function
-  | 254            -> `NONE
-  | 255            -> `ANY
-  | n              -> (int_to_rr_class n :> q_class)
+  | 254 -> `NONE
+  | 255 -> `ANY
+  | n   -> (int_to_rr_class n :> q_class)
 and q_class_to_string : q_class -> string = function
   | `NONE          -> "NONE"
   | `ANY           -> "ANY"
   | #rr_class as c -> rr_class_to_string c
+and string_to_q_class : string -> q_class = function
+  | "NONE" -> `NONE
+  | "ANY"  -> `ANY
+  | c      -> string_to_rr_class c
 
 type question = {
   q_name  : domain_name;
