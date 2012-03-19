@@ -21,6 +21,7 @@ open Dns.Operators
 open Printf
 open Re_str
 open Uri_IP
+open Dns.Name
 
 module DP = Dns.Packet
 
@@ -28,10 +29,24 @@ let usage () =
   eprintf "Usage: %s <domain-name>\n%!" Sys.argv.(0); 
   exit 1
 
-let t s = 
+let lookup_name s = 
   lwt ans = Dns_resolver.gethostbyname s in 
-  let s = (ans ||> ipv4_to_string |> String.concat "; ") in
-  printf "%s\n%!" s;
+  let ans = (ans ||> ipv4_to_string |> String.concat "; ") in
+  printf "%s -> %s\n%!" s ans;
   return ()
            
-let _ = Lwt_unix.(run (t Sys.argv.(1) <&> t Sys.argv.(2) ))
+let lookup_addr s = 
+  lwt ans = s |> string_to_ipv4 |> Dns_resolver.gethostbyaddr in
+  let ans = String.concat "; " ans in
+  printf "%s -> %s\n%!" s ans;
+  return ()
+           
+let _ = 
+  let threads = 
+    Sys.argv |> Array.to_list |> List.tl 
+      ||> (fun s -> match Re.execp Uri_re.ipv4_address s with
+          | true -> lookup_addr s
+          | false -> lookup_name s
+      ) 
+  in 
+  Lwt_unix.(run (Lwt.join threads))

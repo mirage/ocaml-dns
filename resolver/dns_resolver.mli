@@ -29,7 +29,7 @@ val gethostbyname : string -> ipv4 list Lwt.t
 
     @return the corresponding {! domain_name }s.
 *)
-val gethostbyaddr : ipv4 -> string Lwt.t
+val gethostbyaddr : ipv4 -> string list Lwt.t
 
 (** Resolve a fully specified query, {! q_class }, {! q_type } and {!
     domain_name }.

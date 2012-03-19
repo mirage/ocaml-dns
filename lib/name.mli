@@ -21,6 +21,8 @@
     @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
+open Uri_IP
+
 (** DNS label, including pointer and zero. *)
 type label
 
@@ -32,6 +34,9 @@ val domain_name_to_string : domain_name -> string
 
 (** Convert a standard domain {! string} to a {! domain_name}. *)
 val string_to_domain_name : string -> domain_name
+
+(** Construct name for reverse lookup given an {! ipv4} address. *)
+val for_reverse : ipv4 -> domain_name
 
 (** Parse a {! domain_name} out of a {! Bitstring.t} given a set of already
     observed names from the packet, and the offset we are into the packet.
@@ -62,3 +67,11 @@ type key = string
     N.B. Requires that the input is already lower-case!  
 *)
 val canon2key : domain_name -> key
+
+
+
+
+
+
+
+

@@ -17,6 +17,7 @@
 open Wire
 open Operators
 open Re_str
+open Uri_IP
 
 type label =              
   | L of string * int (* string *)
@@ -43,6 +44,9 @@ let empty_domain_name = []
 let domain_name_to_string dn = join "." dn
 let string_to_domain_name (s:string) : domain_name = 
   Re_str.split (Re_str.regexp "\\.") s
+                                          
+let for_reverse ip = 
+  (".arpa.in-addr." ^ ipv4_to_string ip) |> string_to_domain_name |> List.rev 
                                           
 let parse_name names base bits = 
   (* what. a. mess. *)
@@ -119,13 +123,4 @@ let canon2key domain_name =
       raise (BadDomainName ("label too long: " ^ s));
     s 
   in List.fold_left (fun s l -> (labelize l) ^ "\000" ^ s) "" domain_name
-
-
-
-
-
-
-
-
-
 
