@@ -36,7 +36,7 @@ let lookup_name s =
   return ()
            
 let lookup_addr s = 
-  lwt ans = s |> string_to_ipv4 |> Dns_resolver.gethostbyaddr in
+  lwt ans = wrap1 string_to_ipv4 s >>= Dns_resolver.gethostbyaddr in
   let ans = String.concat "; " ans in
   printf "%s -> %s\n%!" s ans;
   return ()
