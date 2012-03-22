@@ -13,17 +13,30 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * dnsquery.mli -- map DNS query-response mechanism onto trie database
- *
  *)
 
+(**  Map DNS query-response mechanism onto trie database.
+
+     @author Tim Deegan
+     @author Richard Mortier <mort\@cantab.net> (documentation)
+*)
+
+(** Partially-marshalled query response; that is, it has been uncompacted from
+    the compact {! Trie} representation, but not yet rendered into a {!
+    Bitstring.t }.
+*)
 type query_answer = {
   rcode : Packet.rcode;
   aa: bool;
-  answer: Packet.rsrc_record list;
-  authority: Packet.rsrc_record list;
-  additional: Packet.rsrc_record list;
+  answer: Packet.rr list;
+  authority: Packet.rr list;
+  additional: Packet.rr list;
 }
 
-val answer_query : string list -> 
-  Packet.q_type -> Trie.dnstrie -> query_answer
+(** Answer a query about {! domain_name}, given a query type {! q_type} and a
+    {! Trie} of DNS data.
+
+    @return the {! query_answer}
+*)
+val answer_query : 
+  Name.domain_name -> Packet.q_type -> Trie.dnstrie -> query_answer

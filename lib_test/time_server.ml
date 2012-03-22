@@ -27,13 +27,16 @@ let time_rsrc_record () =
 
 let dnsfn ~src ~dst query =
   let open Dns.Packet in
-  let module DQ = Dns.Query in
-  match query.questions with
-  |q::_ -> (* Just take the first question *)
-    let answer = [ time_rsrc_record () ] in
-    let ans = { DQ.rcode=`NoError; aa=true; authority=[]; additional=[]; answer } in
-    return (Some ans)
-  |_ -> return None (* No questions in packet *)
+      match query.questions with
+        | q::_ -> (* Just take the first question *)
+          let answer = Dns.Query.({ rcode=`NoError; 
+                                    aa=true; 
+                                    answer=[ time_rsrc_record () ];
+                                    authority=[]; additional=[]; 
+                                  })
+          in
+          return (Some answer)
+        | _ -> return None (* No questions in packet *)
 
 let listen ~address ~port =
   lwt fd, src = Dns_server.bind_fd ~address ~port in

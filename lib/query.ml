@@ -17,21 +17,22 @@
  *
  *)
 
+open Wire
+open Operators
 open RR
 open Trie
-open Operators
+open Name
 
-module DP = Packet
 module H = Hashcons
 
 (* We answer a query with RCODE, AA, ANSWERS, AUTHORITY and ADDITIONAL *)
 
 type query_answer = {
-  rcode : DP.rcode;
+  rcode : Packet.rcode;
   aa: bool;
-  answer: DP.rsrc_record list;
-  authority: DP.rsrc_record list;
-  additional: DP.rsrc_record list;
+  answer: Packet.rr list;
+  authority: Packet.rr list;
+  additional: Packet.rr list;
 } 
 
 let answer_query qname qtype trie = 
@@ -73,10 +74,10 @@ let answer_query qname qtype trie =
         | Some x -> x
         | None   -> failwith "unknown rrclass"
       in
-      let rr = DP.({ rr_name = owner; 
-                     rr_class = rrclass; 
-                     rr_ttl = ttl; 
-                     rr_rdata = rr }) 
+      let rr = Packet.({ rr_name = owner; 
+                         rr_class = rrclass; 
+                         rr_ttl = ttl; 
+                         rr_rdata = rr }) 
       in
       match section with 
         | `Answer     -> ans_rrs  := rr :: !ans_rrs 
@@ -87,119 +88,125 @@ let answer_query qname qtype trie =
     (* having extracted record from trie, partially marshal it *)
     match rdata with 
       | A l -> log_rrset owner `A; 
-        List.iter (fun ip -> addrr (`A ip)) l
-          
+          List.iter (fun ip -> addrr (`A ip)) l
+            
       | NS l -> log_rrset owner `NS;
-	    List.iter (fun d -> 
-	      enqueue_additional d `A; enqueue_additional d `AAAA;
-          addrr (`NS d.owner.H.node)
-        ) l 
-          
+	      List.iter (fun d -> 
+	        enqueue_additional d `A; enqueue_additional d `AAAA;
+            addrr (`NS d.owner.H.node)
+          ) l 
+            
       | CNAME l -> 
-	    List.iter (fun d -> 
-	      addrr (`CNAME d.owner.H.node)) l
-          
+	      List.iter (fun d -> 
+	        addrr (`CNAME d.owner.H.node)) l
+            
       | SOA l -> log_rrset owner `SOA;
-	    List.iter (fun (prim,admin,serial,refresh,retry,expiration,minttl) ->
-          addrr (`SOA (prim.owner.H.node,
-			           admin.owner.H.node, 
-                       serial, refresh, retry, expiration, minttl))) l
+	      List.iter (fun (prim,admin,serial,refresh,retry,expiration,minttl) ->
+            addrr (`SOA (prim.owner.H.node,
+			             admin.owner.H.node, 
+                         serial, refresh, retry, expiration, minttl))) l
 
       | MB l -> 
-	    List.iter (fun d -> 
-	      enqueue_additional d `A;
-	      enqueue_additional d `AAAA;
-	      addrr (`MB d.owner.H.node)) l
-          
+	      List.iter (fun d -> 
+	        enqueue_additional d `A;
+	        enqueue_additional d `AAAA;
+	        addrr (`MB d.owner.H.node)) l
+            
       | MG l -> 
-	    List.iter (fun d -> 
-	      addrr (`MG d.owner.H.node)) l
-          
+	      List.iter (fun d -> 
+	        addrr (`MG d.owner.H.node)) l
+            
       | MR l -> 
-	    List.iter (fun d -> 
-	      addrr (`MR d.owner.H.node)) l
-          
+	      List.iter (fun d -> 
+	        addrr (`MR d.owner.H.node)) l
+            
       | WKS l -> 
-	    List.iter (fun (address, protocol, bitmap) -> 
-	      addrr (`WKS (address, DP.byte protocol, bitmap.H.node))) l
+	      List.iter (fun (address, protocol, bitmap) -> 
+	        addrr (`WKS (address, protocol, bitmap.H.node))) l
 
       | PTR l -> 
-	    List.iter (fun d -> 
-	      addrr (`PTR d.owner.H.node)) l
-          
+	      List.iter (fun d -> 
+	        addrr (`PTR d.owner.H.node)) l
+            
       | HINFO l -> 
-	    List.iter (fun (cpu, os) -> 
-	      addrr (`HINFO (cpu.H.node, os.H.node))) l
-          
+	      List.iter (fun (cpu, os) -> 
+	        addrr (`HINFO (cpu.H.node, os.H.node))) l
+            
       | MINFO l -> 
-	    List.iter (fun (rm, em) -> 
-	      addrr (`MINFO (rm.owner.H.node, em.owner.H.node))) l
-          
+	      List.iter (fun (rm, em) -> 
+	        addrr (`MINFO (rm.owner.H.node, em.owner.H.node))) l
+            
       | MX l -> 
-	    List.iter (fun (preference, d) -> 
-	      enqueue_additional d `A;
-	      enqueue_additional d `AAAA;
-	      addrr (`MX (preference, d.owner.H.node))) l
-          
+	      List.iter (fun (preference, d) -> 
+	        enqueue_additional d `A;
+	        enqueue_additional d `AAAA;
+	        addrr (`MX (preference, d.owner.H.node))) l
+            
       | TXT l ->
-	    List.iter (fun sl -> (* XXX handle multiple TXT cstrings properly *)
-	      let data = List.map (fun x -> x.H.node) sl in 
-          addrr (`TXT data)) l
-          
+	      List.iter (fun sl -> (* XXX handle multiple TXT cstrings properly *)
+	        let data = List.map (fun x -> x.H.node) sl in 
+            addrr (`TXT data)) l
+            
       | RP l -> 
-	    List.iter (fun (mbox, txt) -> 
-	      addrr (`RP (mbox.owner.H.node, txt.owner.H.node))) l
-          
+	      List.iter (fun (mbox, txt) -> 
+	        addrr (`RP (mbox.owner.H.node, txt.owner.H.node))) l
+            
       | AFSDB l ->
-	    List.iter (fun (t, d) -> 
-	      enqueue_additional d `A;
-	      enqueue_additional d `AAAA;
-	      addrr (`AFSDB (t, d.owner.H.node))) l
-          
+	      List.iter (fun (t, d) -> 
+	        enqueue_additional d `A;
+	        enqueue_additional d `AAAA;
+	        addrr (`AFSDB (t, d.owner.H.node))) l
+            
       | X25 l -> log_rrset owner `X25;
-	    List.iter (fun s -> 
-	      addrr (`X25 s.H.node)) l
-          
+	      List.iter (fun s -> 
+	        addrr (`X25 s.H.node)) l
+            
       | ISDN l -> log_rrset owner `ISDN;
-	    List.iter (function (* XXX handle multiple cstrings properly *)
-          | (addr, None) 
-            -> addrr (`ISDN addr.H.node)
-          | (addr, Some sa) (* XXX Handle multiple charstrings properly *)
-            -> addrr (`ISDN (addr.H.node ^ sa.H.node))) l
-          
+	      List.iter (fun (a, sa) ->
+            let sa = match sa with None -> None | Some sa -> Some sa.H.node in
+            addrr (`ISDN (a.H.node, sa))) l
+
+      (*
+        (function (* XXX handle multiple cstrings properly *)
+        | (addr, None) 
+        -> addrr (`ISDN addr.H.node)
+        | (addr, Some sa) (* XXX Handle multiple charstrings properly *)
+        -> addrr (`ISDN (addr.H.node ^ sa.H.node))) l
+      *)
+            
       | RT l -> 
-	    List.iter (fun (preference, d) -> 
-	      enqueue_additional d `A;
-	      enqueue_additional d `AAAA;
-	      enqueue_additional d `X25;
-	      enqueue_additional d `ISDN;
-	      addrr (`RT (~preference, d.owner.H.node))) l
-          
+	      List.iter (fun (preference, d) -> 
+	        enqueue_additional d `A;
+	        enqueue_additional d `AAAA;
+	        enqueue_additional d `X25;
+	        enqueue_additional d `ISDN;
+	        addrr (`RT (preference, d.owner.H.node))) l
+            
       | AAAA l -> log_rrset owner `AAAA;
-	    List.iter (fun i -> addrr (`AAAA i.H.node)) l 
-          
+	      List.iter (fun i -> addrr (`AAAA (bytes i.H.node))) l 
+            
       | SRV l 
         -> List.iter (fun (priority, weight, port, d) -> 
 	      enqueue_additional d `A;
 	      enqueue_additional d `AAAA;
 	      addrr (`SRV (priority, weight, port, d.owner.H.node))) l
-        
+          
       | UNSPEC l 
-        -> List.iter (fun s -> addrr (`UNSPEC s.H.node)) l
+        -> List.iter (fun s -> addrr (`UNSPEC (bytes s.H.node))) l
 
       | Unknown (t,l)
-        -> DP.(
+        -> 
           let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
-          addrr (`UNKNOWN (t, s))
-        )
-
+          addrr (`UNKNOWN (t, bytes s)
+          )
   in
   
   (* Get an RRSet, which may not exist *)
   let add_opt_rrset node rrtype section = 
     if not (in_log node.owner.H.node rrtype)
     then let a = get_rrsets rrtype node.rrsets false in
-         List.iter (fun s -> add_rrset node.owner.H.node s.ttl s.rdata section) a 
+         List.iter (fun s -> 
+           add_rrset node.owner.H.node s.ttl s.rdata section) a 
   in
 
   (* Get an RRSet, which must exist *)
@@ -207,7 +214,8 @@ let answer_query qname qtype trie =
     if not (in_log node.owner.H.node rrtype)
     then let a = get_rrsets rrtype node.rrsets false in
          if a = [] then raise TrieCorrupt; 
-         List.iter (fun s -> add_rrset node.owner.H.node s.ttl s.rdata section) a
+         List.iter (fun s -> 
+           add_rrset node.owner.H.node s.ttl s.rdata section) a
   in
 
   (* Get the SOA RRSet for a negative response *)
@@ -215,8 +223,9 @@ let answer_query qname qtype trie =
     (* Don't need to check if it's already there *)
     let a = get_rrsets `SOA node.rrsets false in
     if a = [] then raise TrieCorrupt;
-    (* RFC 2308: The TTL of the SOA RRset in a negative response must be set to
-       the minimum of its own TTL and the "minimum" field of the SOA itself *)
+    (* RFC 2308: The TTL of the SOA RRset in a negative response must be set
+       to the minimum of its own TTL and the "minimum" field of the SOA
+       itself *)
     List.iter (fun s -> 
       match s.rdata with
 	      SOA ((_, _, _, _, _, _, ttl) :: _) -> 
@@ -225,12 +234,14 @@ let answer_query qname qtype trie =
   in
 
   (* Fill in the ANSWER section *)
-  let rec add_answer_rrsets owner ?(lc = 5) rrsets rrtype  = 
+  let rec add_answer_rrsets owner ?(lc = 5) rrsets rrtype = 
     let add_answer_rrset s = 
       match s with 
-	      { rdata = CNAME (d::_) } -> (* Only follow the first CNAME in a set *)
+	      { rdata = CNAME (d::_) } -> 
+            (* Only follow the first CNAME in a set *)
 	        if not (lc < 1 || rrtype = `CNAME ) then begin 
-              add_answer_rrsets d.owner.H.node ~lc:(lc - 1) d.rrsets rrtype end;
+              add_answer_rrsets d.owner.H.node ~lc:(lc - 1) d.rrsets rrtype 
+            end;
 	        add_rrset owner s.ttl s.rdata `Answer;
         | _ -> add_rrset owner s.ttl s.rdata `Answer
     in
@@ -242,46 +253,46 @@ let answer_query qname qtype trie =
   let main_lookup qname qtype trie = 
     let key = canon2key qname in
     match lookup key trie with
-        `Found (sec, node, zonehead) ->	  (* Name has RRs, and we own it. *)
+        `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
 	      add_answer_rrsets node.owner.H.node node.rrsets qtype;
 	      add_opt_rrset zonehead `NS `Authority;
 	      `NoError
 	        
-      | `NoError (zonehead) ->	 	  (* Name "exists", but has no RRs. *)
-	    add_negative_soa_rrset zonehead;
-	    `NoError
+      | `NoError (zonehead) ->          (* Name "exists", but has no RRs. *)
+	      add_negative_soa_rrset zonehead;
+	      `NoError
 
       | `NoErrorNSEC (zonehead, nsec) ->
-	    add_negative_soa_rrset zonehead;
+	      add_negative_soa_rrset zonehead;
 	    (* add_opt_rrset nsec `NSEC `Authority; *)
-	    `NoError
-	      
-      | `Delegated (sec, cutpoint) ->	  (* Name is delegated. *)
-	    add_req_rrset cutpoint `NS `Authority; 
-	    aa_flag := false; 
+	      `NoError
+	        
+      | `Delegated (sec, cutpoint) ->   (* Name is delegated. *)
+	      add_req_rrset cutpoint `NS `Authority; 
+	      aa_flag := false; 
 	    (* DNSSEC child zone keys *)
-	    `NoError
+	      `NoError
 
-      | `Wildcard (source, zonehead) ->	  (* Name is matched by a wildcard. *)
-	    add_answer_rrsets qname source.rrsets qtype; 
-	    add_opt_rrset zonehead `NS `Authority;
-	    `NoError
+      | `Wildcard (source, zonehead) -> (* Name is matched by a wildcard. *)
+	      add_answer_rrsets qname source.rrsets qtype; 
+	      add_opt_rrset zonehead `NS `Authority;
+	      `NoError
 
       | `WildcardNSEC (source, zonehead, nsec) -> 
-	    add_answer_rrsets qname source.rrsets qtype; 
-	    add_opt_rrset zonehead `NS `Authority;
+	      add_answer_rrsets qname source.rrsets qtype; 
+	      add_opt_rrset zonehead `NS `Authority;
 	    (* add_opt_rrset nsec `NSEC `Authority; *)
-	    `NoError
+	      `NoError
 
-      | `NXDomain (zonehead) ->		  (* Name doesn't exist. *)
-	    add_negative_soa_rrset zonehead;
-	    `NXDomain
+      | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
+	      add_negative_soa_rrset zonehead;
+	      `NXDomain
 
       | `NXDomainNSEC (zonehead, nsec1, nsec2) ->
-	    add_negative_soa_rrset zonehead;
+	      add_negative_soa_rrset zonehead;
 	    (* add_opt_rrset nsec1 `NSEC `Authority; *)
 	    (* add_opt_rrset nsec2 `NSEC `Authority; *)
-	    `NXDomain
+	      `NXDomain
   in
   
   try 

@@ -48,7 +48,7 @@ types	IN 	A	127.0.0.1
 	IN	MF 	mf-target
 	IN	NS 	ns-target
 ;; Not CNAME!
-	IN	SOA 	master owner 2006031301 3600 1800 302400 1800
+	IN	SOA 	master owner 2012031300 3600 1800 302400 1800
 	IN	MB	mb-target
 	IN	MG 	mg-target
 	IN	MR 	mr-target

@@ -13,36 +13,10 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * dnstrie.ml -- 256-way radix trie for DNS lookups  
- *
  *)
 
 open RR
-
-(* 
-   Non-standard behaviour: 
-    -- We don't support '\000' as a character in labels (because 
-       it has a special meaning in the internal radix trie keys).
-    -- We don't support RFC2673 bitstring labels.  Could be done but 
-       they're not worth the bother: nobody uses them.
-*)
-
-
-type key = string;;			(* Type of a radix-trie key *)
-exception BadDomainName of string;;	(* Malformed input to canon2key *)
-
-(* Convert a canonical [ "www"; "example"; "com" ] domain name into a key.
-   N.B. Requires that the input is already lower-case!  *)
-let canon2key string_list = 
-  let labelize s = 
-    if String.contains s '\000' then 
-      raise (BadDomainName "contains null character");
-    if String.length s = 0 then 
-      raise (BadDomainName "zero-length label");
-    if String.length s > 63 then 
-      raise (BadDomainName ("label too long: " ^ s));
-    s 
-  in List.fold_left (fun s l -> (labelize l) ^ "\000" ^ s) "" string_list
+open Name
 
 (* A "compressed" 256-way radix trie, with edge information provided
    explicitly in the trie nodes rather than with forward pointers. 
@@ -74,7 +48,6 @@ let bad_node = { data = None; edge = ""; byte = -1;
 		 flags = Nothing; }
 
 exception TrieCorrupt			(* Missing data from a soa/cut node *)
-
 
 (* Utility for trie ops: compare the remaining bytes of key with the 
    inbound edge to this trie node *)
@@ -196,7 +169,7 @@ let new_trie () =
 (* Simple lookup function: just walk the trie *)
 let rec simple_lookup key node = 
   if not (cmp_edge node key = `Match) then None
-  else if ((String.length key) = node.byte) then node.data
+  else if (String.length key = node.byte) then node.data
   else match (child_lookup key.[node.byte] node) with
     None -> None
   | Some child -> simple_lookup key child

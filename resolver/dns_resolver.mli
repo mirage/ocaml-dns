@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2005-2006 Tim Deegan <tjd@phlegethon.org>
+ * Copyright (c) 2012 Richard Mortier <mort@cantab.net>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -12,14 +12,30 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
  *)
 
-(** Load a zone file.
+open Lwt
+open Uri_IP
+open Dns.Name
+open Dns.Packet
 
-    @author Tim Deegan <tjd\@phlegethon.org>
-    @author Richard Mortier <mort\@cantab.net> (documentation)
+(** Lookup a {! domain_name }.
+
+    @return the corresponding {! ipv4 } addresses.
 *)
+val gethostbyname : string -> ipv4 list Lwt.t
 
-(** Load a domain's zone from a string buffer, into static [state]. *)
-val load_zone : string list -> string -> unit
+(** Reverse lookup an {! ipv4 } address. 
+
+    @return the corresponding {! domain_name }s.
+*)
+val gethostbyaddr : ipv4 -> string list Lwt.t
+
+(** Resolve a fully specified query, {! q_class }, {! q_type } and {!
+    domain_name }.
+
+    @return the full a {! dns } structure.
+*)
+val resolve : 
+  ?server:string -> ?q_class:q_class -> ?q_type:q_type -> domain_name
+  -> dns Lwt.t

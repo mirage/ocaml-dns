@@ -46,8 +46,14 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
       Lwt_pool.use bufs (fun buf ->
         lwt len, dst = Lwt_unix.recvfrom fd buf 0 (String.length buf) [] in
         let bits = buf, 0, (len*8) in
-        let query = try Some (DP.parse_dns names bits)
-          with exn -> eprintf "dns parse exn: %s\n%!" (Printexc.to_string exn); None in
+        let query =
+          try Some (DP.parse_dns names bits)
+          with 
+            | exn 
+              -> (eprintf "dns parse exn: %s\n%!" (Printexc.to_string exn); 
+                  None 
+              )
+        in
         match query with
         |None -> return ()
         |Some query -> begin
@@ -55,14 +61,32 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
           match answer with
           |None -> return ()
           |Some answer ->
-            let detail = DP.(build_detail { qr=`Answer; opcode=`Query; aa=answer.DQ.aa;
-              tc=false; rd=false; ra=false; rcode=answer.DQ.rcode }) in
-            let response = DP.({ id=query.id; detail; questions=query.questions; answers=answer.DQ.answer;
-              authorities=answer.DQ.authority; additionals=answer.DQ.additional }) in
-            let buf, boff, blen = DP.marshal response in
+            let detail = DP.(build_detail { 
+              qr=`Answer; opcode=`Query; aa=answer.DQ.aa;
+              tc=false; rd=false; ra=false; rcode=answer.DQ.rcode 
+            }) 
+            in
+            let response = DP.({ 
+              id=query.id; detail; 
+              questions=query.questions; 
+              answers=answer.DQ.answer;
+              authorities=answer.DQ.authority; 
+              additionals=answer.DQ.additional }) 
+            in
+            let bits = 
+              try Some (DP.marshal_dns response)
+              with exn -> (
+                eprintf "dns marshal exn: %s\n%!" (Printexc.to_string exn); 
+                None 
+              )
+            in
+            match bits with
+              | None -> return ()
+              | Some (buf, boff, blen) -> (
             (* TODO transmit queue, rather than ignoring result here *)
-            let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
-            return ()
+                let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
+                return ()
+              )
         end
       )
     done
@@ -70,7 +94,7 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
   let t,u = Lwt.task () in
   Lwt.on_cancel t
     (fun () ->
-       Printf.eprintf "listen: canceled\n%!";
+       Printf.eprintf "listen: cancelled\n%!";
        cont := false
     );
   Printf.eprintf "listen: done\n%!";
@@ -90,8 +114,14 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
       (fun ~src ~dst d ->
          let open DP in
          let q = List.hd d.questions in
-         let r = get_answer q.q_name q.q_type d.id in
-         return (Some r)
+         let r = 
+           try Some (get_answer q.q_name q.q_type d.id )
+           with exn -> (
+             eprintf "dns parse exn: %s\n%!" (Printexc.to_string exn); 
+             None 
+           )
+         in
+         return r
       )
   in
   listen ~fd ~src ~dnsfn
@@ -100,7 +130,9 @@ let listen_with_zonefile ~address ~port ~zonefile =
   lwt zonebuf =
      let lines = Lwt_io.lines_of_file zonefile in
      let buf = Buffer.create 1024 in
-     lwt () = Lwt_stream.iter (fun l -> Buffer.add_string buf l; Buffer.add_char buf '\n') lines in
+     lwt () = Lwt_stream.iter (fun l -> 
+       Buffer.add_string buf l; Buffer.add_char buf '\n') lines 
+     in
      return (Buffer.contents buf)
   in
   listen_with_zonebuf ~address ~port ~zonebuf ~mode:`none

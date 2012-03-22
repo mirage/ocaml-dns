@@ -250,7 +250,7 @@ lines:
  | lines rrline EOL 
      { try $2 state.db with 
          TTLMismatch -> prev_warning "TTL does not match earlier RRs"
-       | Trie.BadDomainName s -> parse_error ("bad domain name: " ^ s)
+       | Name.BadDomainName s -> parse_error ("bad domain name: " ^ s)
      }
  | lines error EOL { }
 

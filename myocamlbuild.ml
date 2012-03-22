@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: f3ddc0be0c62f81ec3fd65e8339cdfe3) *)
+(* DO NOT EDIT (digest: 9edbf0d3b7105a926d73f4992e9d463e) *)
 module OASISGettext = struct
 # 21 "/tmp/buildd/oasis-0.2.0/src/oasis/OASISGettext.ml"
   
@@ -452,7 +452,11 @@ open Ocamlbuild_plugin;;
 let package_default =
   {
      MyOCamlbuildBase.lib_ocaml =
-       [("lib/dns", ["lib"]); ("server/server", ["server"])];
+       [
+          ("lib/dns", ["lib"]);
+          ("server/server", ["server"]);
+          ("resolver/resolver", ["resolver"])
+       ];
      lib_c = [];
      flags = [];
      }
