@@ -116,6 +116,7 @@ let parse_name names base bits =
     | DSA
     | ECC
     | RSASHA1
+    | RSANSEC3
     | RSASHA256
     | RSASHA512
     | UNK
@@ -125,6 +126,7 @@ let dnssec_alg_of_char = function
     | 3  -> DSA
     | 4  -> ECC
     | 5  -> RSASHA1
+  | 7 -> RSANSEC3
     | 8  -> RSASHA256
     | 10 -> RSASHA512
     | _  -> UNK
@@ -134,6 +136,7 @@ let char_of_dnssec_alg = function
     | DSA       -> 3
     | ECC       -> 4
     | RSASHA1   -> 5
+    | RSANSEC3  -> 7
     | RSASHA256 -> 8
     | RSASHA512 -> 10
     | UNK       -> 6
@@ -143,6 +146,7 @@ let string_of_dnssec_alg = function
     | DSA       -> "DSA"
     | ECC       -> "ECC"
     | RSASHA1   -> "RSASHA1"
+  | RSANSEC3 -> "RSANSEC3"
     | RSASHA256 -> "RSASHA256"
     | RSASHA512 -> "RSASHA512"
     | UNK       -> "UNK"

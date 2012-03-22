@@ -44,6 +44,7 @@ type dnssec_alg =
     | DSA
     | ECC
     | RSASHA1
+    | RSANSEC3
     | RSASHA256
     | RSASHA512
     | UNK
