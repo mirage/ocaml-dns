@@ -48,7 +48,8 @@ val add_soa_rr :
 val add_mb_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_mg_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_mr_rr : domain_name -> int32 -> domain_name -> db -> unit
-val add_wks_rr : int32 -> int16 -> string -> int32 -> domain_name -> db -> unit
+val add_wks_rr : 
+  int32 -> byte -> string -> int32 -> domain_name -> db -> unit
 val add_ptr_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_hinfo_rr : string -> string -> int32 -> domain_name -> db -> unit
 val add_minfo_rr : 
@@ -59,7 +60,8 @@ val add_rp_rr :
   domain_name -> domain_name -> int32 -> domain_name -> db -> unit
 val add_afsdb_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
 val add_x25_rr : string -> int32 -> domain_name -> db -> unit
-val add_isdn_rr : string -> string option -> int32 -> domain_name -> db -> unit
+val add_isdn_rr : 
+  string -> string option -> int32 -> domain_name -> db -> unit
 val add_rt_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
 val add_aaaa_rr : string -> int32 -> domain_name -> db -> unit
 val add_srv_rr :

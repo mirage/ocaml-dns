@@ -117,7 +117,7 @@ let add_mr_rr target ttl owner db =
 
 let add_wks_rr addr prot bitmap ttl owner db =
   let b = hashcons_charstring bitmap in 
-  add_rrset { ttl; rdata = WKS [ (addr, byte prot, b) ] } owner db
+  add_rrset { ttl; rdata = WKS [ (addr, prot, b) ] } owner db
 
 let add_ptr_rr target ttl owner db =
   let targetnode = get_target_dnsnode target db in
@@ -189,8 +189,8 @@ let add_dnskey_rr flags typ key ttl owner db =
   let typ = int16 typ in
   let tmp = Cryptokit.transform_string  (Cryptokit.Base64.decode ())  key in
   let dnskey = hashcons_charstring tmp in 
-  add_rrset { ttl; 
-	      rdata = DNSKEY [ (flags, typ, dnskey) ] } owner db
+  add_rrset { ttl; rdata = DNSKEY [ ((int16_to_int flags), 
+                                     (int16_to_int typ), dnskey) ] } owner db
 
 
 (* State variables for the parser & lexer *)
