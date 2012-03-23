@@ -42,8 +42,6 @@ and rdata =
   | AAAA of cstr list
   | AFSDB of (int16 * dnsnode) list
   | CNAME of dnsnode list
-  (*  The Protocol Field MUST have value 3 *)
-  (*     | DNSKEY of bool * dnssec_alg * string *)
   | HINFO of (cstr * cstr) list
   | ISDN of (cstr * cstr option) list
   | MB of dnsnode list
@@ -191,4 +189,3 @@ let merge_rrset new_rrset rrsets =
           | (_, _) -> do_merge new_ttl new_rdata (rrset :: rrsets_done) rest 
   in
   do_merge new_rrset.ttl new_rrset.rdata [] rrsets
-
