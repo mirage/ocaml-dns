@@ -19,6 +19,7 @@ open Uri_IP
 open Printf
 open Dns.Name
 open Dns.Operators
+open Dns.Wire
 
 module DP = Dns.Packet
 
@@ -42,7 +43,7 @@ let build_query q_class q_type q_name =
     aa=true; tc=false; rd=true; ra=false; rcode=DP.(`NoError); })
   in
   let question = DP.({ q_name; q_type; q_class }) in 
-  DP.({ id=get_id (); detail; questions=[question]; 
+  DP.({ id=get_id () |> int16; detail; questions=[question]; 
         answers=[]; authorities=[]; additionals=[]; 
       })
 
