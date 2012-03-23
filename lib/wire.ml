@@ -44,4 +44,3 @@ let bytes_to_string (bs:bytes) : string =
   String.concat "." !s
 *)
 let bytes_to_ipv4 bs = Uri_IP.bytes_to_ipv4 bs
-

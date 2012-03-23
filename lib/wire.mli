@@ -27,10 +27,13 @@ exception Unparsable of string * Bitstring.t
 val offset_of_bitstring : Bitstring.t -> int
 
 (** For readability. *)
-type int16 = int
+type int16
 
 (** Convert {! int } to {! byte }; useful in pipelines. *)
 val int16 : int -> int16
+
+(** *)
+val int16_to_int : int16 -> int
 
 (** Single octet, for bit manipulation. *)
 type byte
