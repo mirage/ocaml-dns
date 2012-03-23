@@ -45,7 +45,6 @@
 <lib/*.ml{,i}>: pkg_cryptokit
 <lib/*.ml{,i}>: pkg_bitstring.syntax
 <lib/*.ml{,i}>: pkg_bitstring
-<lib/*.ml{,i}>: pkg_cryptokit
 # Executable odig
 <client/odig.{native,byte}>: use_dns
 <client/odig.{native,byte}>: pkg_uri

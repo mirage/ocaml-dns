@@ -10,7 +10,7 @@ BuildTools:  ocamlbuild
 Library dns
   Path: lib 
   Findlibname: dns
-#  Pack: true
+  Pack: true
   Modules: 
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, 
     Zone, Zone_lexer, Zone_parser
