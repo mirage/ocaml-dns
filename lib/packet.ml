@@ -824,7 +824,7 @@ let marshal_dns dns =
       | `DNSKEY (flags, alg, key)
          -> 
           let bkey = Cryptokit.(transform_string (Base64.encode_compact ()) key) in
-          (BITSTRING { flags:16; 3:8; (dnssec_alg_to_int alg):8; bkey:-1:string }, `DNSKEY)
+          (BITSTRING { flags:16; 3:8; (dnssec_alg_to_int alg):8; key:-1:string }, `DNSKEY)
       | `HINFO (cpu, os) -> BITSTRING { cpu:-1:string; os:-1:string }, `HINFO
       | `ISDN (a, sa) -> (
         (match sa with 
