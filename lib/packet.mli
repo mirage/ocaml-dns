@@ -27,25 +27,42 @@ open Name
 open Uri_IP
 open Wire
 
+type hexstring
+type digest_alg
+type gw_type
+type ipseckey_alg
+type gateway
+type hash_alg
+type pubkey_alg
+type fp_type
+
 (** Represent a DNSSEC algorithm, with the usual conversion functions. *)
 
 type dnssec_alg
 val int_to_dnssec_alg : int -> dnssec_alg
 val dnssec_alg_to_int : dnssec_alg -> int
+val string_to_dnssec_alg : string -> dnssec_alg
 val dnssec_alg_to_string : dnssec_alg -> string
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
 
 type rr_type = [ 
-|`A | `A6 | `AAAA | `AFSDB | `APL | `ATMA | `CERT | `CNAME | `DNAME | `DNSKEY
-| `DS | `EID | `GID | `GPOS | `HINFO | `IPSECKEY | `ISDN | `KEY | `KM | `LOC
-| `MB | `MD | `MF | `MG | `MINFO | `MR | `MX | `NAPTR | `NIMLOC | `NS | `NSAP
-| `NSAP_PTR | `NSEC | `NULL | `NXT | `OPT | `PTR | `PX | `RP | `RRSIG | `RT 
-| `SIG | `SINK | `SOA | `SPF | `SRV | `SSHFP | `TXT | `UID | `UINFO | `UNSPEC 
-| `Unknown of int * bytes | `WKS | `X25 ]
-val int_to_rr_type : int -> rr_type
+| `A | `NS | `MD | `MF | `CNAME | `SOA | `MB | `MG | `MR | `NULL 
+| `WKS | `PTR | `HINFO | `MINFO | `MX | `TXT | `RP | `AFSDB | `X25 
+| `ISDN | `RT | `NSAP | `NSAP_PTR | `SIG | `KEY | `PX | `GPOS | `AAAA 
+| `LOC | `NXT | `EID | `NIMLOC | `SRV | `ATMA | `NAPTR | `KM | `CERT 
+| `A6 | `DNAME | `SINK | `OPT | `APL | `DS | `SSHFP | `IPSECKEY | `RRSIG
+| `NSEC | `DNSKEY | `NSEC3 | `NSEC3PARAM | `SPF | `UINFO | `UID | `GID
+| `UNSPEC
+| `Unknown of int * bytes
+]
 val rr_type_to_int : rr_type -> int
+val int_to_rr_type : int -> rr_type
 val rr_type_to_string : rr_type -> string
+val string_to_rr_type : string -> rr_type
+
+type type_bit_map
+type type_bit_maps
 
 (** Represent RDATA elements; a variant type to avoid collision with the
     compact {! Trie} representation from {! RR}. *)
@@ -55,8 +72,10 @@ type rr_rdata = [
 | `AAAA of bytes
 | `AFSDB of int16 * domain_name
 | `CNAME of domain_name
-| `DNSKEY of int * dnssec_alg * string 
+| `DNSKEY of int16 * dnssec_alg * hexstring
+| `DS of int16 * dnssec_alg * digest_alg * hexstring
 | `HINFO of string * string
+| `IPSECKEY of byte * gw_type * ipseckey_alg * gateway * bytes
 | `ISDN of string * string option
 | `MB of domain_name
 | `MD of domain_name
@@ -66,17 +85,23 @@ type rr_rdata = [
 | `MR of domain_name
 | `MX of int16 * domain_name
 | `NS of domain_name
+| `NSEC of domain_name (* uncompressed *) * type_bit_maps
+| `NSEC3 of hash_alg * byte * byte * int16 * byte * bytes * byte * bytes * 
+    type_bit_maps
+| `NSEC3PARAM of hash_alg * byte * int16 * byte * bytes
 | `PTR of domain_name
 | `RP of domain_name * domain_name
+| `RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * int16 * 
+    domain_name (* uncompressed *) * bytes
 | `RT of int16 * domain_name
 | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | `SRV of int16 * int16 * int16 * domain_name
+| `SSHFP of dnssec_alg * fp_type * bytes
 | `TXT of string list
+| `UNKNOWN of int * bytes
 | `UNSPEC of bytes
 | `WKS of int32 * byte * string
 | `X25 of string 
-
-| `UNKNOWN of int * bytes
 ]
 val rdata_to_string : rr_rdata -> string
 

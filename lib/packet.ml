@@ -22,6 +22,119 @@ open Uri_IP
 open Wire
 open Name
 
+type hexstring = string
+
+type digest_alg = 
+  | SHA1
+  | UNKNOWN
+let int_to_digest_alg = function
+  | 1 -> SHA1
+  | _ -> UNKNOWN
+and digest_alg_to_int = function
+  | SHA1    -> 1
+  | UNKNOWN -> -1
+and string_to_digest_alg = function
+  | "SHA1"    -> SHA1
+  | _ -> UNKNOWN
+and digest_alg_to_string = function
+  | SHA1    -> "SHA1"
+  | UNKNOWN -> "UNKNOWN"
+
+type gw_type = 
+  | NONE
+  | IPv4
+  | IPv6
+  | NAME
+  | UNKNOWN
+let int_to_gw_type = function
+  | 0 -> NONE
+  | 1 -> IPv4
+  | 2 -> IPv6
+  | 3 -> NAME
+  | _ -> UNKNOWN
+and gw_type_to_int = function
+  | NONE -> 0
+  | IPv4 -> 1
+  | IPv6 -> 2
+  | NAME -> 3
+  | UNKNOWN -> -1
+and string_to_gw_type = function
+  | "NONE" -> NONE
+  | "IPv4" -> IPv4
+  | "IPv6" -> IPv6
+  | "NAME" -> NAME
+  | _ -> UNKNOWN
+and gw_type_to_string = function
+  | NONE -> "NONE"
+  | IPv4 -> "IPv4"
+  | IPv6 -> "IPv6"
+  | NAME -> "NAME"
+  | UNKNOWN -> "UNKNOWN"
+
+type ipseckey_alg = 
+  | DSA
+  | RSA
+  | UNKNOWN
+let int_to_ipseckey_alg = function
+  | 1 -> DSA
+  | 2 -> RSA
+  | _ -> UNKNOWN
+and ipseckey_alg_to_int = function
+  | DSA -> 1
+  | RSA -> 2
+  | UNKNOWN -> -1
+and string_to_ipseckey_alg = function
+  | "DSA" -> DSA
+  | "RSA" -> RSA
+  | _ -> UNKNOWN
+and ipseckey_alg_to_string = function
+  | DSA -> "DSA"
+  | RSA -> "RSA"
+  | UNKNOWN -> "UNKNOWN"
+
+type gateway =
+  | NONE
+  | IPv4 of ipv4
+  | IPv6 of ipv6
+  | NAME of domain_name
+let gateway_to_string = function
+  | NONE -> "<none>"
+  | IPv4 i -> ipv4_to_string i
+  | IPv6 i -> ipv6_to_string i
+  | NAME n -> domain_name_to_string n
+
+type hash_alg = 
+  | SHA1
+  | UNKNOWN
+let int_to_hash_alg = function
+  | 1 -> SHA1
+  | _ -> UNKNOWN
+and hash_alg_to_int = function
+  | SHA1    -> 1
+  | UNKNOWN -> -1
+and string_to_hash_alg = function
+  | "SHA1" -> SHA1
+  | _      -> UNKNOWN
+and hash_alg_to_string = function
+  | SHA1    -> "SHA1"
+  | UNKNOWN -> "UNKNOWN"
+
+type fp_type =
+  | SHA1
+  | UNKNOWN
+let int_to_fp_type = function
+  | 1 -> SHA1
+  | _ -> UNKNOWN
+and fp_type_to_int = function
+  | SHA1 -> 1
+  | UNKNOWN -> -1
+and string_to_fp_type = function
+  | "SHA1" -> SHA1
+  | _ -> UNKNOWN
+and fp_type_to_string = function
+  | SHA1 -> "SHA1"
+  | UNKNOWN -> "UNKNOWN"
+
 type dnssec_alg = 
   | RSAMD5 
   | DH
@@ -31,155 +144,182 @@ type dnssec_alg =
   | RSANSEC3
   | RSASHA256
   | RSASHA512
+  | INDIRECT
+  | PRIVATEDNS
+  | PRIVATEOID
   | UNKNOWN
 let int_to_dnssec_alg = function
-  | 1  -> RSAMD5 
-  | 2  -> DH
-  | 3  -> DSA
-  | 4  -> ECC
-  | 5  -> RSASHA1
-  | 7  -> RSANSEC3
-  | 8  -> RSASHA256
-  | 10 -> RSASHA512
-  | _  -> UNKNOWN
-let dnssec_alg_to_int = function
-  | RSAMD5    -> 1 
-  | DH        -> 2 
-  | DSA       -> 3
-  | ECC       -> 4
-  | RSASHA1   -> 5
-  | RSANSEC3  -> 7
-  | RSASHA256 -> 8
-  | RSASHA512 -> 10
-  | UNKNOWN   -> 6
-let dnssec_alg_to_string = function
-  | RSAMD5    -> "RSAMD5"  
-  | DH        -> "DH"
-  | DSA       -> "DSA"
-  | ECC       -> "ECC"
-  | RSASHA1   -> "RSASHA1"
-  | RSANSEC3 -> "RSANSEC3"
-  | RSASHA256 -> "RSASHA256"
-  | RSASHA512 -> "RSASHA512"
-  | UNKNOWN   -> "UNK"
+  | 1   -> RSAMD5 
+  | 2   -> DH
+  | 3   -> DSA
+  | 4   -> ECC
+  | 5   -> RSASHA1
+  | 7   -> RSANSEC3
+  | 8   -> RSASHA256
+  | 10  -> RSASHA512
+  | 252 -> INDIRECT
+  | 253 -> PRIVATEDNS
+  | 254 -> PRIVATEOID
+  | _   -> UNKNOWN
+and dnssec_alg_to_int = function
+  | RSAMD5     -> 1 
+  | DH         -> 2 
+  | DSA        -> 3
+  | ECC        -> 4
+  | RSASHA1    -> 5
+  | RSANSEC3   -> 7
+  | RSASHA256  -> 8
+  | RSASHA512  -> 10
+  | INDIRECT   -> 252
+  | PRIVATEDNS -> 253
+  | PRIVATEOID -> 254
+  | UNKNOWN    -> -1
+and string_to_dnssec_alg = function
+  | "RSAMD5"     -> RSAMD5
+  | "DH"         -> DH
+  | "DSA"        -> DSA
+  | "ECC"        -> ECC
+  | "RSASHA1"    -> RSASHA1
+  | "RSANSEC3"   -> RSANSEC3
+  | "RSASHA256"  -> RSASHA256
+  | "RSASHA512"  -> RSASHA512
+  | "INDIRECT"   -> INDIRECT
+  | "PRIVATEDNS" -> PRIVATEDNS
+  | "PRIVATEOID" -> PRIVATEOID
+  | _            -> UNKNOWN
+and dnssec_alg_to_string = function
+  | RSAMD5     -> "RSAMD5"  
+  | DH         -> "DH"
+  | DSA        -> "DSA"
+  | ECC        -> "ECC"
+  | RSASHA1    -> "RSASHA1"
+  | RSANSEC3   -> "RSANSEC3"
+  | RSASHA256  -> "RSASHA256"
+  | RSASHA512  -> "RSASHA512"
+  | INDIRECT   -> "INDIRECT"
+  | PRIVATEDNS -> "PRIVATEDNS"
+  | PRIVATEOID -> "PRIVATEOID"
+  | UNKNOWN    -> "UNKNOWN"
 
 type rr_type = [
 | `A | `NS | `MD | `MF | `CNAME | `SOA | `MB | `MG | `MR | `NULL 
 | `WKS | `PTR | `HINFO | `MINFO | `MX | `TXT | `RP | `AFSDB | `X25 
 | `ISDN | `RT | `NSAP | `NSAP_PTR | `SIG | `KEY | `PX | `GPOS | `AAAA 
 | `LOC | `NXT | `EID | `NIMLOC | `SRV | `ATMA | `NAPTR | `KM | `CERT 
-| `A6 | `DNAME | `SINK | `OPT | `APL | `DS | `SSHFP | `IPSECKEY 
-| `RRSIG | `NSEC | `DNSKEY | `SPF | `UINFO | `UID | `GID | `UNSPEC
+| `A6 | `DNAME | `SINK | `OPT | `APL | `DS | `SSHFP | `IPSECKEY | `RRSIG
+| `NSEC | `DNSKEY | `NSEC3 | `NSEC3PARAM | `SPF | `UINFO | `UID | `GID
+| `UNSPEC
 | `Unknown of int * bytes
 ]
 
 let rr_type_to_int = function
-  | `A        -> 1
-  | `NS       -> 2
-  | `MD       -> 3
-  | `MF       -> 4
-  | `CNAME    -> 5
-  | `SOA      -> 6
-  | `MB       -> 7
-  | `MG       -> 8
-  | `MR       -> 9
-  | `NULL     -> 10
-  | `WKS      -> 11
-  | `PTR      -> 12
-  | `HINFO    -> 13
-  | `MINFO    -> 14
-  | `MX       -> 15
-  | `TXT      -> 16
-  | `RP       -> 17
-  | `AFSDB    -> 18
-  | `X25      -> 19
-  | `ISDN     -> 20
-  | `RT       -> 21
-  | `NSAP     -> 22
-  | `NSAP_PTR -> 23
-  | `SIG      -> 24
-  | `KEY      -> 25
-  | `PX       -> 26
-  | `GPOS     -> 27
-  | `AAAA     -> 28
-  | `LOC      -> 29
-  | `NXT      -> 30
-  | `EID      -> 31
-  | `NIMLOC   -> 32
-  | `SRV      -> 33
-  | `ATMA     -> 34
-  | `NAPTR    -> 35
-  | `KM       -> 36
-  | `CERT     -> 37
-  | `A6       -> 38
-  | `DNAME    -> 39
-  | `SINK     -> 40
-  | `OPT      -> 41
-  | `APL      -> 42
-  | `DS       -> 43
-  | `SSHFP    -> 44
-  | `IPSECKEY -> 45
-  | `RRSIG    -> 46
-  | `NSEC     -> 47
-  | `DNSKEY   -> 48
-    
-  | `SPF      -> 99
-  | `UINFO    -> 100
-  | `UID      -> 101
-  | `GID      -> 102
-  | `UNSPEC   -> 103
-   
+  | `A          -> 1
+  | `NS         -> 2
+  | `MD         -> 3
+  | `MF         -> 4
+  | `CNAME      -> 5
+  | `SOA        -> 6
+  | `MB         -> 7
+  | `MG         -> 8
+  | `MR         -> 9
+  | `NULL       -> 10
+  | `WKS        -> 11
+  | `PTR        -> 12
+  | `HINFO      -> 13
+  | `MINFO      -> 14
+  | `MX         -> 15
+  | `TXT        -> 16
+  | `RP         -> 17
+  | `AFSDB      -> 18
+  | `X25        -> 19
+  | `ISDN       -> 20
+  | `RT         -> 21
+  | `NSAP       -> 22
+  | `NSAP_PTR   -> 23
+  | `SIG        -> 24
+  | `KEY        -> 25
+  | `PX         -> 26
+  | `GPOS       -> 27
+  | `AAAA       -> 28
+  | `LOC        -> 29
+  | `NXT        -> 30
+  | `EID        -> 31
+  | `NIMLOC     -> 32
+  | `SRV        -> 33
+  | `ATMA       -> 34
+  | `NAPTR      -> 35
+  | `KM         -> 36
+  | `CERT       -> 37
+  | `A6         -> 38
+  | `DNAME      -> 39
+  | `SINK       -> 40
+  | `OPT        -> 41
+  | `APL        -> 42
+  | `DS         -> 43
+  | `SSHFP      -> 44
+  | `IPSECKEY   -> 45
+  | `RRSIG      -> 46
+  | `NSEC       -> 47
+  | `DNSKEY     -> 48
+  | `NSEC3      -> 50
+  | `NSEC3PARAM -> 51
+  | `SPF        -> 99
+  | `UINFO      -> 100
+  | `UID        -> 101
+  | `GID        -> 102
+  | `UNSPEC     -> 103   
   | `Unknown _ -> -1
 and int_to_rr_type = function
-  | 1  -> `A
-  | 2  -> `NS
-  | 3  -> `MD
-  | 4  -> `MF
-  | 5  -> `CNAME
-  | 6  -> `SOA
-  | 7  -> `MB
-  | 8  -> `MG
-  | 9  -> `MR
-  | 10 -> `NULL
-  | 11 -> `WKS
-  | 12 -> `PTR
-  | 13 -> `HINFO
-  | 14 -> `MINFO
-  | 15 -> `MX
-  | 16 -> `TXT
-  | 17 -> `RP
-  | 18 -> `AFSDB 
-  | 19 -> `X25 
-  | 20 -> `ISDN 
-  | 21 -> `RT
-  | 22 -> `NSAP 
-  | 23 -> `NSAP_PTR 
-  | 24 -> `SIG 
-  | 25 -> `KEY
-  | 26 -> `PX 
-  | 27 -> `GPOS 
-  | 28 -> `AAAA 
-  | 29 -> `LOC
-  | 30 -> `NXT 
-  | 31 -> `EID 
-  | 32 -> `NIMLOC 
-  | 33 -> `SRV 
-  | 34 -> `ATMA 
-  | 35 -> `NAPTR 
-  | 36 -> `KM 
-  | 37 -> `CERT 
-  | 38 -> `A6 
-  | 39 -> `DNAME 
-  | 40 -> `SINK 
-  | 41 -> `OPT 
-  | 42 -> `APL 
-  | 43 -> `DS 
-  | 44 -> `SSHFP 
-  | 45 -> `IPSECKEY 
-  | 46 -> `RRSIG 
-  | 47 -> `NSEC 
-  | 48 -> `DNSKEY 
-    
+  | 1   -> `A
+  | 2   -> `NS
+  | 3   -> `MD
+  | 4   -> `MF
+  | 5   -> `CNAME
+  | 6   -> `SOA
+  | 7   -> `MB
+  | 8   -> `MG
+  | 9   -> `MR
+  | 10  -> `NULL
+  | 11  -> `WKS
+  | 12  -> `PTR
+  | 13  -> `HINFO
+  | 14  -> `MINFO
+  | 15  -> `MX
+  | 16  -> `TXT
+  | 17  -> `RP
+  | 18  -> `AFSDB 
+  | 19  -> `X25 
+  | 20  -> `ISDN 
+  | 21  -> `RT
+  | 22  -> `NSAP 
+  | 23  -> `NSAP_PTR 
+  | 24  -> `SIG 
+  | 25  -> `KEY
+  | 26  -> `PX 
+  | 27  -> `GPOS 
+  | 28  -> `AAAA 
+  | 29  -> `LOC
+  | 30  -> `NXT 
+  | 31  -> `EID 
+  | 32  -> `NIMLOC 
+  | 33  -> `SRV 
+  | 34  -> `ATMA 
+  | 35  -> `NAPTR 
+  | 36  -> `KM 
+  | 37  -> `CERT 
+  | 38  -> `A6 
+  | 39  -> `DNAME 
+  | 40  -> `SINK 
+  | 41  -> `OPT 
+  | 42  -> `APL 
+  | 43  -> `DS 
+  | 44  -> `SSHFP 
+  | 45  -> `IPSECKEY 
+  | 46  -> `RRSIG 
+  | 47  -> `NSEC 
+  | 48  -> `DNSKEY 
+  | 50  -> `NSEC3
+  | 51  -> `NSEC3PARAM
   | 99  -> `SPF 
   | 100 -> `UINFO 
   | 101 -> `UID 
@@ -188,123 +328,183 @@ and int_to_rr_type = function
 
   | _ -> invalid_arg "int_to_rr_type"
 and rr_type_to_string = function
-  | `A        -> "A"
-  | `NS       -> "NS"
-  | `MD       -> "MD"
-  | `MF       -> "MF"
-  | `CNAME    -> "CNAME"
-  | `SOA      -> "SOA"
-  | `MB       -> "MB"
-  | `MG       -> "MG"
-  | `MR       -> "MR"
-  | `NULL     -> "NULL"
-  | `WKS      -> "WKS"
-  | `PTR      -> "PTR"
-  | `HINFO    -> "HINFO"
-  | `MINFO    -> "MINFO"
-  | `MX       -> "MX"
-  | `TXT      -> "TXT"
-  | `RP       -> "RP"
-  | `AFSDB    -> "AFSDB"
-  | `X25      -> "X25"
-  | `ISDN     -> "ISDN"
-  | `RT       -> "RT"
-  | `NSAP     -> "NSAP"
-  | `NSAP_PTR -> "NSAP_PTR"
-  | `SIG      -> "SIG"
-  | `KEY      -> "KEY"
-  | `PX       -> "PX"
-  | `GPOS     -> "GPOS"
-  | `AAAA     -> "AAAA"
-  | `LOC      -> "LOC"
-  | `NXT      -> "NXT"
-  | `EID      -> "EID"
-  | `NIMLOC   -> "NIMLOC"
-  | `SRV      -> "SRV"
-  | `ATMA     -> "ATMA"
-  | `NAPTR    -> "NAPTR"
-  | `KM       -> "KM"
-  | `CERT     -> "CERT"
-  | `A6       -> "A6"
-  | `DNAME    -> "DNAME"
-  | `SINK     -> "SINK"
-  | `OPT      -> "OPT"
-  | `APL      -> "APL"
-  | `DS       -> "DS"
-  | `SSHFP    -> "SSHFP"
-  | `IPSECKEY -> "IPSECKEY"
-  | `RRSIG    -> "RRSIG"
-  | `NSEC     -> "NSEC"
-  | `DNSKEY   -> "DNSKEY"
-  | `SPF      -> "SPF"
-  | `UINFO    -> "UINFO"
-  | `UID      -> "UID"
-  | `GID      -> "GID"
-  | `UNSPEC   -> "UNSPEC"
+  | `A          -> "A"
+  | `NS         -> "NS"
+  | `MD         -> "MD"
+  | `MF         -> "MF"
+  | `CNAME      -> "CNAME"
+  | `SOA        -> "SOA"
+  | `MB         -> "MB"
+  | `MG         -> "MG"
+  | `MR         -> "MR"
+  | `NULL       -> "NULL"
+  | `WKS        -> "WKS"
+  | `PTR        -> "PTR"
+  | `HINFO      -> "HINFO"
+  | `MINFO      -> "MINFO"
+  | `MX         -> "MX"
+  | `TXT        -> "TXT"
+  | `RP         -> "RP"
+  | `AFSDB      -> "AFSDB"
+  | `X25        -> "X25"
+  | `ISDN       -> "ISDN"
+  | `RT         -> "RT"
+  | `NSAP       -> "NSAP"
+  | `NSAP_PTR   -> "NSAP_PTR"
+  | `SIG        -> "SIG"
+  | `KEY        -> "KEY"
+  | `PX         -> "PX"
+  | `GPOS       -> "GPOS"
+  | `AAAA       -> "AAAA"
+  | `LOC        -> "LOC"
+  | `NXT        -> "NXT"
+  | `EID        -> "EID"
+  | `NIMLOC     -> "NIMLOC"
+  | `SRV        -> "SRV"
+  | `ATMA       -> "ATMA"
+  | `NAPTR      -> "NAPTR"
+  | `KM         -> "KM"
+  | `CERT       -> "CERT"
+  | `A6         -> "A6"
+  | `DNAME      -> "DNAME"
+  | `SINK       -> "SINK"
+  | `OPT        -> "OPT"
+  | `APL        -> "APL"
+  | `DS         -> "DS"
+  | `SSHFP      -> "SSHFP"
+  | `IPSECKEY   -> "IPSECKEY"
+  | `RRSIG      -> "RRSIG"
+  | `NSEC       -> "NSEC"
+  | `DNSKEY     -> "DNSKEY"
+  | `NSEC3      -> "NSEC3"
+  | `NSEC3PARAM -> "NSEC3PARAM"
+  | `SPF        -> "SPF"
+  | `UINFO      -> "UINFO"
+  | `UID        -> "UID"
+  | `GID        -> "GID"
+  | `UNSPEC     -> "UNSPEC"
   | `Unknown (i, _) -> sprintf "Unknown (%d)" i
 and string_to_rr_type = function
-  | "A"        -> `A
-  | "NS"       -> `NS
-  | "MD"       -> `MD
-  | "MF"       -> `MF
-  | "CNAME"    -> `CNAME
-  | "SOA"      -> `SOA
-  | "MB"       -> `MB
-  | "MG"       -> `MG
-  | "MR"       -> `MR
-  | "NULL"     -> `NULL
-  | "WKS"      -> `WKS
-  | "PTR"      -> `PTR
-  | "HINFO"    -> `HINFO
-  | "MINFO"    -> `MINFO
-  | "MX"       -> `MX
-  | "TXT"      -> `TXT
-  | "RP"       -> `RP
-  | "AFSDB"    -> `AFSDB
-  | "X25"      -> `X25
-  | "ISDN"     -> `ISDN
-  | "RT"       -> `RT
-  | "NSAP"     -> `NSAP
-  | "NSAP_PTR" -> `NSAP_PTR
-  | "SIG"      -> `SIG
-  | "KEY"      -> `KEY
-  | "PX"       -> `PX
-  | "GPOS"     -> `GPOS
-  | "AAAA"     -> `AAAA
-  | "LOC"      -> `LOC
-  | "NXT"      -> `NXT
-  | "EID"      -> `EID
-  | "NIMLOC"   -> `NIMLOC
-  | "SRV"      -> `SRV
-  | "ATMA"     -> `ATMA
-  | "NAPTR"    -> `NAPTR
-  | "KM"       -> `KM
-  | "CERT"     -> `CERT
-  | "A6"       -> `A6
-  | "DNAME"    -> `DNAME
-  | "SINK"     -> `SINK
-  | "OPT"      -> `OPT
-  | "APL"      -> `APL
-  | "DS"       -> `DS
-  | "SSHFP"    -> `SSHFP
-  | "IPSECKEY" -> `IPSECKEY
-  | "RRSIG"    -> `RRSIG
-  | "NSEC"     -> `NSEC
-  | "DNSKEY"   -> `DNSKEY
-  | "SPF"      -> `SPF
-  | "UINFO"    -> `UINFO
-  | "UID"      -> `UID
-  | "GID"      -> `GID
-  | "UNSPEC"   -> `UNSPEC
+  | "A"          -> `A
+  | "NS"         -> `NS
+  | "MD"         -> `MD
+  | "MF"         -> `MF
+  | "CNAME"      -> `CNAME
+  | "SOA"        -> `SOA
+  | "MB"         -> `MB
+  | "MG"         -> `MG
+  | "MR"         -> `MR
+  | "NULL"       -> `NULL
+  | "WKS"        -> `WKS
+  | "PTR"        -> `PTR
+  | "HINFO"      -> `HINFO
+  | "MINFO"      -> `MINFO
+  | "MX"         -> `MX
+  | "TXT"        -> `TXT
+  | "RP"         -> `RP
+  | "AFSDB"      -> `AFSDB
+  | "X25"        -> `X25
+  | "ISDN"       -> `ISDN
+  | "RT"         -> `RT
+  | "NSAP"       -> `NSAP
+  | "NSAP_PTR"   -> `NSAP_PTR
+  | "SIG"        -> `SIG
+  | "KEY"        -> `KEY
+  | "PX"         -> `PX
+  | "GPOS"       -> `GPOS
+  | "AAAA"       -> `AAAA
+  | "LOC"        -> `LOC
+  | "NXT"        -> `NXT
+  | "EID"        -> `EID
+  | "NIMLOC"     -> `NIMLOC
+  | "SRV"        -> `SRV
+  | "ATMA"       -> `ATMA
+  | "NAPTR"      -> `NAPTR
+  | "KM"         -> `KM
+  | "CERT"       -> `CERT
+  | "A6"         -> `A6
+  | "DNAME"      -> `DNAME
+  | "SINK"       -> `SINK
+  | "OPT"        -> `OPT
+  | "APL"        -> `APL
+  | "DS"         -> `DS
+  | "SSHFP"      -> `SSHFP
+  | "IPSECKEY"   -> `IPSECKEY
+  | "RRSIG"      -> `RRSIG
+  | "NSEC"       -> `NSEC
+  | "DNSKEY"     -> `DNSKEY
+  | "NSEC3"      -> `NSEC3
+  | "NSEC3PARAM" -> `NSEC3PARAM
+  | "SPF"        -> `SPF
+  | "UINFO"      -> `UINFO
+  | "UID"        -> `UID
+  | "GID"        -> `GID
+  | "UNSPEC"     -> `UNSPEC
   | s -> invalid_arg (sprintf "string_to_rr_type [%s]" s)
+
+(*
+   The Type Bit Maps field identifies the RRset types that exist at the
+   NSEC RR's owner name.
+
+   The RR type space is split into 256 window blocks, each representing
+   the low-order 8 bits of the 16-bit RR type space.  Each block that
+   has at least one active RR type is encoded using a single octet
+   window number (from 0 to 255), a single octet bitmap length (from 1
+   to 32) indicating the number of octets used for the window block's
+   bitmap, and up to 32 octets (256 bits) of bitmap.
+
+   Blocks are present in the NSEC RR RDATA in increasing numerical
+   order.
+
+      Type Bit Maps Field = ( Window Block # | Bitmap Length | Bitmap )+
+
+      where "|" denotes concatenation.
+
+   Each bitmap encodes the low-order 8 bits of RR types within the
+   window block, in network bit order.  The first bit is bit 0.  For
+   window block 0, bit 1 corresponds to RR type 1 (A), bit 2 corresponds
+   to RR type 2 (NS), and so forth.  For window block 1, bit 1
+   corresponds to RR type 257, and bit 2 to RR type 258.  If a bit is
+   set, it indicates that an RRset of that type is present for the NSEC
+   RR's owner name.  If a bit is clear, it indicates that no RRset of
+   that type is present for the NSEC RR's owner name.
+
+   Bits representing pseudo-types MUST be clear, as they do not appear
+   in zone data.  If encountered, they MUST be ignored upon being read.
+
+   Blocks with no types present MUST NOT be included.  Trailing zero
+   octets in the bitmap MUST be omitted.  The length of each block's
+   bitmap is determined by the type code with the largest numerical
+   value, within that block, among the set of RR types present at the
+   NSEC RR's owner name.  Trailing zero octets not specified MUST be
+   interpreted as zero octets.
+
+   The bitmap for the NSEC RR at a delegation point requires special
+   attention.  Bits corresponding to the delegation NS RRset and the RR
+   types for which the parent zone has authoritative data MUST be set;
+   bits corresponding to any non-NS RRset for which the parent is not
+   authoritative MUST be clear.
+
+   A zone MUST NOT include an NSEC RR for any domain name that only
+   holds glue records.
+*)
+type type_bit_map = byte * byte * bytes
+let type_bit_map_to_string tbm = 
+  ""
+
+type type_bit_maps = type_bit_map array
+let type_bit_maps_to_string tbms = 
+  ""
 
 type rr_rdata = [
 | `A of ipv4
 | `AAAA of bytes
 | `AFSDB of int16 * domain_name
 | `CNAME of domain_name
-| `DNSKEY of int16 * dnssec_alg * string 
+| `DNSKEY of int16 * dnssec_alg * hexstring
+| `DS of int16 * dnssec_alg * digest_alg * hexstring
 | `HINFO of string * string
+| `IPSECKEY of byte * gw_type * ipseckey_alg * gateway * bytes
 | `ISDN of string * string option
 | `MB of domain_name
 | `MD of domain_name
@@ -314,11 +514,18 @@ type rr_rdata = [
 | `MR of domain_name
 | `MX of int16 * domain_name
 | `NS of domain_name
+| `NSEC of domain_name (* uncompressed *) * type_bit_maps
+| `NSEC3 of hash_alg * byte * byte * int16 * byte * bytes * byte * bytes * 
+    type_bit_maps
+| `NSEC3PARAM of hash_alg * byte * int16 * byte * bytes
 | `PTR of domain_name
 | `RP of domain_name * domain_name
+| `RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * int16 * 
+    domain_name (* uncompressed *) * bytes
 | `RT of int16 * domain_name
 | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | `SRV of int16 * int16 * int16 * domain_name
+| `SSHFP of dnssec_alg * fp_type * bytes
 | `TXT of string list
 | `UNKNOWN of int * bytes
 | `UNSPEC of bytes
@@ -326,52 +533,79 @@ type rr_rdata = [
 | `X25 of string 
 ]
 
-let rdata_to_string r = 
-  match r with
-    | `A ip -> sprintf "A (%s)" (ipv4_to_string ip)
-    | `AAAA bs -> sprintf "AAAA (%s)" (bytes_to_string bs)
-    | `AFSDB (x, n)
-      -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
-    | `CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
-    | `DNSKEY (flags, alg, key) 
-      -> (sprintf "DNSKEY (%x, %s, %s)" 
-            flags (dnssec_alg_to_string alg) 
-            (Cryptokit.(transform_string (Base64.encode_compact ()) key))
-      )
-    | `HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
-    | `ISDN (a, sa)
-      -> sprintf "ISDN (%s, %s)" a (match sa with None -> "" | Some sa -> sa)
-    | `MB n -> sprintf "MB (%s)" (domain_name_to_string n)
-    | `MD n -> sprintf "MD (%s)" (domain_name_to_string n)
-    | `MF n -> sprintf "MF (%s)" (domain_name_to_string n)
-    | `MG n -> sprintf "MG (%s)" (domain_name_to_string n)
-    | `MINFO (rm, em)
-      -> (sprintf "MINFO (%s, %s)" 
-            (domain_name_to_string rm) (domain_name_to_string em)
-      )
-    | `MR n -> sprintf "MR (%s)" (domain_name_to_string n)
-    | `MX (pref, name)
-      -> sprintf "MX (%d, %s)" pref (domain_name_to_string name)
-    | `NS n -> sprintf "NS (%s)" (domain_name_to_string n)
-    | `PTR n -> sprintf "PTR (%s)" (domain_name_to_string n)
-    | `RP (mn, nn)
-      -> (sprintf "RP (%s, %s)" 
-            (domain_name_to_string mn) (domain_name_to_string nn)
-      )
-    | `RT (x, n) 
-      -> sprintf "RT (%d, %s)" x (domain_name_to_string n)
-    | `SOA (mn, rn, serial, refresh, retry, expire, minimum)
-      -> (sprintf "SOA (%s,%s, %ld,%ld,%ld,%ld,%ld)"
-            (domain_name_to_string mn) (domain_name_to_string rn) 
-            serial refresh retry expire minimum)
-    | `SRV (x, y, z, n) 
-      -> (sprintf "SRV (%d,%d,%d, %s)" x y z (domain_name_to_string n)
-      )
-    | `TXT sl -> sprintf "TXT (%s)" (join "" sl)
-    | `UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (bytes_to_string bs)
-    | `UNSPEC bs -> sprintf "UNSPEC (%s)" (bytes_to_string bs)
-    | `WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x (byte_to_int y) s
-    | `X25 s -> sprintf "X25 (%s)" s
+let rdata_to_string = function
+  | `A ip -> sprintf "A (%s)" (ipv4_to_string ip)
+  | `AAAA bs -> sprintf "AAAA (%s)" (bytes_to_string bs)
+  | `AFSDB (x, n)
+    -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
+  | `CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
+  | `DNSKEY (flags, alg, key) 
+    -> (sprintf "DNSKEY (%x, %s, %s)" flags (dnssec_alg_to_string alg) 
+          (Cryptokit.(transform_string (Base64.encode_compact ()) key))
+    )
+  | `HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
+  | `ISDN (a, sa)
+    -> sprintf "ISDN (%s, %s)" a (match sa with None -> "" | Some sa -> sa)
+  | `MB n -> sprintf "MB (%s)" (domain_name_to_string n)
+  | `MD n -> sprintf "MD (%s)" (domain_name_to_string n)
+  | `MF n -> sprintf "MF (%s)" (domain_name_to_string n)
+  | `MG n -> sprintf "MG (%s)" (domain_name_to_string n)
+  | `MINFO (rm, em)
+    -> (sprintf "MINFO (%s, %s)" 
+          (domain_name_to_string rm) (domain_name_to_string em)
+    )
+  | `MR n -> sprintf "MR (%s)" (domain_name_to_string n)
+  | `MX (pref, name)
+    -> sprintf "MX (%d, %s)" pref (domain_name_to_string name)
+  | `NS n -> sprintf "NS (%s)" (domain_name_to_string n)
+  | `PTR n -> sprintf "PTR (%s)" (domain_name_to_string n)
+  | `RP (mn, nn)
+    -> (sprintf "RP (%s, %s)" 
+          (domain_name_to_string mn) (domain_name_to_string nn)
+    )
+  | `RT (x, n) 
+    -> sprintf "RT (%d, %s)" x (domain_name_to_string n)
+  | `SOA (mn, rn, serial, refresh, retry, expire, minimum)
+    -> (sprintf "SOA (%s,%s, %ld,%ld,%ld,%ld,%ld)"
+          (domain_name_to_string mn) (domain_name_to_string rn) 
+          serial refresh retry expire minimum)
+  | `SRV (x, y, z, n) 
+    -> (sprintf "SRV (%d,%d,%d, %s)" x y z (domain_name_to_string n)
+    )
+  | `TXT sl -> sprintf "TXT (%s)" (join "" sl)
+  | `UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (bytes_to_string bs)
+  | `UNSPEC bs -> sprintf "UNSPEC (%s)" (bytes_to_string bs)
+  | `WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x (byte_to_int y) s
+  | `X25 s -> sprintf "X25 (%s)" s
+
+  | `DS (keytag, alg, digest_t, digest) 
+    -> (sprintf "DS (%d,%s,%s, '%s')" keytag
+          (dnssec_alg_to_string alg) (digest_alg_to_string digest_t) digest
+    )
+  | `IPSECKEY (precedence, gw_type, alg, gw, pubkey)
+    -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" precedence 
+          (gw_type_to_string gw_type) (ipseckey_alg_to_string alg)
+          (gateway_to_string gw) pubkey
+    )
+  | `NSEC (next_name, tbms) 
+    -> sprintf "NSEC (%s, %s)" next_name (type_bit_maps_to_string tbms)
+  | `NSEC3 (n, tbms)
+    -> (sprintf "NSEC3(%s, %s)"
+          (domain_name_to_string n) (type_bit_maps_to_string tbms)
+    )
+  | `NSEC3PARAM (halg, flgs, iterations, salt_l, salt)
+    -> (sprintf "NSEC3PARAM (%s,%x, %d, %d, '%s')"
+          (hash_alg_to_string halg) flgs iterations salt_l salt
+    )
+  | `RRSIG (tc, alg, nlbls, ttl, expiration, inception, keytag, name, sign)
+    -> (sprintf "RRSIG (%s,%s,%d, %ld, %ld,%ld, %d, %s, %s)"
+          tc (dnssec_alg_to_string alg) nlbls ttl expiration inception keytag 
+          (domain_name_to_string name) sign
+    )
+  | `SSHFP (alg, fpt, fp)
+    -> (sprintf "SSHFP (%s,%s, '%s')" (dnssec_alg_to_string alg) 
+          (fp_type_to_string fpt) (bytes_to_string fp)
+    )
 
 let parse_rdata names base t bits = 
   (** Drop remainder bitstring to stop parsing and demuxing. *) 
