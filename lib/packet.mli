@@ -27,13 +27,12 @@ open Name
 open Uri_IP
 open Wire
 
-type hexstring
 type digest_alg
 type gw_type
+type pubkey_alg
 type ipseckey_alg
 type gateway
 type hash_alg
-type pubkey_alg
 type fp_type
 
 (** Represent a DNSSEC algorithm, with the usual conversion functions. *)
@@ -72,8 +71,8 @@ type rr_rdata = [
 | `AAAA of bytes
 | `AFSDB of int16 * domain_name
 | `CNAME of domain_name
-| `DNSKEY of int16 * dnssec_alg * hexstring
-| `DS of int16 * dnssec_alg * digest_alg * hexstring
+| `DNSKEY of int16 * dnssec_alg * string
+| `DS of int16 * dnssec_alg * digest_alg * string
 | `HINFO of string * string
 | `IPSECKEY of byte * gw_type * ipseckey_alg * gateway * bytes
 | `ISDN of string * string option
@@ -86,7 +85,7 @@ type rr_rdata = [
 | `MX of int16 * domain_name
 | `NS of domain_name
 | `NSEC of domain_name (* uncompressed *) * type_bit_maps
-| `NSEC3 of hash_alg * byte * byte * int16 * byte * bytes * byte * bytes * 
+| `NSEC3 of hash_alg * byte * int16 * byte * bytes * byte * bytes * 
     type_bit_maps
 | `NSEC3PARAM of hash_alg * byte * int16 * byte * bytes
 | `PTR of domain_name
@@ -96,7 +95,7 @@ type rr_rdata = [
 | `RT of int16 * domain_name
 | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | `SRV of int16 * int16 * int16 * domain_name
-| `SSHFP of dnssec_alg * fp_type * bytes
+| `SSHFP of pubkey_alg * fp_type * bytes
 | `TXT of string list
 | `UNKNOWN of int * bytes
 | `UNSPEC of bytes

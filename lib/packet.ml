@@ -22,7 +22,18 @@ open Uri_IP
 open Wire
 open Name
 
-type hexstring = string
+(** Encode string as label by prepending length. *)
+let charstr s = sprintf "%c%s" (s |> String.length |> char_of_int) s 
+
+let mn_nocompress (labels:domain_name) =
+  let bits = ref [] in
+  labels |> List.iter (fun s -> bits := (charstr s) :: !bits);
+  !bits |> List.rev |> String.concat ""
+    |> (fun s -> if String.length s > 0 then
+        BITSTRING { s:((String.length s)*8):string; 0:8 }
+      else
+        BITSTRING { 0:8 }
+    )
 
 type digest_alg = 
   | SHA1
@@ -71,6 +82,45 @@ and gw_type_to_string = function
   | NAME -> "NAME"
   | UNKNOWN -> "UNKNOWN"
 
+type gateway =
+  | IPv4 of ipv4
+  | IPv6 of ipv6
+  | NAME of domain_name
+let gateway_to_string = function
+  | IPv4 i -> ipv4_to_string i
+  | IPv6 i -> ipv6_to_string i
+  | NAME n -> domain_name_to_string n
+and gateway_to_bits = function
+  | IPv4 i -> BITSTRING { i:32 }, 32
+  | IPv6 (a,b,c,d) -> BITSTRING { a:32; b:32; c:32; d:32 }, 128
+  | NAME n -> BITSTRING { (mn_nocompress n):-1:bitstring }, -1
+
+type pubkey_alg = 
+  | RESERVED
+  | RSA
+  | DSS
+  | UNKNOWN
+let int_to_pubkey_alg = function
+  | 0 -> RESERVED
+  | 1 -> RSA
+  | 2 -> DSS
+  | _ -> UNKNOWN
+and pubkey_alg_to_int = function
+  | RESERVED -> 0
+  | RSA -> 1
+  | DSS -> 2
+  | UNKNOWN -> -1
+and string_to_pubkey_alg = function
+  | "RESERVED" -> RESERVED
+  | "RSA" -> RSA
+  | "DSS" -> DSS
+  | _ -> UNKNOWN
+and pubkey_alg_to_string = function
+  | RESERVED -> "RESERVED"
+  | RSA -> "RSA"
+  | DSS -> "DSS"
+  | UNKNOWN -> "UNKNOWN"
+
 type ipseckey_alg = 
   | DSA
   | RSA
@@ -91,17 +141,6 @@ and ipseckey_alg_to_string = function
   | DSA -> "DSA"
   | RSA -> "RSA"
   | UNKNOWN -> "UNKNOWN"
-
-type gateway =
-  | NONE
-  | IPv4 of ipv4
-  | IPv6 of ipv6
-  | NAME of domain_name
-let gateway_to_string = function
-  | NONE -> "<none>"
-  | IPv4 i -> ipv4_to_string i
-  | IPv6 i -> ipv6_to_string i
-  | NAME n -> domain_name_to_string n
 
 type hash_alg = 
   | SHA1
@@ -489,20 +528,27 @@ and string_to_rr_type = function
    holds glue records.
 *)
 type type_bit_map = byte * byte * bytes
-let type_bit_map_to_string tbm = 
-  ""
+let type_bit_map_to_string (tbm:type_bit_map) : string = 
+  "TYPE_BIT_MAP"
+let marshall_tbm (block, bitmapl, bitmap) = 
+  let bl = byte_to_int bitmapl in
+  BITSTRING { (byte_to_int block):8; 
+              bl:8; (bytes_to_string bitmap):(bl*8):string
+            }
 
-type type_bit_maps = type_bit_map array
-let type_bit_maps_to_string tbms = 
-  ""
+type type_bit_maps = type_bit_map list
+let type_bit_maps_to_string (tbms:type_bit_maps) : string = 
+  tbms ||> type_bit_map_to_string |> String.concat "; "
+let marshall_tbms tbms = 
+  tbms ||> marshall_tbm |> Bitstring.concat 
 
 type rr_rdata = [
 | `A of ipv4
 | `AAAA of bytes
 | `AFSDB of int16 * domain_name
 | `CNAME of domain_name
-| `DNSKEY of int16 * dnssec_alg * hexstring
-| `DS of int16 * dnssec_alg * digest_alg * hexstring
+| `DNSKEY of int16 * dnssec_alg * string
+| `DS of int16 * dnssec_alg * digest_alg * string
 | `HINFO of string * string
 | `IPSECKEY of byte * gw_type * ipseckey_alg * gateway * bytes
 | `ISDN of string * string option
@@ -515,7 +561,7 @@ type rr_rdata = [
 | `MX of int16 * domain_name
 | `NS of domain_name
 | `NSEC of domain_name (* uncompressed *) * type_bit_maps
-| `NSEC3 of hash_alg * byte * byte * int16 * byte * bytes * byte * bytes * 
+| `NSEC3 of hash_alg * byte * int16 * byte * bytes * byte * bytes * 
     type_bit_maps
 | `NSEC3PARAM of hash_alg * byte * int16 * byte * bytes
 | `PTR of domain_name
@@ -525,7 +571,7 @@ type rr_rdata = [
 | `RT of int16 * domain_name
 | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | `SRV of int16 * int16 * int16 * domain_name
-| `SSHFP of dnssec_alg * fp_type * bytes
+| `SSHFP of pubkey_alg * fp_type * bytes
 | `TXT of string list
 | `UNKNOWN of int * bytes
 | `UNSPEC of bytes
@@ -537,10 +583,11 @@ let rdata_to_string = function
   | `A ip -> sprintf "A (%s)" (ipv4_to_string ip)
   | `AAAA bs -> sprintf "AAAA (%s)" (bytes_to_string bs)
   | `AFSDB (x, n)
-    -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
+    -> sprintf "AFSDB (%d, %s)" (int16_to_int x) (domain_name_to_string n)
   | `CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
   | `DNSKEY (flags, alg, key) 
-    -> (sprintf "DNSKEY (%x, %s, %s)" flags (dnssec_alg_to_string alg) 
+    -> (sprintf "DNSKEY (%x, %s, %s)" 
+          (int16_to_int flags) (dnssec_alg_to_string alg) 
           (Cryptokit.(transform_string (Base64.encode_compact ()) key))
     )
   | `HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
@@ -556,7 +603,7 @@ let rdata_to_string = function
     )
   | `MR n -> sprintf "MR (%s)" (domain_name_to_string n)
   | `MX (pref, name)
-    -> sprintf "MX (%d, %s)" pref (domain_name_to_string name)
+    -> sprintf "MX (%d, %s)" (int16_to_int pref) (domain_name_to_string name)
   | `NS n -> sprintf "NS (%s)" (domain_name_to_string n)
   | `PTR n -> sprintf "PTR (%s)" (domain_name_to_string n)
   | `RP (mn, nn)
@@ -564,13 +611,16 @@ let rdata_to_string = function
           (domain_name_to_string mn) (domain_name_to_string nn)
     )
   | `RT (x, n) 
-    -> sprintf "RT (%d, %s)" x (domain_name_to_string n)
+    -> sprintf "RT (%d, %s)" (int16_to_int x) (domain_name_to_string n)
   | `SOA (mn, rn, serial, refresh, retry, expire, minimum)
     -> (sprintf "SOA (%s,%s, %ld,%ld,%ld,%ld,%ld)"
           (domain_name_to_string mn) (domain_name_to_string rn) 
-          serial refresh retry expire minimum)
+          serial refresh retry expire minimum
+    )
   | `SRV (x, y, z, n) 
-    -> (sprintf "SRV (%d,%d,%d, %s)" x y z (domain_name_to_string n)
+    -> (sprintf "SRV (%d,%d,%d, %s)"
+          (int16_to_int x) (int16_to_int y) (int16_to_int z) 
+          (domain_name_to_string n)
     )
   | `TXT sl -> sprintf "TXT (%s)" (join "" sl)
   | `UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (bytes_to_string bs)
@@ -579,31 +629,39 @@ let rdata_to_string = function
   | `X25 s -> sprintf "X25 (%s)" s
 
   | `DS (keytag, alg, digest_t, digest) 
-    -> (sprintf "DS (%d,%s,%s, '%s')" keytag
+    -> (sprintf "DS (%d,%s,%s, '%s')" (int16_to_int keytag)
           (dnssec_alg_to_string alg) (digest_alg_to_string digest_t) digest
     )
   | `IPSECKEY (precedence, gw_type, alg, gw, pubkey)
-    -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" precedence 
+    -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" (byte_to_int precedence) 
           (gw_type_to_string gw_type) (ipseckey_alg_to_string alg)
-          (gateway_to_string gw) pubkey
+          (gateway_to_string gw) (bytes_to_string pubkey)
     )
   | `NSEC (next_name, tbms) 
-    -> sprintf "NSEC (%s, %s)" next_name (type_bit_maps_to_string tbms)
-  | `NSEC3 (n, tbms)
-    -> (sprintf "NSEC3(%s, %s)"
-          (domain_name_to_string n) (type_bit_maps_to_string tbms)
+    -> (sprintf "NSEC (%s, %s)" 
+          (domain_name_to_string next_name) (type_bit_maps_to_string tbms)
+    )
+  | `NSEC3 (halg, flgs, iterations, salt_l, salt, hash_l, next_name, tbms)
+    -> (sprintf "NSEC3 (%s, %x, %d, %d,'%s', %d,'%s', %s)"
+          (hash_alg_to_string halg) (byte_to_int flgs)
+          (int16_to_int iterations) 
+          (byte_to_int salt_l) (bytes_to_string salt)
+          (byte_to_int hash_l) (bytes_to_string next_name)
+          (type_bit_maps_to_string tbms)
     )
   | `NSEC3PARAM (halg, flgs, iterations, salt_l, salt)
     -> (sprintf "NSEC3PARAM (%s,%x, %d, %d, '%s')"
-          (hash_alg_to_string halg) flgs iterations salt_l salt
+          (hash_alg_to_string halg) (byte_to_int flgs)
+          (int16_to_int iterations) (byte_to_int salt_l) (bytes_to_string salt)
     )
   | `RRSIG (tc, alg, nlbls, ttl, expiration, inception, keytag, name, sign)
     -> (sprintf "RRSIG (%s,%s,%d, %ld, %ld,%ld, %d, %s, %s)"
-          tc (dnssec_alg_to_string alg) nlbls ttl expiration inception keytag 
-          (domain_name_to_string name) sign
+          (rr_type_to_string tc) (dnssec_alg_to_string alg) 
+          (byte_to_int nlbls) ttl expiration inception (int16_to_int keytag)
+          (domain_name_to_string name) (bytes_to_string sign)
     )
   | `SSHFP (alg, fpt, fp)
-    -> (sprintf "SSHFP (%s,%s, '%s')" (dnssec_alg_to_string alg) 
+    -> (sprintf "SSHFP (%s,%s, '%s')" (pubkey_alg_to_string alg) 
           (fp_type_to_string fpt) (bytes_to_string fp)
     )
 
@@ -623,7 +681,7 @@ let parse_rdata names base t bits =
     | `DNSKEY -> (
       bitmatch bits with 
         | {flags:16; 3:8; alg:8; key:-1:string } -> 
-            `DNSKEY (flags, (int_to_dnssec_alg alg), key)
+            `DNSKEY (int16 flags, (int_to_dnssec_alg alg), key)
     )
     | `SOA -> let mn, bits = parse_name names base bits in
               let rn, bits = parse_name names base bits in 
@@ -921,7 +979,7 @@ type dns = {
 
 let dns_to_string d = 
   sprintf "%04x %s <qs:%s> <an:%s> <au:%s> <ad:%s>"
-    d.id (d.detail |> parse_detail |> detail_to_string)
+    (int16_to_int d.id) (d.detail |> parse_detail |> detail_to_string)
     (d.questions ||> question_to_string |> join ",")
     (d.answers ||> rr_to_string |> join ",")
     (d.authorities ||> rr_to_string |> join ",")
@@ -964,11 +1022,6 @@ let marshal_dns dns =
   
   (** Map name (list of labels) to an offset. *)
   let (names:(string list,int) Hashtbl.t) = Hashtbl.create 8 in
-
-  (** Encode string as label by prepending length. *)
-  let charstr s =
-    sprintf "%c%s" (s |> String.length |> char_of_int) s 
-  in
 
   (** Marshall names, with compression. *)
   let mn_compress (labels:domain_name) = 
@@ -1027,18 +1080,6 @@ let marshal_dns dns =
       BITSTRING { s:((String.length s)*8):string })
   in
 
-  let mn_nocompress (labels:domain_name) =
-    let bits = ref [] in
-    labels |> List.iter (fun s -> bits := (charstr s) :: !bits);
-    !bits |> List.rev |> String.concat ""
-           |> (fun s -> 
-             if String.length s > 0 then
-               BITSTRING { s:((String.length s)*8):string; 0:8 }
-             else
-               BITSTRING { 0:8 }
-           )
-  in
-  
   let mn ?(off = 0) ls = 
     pos := !pos + off;
     let n = mn_compress ls in
@@ -1049,16 +1090,14 @@ let marshal_dns dns =
   let mr r = 
     let mrdata = function
       | `A ip -> (BITSTRING { ip:32 }, `A)
-        
+          
       | `AAAA _ -> failwith (sprintf "AAAA")
-        
-      | `AFSDB (t, n) 
-        -> BITSTRING { t:16; (mn ~off:2 n):-1:bitstring }, `AFSDB
+          
+      | `AFSDB (t, n)
+        -> (BITSTRING { (int16_to_int t):16; (mn ~off:2 n):-1:bitstring }, 
+            `AFSDB
+        )
       | `CNAME n -> BITSTRING { (mn n):-1:bitstring }, `CNAME
-      | `DNSKEY (flags, alg, key)
-         -> 
-          let bkey = Cryptokit.(transform_string (Base64.encode_compact ()) key) in
-          (BITSTRING { flags:16; 3:8; (dnssec_alg_to_int alg):8; key:-1:string }, `DNSKEY)
       | `HINFO (cpu, os) -> BITSTRING { cpu:-1:string; os:-1:string }, `HINFO
       | `ISDN (a, sa) -> (
         (match sa with 
@@ -1078,7 +1117,7 @@ let marshal_dns dns =
         )
       | `MR n -> BITSTRING { (mn n):-1:bitstring }, `MR
       | `MX (pref, exchange)
-        -> BITSTRING { pref:16; (mn ~off:2 exchange):-1:bitstring }, `MX
+        -> BITSTRING { (int16_to_int pref):16; (mn ~off:2 exchange):-1:bitstring }, `MX
       | `NS n -> BITSTRING { (mn n):-1:bitstring }, `NS
       | `PTR n -> BITSTRING { (mn n):-1:bitstring }, `PTR
       | `RP (mbox, txt) 
@@ -1086,7 +1125,7 @@ let marshal_dns dns =
             let txt = mn ~off:(bsl mbox) txt in
             BITSTRING { mbox:-1:bitstring; txt:-1:bitstring }, `RP
         )
-      | `RT (p, ih) -> BITSTRING { p:16; (mn ~off:2 ih):-1:bitstring }, `RT
+      | `RT (p, ih) -> BITSTRING { (int16_to_int p):16; (mn ~off:2 ih):-1:bitstring }, `RT
       | `SOA (mname, rname, serial, refresh, retry, expire, minimum) 
         -> (let mname = mn mname in 
             let rname = mn ~off:(bsl mname) rname in 
@@ -1096,16 +1135,74 @@ let marshal_dns dns =
                         refresh:32; retry:32; expire:32; minimum:32 }, `SOA
         )
       | `SRV (prio, weight, port, target)
-        -> BITSTRING { prio:16; weight:16; port:16;
-                       (mn ~off:6 target):-1:bitstring }, `SRV
+        -> BITSTRING { (int16_to_int prio):16; (int16_to_int weight):16; 
+                       (int16_to_int port):16; (mn ~off:6 target):-1:bitstring
+                     }, `SRV
       | `TXT sl -> BITSTRING { (sl ||> charstr |> join ""):-1:string }, `TXT
         
       | `UNKNOWN _ -> failwith (sprintf "UNKNOWN")
       | `UNSPEC _ -> failwith (sprintf "UNSPEC")
-        
+          
       | `WKS (a, p, bm) 
         -> BITSTRING { a:32; (byte_to_int p):8; bm:-1:string }, `WKS
       | `X25 s -> BITSTRING { (charstr s):-1:string }, `X25
+        
+      | `DNSKEY (flags, alg, key)
+        -> let bkey = 
+             Cryptokit.(transform_string (Base64.encode_compact ()) key) 
+           in
+           (BITSTRING { (int16_to_int flags):16; 3:8; 
+                        (dnssec_alg_to_int alg):8; bkey:-1:string }, `DNSKEY)
+      | `DS (keytag, alg, digest_t, digest) 
+        -> BITSTRING { (int16_to_int keytag):16; (dnssec_alg_to_int alg):8;
+                       (digest_alg_to_int digest_t):8; digest:-1:string
+                     }, `DS
+
+      | `IPSECKEY (precedence, gw_type, alg, gw, pubkey)
+        -> (let gw, gw_l = gateway_to_bits gw in            
+            BITSTRING { (byte_to_int precedence):8; 
+                        (gw_type_to_int gw_type):8;
+                        (ipseckey_alg_to_int alg):8; gw:gw_l:bitstring;
+                        (bytes_to_string pubkey):-1:string
+                      }, `IPSECKEY
+        )
+
+      | `NSEC (next_name, tbms) 
+        -> BITSTRING { (mn_nocompress next_name):-1:bitstring;
+                       (marshall_tbms tbms):-1:bitstring
+                     }, `NSEC
+
+      | `NSEC3 (halg, flgs, iterations, salt_l, salt, hash_l, namehash, tbms)
+        -> BITSTRING { (hash_alg_to_int halg):8; (byte_to_int flgs):8; 
+                       (int16_to_int iterations):16; 
+                       (byte_to_int salt_l):8; 
+                       (bytes_to_string salt):-1:string; 
+                       (byte_to_int hash_l):8; 
+                       (bytes_to_string namehash):-1:string;
+                       (marshall_tbms tbms):-1:bitstring
+                     }, `NSEC3
+
+      | `NSEC3PARAM (halg, flgs, iterations, salt_l, salt)
+        -> BITSTRING { (hash_alg_to_int halg):8; (byte_to_int flgs):8; 
+                       (int16_to_int iterations):16; 
+                       (byte_to_int salt_l):8; 
+                       (bytes_to_string salt):-1:string
+                     }, `NSEC3PARAM
+
+      | `RRSIG (tc, alg, nlbls, ttl, expiration, inception, keytag, name, sgn)
+        -> BITSTRING { (rr_type_to_int tc):16; (dnssec_alg_to_int alg):8;
+                       (byte_to_int nlbls):8; ttl:32; expiration:32; inception:32;
+                       (int16_to_int keytag):16;
+                       (mn_nocompress name):-1:bitstring;
+                       (bytes_to_string sgn):-1:string
+                     }, `RRSIG
+
+      | `SSHFP (alg, fpt, fp)
+        -> BITSTRING { (pubkey_alg_to_int alg):8;
+                       (fp_type_to_int fpt):8;
+                       (bytes_to_string fp):-1:string
+                     }, `SSHFP
+          
     in
 
     let name = mn r.rr_name in
@@ -1136,7 +1233,7 @@ let marshal_dns dns =
   let header = 
     pos := !pos + 2+2+2+2+2+2;
     (BITSTRING {
-      dns.id:16; 
+      (int16_to_int dns.id):16; 
       dns.detail:16:bitstring; 
       (List.length dns.questions):16;
       (List.length dns.answers):16;
