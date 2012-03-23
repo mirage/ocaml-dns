@@ -78,3 +78,4 @@ types	IN 	A	127.0.0.1
 	IN	AAAA	0:0:0:0:0:FFFF:129.144.52.38
 ;; Dig's UNSPEC output is a wierd checksummed thing :(
 	IN	UNSPEC 	\# 7 55 6E73 706563 21
+        IN      DNSKEY  256 3 7 "AwEAAcAVwjuzHUCfFs7/U1BynkB/kGS37d3bXf8rBdeJul1F9I6nRD4mGyNNZOmgUis1QHxIoA5/xnI5Otsd0B3OcToie4UjFynnuibEcreT+GeakxskTbSbPyW4jdxshHeQ562Y1o0DZKOhHpDoD2q3uCJieBWABG5z7hm/TxSPBYN7"
