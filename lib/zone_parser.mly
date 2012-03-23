@@ -42,6 +42,7 @@ let parse_uint8 s =
   d
   with Failure _ -> raise Parsing.Parse_error
 
+let parse_byte s = Wire.byte (parse_uint8 s)
 
 let parse_uint16 s = 
   try 
@@ -87,7 +88,7 @@ let parse_wks proto services =
         try raise Not_found
 	with Not_found -> 
 	  parse_error ("unknown service \"" ^ s ^ "\" for protocol "
-		       ^ (string_of_int proto));
+		       ^ (string_of_int (Wire.byte_to_int proto)));
 	  raise Parsing.Parse_error
   in let addport bitmap n = 
     let byte = n/8 in 
@@ -354,7 +355,7 @@ proto: charstring
      { try (getprotobyname $1).p_proto
 */
      { try raise Not_found
-       with Not_found -> try parse_uint8 $1
+       with Not_found -> try parse_byte $1
        with Parsing.Parse_error -> 
 	 parse_error ($1 ^ " is not a known IP protocol");
 	 raise Parsing.Parse_error }
