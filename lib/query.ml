@@ -194,15 +194,14 @@ let answer_query qname qtype trie =
       | UNSPEC l 
         -> List.iter (fun s -> addrr (`UNSPEC (bytes s.H.node))) l
 
-      | DNSKEY l ->
-	      List.iter (fun  (fl, t, k) -> 
-            addrr (`DNSKEY (fl, (Packet.int_to_dnssec_alg t), k.H.node))) l
+      | DNSKEY l
+        -> List.iter (fun  (fl, t, k) -> 
+          addrr (`DNSKEY ((int16 fl), 
+                          (Packet.int_to_dnssec_alg t), k.H.node))) l
 
       | Unknown (t,l)
-        -> 
-          let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
-          addrr (`UNKNOWN (t, bytes s)
-          )
+        -> let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
+           addrr (`UNKNOWN (t, bytes s))
   in
   
   (* Get an RRSet, which may not exist *)
@@ -268,13 +267,13 @@ let answer_query qname qtype trie =
 
       | `NoErrorNSEC (zonehead, nsec) ->
 	      add_negative_soa_rrset zonehead;
-	    (* add_opt_rrset nsec `NSEC `Authority; *)
+	      (* add_opt_rrset nsec `NSEC `Authority; *)
 	      `NoError
 	        
       | `Delegated (sec, cutpoint) ->   (* Name is delegated. *)
 	      add_req_rrset cutpoint `NS `Authority; 
 	      aa_flag := false; 
-	    (* DNSSEC child zone keys *)
+	      (* DNSSEC child zone keys *)
 	      `NoError
 
       | `Wildcard (source, zonehead) -> (* Name is matched by a wildcard. *)
@@ -285,7 +284,7 @@ let answer_query qname qtype trie =
       | `WildcardNSEC (source, zonehead, nsec) -> 
 	      add_answer_rrsets qname source.rrsets qtype; 
 	      add_opt_rrset zonehead `NS `Authority;
-	    (* add_opt_rrset nsec `NSEC `Authority; *)
+	      (* add_opt_rrset nsec `NSEC `Authority; *)
 	      `NoError
 
       | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
@@ -294,8 +293,8 @@ let answer_query qname qtype trie =
 
       | `NXDomainNSEC (zonehead, nsec1, nsec2) ->
 	      add_negative_soa_rrset zonehead;
-	    (* add_opt_rrset nsec1 `NSEC `Authority; *)
-	    (* add_opt_rrset nsec2 `NSEC `Authority; *)
+	      (* add_opt_rrset nsec1 `NSEC `Authority; *)
+	      (* add_opt_rrset nsec2 `NSEC `Authority; *)
 	      `NXDomain
   in
   
