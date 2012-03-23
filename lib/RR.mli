@@ -73,6 +73,7 @@ and rdata =
   | Unknown of int * cstr list
   | WKS of (int32 * byte * cstr) list
   | X25 of cstr list
+  | DNSKEY of (int * int * cstr) list
 
 (** Extract relevant RRSets given a query type, a list of RRSets and a flag to
     say whether to return CNAMEs too. 

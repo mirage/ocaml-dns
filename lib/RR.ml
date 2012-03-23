@@ -63,6 +63,7 @@ and rdata =
   | Unknown of int * cstr list
   | WKS of (int32 * byte * cstr) list 
   | X25 of cstr list
+  | DNSKEY of (int * int * cstr) list
 
 (* XXX add other RR types *)
 (* wire-domain type for non-rfc1035 rdata? *)
@@ -93,6 +94,7 @@ let get_rrsets qtype sets cnames_ok =
       | (`RT, RT _) -> true
       | (`SRV, SRV _) -> true
       | (`AAAA, AAAA _) -> true
+      | (`DNSKEY, DNSKEY _) -> true
       | (`UNSPEC, UNSPEC _) -> true
       | (`Unknown (t1, _), Unknown (t2, _)) -> (t1 = t2)
       | (`MAILB, MB _) -> true
@@ -176,6 +178,9 @@ let merge_rrset new_rrset rrsets =
           | (UNSPEC l1, UNSPEC l2) ->
               (rrset.ttl, List.rev_append rest
                 ({ ttl = rrset.ttl; rdata = UNSPEC (mfn l1 l2) } :: rrsets_done))
+          | (DNSKEY l1, DNSKEY l2) ->
+              (rrset.ttl, List.rev_append rest
+                ({ ttl = rrset.ttl; rdata = DNSKEY (mfn l1 l2) } :: rrsets_done))          
           | (Unknown (t1, l1), Unknown (t2, l2)) ->
               if t1 = t2 then 
                 (rrset.ttl, List.rev_append rest
