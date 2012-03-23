@@ -65,6 +65,8 @@ val add_aaaa_rr : string -> int32 -> domain_name -> db -> unit
 val add_srv_rr :
   int -> int -> int -> domain_name -> int32 -> domain_name -> db -> unit
 val add_unspec_rr : string -> int32 -> domain_name -> db -> unit
+val add_txt_rr : string list -> int32 -> domain_name -> db -> unit
+val add_dnskey_rr : int -> int -> string -> int32 -> domain_name -> db -> unit
 
 
 (** Raised if we already had an RRSet for this name and type, but with a

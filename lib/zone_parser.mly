@@ -303,7 +303,8 @@ rr:
      /* RFC 2782 */
  | TYPE_SRV s int16 s int16 s int16 s domain { add_srv_rr $3 $5 $7 $9 }
      /* RFC 3596 */
- | TYPE_AAAA s ipv6 { add_aaaa_rr $3 } 
+ | TYPE_AAAA s ipv6 { add_aaaa_rr $3 }
+ | TYPE_DNSKEY s int16 s int16 s int16 s charstring {add_dnskey_rr $3 $7 $9 }
      /* Never properly defined: just testing the generic rdata format */
  | TYPE_UNSPEC s generic_rdata { add_unspec_rr $3 }
 

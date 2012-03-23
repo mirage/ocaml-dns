@@ -183,7 +183,15 @@ let add_srv_rr pri weight port target ttl owner db =
 let add_unspec_rr str ttl owner db =
   let s = hashcons_charstring str in 
   add_rrset { ttl; rdata = UNSPEC [ s ] } owner db
-  
+ 
+let add_dnskey_rr flags typ key ttl owner db =
+  let flags = int16 flags in
+  let typ = int16 typ in
+  let tmp = Cryptokit.transform_string  (Cryptokit.Base64.decode ())  key in
+  let dnskey = hashcons_charstring tmp in 
+  add_rrset { ttl; 
+	      rdata = DNSKEY [ (flags, typ, dnskey) ] } owner db
+
 
 (* State variables for the parser & lexer *)
 type parserstate = {
