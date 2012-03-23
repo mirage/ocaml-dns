@@ -194,6 +194,10 @@ let answer_query qname qtype trie =
       | UNSPEC l 
         -> List.iter (fun s -> addrr (`UNSPEC (bytes s.H.node))) l
 
+      | DNSKEY l ->
+	      List.iter (fun  (fl, t, k) -> 
+            addrr (`DNSKEY (fl, (Packet.int_to_dnssec_alg t), k.H.node))) l
+
       | Unknown (t,l)
         -> 
           let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
