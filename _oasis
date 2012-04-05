@@ -26,7 +26,7 @@ Library server
 
 Library resolver
   Path: resolver
-  Findlibname: server
+  Findlibname: resolver
   Modules: Dns_resolver
   BuildDepends: 
     lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns
