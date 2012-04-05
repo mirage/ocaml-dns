@@ -1152,7 +1152,7 @@ let marshal_dns dns =
              Cryptokit.(transform_string (Base64.encode_compact ()) key) 
            in
            (BITSTRING { (int16_to_int flags):16; 3:8; 
-                        (dnssec_alg_to_int alg):8; bkey:-1:string }, `DNSKEY)
+                        (dnssec_alg_to_int alg):8; key:-1:string }, `DNSKEY)
       | `DS (keytag, alg, digest_t, digest) 
         -> BITSTRING { (int16_to_int keytag):16; (dnssec_alg_to_int alg):8;
                        (digest_alg_to_int digest_t):8; digest:-1:string

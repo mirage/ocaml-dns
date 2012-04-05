@@ -74,6 +74,7 @@ let rxbuf fd len =
 
 let resolve
     ?(server:string = ns)
+    ?(dns_port:int = port)
     ?(q_class:DP.q_class = `IN)
     ?(q_type:DP.q_type = `ANY) 
     (q_name:domain_name) 
@@ -84,7 +85,7 @@ let resolve
       let q = build_query q_class q_type q_name in
       log_info (sprintf "query: %s\n%!" (DP.dns_to_string q));
       let q = q |> DP.marshal_dns |> Bitstring.string_of_bitstring in
-      let dst = sockaddr server port in 
+      let dst = sockaddr server dns_port in 
       txbuf ofd dst q
    with 
      | exn -> (log_warn (sprintf "%s\n%!" (Printexc.to_string exn)); fail exn)
