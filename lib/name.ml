@@ -24,11 +24,11 @@ type label =
   | P of int * int (* pointer *)
   | Z of int (* zero; terminator *)
 
-let parse_label base bits = 
+let parse_label check_len base bits = 
   let cur = offset_of_bitstring bits in
   let offset = (cur-base)/8 in
   bitmatch bits with
-    | { length: 8: check(length != 0 && length < 64); 
+    | { length: 8: check((not check_len) || (length != 0 && length < 64) ); 
         name: (length*8): string; bits: -1: bitstring }
       -> (L (name, offset), bits)
     
@@ -37,6 +37,8 @@ let parse_label base bits =
     
     | { 0: 8; bits: -1: bitstring } 
       -> (Z offset, bits)
+    | { _ } ->
+        (Z offset, bits)
 
 type domain_name = string list
 let domain_name (sl:string list) : domain_name = sl
@@ -48,10 +50,10 @@ let string_to_domain_name (s:string) : domain_name =
 let for_reverse ip = 
   (".arpa.in-addr." ^ ipv4_to_string ip) |> string_to_domain_name |> List.rev 
                                           
-let parse_name names base bits = 
+let parse_name ?(check_len=true) names base bits = 
   (* what. a. mess. *)
   let rec aux offsets name bits = 
-    match parse_label base bits with
+    match parse_label check_len base bits with
       | (L (n, o) as label, data) 
         -> Hashtbl.add names o label;
           offsets |> List.iter (fun off -> (Hashtbl.add names off label));
