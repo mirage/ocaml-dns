@@ -37,5 +37,5 @@ val gethostbyaddr : ipv4 -> string list Lwt.t
     @return the full a {! dns } structure.
 *)
 val resolve : 
-  ?server:string -> ?q_class:q_class -> ?q_type:q_type -> domain_name
-  -> dns Lwt.t
+  ?server:string -> ?dns_port:int -> ?q_class:q_class -> ?q_type:q_type 
+  -> domain_name -> dns Lwt.t
