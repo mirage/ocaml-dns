@@ -1,5 +1,5 @@
 .PHONY: all clean install build
-all: build doc
+all: build 
 
 NAME=dns
 J=4
