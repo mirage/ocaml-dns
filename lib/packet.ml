@@ -709,6 +709,14 @@ let parse_rdata names base t bits =
           -> `MX ((int16 preference, 
                    bits |> parse_name names base |> stop))
     )
+    | `SRV -> (
+        bitmatch bits with 
+          | {prio:16;weight:16;port:16; bits:-1:bitstring} ->
+              let name, _ = parse_name names base bits in
+           `SRV((int16 prio), (int16 weight), (int16 port), 
+                name)
+(*              (mn ~off:6 target):-1:bitstring *)
+      )
     | `TXT -> let names, _ = 
                 let rec aux ns bits =
                   match (Bitstring.bitstring_length bits) with
