@@ -722,7 +722,7 @@ let parse_rdata names base t bits =
                   match (Bitstring.bitstring_length bits) with
                     | 0 -> 
                         let ret = List.map (fun a -> String.concat "" a) ns in 
-                        (ret, bits)
+                        ((List.hd ns), bits)
                     | _ ->
                         let n, bits = parse_name ~check_len:false 
                                         names base bits in
