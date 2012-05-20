@@ -709,10 +709,24 @@ let parse_rdata names base t bits =
           -> `MX ((int16 preference, 
                    bits |> parse_name names base |> stop))
     )
+    | `SRV -> (
+        bitmatch bits with 
+          | {prio:16;weight:16;port:16; bits:-1:bitstring} ->
+              let name, _ = parse_name names base bits in
+           `SRV((int16 prio), (int16 weight), (int16 port), 
+                name)
+(*              (mn ~off:6 target):-1:bitstring *)
+      )
     | `TXT -> let names, _ = 
-                let rec aux ns bits = 
-                  let n, bits = parse_name names base bits in
-                  aux (n :: ns) bits
+                let rec aux ns bits =
+                  match (Bitstring.bitstring_length bits) with
+                    | 0 -> 
+                        let ret = List.map (fun a -> String.concat "" a) ns in 
+                        ((List.hd ns), bits)
+                    | _ ->
+                        let n, bits = parse_name ~check_len:false 
+                                        names base bits in
+                          aux (n :: ns) bits
                 in
                 aux [] bits
               in
@@ -761,7 +775,7 @@ let rr_to_string rr =
 let parse_rr names base bits =
   let name, bits = parse_name names base bits in
   bitmatch bits with
-    | { t: 16; c: 16; ttl: 32; 
+    | { t: 16; _:1; c: 15; ttl: 32; 
         rdlen: 16; rdata: (rdlen*8): bitstring;
         data: -1: bitstring } 
       -> let rdata = parse_rdata names base (int_to_rr_type t) rdata in
