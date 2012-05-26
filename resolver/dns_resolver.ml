@@ -109,9 +109,11 @@ let resolve
   );
 *)
 
-let gethostbyname name = 
+let gethostbyname ?(server:string = ns) ?(dns_port:int = port)
+                                      name = 
   let domain = string_to_domain_name name in
-  lwt r = resolve ~q_class:DP.(`IN) ~q_type:DP.(`A) domain in 
+  lwt r = resolve ~server:server ~dns_port:dns_port ~q_class:DP.(`IN) 
+            ~q_type:DP.(`A) domain in 
   return (DP.(r.answers ||> (fun x -> match x.rr_rdata with 
     |`A ip -> Some ip
     | _ -> None
