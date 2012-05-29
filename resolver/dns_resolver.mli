@@ -23,7 +23,7 @@ open Dns.Packet
 
     @return the corresponding {! ipv4 } addresses.
 *)
-val gethostbyname : string -> ipv4 list Lwt.t
+val gethostbyname : ?server:string -> ?dns_port:int ->string -> ipv4 list Lwt.t
 
 (** Reverse lookup an {! ipv4 } address. 
 
