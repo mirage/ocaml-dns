@@ -1,10 +1,11 @@
-OASISFormat: 0.2
+OASISFormat: 0.3
+OCamlVersion: >= 3.12
 Name:        dns
 Version:     0.9-dev
-Synopsis:    DNS protocol library for Lwt
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos
 License:     LGPL-2.0 with OCaml linking exception
-Plugins:     META (0.2)
+Synopsis:    DNS protocol library for Lwt
+Plugins:     META (0.3)
 BuildTools:  ocamlbuild
 
 Library dns
@@ -14,14 +15,15 @@ Library dns
   Modules: 
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, 
     Zone, Zone_lexer, Zone_parser
-  BuildDepends:	bitstring, bitstring.syntax, re, re.str, uri, cryptokit
+  BuildDepends:	cstruct, cstruct.syntax, re, re.str, uri, cryptokit,
+    bitstring, bitstring.syntax
 
 Library server
   Path: server
   Findlibname: server
   Modules: Dns_server
   BuildDepends: 
-    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns, cryptokit
+    lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, uri, dns, cryptokit
   FindlibParent: dns
 
 Library resolver
@@ -29,7 +31,7 @@ Library resolver
   Findlibname: resolver
   Modules: Dns_resolver
   BuildDepends: 
-    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, uri, dns
+    lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, uri, dns
   FindlibParent: dns
 
 Document dns
@@ -39,10 +41,6 @@ Document dns
   XOCamlbuildPath:      lib  
   XOCamlbuildModules:     
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, Zone
-
-Flag tests
-  Description:        Build and run tests
-  Default:            true
 
 Executable lwt_server
   Path:               lib_test
