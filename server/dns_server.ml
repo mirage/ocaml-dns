@@ -76,7 +76,7 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
               | None -> return ()
               | Some buf -> 
                   (* TODO transmit queue, rather than ignoring result here *)
-                  let _ = Lwt_bytes.sendto fd buf 0 (Lwt_bytes.length buf) [] dst in
+                  let _ = Lwt_bytes.(sendto fd buf 0 (length buf) [] dst) in
                   return ()
         end
       )
