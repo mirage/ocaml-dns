@@ -107,7 +107,7 @@ val rdata_to_string : rr_rdata -> string
 (** Parse an RDATA element from a packet, given the set of already encountered
     names, a starting index, and the type of the RDATA. *)
 val parse_rdata : 
-  (int, label) Hashtbl.t -> int -> rr_type -> Bitstring.t-> rr_rdata
+  (int, label) Hashtbl.t -> int -> rr_type -> Cstruct.buf-> rr_rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
 
@@ -127,7 +127,7 @@ type rr = {
 }
 val rr_to_string : rr -> string
 val parse_rr :
-  (int, label) Hashtbl.t -> int -> Bitstring.t -> rr * Bitstring.t
+  (int, label) Hashtbl.t -> int -> Cstruct.buf -> rr * Cstruct.buf
 
 (** A question type, with the usual conversion functions. *)
 
@@ -154,7 +154,7 @@ type question = {
 }
 val question_to_string : question -> string
 val parse_question :
-  (int, label) Hashtbl.t -> int -> Bitstring.t -> question * Bitstring.t
+  (int, label) Hashtbl.t -> int -> Cstruct.buf -> question * Cstruct.buf
 
 (** The [qr] field from the DNS header {! detail}. *)
 
@@ -194,8 +194,8 @@ type detail = {
   rcode: rcode;
 }
 val detail_to_string : detail -> string
-val parse_detail : Bitstring.t -> detail
-val build_detail : detail -> Bitstring.t
+val parse_detail : Cstruct.buf -> detail
+val build_detail : detail -> Cstruct.buf
 
 (** And finally, the DNS packet itself, with conversion functions. *)
 

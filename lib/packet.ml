@@ -35,52 +35,16 @@ let mn_nocompress (labels:domain_name) =
         BITSTRING { 0:8 }
     )
 
-type digest_alg = 
-  | SHA1
-  | UNKNOWN
-let int_to_digest_alg = function
-  | 1 -> SHA1
-  | _ -> UNKNOWN
-and digest_alg_to_int = function
-  | SHA1    -> 1
-  | UNKNOWN -> -1
-and string_to_digest_alg = function
-  | "SHA1"    -> SHA1
-  | _ -> UNKNOWN
-and digest_alg_to_string = function
-  | SHA1    -> "SHA1"
-  | UNKNOWN -> "UNKNOWN"
+cenum digest_alg {
+  SHA1 = 1
+} as uint8_t
 
-type gw_type = 
-  | NONE
-  | IPv4
-  | IPv6
-  | NAME
-  | UNKNOWN
-let int_to_gw_type = function
-  | 0 -> NONE
-  | 1 -> IPv4
-  | 2 -> IPv6
-  | 3 -> NAME
-  | _ -> UNKNOWN
-and gw_type_to_int = function
-  | NONE -> 0
-  | IPv4 -> 1
-  | IPv6 -> 2
-  | NAME -> 3
-  | UNKNOWN -> -1
-and string_to_gw_type = function
-  | "NONE" -> NONE
-  | "IPv4" -> IPv4
-  | "IPv6" -> IPv6
-  | "NAME" -> NAME
-  | _ -> UNKNOWN
-and gw_type_to_string = function
-  | NONE -> "NONE"
-  | IPv4 -> "IPv4"
-  | IPv6 -> "IPv6"
-  | NAME -> "NAME"
-  | UNKNOWN -> "UNKNOWN"
+cenum gateway_tc {
+  NONE  = 0;
+  IPv4 = 1;
+  IPv6 = 2;
+  NAME = 3
+} as uint8_t
 
 type gateway =
   | IPv4 of ipv4
@@ -90,396 +54,101 @@ let gateway_to_string = function
   | IPv4 i -> ipv4_to_string i
   | IPv6 i -> ipv6_to_string i
   | NAME n -> domain_name_to_string n
-and gateway_to_bits = function
-  | IPv4 i -> BITSTRING { i:32 }, 32
-  | IPv6 (a,b,c,d) -> BITSTRING { a:32; b:32; c:32; d:32 }, 128
-  | NAME n -> BITSTRING { (mn_nocompress n):-1:bitstring }, -1
+and gateway_to_bits buf = function
+  | IPv4 i -> Cstruct.BE.set_uint32 buf 0 i
+  | IPv6 (hi,lo) -> Cstruct.BE.set_uint64 buf 0 hi; Cstruct.BE.set_uint64 buf 8 lo
+  | NAME n -> () (* BITSTRING { (mn_nocompress n):-1:bitstring }, -1*)
 
-type pubkey_alg = 
-  | RESERVED
-  | RSA
-  | DSS
-  | UNKNOWN
-let int_to_pubkey_alg = function
-  | 0 -> RESERVED
-  | 1 -> RSA
-  | 2 -> DSS
-  | _ -> UNKNOWN
-and pubkey_alg_to_int = function
-  | RESERVED -> 0
-  | RSA -> 1
-  | DSS -> 2
-  | UNKNOWN -> -1
-and string_to_pubkey_alg = function
-  | "RESERVED" -> RESERVED
-  | "RSA" -> RSA
-  | "DSS" -> DSS
-  | _ -> UNKNOWN
-and pubkey_alg_to_string = function
-  | RESERVED -> "RESERVED"
-  | RSA -> "RSA"
-  | DSS -> "DSS"
-  | UNKNOWN -> "UNKNOWN"
+cenum pubkey_alg {
+  RESERVED = 0;
+  RSA = 1;
+  DSS = 2
+} as uint8_t
 
-type ipseckey_alg = 
-  | DSA
-  | RSA
-  | UNKNOWN
-let int_to_ipseckey_alg = function
-  | 1 -> DSA
-  | 2 -> RSA
-  | _ -> UNKNOWN
-and ipseckey_alg_to_int = function
-  | DSA -> 1
-  | RSA -> 2
-  | UNKNOWN -> -1
-and string_to_ipseckey_alg = function
-  | "DSA" -> DSA
-  | "RSA" -> RSA
-  | _ -> UNKNOWN
-and ipseckey_alg_to_string = function
-  | DSA -> "DSA"
-  | RSA -> "RSA"
-  | UNKNOWN -> "UNKNOWN"
+cenum ipseckey_alg {
+  DSA = 1;
+  RSA = 2
+} as uint8_t
 
-type hash_alg = 
-  | SHA1
-  | UNKNOWN
-let int_to_hash_alg = function
-  | 1 -> SHA1
-  | _ -> UNKNOWN
-and hash_alg_to_int = function
-  | SHA1    -> 1
-  | UNKNOWN -> -1
-and string_to_hash_alg = function
-  | "SHA1" -> SHA1
-  | _      -> UNKNOWN
-and hash_alg_to_string = function
-  | SHA1    -> "SHA1"
-  | UNKNOWN -> "UNKNOWN"
+cenum hash_alg {
+  SHA1 = 1
+} as uint8_t
 
-type fp_type =
-  | SHA1
-  | UNKNOWN
-let int_to_fp_type = function
-  | 1 -> SHA1
-  | _ -> UNKNOWN
-and fp_type_to_int = function
-  | SHA1 -> 1
-  | UNKNOWN -> -1
-and string_to_fp_type = function
-  | "SHA1" -> SHA1
-  | _ -> UNKNOWN
-and fp_type_to_string = function
-  | SHA1 -> "SHA1"
-  | UNKNOWN -> "UNKNOWN"
+cenum fp_type {
+  SHA1 = 1
+} as uint8_t
 
-type dnssec_alg = 
-  | RSAMD5 
-  | DH
-  | DSA
-  | ECC
-  | RSASHA1
-  | RSANSEC3
-  | RSASHA256
-  | RSASHA512
-  | INDIRECT
-  | PRIVATEDNS
-  | PRIVATEOID
-  | UNKNOWN
-let int_to_dnssec_alg = function
-  | 1   -> RSAMD5 
-  | 2   -> DH
-  | 3   -> DSA
-  | 4   -> ECC
-  | 5   -> RSASHA1
-  | 7   -> RSANSEC3
-  | 8   -> RSASHA256
-  | 10  -> RSASHA512
-  | 252 -> INDIRECT
-  | 253 -> PRIVATEDNS
-  | 254 -> PRIVATEOID
-  | _   -> UNKNOWN
-and dnssec_alg_to_int = function
-  | RSAMD5     -> 1 
-  | DH         -> 2 
-  | DSA        -> 3
-  | ECC        -> 4
-  | RSASHA1    -> 5
-  | RSANSEC3   -> 7
-  | RSASHA256  -> 8
-  | RSASHA512  -> 10
-  | INDIRECT   -> 252
-  | PRIVATEDNS -> 253
-  | PRIVATEOID -> 254
-  | UNKNOWN    -> -1
-and string_to_dnssec_alg = function
-  | "RSAMD5"     -> RSAMD5
-  | "DH"         -> DH
-  | "DSA"        -> DSA
-  | "ECC"        -> ECC
-  | "RSASHA1"    -> RSASHA1
-  | "RSANSEC3"   -> RSANSEC3
-  | "RSASHA256"  -> RSASHA256
-  | "RSASHA512"  -> RSASHA512
-  | "INDIRECT"   -> INDIRECT
-  | "PRIVATEDNS" -> PRIVATEDNS
-  | "PRIVATEOID" -> PRIVATEOID
-  | _            -> UNKNOWN
-and dnssec_alg_to_string = function
-  | RSAMD5     -> "RSAMD5"  
-  | DH         -> "DH"
-  | DSA        -> "DSA"
-  | ECC        -> "ECC"
-  | RSASHA1    -> "RSASHA1"
-  | RSANSEC3   -> "RSANSEC3"
-  | RSASHA256  -> "RSASHA256"
-  | RSASHA512  -> "RSASHA512"
-  | INDIRECT   -> "INDIRECT"
-  | PRIVATEDNS -> "PRIVATEDNS"
-  | PRIVATEOID -> "PRIVATEOID"
-  | UNKNOWN    -> "UNKNOWN"
+cenum dnssec_alg {
+  RSAMD5     = 1; 
+  DH         = 2; 
+  DSA        = 3;
+  ECC        = 4;
+  RSASHA1    = 5;
+  RSANSEC3   = 7;
+  RSASHA256  = 8;
+  RSASHA512  = 10;
+  INDIRECT   = 252;
+  PRIVATEDNS = 253;
+  PRIVATEOID = 254
+} as uint8_t
 
-type rr_type = [
-| `A | `NS | `MD | `MF | `CNAME | `SOA | `MB | `MG | `MR | `NULL 
-| `WKS | `PTR | `HINFO | `MINFO | `MX | `TXT | `RP | `AFSDB | `X25 
-| `ISDN | `RT | `NSAP | `NSAP_PTR | `SIG | `KEY | `PX | `GPOS | `AAAA 
-| `LOC | `NXT | `EID | `NIMLOC | `SRV | `ATMA | `NAPTR | `KM | `CERT 
-| `A6 | `DNAME | `SINK | `OPT | `APL | `DS | `SSHFP | `IPSECKEY | `RRSIG
-| `NSEC | `DNSKEY | `NSEC3 | `NSEC3PARAM | `SPF | `UINFO | `UID | `GID
-| `UNSPEC
-| `Unknown of int * bytes
-]
-
-let rr_type_to_int = function
-  | `A          -> 1
-  | `NS         -> 2
-  | `MD         -> 3
-  | `MF         -> 4
-  | `CNAME      -> 5
-  | `SOA        -> 6
-  | `MB         -> 7
-  | `MG         -> 8
-  | `MR         -> 9
-  | `NULL       -> 10
-  | `WKS        -> 11
-  | `PTR        -> 12
-  | `HINFO      -> 13
-  | `MINFO      -> 14
-  | `MX         -> 15
-  | `TXT        -> 16
-  | `RP         -> 17
-  | `AFSDB      -> 18
-  | `X25        -> 19
-  | `ISDN       -> 20
-  | `RT         -> 21
-  | `NSAP       -> 22
-  | `NSAP_PTR   -> 23
-  | `SIG        -> 24
-  | `KEY        -> 25
-  | `PX         -> 26
-  | `GPOS       -> 27
-  | `AAAA       -> 28
-  | `LOC        -> 29
-  | `NXT        -> 30
-  | `EID        -> 31
-  | `NIMLOC     -> 32
-  | `SRV        -> 33
-  | `ATMA       -> 34
-  | `NAPTR      -> 35
-  | `KM         -> 36
-  | `CERT       -> 37
-  | `A6         -> 38
-  | `DNAME      -> 39
-  | `SINK       -> 40
-  | `OPT        -> 41
-  | `APL        -> 42
-  | `DS         -> 43
-  | `SSHFP      -> 44
-  | `IPSECKEY   -> 45
-  | `RRSIG      -> 46
-  | `NSEC       -> 47
-  | `DNSKEY     -> 48
-  | `NSEC3      -> 50
-  | `NSEC3PARAM -> 51
-  | `SPF        -> 99
-  | `UINFO      -> 100
-  | `UID        -> 101
-  | `GID        -> 102
-  | `UNSPEC     -> 103   
-  | `Unknown _ -> -1
-and int_to_rr_type = function
-  | 1   -> `A
-  | 2   -> `NS
-  | 3   -> `MD
-  | 4   -> `MF
-  | 5   -> `CNAME
-  | 6   -> `SOA
-  | 7   -> `MB
-  | 8   -> `MG
-  | 9   -> `MR
-  | 10  -> `NULL
-  | 11  -> `WKS
-  | 12  -> `PTR
-  | 13  -> `HINFO
-  | 14  -> `MINFO
-  | 15  -> `MX
-  | 16  -> `TXT
-  | 17  -> `RP
-  | 18  -> `AFSDB 
-  | 19  -> `X25 
-  | 20  -> `ISDN 
-  | 21  -> `RT
-  | 22  -> `NSAP 
-  | 23  -> `NSAP_PTR 
-  | 24  -> `SIG 
-  | 25  -> `KEY
-  | 26  -> `PX 
-  | 27  -> `GPOS 
-  | 28  -> `AAAA 
-  | 29  -> `LOC
-  | 30  -> `NXT 
-  | 31  -> `EID 
-  | 32  -> `NIMLOC 
-  | 33  -> `SRV 
-  | 34  -> `ATMA 
-  | 35  -> `NAPTR 
-  | 36  -> `KM 
-  | 37  -> `CERT 
-  | 38  -> `A6 
-  | 39  -> `DNAME 
-  | 40  -> `SINK 
-  | 41  -> `OPT 
-  | 42  -> `APL 
-  | 43  -> `DS 
-  | 44  -> `SSHFP 
-  | 45  -> `IPSECKEY 
-  | 46  -> `RRSIG 
-  | 47  -> `NSEC 
-  | 48  -> `DNSKEY 
-  | 50  -> `NSEC3
-  | 51  -> `NSEC3PARAM
-  | 99  -> `SPF 
-  | 100 -> `UINFO 
-  | 101 -> `UID 
-  | 102 -> `GID 
-  | 103 -> `UNSPEC
-
-  | _ -> invalid_arg "int_to_rr_type"
-and rr_type_to_string = function
-  | `A          -> "A"
-  | `NS         -> "NS"
-  | `MD         -> "MD"
-  | `MF         -> "MF"
-  | `CNAME      -> "CNAME"
-  | `SOA        -> "SOA"
-  | `MB         -> "MB"
-  | `MG         -> "MG"
-  | `MR         -> "MR"
-  | `NULL       -> "NULL"
-  | `WKS        -> "WKS"
-  | `PTR        -> "PTR"
-  | `HINFO      -> "HINFO"
-  | `MINFO      -> "MINFO"
-  | `MX         -> "MX"
-  | `TXT        -> "TXT"
-  | `RP         -> "RP"
-  | `AFSDB      -> "AFSDB"
-  | `X25        -> "X25"
-  | `ISDN       -> "ISDN"
-  | `RT         -> "RT"
-  | `NSAP       -> "NSAP"
-  | `NSAP_PTR   -> "NSAP_PTR"
-  | `SIG        -> "SIG"
-  | `KEY        -> "KEY"
-  | `PX         -> "PX"
-  | `GPOS       -> "GPOS"
-  | `AAAA       -> "AAAA"
-  | `LOC        -> "LOC"
-  | `NXT        -> "NXT"
-  | `EID        -> "EID"
-  | `NIMLOC     -> "NIMLOC"
-  | `SRV        -> "SRV"
-  | `ATMA       -> "ATMA"
-  | `NAPTR      -> "NAPTR"
-  | `KM         -> "KM"
-  | `CERT       -> "CERT"
-  | `A6         -> "A6"
-  | `DNAME      -> "DNAME"
-  | `SINK       -> "SINK"
-  | `OPT        -> "OPT"
-  | `APL        -> "APL"
-  | `DS         -> "DS"
-  | `SSHFP      -> "SSHFP"
-  | `IPSECKEY   -> "IPSECKEY"
-  | `RRSIG      -> "RRSIG"
-  | `NSEC       -> "NSEC"
-  | `DNSKEY     -> "DNSKEY"
-  | `NSEC3      -> "NSEC3"
-  | `NSEC3PARAM -> "NSEC3PARAM"
-  | `SPF        -> "SPF"
-  | `UINFO      -> "UINFO"
-  | `UID        -> "UID"
-  | `GID        -> "GID"
-  | `UNSPEC     -> "UNSPEC"
-  | `Unknown (i, _) -> sprintf "Unknown (%d)" i
-and string_to_rr_type = function
-  | "A"          -> `A
-  | "NS"         -> `NS
-  | "MD"         -> `MD
-  | "MF"         -> `MF
-  | "CNAME"      -> `CNAME
-  | "SOA"        -> `SOA
-  | "MB"         -> `MB
-  | "MG"         -> `MG
-  | "MR"         -> `MR
-  | "NULL"       -> `NULL
-  | "WKS"        -> `WKS
-  | "PTR"        -> `PTR
-  | "HINFO"      -> `HINFO
-  | "MINFO"      -> `MINFO
-  | "MX"         -> `MX
-  | "TXT"        -> `TXT
-  | "RP"         -> `RP
-  | "AFSDB"      -> `AFSDB
-  | "X25"        -> `X25
-  | "ISDN"       -> `ISDN
-  | "RT"         -> `RT
-  | "NSAP"       -> `NSAP
-  | "NSAP_PTR"   -> `NSAP_PTR
-  | "SIG"        -> `SIG
-  | "KEY"        -> `KEY
-  | "PX"         -> `PX
-  | "GPOS"       -> `GPOS
-  | "AAAA"       -> `AAAA
-  | "LOC"        -> `LOC
-  | "NXT"        -> `NXT
-  | "EID"        -> `EID
-  | "NIMLOC"     -> `NIMLOC
-  | "SRV"        -> `SRV
-  | "ATMA"       -> `ATMA
-  | "NAPTR"      -> `NAPTR
-  | "KM"         -> `KM
-  | "CERT"       -> `CERT
-  | "A6"         -> `A6
-  | "DNAME"      -> `DNAME
-  | "SINK"       -> `SINK
-  | "OPT"        -> `OPT
-  | "APL"        -> `APL
-  | "DS"         -> `DS
-  | "SSHFP"      -> `SSHFP
-  | "IPSECKEY"   -> `IPSECKEY
-  | "RRSIG"      -> `RRSIG
-  | "NSEC"       -> `NSEC
-  | "DNSKEY"     -> `DNSKEY
-  | "NSEC3"      -> `NSEC3
-  | "NSEC3PARAM" -> `NSEC3PARAM
-  | "SPF"        -> `SPF
-  | "UINFO"      -> `UINFO
-  | "UID"        -> `UID
-  | "GID"        -> `GID
-  | "UNSPEC"     -> `UNSPEC
-  | s -> invalid_arg (sprintf "string_to_rr_type [%s]" s)
+cenum rr_type {
+  A          = 1;
+  NS         = 2;
+  MD         = 3;
+  MF         = 4;
+  CNAME      = 5;
+  SOA        = 6;
+  MB         = 7;
+  MG         = 8;
+  MR         = 9;
+  NULL       = 10;
+  WKS        = 11;
+  PTR        = 12;
+  HINFO      = 13;
+  MINFO      = 14;
+  MX         = 15;
+  TXT        = 16;
+  RP         = 17;
+  AFSDB      = 18;
+  X25        = 19;
+  ISDN       = 20;
+  RT         = 21;
+  NSAP       = 22;
+  NSAP_PTR   = 23;
+  SIG        = 24;
+  KEY        = 25;
+  PX         = 26;
+  GPOS       = 27;
+  AAAA       = 28;
+  LOC        = 29;
+  NXT        = 30;
+  EID        = 31;
+  NIMLOC     = 32;
+  SRV        = 33;
+  ATMA       = 34;
+  NAPTR      = 35;
+  KM         = 36;
+  CERT       = 37;
+  A6         = 38;
+  DNAME      = 39;
+  SINK       = 40;
+  OPT        = 41;
+  APL        = 42;
+  DS         = 43;
+  SSHFP      = 44;
+  IPSECKEY   = 45;
+  RRSIG      = 46;
+  NSEC       = 47;
+  DNSKEY     = 48;
+  NSEC3      = 50;
+  NSEC3PARAM = 51;
+  SPF        = 99;
+  UINFO      = 100;
+  UID        = 101;
+  GID        = 102;
+  UNSPEC     = 103
+} as uint8_t
 
 (*
    The Type Bit Maps field identifies the RRset types that exist at the
@@ -550,7 +219,7 @@ type rr_rdata = [
 | `DNSKEY of int16 * dnssec_alg * string
 | `DS of int16 * dnssec_alg * digest_alg * string
 | `HINFO of string * string
-| `IPSECKEY of byte * gw_type * ipseckey_alg * gateway * bytes
+| `IPSECKEY of byte * gateway_tc * ipseckey_alg * gateway * bytes
 | `ISDN of string * string option
 | `MB of domain_name
 | `MD of domain_name
@@ -634,7 +303,7 @@ let rdata_to_string = function
     )
   | `IPSECKEY (precedence, gw_type, alg, gw, pubkey)
     -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" (byte_to_int precedence) 
-          (gw_type_to_string gw_type) (ipseckey_alg_to_string alg)
+          (gateway_tc_to_string gw_type) (ipseckey_alg_to_string alg)
           (gateway_to_string gw) (bytes_to_string pubkey)
     )
   | `NSEC (next_name, tbms) 
@@ -670,95 +339,76 @@ let parse_rdata names base t bits =
   let stop (x, bits) = x in
   (** Extract (length, string) encoded strings, with remainder for
       chaining. *)
-  let parse_charstr bits = 
-    bitmatch bits with
-      | { len: 8; str: (len*8): string; bits: -1: bitstring } -> str, bits
+  let parse_charstr buf = 
+    let len = Cstruct.get_uint8 buf 0 in
+    Cstruct.to_string (Cstruct.sub buf 1 len), slide buf (1+len)
   in
   match t with
-    | `A -> `A (bits |> bits_to_bytes |> bytes_to_ipv4)
-    | `NS -> `NS (bits |> parse_name names base |> stop)
-    | `CNAME -> `CNAME (bits |> parse_name names base |> stop)
-    | `DNSKEY -> (
+    | A -> `A (bits |> bits_to_bytes |> bytes_to_ipv4)
+    | NS -> `NS (bits |> parse_name names base |> stop)
+    | CNAME -> `CNAME (bits |> parse_name names base |> stop)
+    | DNSKEY -> (
       bitmatch bits with 
         | {flags:16; 3:8; alg:8; key:-1:string } -> 
             `DNSKEY (int16 flags, (int_to_dnssec_alg alg), key)
     )
-    | `SOA -> let mn, bits = parse_name names base bits in
-              let rn, bits = parse_name names base bits in 
-              (bitmatch bits with
-                | { serial: 32; refresh: 32; retry: 32; expire: 32;
-                    minimum: 32 }
-                  -> `SOA (mn, rn, serial, refresh, retry, expire, minimum)
-              )
-                
-    | `WKS -> (
+    | SOA -> let mn, bits = parse_name names base bits in
+             let rn, bits = parse_name names base bits in 
+             (bitmatch bits with
+               | { serial: 32; refresh: 32; retry: 32; expire: 32;
+                   minimum: 32 }
+                 -> `SOA (mn, rn, serial, refresh, retry, expire, minimum)
+             )
+               
+    | WKS -> (
       bitmatch bits with 
         | { addr: 32; proto: 8; bitmap: -1: string } 
           -> `WKS (addr, byte proto, bitmap)
     )
-    | `PTR -> `PTR (bits |> parse_name names base |> stop)
-    | `HINFO -> let cpu, bits = parse_charstr bits in
-                let os = bits |> parse_charstr |> stop in
-                `HINFO (cpu, os)
-    | `MINFO -> let rm, bits = parse_name names base bits in
-                let em = bits |> parse_name names base |> stop in
-                `MINFO (rm, em)
-    | `MX -> (
+    | PTR -> `PTR (bits |> parse_name names base |> stop)
+    | HINFO -> let cpu, bits = parse_charstr bits in
+               let os = bits |> parse_charstr |> stop in
+               `HINFO (cpu, os)
+    | MINFO -> let rm, bits = parse_name names base bits in
+               let em = bits |> parse_name names base |> stop in
+               `MINFO (rm, em)
+    | MX -> (
       bitmatch bits with
         | { preference: 16; bits: -1: bitstring } 
           -> `MX ((int16 preference, 
                    bits |> parse_name names base |> stop))
     )
-    | `SRV -> (
-        bitmatch bits with 
-          | {prio:16;weight:16;port:16; bits:-1:bitstring} ->
-              let name, _ = parse_name names base bits in
-           `SRV((int16 prio), (int16 weight), (int16 port), 
-                name)
-(*              (mn ~off:6 target):-1:bitstring *)
-      )
-    | `TXT -> let names, _ = 
-                let rec aux ns bits =
-                  match (Bitstring.bitstring_length bits) with
-                    | 0 -> 
-                        let ret = List.map (fun a -> String.concat "" a) ns in 
-                        ((List.hd ns), bits)
-                    | _ ->
-                        let n, bits = parse_name ~check_len:false 
-                                        names base bits in
-                          aux (n :: ns) bits
-                in
-                aux [] bits
-              in
-              `TXT names
+    | SRV -> (
+      bitmatch bits with 
+        | {prio:16;weight:16;port:16; bits:-1:bitstring} ->
+            let name, _ = parse_name names base bits in
+            `SRV((int16 prio), (int16 weight), (int16 port), 
+                 name)
+      (*              (mn ~off:6 target):-1:bitstring *)
+    )
+    | TXT -> let names, _ = 
+               let rec aux ns bits =
+                 match (Bitstring.bitstring_length bits) with
+                   | 0 -> 
+                       let ret = List.map (fun a -> String.concat "" a) ns in 
+                       ((List.hd ns), bits)
+                   | _ ->
+                       let n, bits = parse_name ~check_len:false 
+                         names base bits in
+                       aux (n :: ns) bits
+               in
+               aux [] bits
+             in
+             `TXT names
+               
     | t -> `UNKNOWN (rr_type_to_int t, bits_to_bytes bits)
 
-type rr_class = [ `IN | `CS | `CH | `HS ]
-let rr_class_to_int = function
-  | `IN -> 1
-  | `CS -> 2
-  | `CH -> 3
-  | `HS -> 4
-and int_to_rr_class = function
-  | 1   -> `IN
-  | 2   -> `CS
-  | 3   -> `CH
-  | 4   -> `HS
-(*
-   | x   -> `IN (* TODO edns0 hack (#2) invalid_arg "int_to_rr_class" *)
-*)
-  | _ -> invalid_arg "int_to_rr_class"
-and rr_class_to_string = function
-  | `IN -> "IN"
-  | `CS -> "CS"
-  | `CH -> "CH"
-  | `HS -> "HS"
-and string_to_rr_class = function
-  | "IN" -> `IN
-  | "CS" -> `CS
-  | "CH" -> `CH
-  | "HS" -> `HS
-  | _    -> invalid_arg "string_to_rr_class"
+cenum rr_class {
+  IN = 1;
+  CS = 2;
+  CH = 3;
+  HS = 4
+} as uint8_t
 
 type rr = {
   rr_name  : domain_name;
@@ -774,6 +424,8 @@ let rr_to_string rr =
 
 let parse_rr names base bits =
   let name, bits = parse_name names base bits in
+  
+
   bitmatch bits with
     | { t: 16; _:1; c: 15; ttl: 32; 
         rdlen: 16; rdata: (rdlen*8): bitstring;
@@ -786,57 +438,81 @@ let parse_rr names base bits =
          }, data
     | { _ } -> raise (Unparsable ("parse_rr", bits))
 
-type q_type = [ rr_type | `AXFR | `MAILB | `MAILA | `ANY | `TA | `DLV ]
-let q_type_to_int : q_type -> int = function
-  | `AXFR         -> 252
-  | `MAILB        -> 253
-  | `MAILA        -> 254
-  | `ANY          -> 255
-  | `TA           -> 32768
-  | `DLV          -> 32769
-  | #rr_type as t -> rr_type_to_int t
-and int_to_q_type : int -> q_type = function
-  | 252           -> `AXFR
-  | 253           -> `MAILB
-  | 254           -> `MAILA
-  | 255           -> `ANY
-  | 32768         -> `TA
-  | 32769         -> `DLV
-  | n             -> (int_to_rr_type n :> q_type)
-and q_type_to_string : q_type -> string = function
-  | `AXFR         -> "AXFR"
-  | `MAILB        -> "MAILB"
-  | `MAILA        -> "MAILA"
-  | `ANY          -> "ANY"
-  | `TA           -> "TA"
-  | `DLV          -> "DLV"
-  | #rr_type as t -> rr_type_to_string t
-and string_to_q_type : string -> q_type = function
-  | "AXFR"         -> `AXFR
-  | "MAILB"        -> `MAILB
-  | "MAILA"        -> `MAILA
-  | "ANY"          -> `ANY
-  | "TA"           -> `TA
-  | "DLV"          -> `DLV
-  | s -> string_to_rr_type s
+cenum q_type {
+  A          = 1;
+  NS         = 2;
+  MD         = 3;
+  MF         = 4;
+  CNAME      = 5;
+  SOA        = 6;
+  MB         = 7;
+  MG         = 8;
+  MR         = 9;
+  NULL       = 10;
+  WKS        = 11;
+  PTR        = 12;
+  HINFO      = 13;
+  MINFO      = 14;
+  MX         = 15;
+  TXT        = 16;
+  RP         = 17;
+  AFSDB      = 18;
+  X25        = 19;
+  ISDN       = 20;
+  RT         = 21;
+  NSAP       = 22;
+  NSAP_PTR   = 23;
+  SIG        = 24;
+  KEY        = 25;
+  PX         = 26;
+  GPOS       = 27;
+  AAAA       = 28;
+  LOC        = 29;
+  NXT        = 30;
+  EID        = 31;
+  NIMLOC     = 32;
+  SRV        = 33;
+  ATMA       = 34;
+  NAPTR      = 35;
+  KM         = 36;
+  CERT       = 37;
+  A6         = 38;
+  DNAME      = 39;
+  SINK       = 40;
+  OPT        = 41;
+  APL        = 42;
+  DS         = 43;
+  SSHFP      = 44;
+  IPSECKEY   = 45;
+  RRSIG      = 46;
+  NSEC       = 47;
+  DNSKEY     = 48;
+  NSEC3      = 50;
+  NSEC3PARAM = 51;
 
-type q_class = [ rr_class | `NONE | `ANY ]
-let q_class_to_int : q_class -> int = function
-  | `NONE          -> 254
-  | `ANY           -> 255
-  | #rr_class as c -> rr_class_to_int c
-and int_to_q_class : int -> q_class = function
-  | 254 -> `NONE
-  | 255 -> `ANY
-  | n   -> (int_to_rr_class n :> q_class)
-and q_class_to_string : q_class -> string = function
-  | `NONE          -> "NONE"
-  | `ANY           -> "ANY"
-  | #rr_class as c -> rr_class_to_string c
-and string_to_q_class : string -> q_class = function
-  | "NONE" -> `NONE
-  | "ANY"  -> `ANY
-  | c      -> string_to_rr_class c
+  SPF        = 99;
+  UINFO      = 100;
+  UID        = 101;
+  GID        = 102;
+  UNSPEC     = 103;
+  
+  AXFR  = 252;
+  MAILB = 253;
+  MAILA = 254;
+  ANY   = 255;
+  
+  TA    = 32768;
+  DLV   = 32769
+} as uint8_t
+
+cenum q_class {
+  IN   = 1;
+  CS   = 2;
+  CH   = 3;
+  HS   = 4;
+  NONE = 254;
+  ANY  = 255
+} as uint8_t
 
 type question = {
   q_name  : domain_name;
@@ -866,140 +542,88 @@ let qr_to_bool = function
   | `Query  -> false
   | `Answer -> true
 
-type opcode = [ qr | `Status | `Reserved | `Notify | `Update ]
-let int_to_opcode = function
-  | 0 -> `Query
-  | 1 -> `Answer
-  | 2 -> `Status
-  | 3 -> `Reserved
-  | 4 -> `Notify
-  | 5 -> `Update
-  | x -> failwith (sprintf "dnspacket: unknown opcode [%d]" x)
-let opcode_to_int = function
-  | `Query -> 0
-  | `Answer -> 1
-  | `Status -> 2
-  | `Reserved -> 3
-  | `Notify -> 4
-  | `Update -> 5
+cenum opcode {
+  Query = 0;
+  Answer = 1;
+  Status = 2;
+  Reserved = 3;
+  Notify = 4;
+  Update = 5
+} as uint8_t
 
-type rcode = [
-| `NoError  | `FormErr
-| `ServFail | `NXDomain | `NotImp  | `Refused
-| `YXDomain | `YXRRSet  | `NXRRSet | `NotAuth
-| `NotZone  | `BadVers  | `BadKey  | `BadTime
-| `BadMode  | `BadName  | `BadAlg 
-]
-let int_to_rcode = function
-  | 0 -> `NoError
-  | 1 -> `FormErr
-  | 2 -> `ServFail
-  | 3 -> `NXDomain
-  | 4 -> `NotImp
-  | 5 -> `Refused
-  | 6 -> `YXDomain
-  | 7 -> `YXRRSet
-  | 8 -> `NXRRSet
-  | 9 -> `NotAuth
-  | 10 -> `NotZone
+cenum rcode {
+  NoError = 0;
+  FormErr = 1;
+  ServFail = 2;
+  NXDomain = 3;
+  NotImp = 4;
+  Refused = 5;
+  YXDomain = 6;
+  YXRRSet = 7;
+  NXRRSet = 8;
+  NotAuth = 9;
+  NotZone = 10;
     
-  | 16 -> `BadVers
-  | 17 -> `BadKey
-  | 18 -> `BadTime
-  | 19 -> `BadMode
-  | 20 -> `BadName
-  | 21 -> `BadAlg
-  | x -> failwith (sprintf "unknown rcode [%d]" x)
-and rcode_to_int = function
-  | `NoError -> 0
-  | `FormErr -> 1
-  | `ServFail -> 2
-  | `NXDomain -> 3
-  | `NotImp -> 4
-  | `Refused -> 5
-  | `YXDomain -> 6
-  | `YXRRSet -> 7
-  | `NXRRSet -> 8
-  | `NotAuth -> 9
-  | `NotZone -> 10
-    
-  | `BadVers -> 16
-  | `BadKey -> 17
-  | `BadTime -> 18
-  | `BadMode -> 19
-  | `BadName -> 20
-  | `BadAlg -> 21
-and rcode_to_string = function
-  | `NoError -> "NoError"
-  | `FormErr -> "FormErr"
-  | `ServFail -> "ServFail"
-  | `NXDomain -> "NXDomain"
-  | `NotImp -> "NotImp"
-  | `Refused -> "Refused"
-  | `YXDomain -> "YXDomain"
-  | `YXRRSet -> "YXRRSet"
-  | `NXRRSet -> "NXRRSet"
-  | `NotAuth -> "NotAuth"
-  | `NotZone -> "NotZone"
-    
-  | `BadVers -> "BadVers"
-  | `BadKey -> "BadKey"
-  | `BadTime -> "BadTime"
-  | `BadMode -> "BadMode"
-  | `BadName -> "BadName"
-  | `BadAlg -> "BadAlg"
+  BadVers = 16;
+  BadKey = 17;
+  BadTime = 18;
+  BadMode = 19;
+  BadName = 20;
+  BadAlg = 21
+} as uint8_t
 
-type detail = {
-  qr: qr;
-  opcode: opcode;
-  aa: bool; 
-  tc: bool; 
-  rd: bool; 
-  ra: bool;
-  rcode: rcode;
-}
-let detail_to_string d = 
-  sprintf "%c:%02x %s:%s:%s:%s %d"
-    (match d.qr with `Query -> 'Q' | `Answer -> 'R')
-    (opcode_to_int d.opcode)
-    (if d.aa then "a" else "na") (* authoritative vs not *)
-    (if d.tc then "t" else "c") (* truncated vs complete *)
-    (if d.rd then "r" else "nr") (* recursive vs not *)
-    (if d.ra then "ra" else "rn") (* recursion available vs not *)
-    (rcode_to_int d.rcode)
-
-let parse_detail bits = 
+(*
+let header_to_string h = 
+  sprintf "%04x %c:%02x %s:%s:%s:%s %d"
+    h.id
+    (match h.qr with `Query -> 'Q' | `Answer -> 'R')
+    (opcode_to_int h.opcode)
+    (if h.aa then "a" else "na") (* authoritative vs not *)
+    (if h.tc then "t" else "c") (* truncated vs complete *)
+    (if h.rd then "r" else "nr") (* recursive vs not *)
+    (if h.ra then "ra" else "rn") (* recursion available vs not *)
+    (rcode_to_int h.rcode)
+let parse_header buf = 
   bitmatch bits with
     | { qr:1; opcode:4; aa:1; tc:1; rd:1; ra:1; z:3; rcode:4 } 
       -> { qr=bool_to_qr qr; opcode=int_to_opcode opcode; 
            aa; tc; rd; ra; 
            rcode=int_to_rcode rcode }
-
 let build_detail d = 
   (BITSTRING {
     (qr_to_bool d.qr):1; (opcode_to_int d.opcode):4; 
     d.aa:1; d.tc:1; d.rd:1; d.ra:1; (* z *) 0:3;
     (rcode_to_int d.rcode):4
   })
+*)
+
+cstruct h {
+  uint16_t id;
+  uint16_t detail;
+  uint16_t qdcount;
+  uint16_t ancount;
+  uint16_t nscount;
+  uint16_t arcount
+} as big_endian
 
 type dns = {
   id          : int16;
-  detail      : Bitstring.t;
-  questions   : question list;
-  answers     : rr list;
-  authorities : rr list;
-  additionals : rr list;
+  detail      : detail;
+  questions   : question Cstruct.iter;
+  answers     : rr Cstruct.iter;
+  authorities : rr Cstruct.iter;
+  additionals : rr Cstruct.iter;
 }
 
-let dns_to_string d = 
-  sprintf "%04x %s <qs:%s> <an:%s> <au:%s> <ad:%s>"
-    (int16_to_int d.id) (d.detail |> parse_detail |> detail_to_string)
-    (d.questions ||> question_to_string |> join ",")
-    (d.answers ||> rr_to_string |> join ",")
-    (d.authorities ||> rr_to_string |> join ",")
-    (d.additionals ||> rr_to_string |> join ",")
-
-let parse_dns names bits = 
+let parse_dns names buf = 
+  let id = get_h_id buf in
+  let detail = get_h_detail buf in
+  let qdcount = get_h_qdcount buf in
+  let ancount = get_h_ancount buf in
+  let nscount = get_h_nscount buf in
+  let arcount = get_h_arcount buf in
+  
+  
   let parsen pf ns b n bits = 
     let rec aux rs n bits = 
       match n with
@@ -1009,6 +633,9 @@ let parse_dns names bits =
     in
     aux [] n bits
   in
+
+    
+    
   let base = offset_of_bitstring bits in
   (bitmatch bits with
     | { id:16; detail:16:bitstring;
@@ -1026,6 +653,16 @@ let parse_dns names bits =
           dns
       )
   )
+
+(*
+let dns_to_string d = 
+  sprintf "%04x %s <qs:%s> <an:%s> <au:%s> <ad:%s>"
+    (int16_to_int d.id) (detail_to_string d.detail)
+    (d.questions ||> question_to_string |> join ",")
+    (d.answers ||> rr_to_string |> join ",")
+    (d.authorities ||> rr_to_string |> join ",")
+    (d.additionals ||> rr_to_string |> join ",")
+*)
 
 let marshal_dns dns = 
   (** Alias {! Bitstring.bitstring_length}, but in bytes. *)

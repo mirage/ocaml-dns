@@ -44,8 +44,8 @@ val for_reverse : ipv4 -> domain_name
     @return {! domain_name} and the remainder
 *)
 val parse_name : 
-  ?check_len:bool -> (int, label) Hashtbl.t -> int -> Bitstring.t -> 
-  domain_name * Bitstring.t
+  ?check_len:bool -> (int, label) Hashtbl.t -> int -> Cstruct.buf -> 
+  domain_name * Cstruct.buf
 
 
 (** Construct a {! Hashcons} character-string from a string. *)

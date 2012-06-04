@@ -14,31 +14,14 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Wire
+(* 
+   open Wire 
+   open Re_str
+*)
+
+open Printf
 open Operators
-open Re_str
 open Uri_IP
-
-type label =              
-  | L of string * int (* string *)
-  | P of int * int (* pointer *)
-  | Z of int (* zero; terminator *)
-
-let parse_label check_len base bits = 
-  let cur = offset_of_bitstring bits in
-  let offset = (cur-base)/8 in
-  bitmatch bits with
-    | { length: 8: check((not check_len) || (length != 0 && length < 64) ); 
-        name: (length*8): string; bits: -1: bitstring }
-      -> (L (name, offset), bits)
-    
-    | { 0b0_11: 2; ptr: 14; bits: -1: bitstring } 
-      -> (P (ptr, offset), bits)
-    
-    | { 0: 8; bits: -1: bitstring } 
-      -> (Z offset, bits)
-    | { _ } ->
-        (Z offset, bits)
 
 type domain_name = string list
 let domain_name (sl:string list) : domain_name = sl
@@ -46,35 +29,55 @@ let empty_domain_name = []
 let domain_name_to_string dn = join "." dn
 let string_to_domain_name (s:string) : domain_name = 
   Re_str.split (Re_str.regexp "\\.") s
-                                          
+
 let for_reverse ip = 
   (".arpa.in-addr." ^ ipv4_to_string ip) |> string_to_domain_name |> List.rev 
+
+type label =              
+  | L of string * int (* string *)
+  | P of int * int (* pointer *)
+  | Z of int (* zero; terminator *)
+
+let parse_label check_len offset buf = match Cstruct.get_uint8 buf 0 with 
+  | 0 -> Z offset, 1
+  | len when (((len lsr 6) land 0b0_11) != 0) -> 
+      let ptr = ((len land 0b0_00111111) lsl 8) + Cstruct.get_uint8 buf 1 in 
+      P (ptr, offset), 2
+  | len ->
+      if check_len && not ((0 < len) && (len < 64)) then
+        failwith (sprintf "parse_label: invalid length %d" len)
+      else (
+        let name = Cstruct.sub buf 1 len in
+        L (Cstruct.to_string name, offset), 1+len
+      )
                                           
-let parse_name ?(check_len=true) names base bits = 
-  (* what. a. mess. *)
-  let rec aux offsets name bits = 
-    match parse_label check_len base bits with
-      | (L (n, o) as label, data) 
-        -> Hashtbl.add names o label;
+let parse_name ?(check_len=true) names offset buf = (* what. a. mess. *)
+  let rec aux offsets name base buf = 
+    match parse_label check_len base buf with
+      | (L (n, o) as label, offset) -> 
+          Hashtbl.add names o label;
           offsets |> List.iter (fun off -> (Hashtbl.add names off label));
-          aux (o :: offsets) (n :: name) data 
-      | (P (p, _), data) 
-        -> let ns = (Hashtbl.find_all names p
-                        |> List.filter (function L _ -> true | _ -> false)
-                        |> List.rev)
-           in
-           offsets |> List.iter (fun off ->
-             ns |> List.iter (fun n -> Hashtbl.add names off n)
-           );
-           ((ns |> List.rev ||> (
-             function
-               | L (nm,_) -> nm
-               | _ -> raise (Unparsable ("parse_name", bits)))
-            ) @ name), data
-      | (Z o as zero, data) -> Hashtbl.add names o zero; (name, data)
+          aux (o :: offsets) (n :: name) (base+offset) (slide buf offset)
+
+      | (P (p, _), offset) -> 
+          let ns = (Hashtbl.find_all names p
+                       |> List.filter (function L _ -> true | _ -> false)
+                       |> List.rev)
+          in
+          offsets |> List.iter (fun o ->
+            ns |> List.iter (fun n -> Hashtbl.add names o n)
+          );
+          ((ns |> List.rev ||> (function
+            | L (nm,_) -> nm
+            | _ -> failwith "parse_name")
+           ) @ name), (slide buf offset)
+
+      | (Z o as zero, offset) -> 
+          Hashtbl.add names o zero; 
+          (name, slide buf offset)
   in 
-  let name, bits = aux [] [] bits in
-  (List.rev name, bits)
+  let name, buf = aux [] [] offset buf in
+  (List.rev name, buf)
 
 (* Hash-consing: character strings *)
 module CSH = Hashcons.Make (struct 
