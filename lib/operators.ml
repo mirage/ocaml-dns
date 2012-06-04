@@ -15,6 +15,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Printf
+
 (** Some widely used operators.
 
     @author Richard Mortier <mort\@cantab.net>
@@ -52,3 +54,7 @@ let (>>>>) x y = Int64.shift_right_logical x y
 (** Miscellaneous. *)
 let join c l = String.concat c l
 (* let join c l = List.fold_left (fun x y -> x ^ c ^ y) "" l *)
+
+let slide buf i = match Cstruct.shift_left buf i with
+  | true -> buf 
+  | false -> failwith (sprintf "slide %d failed" i)
