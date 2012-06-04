@@ -334,7 +334,7 @@ let rdata_to_string = function
           (fp_type_to_string fpt) (bytes_to_string fp)
     )
 
-let parse_rdata names base t bits = 
+let parse_rdata names base t buf = 
   (** Drop remainder bitstring to stop parsing and demuxing. *) 
   let stop (x, bits) = x in
   (** Extract (length, string) encoded strings, with remainder for
@@ -344,65 +344,64 @@ let parse_rdata names base t bits =
     Cstruct.to_string (Cstruct.sub buf 1 len), slide buf (1+len)
   in
   match t with
-    | A -> `A (bits |> bits_to_bytes |> bytes_to_ipv4)
-    | NS -> `NS (bits |> parse_name names base |> stop)
-    | CNAME -> `CNAME (bits |> parse_name names base |> stop)
-    | DNSKEY -> (
-      bitmatch bits with 
-        | {flags:16; 3:8; alg:8; key:-1:string } -> 
-            `DNSKEY (int16 flags, (int_to_dnssec_alg alg), key)
-    )
-    | SOA -> let mn, bits = parse_name names base bits in
-             let rn, bits = parse_name names base bits in 
-             (bitmatch bits with
-               | { serial: 32; refresh: 32; retry: 32; expire: 32;
-                   minimum: 32 }
-                 -> `SOA (mn, rn, serial, refresh, retry, expire, minimum)
-             )
-               
-    | WKS -> (
-      bitmatch bits with 
-        | { addr: 32; proto: 8; bitmap: -1: string } 
-          -> `WKS (addr, byte proto, bitmap)
-    )
-    | PTR -> `PTR (bits |> parse_name names base |> stop)
-    | HINFO -> let cpu, bits = parse_charstr bits in
-               let os = bits |> parse_charstr |> stop in
+    | A -> `A (Cstruct.BE.get_uint32 buf 0)
+    | NS -> `NS (buf |> parse_name names base |> stop)
+    | CNAME -> `CNAME (buf |> parse_name names base |> stop)
+    | DNSKEY -> 
+        Cstruct.(
+          let flags = BE.get_uint16 buf 0 in
+          let alg = get_uint8 buf 3 in
+          let key = slide buf 4 |> to_string in
+          `DNSKEY (flags, (int_to_dnssec_alg alg), key)
+        )
+    | SOA -> 
+        let mn, buf = parse_name names base buf in
+        let rn, buf = parse_name names base buf in 
+        Cstruct.BE.(`SOA (mn, rn, 
+                          get_uint32 buf 0,  (* serial *)
+                          get_uint32 buf 4,  (* refresh *)
+                          get_uint32 buf 8,  (* retry *)
+                          get_uint32 buf 12, (* expire *)
+                          get_uint32 buf 16  (* minimum *)
+        ))
+    | WKS -> 
+        Cstruct.(
+          let addr = BE.get_uint32 buf 0 in
+          let proto = get_uint8 buf 4 in
+          let bitmap = slide buf 5 |> to_string in
+          `WKS (addr, proto, bitmap)
+        )
+    | PTR -> `PTR (buf |> parse_name names base |> stop)
+    | HINFO -> let cpu, buf = parse_charstr buf in
+               let os = buf |> parse_charstr |> stop in
                `HINFO (cpu, os)
-    | MINFO -> let rm, bits = parse_name names base bits in
-               let em = bits |> parse_name names base |> stop in
+    | MINFO -> let rm, buf = parse_name names base buf in
+               let em = buf |> parse_name names base |> stop in
                `MINFO (rm, em)
-    | MX -> (
-      bitmatch bits with
-        | { preference: 16; bits: -1: bitstring } 
-          -> `MX ((int16 preference, 
-                   bits |> parse_name names base |> stop))
-    )
-    | SRV -> (
-      bitmatch bits with 
-        | {prio:16;weight:16;port:16; bits:-1:bitstring} ->
-            let name, _ = parse_name names base bits in
-            `SRV((int16 prio), (int16 weight), (int16 port), 
-                 name)
-      (*              (mn ~off:6 target):-1:bitstring *)
-    )
-    | TXT -> let names, _ = 
-               let rec aux ns bits =
-                 match (Bitstring.bitstring_length bits) with
-                   | 0 -> 
-                       let ret = List.map (fun a -> String.concat "" a) ns in 
-                       ((List.hd ns), bits)
+    | MX -> `MX (Cstruct.BE.get_uint16 buf 0,
+                 slide buf 2 |> parse_name names base |> stop)
+    | SRV -> 
+        Cstruct.BE.(
+          `SRV (get_uint16 buf,   (* prio *)
+                get_uint16 buf 2, (* weight *)
+                get_uint16 buf 4, (* port *)
+                parse_name names (base+6) buf |> stop
+          )
+        )
+    | TXT -> let strings = 
+               let rec aux strings buf =
+                 match Cstruct.len buf with
+                   | 0 -> strings ||> (fun a -> join "" a) |> join "; "
                    | _ ->
-                       let n, bits = parse_name ~check_len:false 
-                         names base bits in
-                       aux (n :: ns) bits
+                       let n, buf = 
+                         parse_name ~check_len:false names base buf in
+                       aux (n :: strings) buf
                in
-               aux [] bits
+               aux [] buf
              in
              `TXT names
+    | _ -> failwith (sprintf "parse_rdata: %s" (rr_type_to_string t))
                
-    | t -> `UNKNOWN (rr_type_to_int t, bits_to_bytes bits)
-
 cenum rr_class {
   IN = 1;
   CS = 2;
@@ -424,8 +423,6 @@ let rr_to_string rr =
 
 let parse_rr names base bits =
   let name, bits = parse_name names base bits in
-  
-
   bitmatch bits with
     | { t: 16; _:1; c: 15; ttl: 32; 
         rdlen: 16; rdata: (rdlen*8): bitstring;
