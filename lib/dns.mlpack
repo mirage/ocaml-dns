@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 9d0630c624dd326c4105c6c1b0fd7620)
+# DO NOT EDIT (digest: 86be03a96c9f9f4d5e5113adda8700be)
 Hashcons
 Loader
 Name
@@ -8,7 +8,6 @@ Packet
 Query
 RR
 Trie
-Wire
 Zone
 Zone_lexer
 Zone_parser

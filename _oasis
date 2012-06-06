@@ -13,9 +13,9 @@ Library dns
   Findlibname: dns
   Pack: true
   Modules: 
-    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, 
+    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
     Zone, Zone_lexer, Zone_parser
-  BuildDepends:	cstruct, cstruct.syntax, re, re.str, uri, cryptokit,
+  BuildDepends:	cstruct, cstruct.syntax, re, re.str, cryptokit,
     bitstring, bitstring.syntax
 
 Library server
@@ -23,7 +23,7 @@ Library server
   Findlibname: server
   Modules: Dns_server
   BuildDepends: 
-    lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, uri, dns, cryptokit
+    lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns, cryptokit
   FindlibParent: dns
 
 Library resolver
@@ -31,7 +31,7 @@ Library resolver
   Findlibname: resolver
   Modules: Dns_resolver
   BuildDepends: 
-    lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, uri, dns
+    lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns
   FindlibParent: dns
 
 Document dns
@@ -40,7 +40,7 @@ Document dns
   BuildTools+:          ocamldoc
   XOCamlbuildPath:      lib  
   XOCamlbuildModules:     
-    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Wire, Zone
+    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, Zone
 
 Executable lwt_server
   Path:               lib_test
@@ -49,7 +49,7 @@ Executable lwt_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, dns
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, dns
 
 Executable time_server
   Path:               lib_test
@@ -58,7 +58,7 @@ Executable time_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, uri, dns
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, dns
 
 Executable odig
   Path:               client
@@ -68,8 +68,7 @@ Executable odig
   CompiledObject:     best
   Install:            false
   BuildDepends:       
-    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, 
-    re, re.str, uri, dns
+    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, re, re.str, dns
 
 Test lwt_server
   Run$:               flag(tests)

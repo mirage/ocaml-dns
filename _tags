@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 663b224b3a65dd3021fe1d382e041619)
+# DO NOT EDIT (digest: fc2a493e3e9e5ec32b73ec335a1f4bbd)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -23,7 +23,6 @@
 "lib/query.cmx": for-pack(Dns)
 "lib/RR.cmx": for-pack(Dns)
 "lib/trie.cmx": for-pack(Dns)
-"lib/wire.cmx": for-pack(Dns)
 "lib/zone.cmx": for-pack(Dns)
 "lib/zone_lexer.cmx": for-pack(Dns)
 "lib/zone_parser.cmx": for-pack(Dns)
@@ -31,7 +30,6 @@
 <lib/*.ml{,i}>: pkg_bitstring.syntax
 <lib/*.ml{,i}>: pkg_re
 <lib/*.ml{,i}>: pkg_re.str
-<lib/*.ml{,i}>: pkg_uri
 <lib/*.ml{,i}>: pkg_cstruct
 <lib/*.ml{,i}>: pkg_cstruct.syntax
 <lib/*.ml{,i}>: pkg_cryptokit
@@ -45,7 +43,6 @@
 <server/*.ml{,i}>: pkg_bitstring.syntax
 <server/*.ml{,i}>: pkg_re
 <server/*.ml{,i}>: pkg_re.str
-<server/*.ml{,i}>: pkg_uri
 <server/*.ml{,i}>: pkg_cstruct
 <server/*.ml{,i}>: pkg_cstruct.syntax
 <server/*.ml{,i}>: pkg_cryptokit
@@ -59,7 +56,6 @@
 <resolver/*.ml{,i}>: pkg_bitstring.syntax
 <resolver/*.ml{,i}>: pkg_re
 <resolver/*.ml{,i}>: pkg_re.str
-<resolver/*.ml{,i}>: pkg_uri
 <resolver/*.ml{,i}>: pkg_cstruct
 <resolver/*.ml{,i}>: pkg_cstruct.syntax
 <resolver/*.ml{,i}>: pkg_cryptokit
@@ -71,7 +67,6 @@
 <lib_test/lwt_server.{native,byte}>: pkg_bitstring.syntax
 <lib_test/lwt_server.{native,byte}>: pkg_re
 <lib_test/lwt_server.{native,byte}>: pkg_re.str
-<lib_test/lwt_server.{native,byte}>: pkg_uri
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct.syntax
 <lib_test/lwt_server.{native,byte}>: pkg_cryptokit
@@ -84,7 +79,6 @@
 <lib_test/time_server.{native,byte}>: pkg_bitstring.syntax
 <lib_test/time_server.{native,byte}>: pkg_re
 <lib_test/time_server.{native,byte}>: pkg_re.str
-<lib_test/time_server.{native,byte}>: pkg_uri
 <lib_test/time_server.{native,byte}>: pkg_cstruct
 <lib_test/time_server.{native,byte}>: pkg_cstruct.syntax
 <lib_test/time_server.{native,byte}>: pkg_cryptokit
@@ -95,7 +89,6 @@
 <lib_test/*.ml{,i}>: pkg_bitstring.syntax
 <lib_test/*.ml{,i}>: pkg_re
 <lib_test/*.ml{,i}>: pkg_re.str
-<lib_test/*.ml{,i}>: pkg_uri
 <lib_test/*.ml{,i}>: pkg_cstruct
 <lib_test/*.ml{,i}>: pkg_cstruct.syntax
 <lib_test/*.ml{,i}>: pkg_cryptokit
@@ -109,7 +102,6 @@
 <client/odig.{native,byte}>: pkg_bitstring.syntax
 <client/odig.{native,byte}>: pkg_re
 <client/odig.{native,byte}>: pkg_re.str
-<client/odig.{native,byte}>: pkg_uri
 <client/odig.{native,byte}>: pkg_cstruct
 <client/odig.{native,byte}>: pkg_cstruct.syntax
 <client/odig.{native,byte}>: pkg_cryptokit
@@ -121,7 +113,6 @@
 <client/*.ml{,i}>: pkg_bitstring.syntax
 <client/*.ml{,i}>: pkg_re
 <client/*.ml{,i}>: pkg_re.str
-<client/*.ml{,i}>: pkg_uri
 <client/*.ml{,i}>: pkg_cstruct
 <client/*.ml{,i}>: pkg_cstruct.syntax
 <client/*.ml{,i}>: pkg_cryptokit
