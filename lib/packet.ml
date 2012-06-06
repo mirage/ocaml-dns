@@ -524,6 +524,11 @@ cenum q_class {
   ANY  = 255
 } as uint8_t
 
+cstruct q {
+  uint16_t typ;
+  uint16_t cls
+} as big_endian
+
 type question = {
   q_name  : domain_name;
   q_type  : q_type;
@@ -535,14 +540,22 @@ let question_to_string q =
     (domain_name_to_string q.q_name) 
     (q_type_to_string q.q_type) (q_class_to_string q.q_class)
 
-let parse_question names base bits = 
-  let n, bits = parse_name names base bits in
-  bitmatch bits with
-    | { t: 16; c: 16; data: -1: bitstring }
-      -> { q_name = n;
-           q_type = int_to_q_type t;
-           q_class = int_to_q_class c;
-         }, data
+let parse_question names base buf = 
+  let q_name, buf = parse_name names base buf in
+  let q_type = 
+    let typ = get_q_typ buf in
+    match int_to_q_type typ with
+      | None -> failwith (sprintf "parse_question: typ %d" typ)
+      | Some typ -> typ
+  in
+  let q_class = 
+    let cls = get_q_cls buf in
+    match int_to_q_class cls with
+      | None -> failwith (sprintf "parse_question: cls %d" cls)
+      | Some cls -> cls
+  in
+  { q_name; q_type; q_class }, slide buf sizeof_q
+
 
 type qr = [ `Query | `Answer ]
 let bool_to_qr = function
@@ -617,8 +630,8 @@ cstruct h {
 } as big_endian
 
 type dns = {
-  id          : int16;
-  detail      : detail;
+  id          : Cstruct.uint16;
+  detail      : Cstruct.uint16;
   questions   : question Cstruct.iter;
   answers     : rr Cstruct.iter;
   authorities : rr Cstruct.iter;
