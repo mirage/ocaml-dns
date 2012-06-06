@@ -14,6 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
+(*
 
 (** DNS packet manipulation using the {! Bitstring} library. Something of a
     catch-all for the time being.
@@ -215,3 +216,4 @@ val parse_dns : (int, label) Hashtbl.t -> Bitstring.t-> dns
     @return the marshalled packet
 *)
 val marshal_dns : dns -> Bitstring.t
+*)

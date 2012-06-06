@@ -338,7 +338,7 @@ let rdata_to_string = function
 
 let parse_rdata names base t buf = 
   (** Drop remainder bitstring to stop parsing and demuxing. *) 
-  let stop (x, bits) = x in
+  let stop (x, _) = x in
   (** Extract (length, string) encoded strings, with remainder for
       chaining. *)
   let parse_charstr buf = 
@@ -362,8 +362,8 @@ let parse_rdata names base t buf =
           `DNSKEY (flags, alg, key)
         )
     | Some SOA -> 
-        let mn, buf = parse_name names base buf in
-        let rn, buf = parse_name names base buf in 
+        let mn, (o, buf) = parse_name names base buf in
+        let rn, (_, buf) = parse_name names (base+o) buf in 
         Cstruct.BE.(`SOA (mn, rn, 
                           get_uint32 buf 0,  (* serial *)
                           get_uint32 buf 4,  (* refresh *)
@@ -382,8 +382,8 @@ let parse_rdata names base t buf =
     | Some HINFO -> let cpu, buf = parse_charstr buf in
                     let os = buf |> parse_charstr |> stop in
                     `HINFO (cpu, os)
-    | Some MINFO -> let rm, buf = parse_name names base buf in
-                    let em = buf |> parse_name names base |> stop in
+    | Some MINFO -> let rm, (o,buf) = buf |> parse_name names base in
+                    let em = buf |> parse_name names (base+o) |> stop in
                     `MINFO (rm, em)
     | Some MX -> `MX (Cstruct.BE.get_uint16 buf 0,
                       slide buf 2 |> parse_name names base |> stop)
@@ -397,15 +397,14 @@ let parse_rdata names base t buf =
         )
     | Some TXT -> 
         let strings = 
-          let rec aux strings buf =
+          let rec aux strings base buf =
             match Cstruct.len buf with
               | 0 -> strings ||> (fun a -> join "" a)
               | _ ->
-                  let n, buf = 
-                    parse_name ~check_len:false names base buf in
-                  aux (n :: strings) buf
+                  let n, (o,buf) = parse_name ~check_len:false names base buf in
+                  aux (n :: strings) (base+o) buf
           in
-          aux [] buf
+          aux [] base buf
         in
         `TXT strings
     | Some t -> failwith (sprintf "parse_rdata: %s" (rr_type_to_string t))
@@ -438,15 +437,15 @@ let rr_to_string rr =
     rr.ttl (rdata_to_string rr.rdata)
 
 let parse_rr names base buf =
-  let name, buf = parse_name names base buf in
+  let name, (o,buf) = parse_name names base buf in
   let typ = get_rr_typ buf |> int_to_rr_type in
   let cls = get_rr_cls buf |> int_to_rr_class in
   let ttl = get_rr_ttl buf in
   let rdlen = get_rr_rdlen buf in
-  let rdata = parse_rdata names base typ buf in
+  let rdata = parse_rdata names (base+o+sizeof_rr) typ buf in
   match cls with
     | None -> failwith "parse_rr: unknown class"
-    | Some cls -> { name; cls; ttl; rdata }, slide buf (sizeof_rr+rdlen)
+    | Some cls -> { name; cls; ttl; rdata }, ((o+sizeof_rr+rdlen), slide buf (sizeof_rr+rdlen))
 
 cenum q_type {
   A          = 1;
@@ -541,7 +540,7 @@ let question_to_string q =
     (q_type_to_string q.q_type) (q_class_to_string q.q_class)
 
 let parse_question names base buf = 
-  let q_name, buf = parse_name names base buf in
+  let q_name, (o,buf) = parse_name names base buf in
   let q_type = 
     let typ = get_q_typ buf in
     match int_to_q_type typ with
@@ -554,7 +553,7 @@ let parse_question names base buf =
       | None -> failwith (sprintf "parse_question: cls %d" cls)
       | Some cls -> cls
   in
-  { q_name; q_type; q_class }, slide buf sizeof_q
+  { q_name; q_type; q_class }, (base+o+sizeof_q, slide buf sizeof_q)
 
 
 type qr = [ `Query | `Answer ]
@@ -632,50 +631,37 @@ cstruct h {
 type dns = {
   id          : Cstruct.uint16;
   detail      : Cstruct.uint16;
-  questions   : question Cstruct.iter;
-  answers     : rr Cstruct.iter;
-  authorities : rr Cstruct.iter;
-  additionals : rr Cstruct.iter;
+  questions   : question list; (* Cstruct.iter; *)
+  answers     : rr list; (* Cstruct.iter; *)
+  authorities : rr list; (* Cstruct.iter; *)
+  additionals : rr list; (* Cstruct.iter; *)
 }
 
 let parse_dns names buf = 
+  let parsen f ns b n buf = 
+    let rec aux rs n off buf = 
+      match n with
+        | 0 -> rs, (off, buf)
+        | _ -> let r, (o, buf) = f ns b buf in 
+               aux (r :: rs) (n-1) (o+off) buf
+    in
+    aux [] n b buf
+  in
+
   let id = get_h_id buf in
   let detail = get_h_detail buf in
   let qdcount = get_h_qdcount buf in
   let ancount = get_h_ancount buf in
   let nscount = get_h_nscount buf in
   let arcount = get_h_arcount buf in
-  
-  
-  let parsen pf ns b n bits = 
-    let rec aux rs n bits = 
-      match n with
-        | 0 -> rs, bits
-        | _ -> let r, bits = pf ns b bits in 
-               aux (r :: rs) (n-1) bits
-    in
-    aux [] n bits
-  in
 
-    
-    
-  let base = offset_of_bitstring bits in
-  (bitmatch bits with
-    | { id:16; detail:16:bitstring;
-        qdcount:16; ancount:16; nscount:16; arcount:16;
-        bits:-1:bitstring
-      }
-      -> (let questions, bits = parsen parse_question names base qdcount bits
-          in
-          let answers, bits = parsen parse_rr names base ancount bits in
-          let authorities, bits = parsen parse_rr names base nscount bits in
-          let additionals, _ = parsen parse_rr names base arcount bits in 
-          let dns = { id=int16 id; 
-                      detail; questions; answers; authorities; additionals }
-          in
-          dns
-      )
-  )
+  let base = sizeof_h in
+  let questions, (base, buf) = parsen parse_question names base qdcount buf in
+  let answers, (base, buf) = parsen parse_rr names base ancount buf in
+  let authorities, (base, buf) = parsen parse_rr names base nscount buf in
+  let additionals, _ = parsen parse_rr names base arcount buf in
+
+  { id; detail; questions; answers; authorities; additionals }
 
 (*
 let dns_to_string d = 
@@ -687,6 +673,7 @@ let dns_to_string d =
     (d.additionals ||> rr_to_string |> join ",")
 *)
 
+(*
 let marshal_dns dns = 
   (** Alias {! Bitstring.bitstring_length}, but in bytes. *)
   let bsl b = (Bitstring.bitstring_length b)/8 in 
@@ -922,3 +909,4 @@ let marshal_dns dns =
   let adds = dns.additionals ||> mr in
 
   Bitstring.concat (header :: qs @ ans @ auths @ adds)
+*)

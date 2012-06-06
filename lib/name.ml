@@ -70,14 +70,14 @@ let parse_name ?(check_len=true) names offset buf = (* what. a. mess. *)
           ((ns |> List.rev ||> (function
             | L (nm,_) -> nm
             | _ -> failwith "parse_name")
-           ) @ name), (slide buf offset)
+           ) @ name), (offset, slide buf offset)
 
       | (Z o as zero, offset) -> 
           Hashtbl.add names o zero; 
-          (name, slide buf offset)
+          name, (offset, slide buf offset)
   in 
-  let name, buf = aux [] [] offset buf in
-  (List.rev name, buf)
+  let name, (offset, buf) = aux [] [] offset buf in
+  List.rev name, (offset, buf)
 
 (* Hash-consing: character strings *)
 module CSH = Hashcons.Make (struct 
