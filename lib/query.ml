@@ -17,7 +17,7 @@
  *
  *)
 
-open Wire
+open Cstruct
 open Operators
 open RR
 open Trie
@@ -74,10 +74,10 @@ let answer_query qname qtype trie =
         | Some x -> x
         | None   -> failwith "unknown rrclass"
       in
-      let rr = Packet.({ rr_name = owner; 
-                         rr_class = rrclass; 
-                         rr_ttl = ttl; 
-                         rr_rdata = rr }) 
+      let rr = Packet.({ name = owner; 
+                         cls = rrclass; 
+                         ttl = ttl; 
+                         rdata = rr }) 
       in
       match section with 
         | `Answer     -> ans_rrs  := rr :: !ans_rrs 
@@ -183,7 +183,7 @@ let answer_query qname qtype trie =
 	        addrr (`RT (preference, d.owner.H.node))) l
             
       | AAAA l -> log_rrset owner `AAAA;
-	      List.iter (fun i -> addrr (`AAAA (bytes i.H.node))) l 
+	      List.iter (fun i -> addrr (`AAAA i.H.node)) l 
             
       | SRV l 
         -> List.iter (fun (priority, weight, port, d) -> 
@@ -192,16 +192,15 @@ let answer_query qname qtype trie =
 	      addrr (`SRV (priority, weight, port, d.owner.H.node))) l
           
       | UNSPEC l 
-        -> List.iter (fun s -> addrr (`UNSPEC (bytes s.H.node))) l
+        -> List.iter (fun s -> addrr (`UNSPEC s.H.node)) l
 
       | DNSKEY l
         -> List.iter (fun  (fl, t, k) -> 
-          addrr (`DNSKEY ((int16 fl), 
-                          (Packet.int_to_dnssec_alg t), k.H.node))) l
+          addrr (`DNSKEY (fl, (Packet.int_to_dnssec_alg t), k.H.node))) l
 
       | Unknown (t,l)
         -> let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
-           addrr (`UNKNOWN (t, bytes s))
+           addrr (`UNKNOWN (t, s))
   in
   
   (* Get an RRSet, which may not exist *)

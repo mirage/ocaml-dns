@@ -19,7 +19,7 @@ open Uri_IP
 open Printf
 open Dns.Name
 open Dns.Operators
-open Dns.Wire
+(* open Dns.Wire *)
 
 module DP = Dns.Packet
 

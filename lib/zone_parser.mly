@@ -42,7 +42,7 @@ let parse_uint8 s =
   d
   with Failure _ -> raise Parsing.Parse_error
 
-let parse_byte s = Wire.byte (parse_uint8 s)
+let parse_byte s = Cstruct.byte (parse_uint8 s)
 
 let parse_uint16 s = 
   try 
@@ -88,7 +88,7 @@ let parse_wks proto services =
         try raise Not_found
 	with Not_found -> 
 	  parse_error ("unknown service \"" ^ s ^ "\" for protocol "
-		       ^ (string_of_int (Wire.byte_to_int proto)));
+		           ^ (string_of_int (Cstruct.byte_to_int proto)));
 	  raise Parsing.Parse_error
   in let addport bitmap n = 
     let byte = n/8 in 

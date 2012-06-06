@@ -14,9 +14,8 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
-(*
 
-(** DNS packet manipulation using the {! Bitstring} library. Something of a
+(** DNS packet manipulation using the {! Cstruct} library. Something of a
     catch-all for the time being.
 
     @author Richard Mortier <mort\@cantab.net>
@@ -25,8 +24,7 @@
 *)
 
 open Name
-open Uri_IP
-open Wire
+open Cstruct
 
 type digest_alg
 type gw_type
@@ -46,7 +44,10 @@ val dnssec_alg_to_string : dnssec_alg -> string
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
 
-type rr_type = [ 
+
+type rr_type
+(*
+ = [ 
 | `A | `NS | `MD | `MF | `CNAME | `SOA | `MB | `MG | `MR | `NULL 
 | `WKS | `PTR | `HINFO | `MINFO | `MX | `TXT | `RP | `AFSDB | `X25 
 | `ISDN | `RT | `NSAP | `NSAP_PTR | `SIG | `KEY | `PX | `GPOS | `AAAA 
@@ -60,7 +61,7 @@ val rr_type_to_int : rr_type -> int
 val int_to_rr_type : int -> rr_type
 val rr_type_to_string : rr_type -> string
 val string_to_rr_type : string -> rr_type
-
+*)
 type type_bit_map
 type type_bit_maps
 
@@ -70,10 +71,10 @@ type type_bit_maps
 type rr_rdata = [
 | `A of ipv4
 | `AAAA of bytes
-| `AFSDB of int16 * domain_name
+| `AFSDB of uint16 * domain_name
 | `CNAME of domain_name
-| `DNSKEY of int16 * dnssec_alg * string
-| `DS of int16 * dnssec_alg * digest_alg * string
+| `DNSKEY of uint16 * dnssec_alg * string
+| `DS of uint16 * dnssec_alg * digest_alg * string
 | `HINFO of string * string
 | `IPSECKEY of byte * gw_type * ipseckey_alg * gateway * bytes
 | `ISDN of string * string option
@@ -83,19 +84,19 @@ type rr_rdata = [
 | `MG of domain_name
 | `MINFO of domain_name * domain_name
 | `MR of domain_name
-| `MX of int16 * domain_name
+| `MX of uint16 * domain_name
 | `NS of domain_name
 | `NSEC of domain_name (* uncompressed *) * type_bit_maps
-| `NSEC3 of hash_alg * byte * int16 * byte * bytes * byte * bytes * 
+| `NSEC3 of hash_alg * byte * uint16 * byte * bytes * byte * bytes * 
     type_bit_maps
-| `NSEC3PARAM of hash_alg * byte * int16 * byte * bytes
+| `NSEC3PARAM of hash_alg * byte * uint16 * byte * bytes
 | `PTR of domain_name
 | `RP of domain_name * domain_name
-| `RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * int16 * 
+| `RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
     domain_name (* uncompressed *) * bytes
-| `RT of int16 * domain_name
+| `RT of uint16 * domain_name
 | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
-| `SRV of int16 * int16 * int16 * domain_name
+| `SRV of uint16 * uint16 * uint16 * domain_name
 | `SSHFP of pubkey_alg * fp_type * bytes
 | `TXT of string list
 | `UNKNOWN of int * bytes
@@ -113,18 +114,19 @@ val parse_rdata :
 (** The class of a {! rr}, and usual conversion functions. *)
 
 type rr_class = [ `CH | `CS | `HS | `IN ]
+(*
 val int_to_rr_class : int -> rr_class
 val rr_class_to_int : rr_class -> int
 val rr_class_to_string : rr_class -> string
 val string_to_rr_class : string -> rr_class
-
+*)
 (** A [resource record], with usual conversion and parsing functions. *)
 
 type rr = {
-  rr_name  : domain_name;
-  rr_class : rr_class;
-  rr_ttl   : int32;
-  rr_rdata : rr_rdata;
+  name  : domain_name;
+  cls : rr_class;
+  ttl   : int32;
+  rdata : rr_rdata;
 }
 val rr_to_string : rr -> string
 val parse_rr :
@@ -132,19 +134,25 @@ val parse_rr :
 
 (** A question type, with the usual conversion functions. *)
 
-type q_type = [ rr_type | `AXFR | `MAILB | `MAILA | `ANY | `TA | `DLV ]
+type q_type
+(*
+ = [ rr_type | `AXFR | `MAILB | `MAILA | `ANY | `TA | `DLV ]
 val int_to_q_type : int -> q_type
 val q_type_to_int : q_type -> int
 val q_type_to_string : q_type -> string
 val string_to_q_type : string -> q_type
+*)
 
 (** A question class, with the usual conversion functions. *)
 
-type q_class = [ rr_class | `NONE | `ANY ]
+type q_class
+(*
+ = [ rr_class | `NONE | `ANY ]
 val int_to_q_class : int -> q_class
 val q_class_to_int : q_class -> int
 val q_class_to_string : q_class -> string
 val string_to_q_class : string -> q_class
+*)
 
 (** A question, with the usual conversion functions. *)
 
@@ -185,6 +193,7 @@ val rcode_to_string : rcode -> string
 (** The [detail] field from the DNS header, with the usual conversion
     functions. *)
                  
+(*
 type detail = {
   qr: qr;
   opcode: opcode;
@@ -197,20 +206,24 @@ type detail = {
 val detail_to_string : detail -> string
 val parse_detail : Cstruct.buf -> detail
 val build_detail : detail -> Cstruct.buf
+*)
 
 (** And finally, the DNS packet itself, with conversion functions. *)
 
 type dns = {
-  id          : int16;
+  id          : uint16;
   detail      : Bitstring.t;
   questions   : question list;
   answers     : rr list;
   authorities : rr list;
   additionals : rr list;
 }
+(*
 val dns_to_string : dns -> string
+*)
 val parse_dns : (int, label) Hashtbl.t -> Bitstring.t-> dns
 
+(*
 (** The marshalling entry point, given a {! dns} structure. 
 
     @return the marshalled packet

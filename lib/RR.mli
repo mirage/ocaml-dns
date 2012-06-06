@@ -22,7 +22,7 @@
 *)
 
 open Name
-open Wire
+open Cstruct
 
 (** DNS serial number -- 32 bits. *)
 type serial = int32 
@@ -50,9 +50,9 @@ and rrset = { ttl : int32; rdata : rdata; }
     {! Packet} represents each RR as a variant type with the same name.
 *)
 and rdata =
-  | A of Uri_IP.ipv4 list
+  | A of ipv4 list
   | AAAA of cstr list
-  | AFSDB of (int16 * dnsnode) list
+  | AFSDB of (uint16 * dnsnode) list
   | CNAME of dnsnode list
   | HINFO of (cstr * cstr) list
   | ISDN of (cstr * cstr option) list
@@ -60,13 +60,13 @@ and rdata =
   | MG of dnsnode list
   | MINFO of (dnsnode * dnsnode) list
   | MR of dnsnode list
-  | MX of (int16 * dnsnode) list
+  | MX of (uint16 * dnsnode) list
   | NS of dnsnode list
   | PTR of dnsnode list
   | RP of (dnsnode * dnsnode) list
-  | RT of (int16 * dnsnode) list
+  | RT of (uint16 * dnsnode) list
   | SOA of (dnsnode * dnsnode * serial * int32 * int32 * int32 * int32) list
-  | SRV of (int16 * int16 * int16 * dnsnode) list
+  | SRV of (uint16 * uint16 * uint16 * dnsnode) list
   | TXT of cstr list list
   | UNSPEC of cstr list
   | Unknown of int * cstr list

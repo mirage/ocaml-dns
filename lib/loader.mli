@@ -22,8 +22,7 @@
 *)
 
 open Name
-open Uri_IP
-open Wire
+open Cstruct
 
 (** Loader database: the DNS trie plus a hash table of other names in use. *)
 type db = { trie : Trie.dnstrie; 

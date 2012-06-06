@@ -18,11 +18,8 @@
 
 open Printf
 open Operators
-open Uri_IP
-(* open Wire *)
 open Name
-
-type byte = int
+open Cstruct
 
 (** Encode string as label by prepending length. *)
 let charstr s = sprintf "%c%s" (s |> String.length |> char_of_int) s 
@@ -56,10 +53,12 @@ let gateway_to_string = function
   | IPv4 i -> ipv4_to_string i
   | IPv6 i -> ipv6_to_string i
   | NAME n -> domain_name_to_string n
+(*
 and gateway_to_bits buf = function
   | IPv4 i -> Cstruct.BE.set_uint32 buf 0 i
   | IPv6 (hi,lo) -> Cstruct.BE.set_uint64 buf 0 hi; Cstruct.BE.set_uint64 buf 8 lo
   | NAME n -> () (* BITSTRING { (mn_nocompress n):-1:bitstring }, -1*)
+*)
 
 cenum pubkey_alg {
   RESERVED = 0;
@@ -220,10 +219,10 @@ let marshall_tbms tbms =
 type rr_rdata = [
 | `A of ipv4
 | `AAAA of bytes
-| `AFSDB of Cstruct.uint16 * domain_name
+| `AFSDB of uint16 * domain_name
 | `CNAME of domain_name
-| `DNSKEY of Cstruct.uint16 * dnssec_alg * string
-| `DS of Cstruct.uint16 * dnssec_alg * digest_alg * string
+| `DNSKEY of uint16 * dnssec_alg * string
+| `DS of uint16 * dnssec_alg * digest_alg * string
 | `HINFO of string * string
 | `IPSECKEY of byte * gateway_tc * ipseckey_alg * gateway * bytes
 | `ISDN of string * string option
@@ -233,19 +232,19 @@ type rr_rdata = [
 | `MG of domain_name
 | `MINFO of domain_name * domain_name
 | `MR of domain_name
-| `MX of Cstruct.uint16 * domain_name
+| `MX of uint16 * domain_name
 | `NS of domain_name
 | `NSEC of domain_name (* uncompressed *) * type_bit_maps
-| `NSEC3 of hash_alg * byte * Cstruct.uint16 * byte * bytes * byte * bytes * 
+| `NSEC3 of hash_alg * byte * uint16 * byte * bytes * byte * bytes * 
     type_bit_maps
-| `NSEC3PARAM of hash_alg * byte * Cstruct.uint16 * byte * bytes
+| `NSEC3PARAM of hash_alg * byte * uint16 * byte * bytes
 | `PTR of domain_name
 | `RP of domain_name * domain_name
-| `RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * Cstruct.uint16 * 
+| `RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
     domain_name (* uncompressed *) * bytes
-| `RT of Cstruct.uint16 * domain_name
+| `RT of uint16 * domain_name
 | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
-| `SRV of Cstruct.uint16 * Cstruct.uint16 * Cstruct.uint16 * domain_name
+| `SRV of uint16 * uint16 * uint16 * domain_name
 | `SSHFP of pubkey_alg * fp_type * bytes
 | `TXT of string list
 | `UNKNOWN of int * bytes
@@ -256,7 +255,7 @@ type rr_rdata = [
 
 let rdata_to_string = function
   | `A ip -> sprintf "A (%s)" (ipv4_to_string ip)
-  | `AAAA bs -> sprintf "AAAA (%s)" (bytes_to_string bs)
+  | `AAAA bs -> sprintf "AAAA (%s)" bs
   | `AFSDB (x, n)
     -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
   | `CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
@@ -295,9 +294,9 @@ let rdata_to_string = function
   | `SRV (x, y, z, n) 
     -> sprintf "SRV (%d,%d,%d, %s)" x y z (domain_name_to_string n)
   | `TXT sl -> sprintf "TXT (%s)" (join "" sl)
-  | `UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (bytes_to_string bs)
-  | `UNSPEC bs -> sprintf "UNSPEC (%s)" (bytes_to_string bs)
-  | `WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x y s
+  | `UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x bs
+  | `UNSPEC bs -> sprintf "UNSPEC (%s)" bs
+  | `WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x (byte_to_int y) s
   | `X25 s -> sprintf "X25 (%s)" s
 
   | `DS (keytag, alg, digest_t, digest) 
@@ -305,9 +304,9 @@ let rdata_to_string = function
           (dnssec_alg_to_string alg) (digest_alg_to_string digest_t) digest
     )
   | `IPSECKEY (precedence, gw_type, alg, gw, pubkey)
-    -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" precedence
+    -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" (byte_to_int precedence)
           (gateway_tc_to_string gw_type) (ipseckey_alg_to_string alg)
-          (gateway_to_string gw) (bytes_to_string pubkey)
+          (gateway_to_string gw) pubkey
     )
   | `NSEC (next_name, tbms) 
     -> (sprintf "NSEC (%s, %s)" 
@@ -315,25 +314,24 @@ let rdata_to_string = function
     )
   | `NSEC3 (halg, flgs, iterations, salt_l, salt, hash_l, next_name, tbms)
     -> (sprintf "NSEC3 (%s, %x, %d, %d,'%s', %d,'%s', %s)"
-          (hash_alg_to_string halg) flgs iterations
-          salt_l (bytes_to_string salt)
-          hash_l (bytes_to_string next_name)
+          (hash_alg_to_string halg) (byte_to_int flgs) iterations 
+          (byte_to_int salt_l) salt (byte_to_int  hash_l) next_name
           (type_bit_maps_to_string tbms)
     )
   | `NSEC3PARAM (halg, flgs, iterations, salt_l, salt)
     -> (sprintf "NSEC3PARAM (%s,%x, %d, %d, '%s')"
-          (hash_alg_to_string halg) flgs iterations salt_l 
-          (bytes_to_string salt)
+          (hash_alg_to_string halg) (byte_to_int flgs) iterations 
+          (byte_to_int salt_l) salt
     )
   | `RRSIG (tc, alg, nlbls, ttl, expiration, inception, keytag, name, sign)
     -> (sprintf "RRSIG (%s,%s,%d, %ld, %ld,%ld, %d, %s, %s)"
           (rr_type_to_string tc) (dnssec_alg_to_string alg) 
-          nlbls ttl expiration inception keytag
-          (domain_name_to_string name) (bytes_to_string sign)
+          (byte_to_int nlbls) ttl expiration inception keytag
+          (domain_name_to_string name) sign
     )
   | `SSHFP (alg, fpt, fp)
     -> (sprintf "SSHFP (%s,%s, '%s')" (pubkey_alg_to_string alg) 
-          (fp_type_to_string fpt) (bytes_to_string fp)
+          (fp_type_to_string fpt) fp
     )
 
 let parse_rdata names base t buf = 
@@ -342,15 +340,15 @@ let parse_rdata names base t buf =
   (** Extract (length, string) encoded strings, with remainder for
       chaining. *)
   let parse_charstr buf = 
-    let len = Cstruct.get_uint8 buf 0 in
-    Cstruct.to_string (Cstruct.sub buf 1 len), slide buf (1+len)
+    let len = get_uint8 buf 0 in
+    to_string (sub buf 1 len), slide buf (1+len)
   in
   match t with
-    | Some A -> `A (Cstruct.BE.get_uint32 buf 0)
+    | Some A -> `A (BE.get_uint32 buf 0)
     | Some NS -> `NS (buf |> parse_name names base |> stop)
     | Some CNAME -> `CNAME (buf |> parse_name names base |> stop)
     | Some DNSKEY -> 
-        Cstruct.(
+        (
           let flags = BE.get_uint16 buf 0 in
           let alg = 
             let a = get_uint8 buf 3 in
@@ -364,7 +362,7 @@ let parse_rdata names base t buf =
     | Some SOA -> 
         let mn, (o, buf) = parse_name names base buf in
         let rn, (_, buf) = parse_name names (base+o) buf in 
-        Cstruct.BE.(`SOA (mn, rn, 
+        BE.(`SOA (mn, rn, 
                           get_uint32 buf 0,  (* serial *)
                           get_uint32 buf 4,  (* refresh *)
                           get_uint32 buf 8,  (* retry *)
@@ -372,11 +370,11 @@ let parse_rdata names base t buf =
                           get_uint32 buf 16  (* minimum *)
         ))
     | Some WKS -> 
-        Cstruct.(
+        (
           let addr = BE.get_uint32 buf 0 in
           let proto = get_uint8 buf 4 in
           let bitmap = slide buf 5 |> to_string in
-          `WKS (addr, proto, bitmap)
+          `WKS (addr, byte proto, bitmap)
         )
     | Some PTR -> `PTR (buf |> parse_name names base |> stop)
     | Some HINFO -> let cpu, buf = parse_charstr buf in
@@ -385,10 +383,10 @@ let parse_rdata names base t buf =
     | Some MINFO -> let rm, (o,buf) = buf |> parse_name names base in
                     let em = buf |> parse_name names (base+o) |> stop in
                     `MINFO (rm, em)
-    | Some MX -> `MX (Cstruct.BE.get_uint16 buf 0,
+    | Some MX -> `MX (BE.get_uint16 buf 0,
                       slide buf 2 |> parse_name names base |> stop)
     | Some SRV -> 
-        Cstruct.BE.(
+        BE.(
           `SRV (get_uint16 buf 0, (* prio *)
                 get_uint16 buf 2, (* weight *)
                 get_uint16 buf 4, (* port *)
@@ -398,7 +396,7 @@ let parse_rdata names base t buf =
     | Some TXT -> 
         let strings = 
           let rec aux strings base buf =
-            match Cstruct.len buf with
+            match len buf with
               | 0 -> strings ||> (fun a -> join "" a)
               | _ ->
                   let n, (o,buf) = parse_name ~check_len:false names base buf in
@@ -629,8 +627,8 @@ cstruct h {
 } as big_endian
 
 type dns = {
-  id          : Cstruct.uint16;
-  detail      : Cstruct.uint16;
+  id          : uint16;
+  detail      : uint16;
   questions   : question list; (* Cstruct.iter; *)
   answers     : rr list; (* Cstruct.iter; *)
   authorities : rr list; (* Cstruct.iter; *)

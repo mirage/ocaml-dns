@@ -14,14 +14,12 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-(* 
-   open Wire 
-   open Re_str
-*)
+(* open Wire *)
+(* open Re_str *)
 
 open Printf
 open Operators
-open Uri_IP
+open Cstruct
 
 type domain_name = string list
 let domain_name (sl:string list) : domain_name = sl

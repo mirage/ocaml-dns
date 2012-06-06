@@ -21,7 +21,7 @@
     @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
-open Uri_IP
+open Cstruct
 
 (** DNS label, including pointer and zero. *)
 type label

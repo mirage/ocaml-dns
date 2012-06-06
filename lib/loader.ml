@@ -21,7 +21,6 @@ open RR
 open Trie
 open Name
 open Operators
-open Wire
 
 (* Loader database: the DNS trie plus a hash table of other names in use *)
 type db = {
@@ -134,7 +133,7 @@ let add_minfo_rr rmailbx emailbx ttl owner db =
   add_rrset { ttl; rdata = MINFO [ (rtarget, etarget) ] } owner db
 
 let add_mx_rr pri target ttl owner db =
-  let pri = int16 pri in
+  let pri = pri in
   let targetnode = get_target_dnsnode target db in
   add_rrset { ttl; rdata = MX [ (pri, targetnode) ] } owner db
 
@@ -148,7 +147,7 @@ let add_rp_rr mbox txt ttl owner db =
   add_rrset { ttl; rdata = RP [ (mtarget, ttarget) ] } owner db
 
 let add_afsdb_rr subtype target ttl owner db =
-  let st = int16 subtype in
+  let st = subtype in
   let targetnode = get_target_dnsnode target db in
   add_rrset { ttl; rdata = AFSDB [ (st, targetnode) ] } owner db
 
@@ -164,7 +163,7 @@ let add_isdn_rr addr sa ttl owner db =
   add_rrset { ttl; rdata = ISDN [ (a, s) ] } owner db
 
 let add_rt_rr pref target ttl owner db =
-  let pref = int16 pref in
+  let pref = pref in
   let targetnode = get_target_dnsnode target db in
   add_rrset { ttl; rdata = RT [ (pref, targetnode) ] } owner db
 
@@ -173,9 +172,9 @@ let add_aaaa_rr str ttl owner db =
   add_rrset { ttl; rdata = AAAA [ s ] } owner db
 
 let add_srv_rr pri weight port target ttl owner db = 
-  let pri = int16 pri in
-  let weight = int16 weight in
-  let port = int16 port in
+  let pri = pri in
+  let weight = weight in
+  let port = port in
   let targetnode = get_target_dnsnode target db in
   add_rrset { ttl; 
 	      rdata = SRV [ (pri, weight, port, targetnode) ] } owner db
@@ -185,12 +184,11 @@ let add_unspec_rr str ttl owner db =
   add_rrset { ttl; rdata = UNSPEC [ s ] } owner db
  
 let add_dnskey_rr flags typ key ttl owner db =
-  let flags = int16 flags in
-  let typ = int16 typ in
+  let flags = flags in
+  let typ = typ in
   let tmp = Cryptokit.transform_string  (Cryptokit.Base64.decode ())  key in
   let dnskey = hashcons_charstring tmp in 
-  add_rrset { ttl; rdata = DNSKEY [ ((int16_to_int flags), 
-                                     (int16_to_int typ), dnskey) ] } owner db
+  add_rrset { ttl; rdata = DNSKEY [ (flags, typ, dnskey) ] } owner db
 
 
 (* State variables for the parser & lexer *)
