@@ -203,13 +203,52 @@ let answer_query qname qtype trie =
            addrr (`UNKNOWN (t, s))
   in
   
-  (* Get an RRSet, which may not exist *)
-  let add_opt_rrset node rrtype section = 
-    if not (in_log node.owner.H.node rrtype)
-    then let a = get_rrsets rrtype node.rrsets false in
-         List.iter (fun s -> 
-           add_rrset node.owner.H.node s.ttl s.rdata section) a 
+
+(* Extract relevant RRSets given a query type, a list of RRSets and a flag to
+   say whether to return Cnames too *)
+  let get_rrsets qtype sets cnames_ok = 
+    let match_rrset qtype set =
+      match (qtype, set.rdata) with 
+          (`A, A _) -> true
+        | (`NS, NS _) -> true
+        | (`CNAME, CNAME _) -> true
+        | (`SOA, SOA _) -> true
+        | (`MB, MB _) -> true
+        | (`MG, MG _) -> true
+        | (`MR, MR _) -> true
+        | (`WKS, WKS _) -> true
+        | (`PTR, PTR _) -> true
+        | (`HINFO, HINFO _) -> true
+        | (`MINFO, MINFO _) -> true
+        | (`MX, MX _) -> true
+        | (`TXT, TXT _) -> true
+        | (`RP, RP _) -> true
+        | (`AFSDB, AFSDB _) -> true
+        | (`X25, X25 _) -> true
+        | (`ISDN, ISDN _) -> true
+        | (`RT, RT _) -> true
+        | (`SRV, SRV _) -> true
+        | (`AAAA, AAAA _) -> true
+        | (`DNSKEY, DNSKEY _) -> true
+        | (`UNSPEC, UNSPEC _) -> true
+        | (`Unknown (t1, _), Unknown (t2, _)) -> (t1 = t2)
+        | (`MAILB, MB _) -> true
+        | (`MAILB, MG _) -> true
+        | (`MAILB, MR _) -> true
+        | (`ANY, _) -> true
+        | (_, CNAME _) -> cnames_ok
+        | (_, _) -> false
+    in List.filter (match_rrset qtype) sets
+
+
   in
+(* Get an RRSet, which may not exist *)
+let add_opt_rrset node rrtype section = 
+  if not (in_log node.owner.H.node rrtype)
+  then let a = get_rrsets rrtype node.rrsets false in
+       List.iter (fun s -> 
+         add_rrset node.owner.H.node s.ttl s.rdata section) a 
+in
 
   (* Get an RRSet, which must exist *)
   let add_req_rrset node rrtype section = 

@@ -197,7 +197,7 @@ cenum rr_type {
    A zone MUST NOT include an NSEC RR for any domain name that only
    holds glue records.
 *)
-type type_bit_map = byte * byte * bytes
+type type_bit_map = byte * byte * Cstruct.buf
 let type_bit_map_to_string (tbm:type_bit_map) : string = 
   "TYPE_BIT_MAP"
 (*
@@ -216,15 +216,16 @@ let marshall_tbms tbms =
   tbms ||> marshall_tbm |> Bitstring.concat 
 *)
 
+(*
 type rr_rdata = [
 | `A of ipv4
-| `AAAA of bytes
+| `AAAA of string
 | `AFSDB of uint16 * domain_name
 | `CNAME of domain_name
 | `DNSKEY of uint16 * dnssec_alg * string
 | `DS of uint16 * dnssec_alg * digest_alg * string
 | `HINFO of string * string
-| `IPSECKEY of byte * gateway_tc * ipseckey_alg * gateway * bytes
+| `IPSECKEY of byte * gateway_tc * ipseckey_alg * gateway * string
 | `ISDN of string * string option
 | `MB of domain_name
 | `MD of domain_name
@@ -235,20 +236,20 @@ type rr_rdata = [
 | `MX of uint16 * domain_name
 | `NS of domain_name
 | `NSEC of domain_name (* uncompressed *) * type_bit_maps
-| `NSEC3 of hash_alg * byte * uint16 * byte * bytes * byte * bytes * 
+| `NSEC3 of hash_alg * byte * uint16 * byte * string * byte * string * 
     type_bit_maps
-| `NSEC3PARAM of hash_alg * byte * uint16 * byte * bytes
+| `NSEC3PARAM of hash_alg * byte * uint16 * byte * string
 | `PTR of domain_name
 | `RP of domain_name * domain_name
 | `RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
-    domain_name (* uncompressed *) * bytes
+    domain_name (* uncompressed *) * string
 | `RT of uint16 * domain_name
 | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | `SRV of uint16 * uint16 * uint16 * domain_name
-| `SSHFP of pubkey_alg * fp_type * bytes
+| `SSHFP of pubkey_alg * fp_type * string
 | `TXT of string list
-| `UNKNOWN of int * bytes
-| `UNSPEC of bytes
+| `UNKNOWN of int * string
+| `UNSPEC of string
 | `WKS of int32 * byte * string
 | `X25 of string 
 ]
@@ -333,6 +334,7 @@ let rdata_to_string = function
     -> (sprintf "SSHFP (%s,%s, '%s')" (pubkey_alg_to_string alg) 
           (fp_type_to_string fpt) fp
     )
+*)
 
 let parse_rdata names base t buf = 
   (** Drop remainder bitstring to stop parsing and demuxing. *) 
@@ -344,7 +346,8 @@ let parse_rdata names base t buf =
     to_string (sub buf 1 len), slide buf (1+len)
   in
   match t with
-    | Some A -> `A (BE.get_uint32 buf 0)
+    | Some A -> RR.A [(BE.get_uint32 buf 0)]
+(*
     | Some NS -> `NS (buf |> parse_name names base |> stop)
     | Some CNAME -> `CNAME (buf |> parse_name names base |> stop)
     | Some DNSKEY -> 
@@ -405,6 +408,7 @@ let parse_rdata names base t buf =
           aux [] base buf
         in
         `TXT strings
+*)
     | Some t -> failwith (sprintf "parse_rdata: %s" (rr_type_to_string t))
     | None -> failwith "parse_rdata: unknown rr_type"
         
@@ -426,13 +430,13 @@ type rr = {
   name  : domain_name;
   cls   : rr_class;
   ttl   : int32;
-  rdata : rr_rdata;
+  rdata : RR.rdata;
 }
 
 let rr_to_string rr = 
-  sprintf "%s <%s|%ld> %s" 
+  sprintf "%s <%s|%ld> "
     (domain_name_to_string rr.name) (rr_class_to_string rr.cls) 
-    rr.ttl (rdata_to_string rr.rdata)
+    rr.ttl (* (rdata_to_string rr.rdata)*)
 
 let parse_rr names base buf =
   let name, (o,buf) = parse_name names base buf in

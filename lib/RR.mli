@@ -73,7 +73,7 @@ and rdata =
   | WKS of (int32 * byte * cstr) list
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
-
+(*
 (** Extract relevant RRSets given a query type, a list of RRSets and a flag to
     say whether to return CNAMEs too. 
 
@@ -85,3 +85,4 @@ val get_rrsets : Packet.q_type -> rrset list -> bool -> rrset list
 
     @return the new list and the TTL of the resulting RRset. *)
 val merge_rrset : rrset -> rrset list -> int32 * rrset list
+*)

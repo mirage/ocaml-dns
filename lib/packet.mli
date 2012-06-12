@@ -67,16 +67,16 @@ type type_bit_maps
 
 (** Represent RDATA elements; a variant type to avoid collision with the
     compact {! Trie} representation from {! RR}. *)
-
+(*
 type rr_rdata = [
 | `A of ipv4
-| `AAAA of bytes
+| `AAAA of string
 | `AFSDB of uint16 * domain_name
 | `CNAME of domain_name
 | `DNSKEY of uint16 * dnssec_alg * string
 | `DS of uint16 * dnssec_alg * digest_alg * string
 | `HINFO of string * string
-| `IPSECKEY of byte * gw_type * ipseckey_alg * gateway * bytes
+| `IPSECKEY of byte * gw_type * ipseckey_alg * gateway * string
 | `ISDN of string * string option
 | `MB of domain_name
 | `MD of domain_name
@@ -87,29 +87,28 @@ type rr_rdata = [
 | `MX of uint16 * domain_name
 | `NS of domain_name
 | `NSEC of domain_name (* uncompressed *) * type_bit_maps
-| `NSEC3 of hash_alg * byte * uint16 * byte * bytes * byte * bytes * 
-    type_bit_maps
-| `NSEC3PARAM of hash_alg * byte * uint16 * byte * bytes
+| `NSEC3 of hash_alg * byte * uint16 * byte * string * byte * string * type_bit_maps
+| `NSEC3PARAM of hash_alg * byte * uint16 * byte * string
 | `PTR of domain_name
 | `RP of domain_name * domain_name
 | `RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
-    domain_name (* uncompressed *) * bytes
+    domain_name (* uncompressed *) * string
 | `RT of uint16 * domain_name
 | `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | `SRV of uint16 * uint16 * uint16 * domain_name
-| `SSHFP of pubkey_alg * fp_type * bytes
+| `SSHFP of pubkey_alg * fp_type * string
 | `TXT of string list
-| `UNKNOWN of int * bytes
-| `UNSPEC of bytes
+| `UNKNOWN of int * string
+| `UNSPEC of string
 | `WKS of int32 * byte * string
 | `X25 of string 
 ]
 val rdata_to_string : rr_rdata -> string
-
+*)
 (** Parse an RDATA element from a packet, given the set of already encountered
     names, a starting index, and the type of the RDATA. *)
 val parse_rdata : 
-  (int, label) Hashtbl.t -> int -> rr_type -> Cstruct.buf-> rr_rdata
+  (int, label) Hashtbl.t -> int -> rr_type -> Cstruct.buf -> RR.rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
 
@@ -124,9 +123,9 @@ val string_to_rr_class : string -> rr_class
 
 type rr = {
   name  : domain_name;
-  cls : rr_class;
+  cls   : rr_class;
   ttl   : int32;
-  rdata : rr_rdata;
+  rdata : RR.rdata;
 }
 val rr_to_string : rr -> string
 val parse_rr :

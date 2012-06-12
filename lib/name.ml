@@ -22,8 +22,6 @@ open Operators
 open Cstruct
 
 type domain_name = string list
-let domain_name (sl:string list) : domain_name = sl
-let empty_domain_name = []
 let domain_name_to_string dn = join "." dn
 let string_to_domain_name (s:string) : domain_name = 
   Re_str.split (Re_str.regexp "\\.") s
@@ -79,7 +77,7 @@ let parse_name ?(check_len=true) names offset buf = (* what. a. mess. *)
 
 (* Hash-consing: character strings *)
 module CSH = Hashcons.Make (struct 
-  type t = string 
+  type t = string
   let equal a b = (a = b)
   let hash s = Hashtbl.hash s
 end)
@@ -99,12 +97,12 @@ module DNH = Hashcons.Make (struct
 end)
 let dn_hash = ref (DNH.create 101)
 let rec hashcons_domainname (x:domain_name) = match x with
-  | [] -> DNH.hashcons !dn_hash empty_domain_name
+  | [] -> DNH.hashcons !dn_hash []
   | h :: t -> 
-      let th = hashcons_domainname t 
-      in DNH.hashcons !dn_hash 
-	(((hashcons_charstring (String.lowercase h)).Hashcons.node) 
-	 :: (th.Hashcons.node))
+      let th = hashcons_domainname t in 
+      DNH.hashcons !dn_hash 
+	    (((hashcons_charstring (String.lowercase h)).Hashcons.node) 
+	     :: (th.Hashcons.node))
 
 let clear_cons_tables () = 
   DNH.clear !dn_hash;
