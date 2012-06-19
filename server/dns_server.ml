@@ -59,10 +59,10 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
           match answer with
           |None -> return ()
           |Some answer ->
-            let detail = DP.(build_detail { 
-              qr=`Answer; opcode=`Query; aa=answer.DQ.aa;
+            let detail = DP.({ 
+              qr=Response; opcode=Standard; aa=answer.DQ.aa;
               tc=false; rd=false; ra=false; rcode=answer.DQ.rcode 
-            }) 
+            })
             in
             let response = DP.({ 
               id=query.id; detail; 

@@ -94,61 +94,61 @@ cenum dnssec_alg {
 } as uint8_t
 
 cenum rr_type {
-  A          = 1;
-  NS         = 2;
-  MD         = 3;
-  MF         = 4;
-  CNAME      = 5;
-  SOA        = 6;
-  MB         = 7;
-  MG         = 8;
-  MR         = 9;
-  NULL       = 10;
-  WKS        = 11;
-  PTR        = 12;
-  HINFO      = 13;
-  MINFO      = 14;
-  MX         = 15;
-  TXT        = 16;
-  RP         = 17;
-  AFSDB      = 18;
-  X25        = 19;
-  ISDN       = 20;
-  RT         = 21;
-  NSAP       = 22;
-  NSAP_PTR   = 23;
-  SIG        = 24;
-  KEY        = 25;
-  PX         = 26;
-  GPOS       = 27;
-  AAAA       = 28;
-  LOC        = 29;
-  NXT        = 30;
-  EID        = 31;
-  NIMLOC     = 32;
-  SRV        = 33;
-  ATMA       = 34;
-  NAPTR      = 35;
-  KM         = 36;
-  CERT       = 37;
-  A6         = 38;
-  DNAME      = 39;
-  SINK       = 40;
-  OPT        = 41;
-  APL        = 42;
-  DS         = 43;
-  SSHFP      = 44;
-  IPSECKEY   = 45;
-  RRSIG      = 46;
-  NSEC       = 47;
-  DNSKEY     = 48;
-  NSEC3      = 50;
-  NSEC3PARAM = 51;
-  SPF        = 99;
-  UINFO      = 100;
-  UID        = 101;
-  GID        = 102;
-  UNSPEC     = 103
+  RR_A          = 1;
+  RR_NS         = 2;
+  RR_MD         = 3;
+  RR_MF         = 4;
+  RR_CNAME      = 5;
+  RR_SOA        = 6;
+  RR_MB         = 7;
+  RR_MG         = 8;
+  RR_MR         = 9;
+  RR_NULL       = 10;
+  RR_WKS        = 11;
+  RR_PTR        = 12;
+  RR_HINFO      = 13;
+  RR_MINFO      = 14;
+  RR_MX         = 15;
+  RR_TXT        = 16;
+  RR_RP         = 17;
+  RR_AFSDB      = 18;
+  RR_X25        = 19;
+  RR_ISDN       = 20;
+  RR_RT         = 21;
+  RR_NSAP       = 22;
+  RR_NSAPPTR    = 23;
+  RR_SIG        = 24;
+  RR_KEY        = 25;
+  RR_PX         = 26;
+  RR_GPOS       = 27;
+  RR_AAAA       = 28;
+  RR_LOC        = 29;
+  RR_NXT        = 30;
+  RR_EID        = 31;
+  RR_NIMLOC     = 32;
+  RR_SRV        = 33;
+  RR_ATMA       = 34;
+  RR_NAPTR      = 35;
+  RR_KM         = 36;
+  RR_CERT       = 37;
+  RR_A6         = 38;
+  RR_DNAME      = 39;
+  RR_SINK       = 40;
+  RR_OPT        = 41;
+  RR_APL        = 42;
+  RR_DS         = 43;
+  RR_SSHFP      = 44;
+  RR_IPSECKEY   = 45;
+  RR_RRSIG      = 46;
+  RR_NSEC       = 47;
+  RR_DNSKEY     = 48;
+  RR_NSEC3      = 50;
+  RR_NSEC3PARAM = 51;
+  RR_SPF        = 99;
+  RR_UINFO      = 100;
+  RR_UID        = 101;
+  RR_GID        = 102;
+  RR_UNSPEC     = 103
 } as uint8_t
 
 (*
@@ -336,6 +336,152 @@ let rdata_to_string = function
     )
 *)
 
+cenum rr_class {
+  IN = 1;
+  CS = 2;
+  CH = 3;
+  HS = 4
+} as uint8_t
+      
+cstruct rr {
+  uint16_t typ;
+  uint16_t cls;
+  uint32_t ttl;
+  uint16_t rdlen
+} as big_endian
+
+type rr = {
+  name  : domain_name;
+  cls   : rr_class;
+  ttl   : int32;
+  rdata : RR.rdata;
+}
+
+let rr_to_string rr = 
+  sprintf "%s <%s|%ld> "
+    (domain_name_to_string rr.name) (rr_class_to_string rr.cls) 
+    rr.ttl (* (rdata_to_string rr.rdata)*)
+
+cenum q_type {
+  Q_A          = 1;
+  Q_NS         = 2;
+  Q_MD         = 3;
+  Q_MF         = 4;
+  Q_CNAME      = 5;
+  Q_SOA        = 6;
+  Q_MB         = 7;
+  Q_MG         = 8;
+  Q_MR         = 9;
+  Q_NULL       = 10;
+  Q_WKS        = 11;
+  Q_PTR        = 12;
+  Q_HINFO      = 13;
+  Q_MINFO      = 14;
+  Q_MX         = 15;
+  Q_TXT        = 16;
+  Q_RP         = 17;
+  Q_AFSDB      = 18;
+  Q_X25        = 19;
+  Q_ISDN       = 20;
+  Q_RT         = 21;
+  Q_NSAP       = 22;
+  Q_NSAPPTR    = 23;
+  Q_SIG        = 24;
+  Q_KEY        = 25;
+  Q_PX         = 26;
+  Q_GPOS       = 27;
+  Q_AAAA       = 28;
+  Q_LOC        = 29;
+  Q_NXT        = 30;
+  Q_EID        = 31;
+  Q_NIMLOC     = 32;
+  Q_SRV        = 33;
+  Q_ATMA       = 34;
+  Q_NAPTR      = 35;
+  Q_KM         = 36;
+  Q_CERT       = 37;
+  Q_A6         = 38;
+  Q_DNAME      = 39;
+  Q_SINK       = 40;
+  Q_OPT        = 41;
+  Q_APL        = 42;
+  Q_DS         = 43;
+  Q_SSHFP      = 44;
+  Q_IPSECKEY   = 45;
+  Q_RRSIG      = 46;
+  Q_NSEC       = 47;
+  Q_DNSKEY     = 48;
+  Q_NSEC3      = 50;
+  Q_NSEC3PARAM = 51;
+
+  Q_SPF        = 99;
+  Q_UINFO      = 100;
+  Q_UID        = 101;
+  Q_GID        = 102;
+  Q_UNSPEC     = 103;
+  
+  Q_AXFR  = 252;
+  Q_MAILB = 253;
+  Q_MAILA = 254;
+  Q_ANY   = 255;
+  
+  Q_TA    = 32768;
+  Q_DLV   = 32769
+} as uint8_t
+
+(*
+let qt_to_rrt q = 
+  match q_type_to_int q with
+    | i when ((1 <= i) && (i <= 103)) -> int_to_rr_type i
+    | _ -> failwith "can't convert qt to rt"
+
+let rrt_to_qt r = 
+  match rr_type_to_int r with
+    | i when ((1 <= i) && (i <= 103)) -> int_to_q_type i
+    | _ -> failwith "can't convert rt to qt"
+*)
+                                            
+cenum q_class {
+  IN   = 1;
+  CS   = 2;
+  CH   = 3;
+  HS   = 4;
+  NONE = 254;
+  ANY  = 255
+} as uint8_t
+
+cstruct q {
+  uint16_t typ;
+  uint16_t cls
+} as big_endian
+
+type question = {
+  q_name  : domain_name;
+  q_type  : q_type;
+  q_class : q_class;
+}
+
+let question_to_string q = 
+  sprintf "%s <%s|%s>" 
+    (domain_name_to_string q.q_name) 
+    (q_type_to_string q.q_type) (q_class_to_string q.q_class)
+
+let parse_question names base buf = 
+  let q_name, (o,buf) = parse_name names base buf in
+  let q_type = 
+    let typ = get_q_typ buf in
+    match int_to_q_type typ with
+      | None -> failwith (sprintf "parse_question: typ %d" typ)
+      | Some typ -> typ
+  in
+  let q_class = 
+    let cls = get_q_cls buf in
+    match int_to_q_class cls with
+      | None -> failwith (sprintf "parse_question: cls %d" cls)
+      | Some cls -> cls
+  in
+  { q_name; q_type; q_class }, (base+o+sizeof_q, slide buf sizeof_q)
+
 let parse_rdata names base t buf = 
   (** Drop remainder bitstring to stop parsing and demuxing. *) 
   let stop (x, _) = x in
@@ -346,7 +492,7 @@ let parse_rdata names base t buf =
     to_string (sub buf 1 len), slide buf (1+len)
   in
   match t with
-    | Some A -> RR.A [(BE.get_uint32 buf 0)]
+    | RR_A -> RR.A [(BE.get_uint32 buf 0)]
 (*
     | Some NS -> `NS (buf |> parse_name names base |> stop)
     | Some CNAME -> `CNAME (buf |> parse_name names base |> stop)
@@ -409,166 +555,34 @@ let parse_rdata names base t buf =
         in
         `TXT strings
 *)
-    | Some t -> failwith (sprintf "parse_rdata: %s" (rr_type_to_string t))
-    | None -> failwith "parse_rdata: unknown rr_type"
+    | t -> failwith (sprintf "parse_rdata: %s" (rr_type_to_string t))
         
-cenum rr_class {
-  IN = 1;
-  CS = 2;
-  CH = 3;
-  HS = 4
-} as uint8_t
-      
-cstruct rr {
-  uint16_t typ;
-  uint16_t cls;
-  uint32_t ttl;
-  uint16_t rdlen
-} as big_endian
-
-type rr = {
-  name  : domain_name;
-  cls   : rr_class;
-  ttl   : int32;
-  rdata : RR.rdata;
-}
-
-let rr_to_string rr = 
-  sprintf "%s <%s|%ld> "
-    (domain_name_to_string rr.name) (rr_class_to_string rr.cls) 
-    rr.ttl (* (rdata_to_string rr.rdata)*)
 
 let parse_rr names base buf =
   let name, (o,buf) = parse_name names base buf in
   let typ = get_rr_typ buf |> int_to_rr_type in
-  let cls = get_rr_cls buf |> int_to_rr_class in
-  let ttl = get_rr_ttl buf in
-  let rdlen = get_rr_rdlen buf in
-  let rdata = parse_rdata names (base+o+sizeof_rr) typ buf in
-  match cls with
-    | None -> failwith "parse_rr: unknown class"
-    | Some cls -> { name; cls; ttl; rdata }, ((o+sizeof_rr+rdlen), slide buf (sizeof_rr+rdlen))
+  match typ with
+    | None -> failwith "parse_rr: unknown type"
+    | Some typ ->
+        let cls = get_rr_cls buf |> int_to_rr_class in
+        let ttl = get_rr_ttl buf in
+        let rdlen = get_rr_rdlen buf in
+        let rdata = parse_rdata names (base+o+sizeof_rr) typ buf in
+        match cls with
+          | None -> failwith "parse_rr: unknown class"
+          | Some cls -> 
+              ({ name; cls; ttl; rdata }, 
+               ((o+sizeof_rr+rdlen), slide buf (sizeof_rr+rdlen))
+              )
 
-cenum q_type {
-  A          = 1;
-  NS         = 2;
-  MD         = 3;
-  MF         = 4;
-  CNAME      = 5;
-  SOA        = 6;
-  MB         = 7;
-  MG         = 8;
-  MR         = 9;
-  NULL       = 10;
-  WKS        = 11;
-  PTR        = 12;
-  HINFO      = 13;
-  MINFO      = 14;
-  MX         = 15;
-  TXT        = 16;
-  RP         = 17;
-  AFSDB      = 18;
-  X25        = 19;
-  ISDN       = 20;
-  RT         = 21;
-  NSAP       = 22;
-  NSAP_PTR   = 23;
-  SIG        = 24;
-  KEY        = 25;
-  PX         = 26;
-  GPOS       = 27;
-  AAAA       = 28;
-  LOC        = 29;
-  NXT        = 30;
-  EID        = 31;
-  NIMLOC     = 32;
-  SRV        = 33;
-  ATMA       = 34;
-  NAPTR      = 35;
-  KM         = 36;
-  CERT       = 37;
-  A6         = 38;
-  DNAME      = 39;
-  SINK       = 40;
-  OPT        = 41;
-  APL        = 42;
-  DS         = 43;
-  SSHFP      = 44;
-  IPSECKEY   = 45;
-  RRSIG      = 46;
-  NSEC       = 47;
-  DNSKEY     = 48;
-  NSEC3      = 50;
-  NSEC3PARAM = 51;
-
-  SPF        = 99;
-  UINFO      = 100;
-  UID        = 101;
-  GID        = 102;
-  UNSPEC     = 103;
-  
-  AXFR  = 252;
-  MAILB = 253;
-  MAILA = 254;
-  ANY   = 255;
-  
-  TA    = 32768;
-  DLV   = 32769
+cenum qr {
+  Query = 0;
+  Response = 1
 } as uint8_t
-
-cenum q_class {
-  IN   = 1;
-  CS   = 2;
-  CH   = 3;
-  HS   = 4;
-  NONE = 254;
-  ANY  = 255
-} as uint8_t
-
-cstruct q {
-  uint16_t typ;
-  uint16_t cls
-} as big_endian
-
-type question = {
-  q_name  : domain_name;
-  q_type  : q_type;
-  q_class : q_class;
-}
-
-let question_to_string q = 
-  sprintf "%s <%s|%s>" 
-    (domain_name_to_string q.q_name) 
-    (q_type_to_string q.q_type) (q_class_to_string q.q_class)
-
-let parse_question names base buf = 
-  let q_name, (o,buf) = parse_name names base buf in
-  let q_type = 
-    let typ = get_q_typ buf in
-    match int_to_q_type typ with
-      | None -> failwith (sprintf "parse_question: typ %d" typ)
-      | Some typ -> typ
-  in
-  let q_class = 
-    let cls = get_q_cls buf in
-    match int_to_q_class cls with
-      | None -> failwith (sprintf "parse_question: cls %d" cls)
-      | Some cls -> cls
-  in
-  { q_name; q_type; q_class }, (base+o+sizeof_q, slide buf sizeof_q)
-
-
-type qr = [ `Query | `Answer ]
-let bool_to_qr = function
-  | false -> `Query
-  | true  -> `Answer
-let qr_to_bool = function
-  | `Query  -> false
-  | `Answer -> true
 
 cenum opcode {
-  Query = 0;
-  Answer = 1;
+  Standard = 0;
+  Inverse = 1;
   Status = 2;
   Reserved = 3;
   Notify = 4;
@@ -630,9 +644,38 @@ cstruct h {
   uint16_t arcount
 } as big_endian
 
+type detail = {
+  qr: qr;
+  opcode: opcode;
+  aa: bool; 
+  tc: bool; 
+  rd: bool; 
+  ra: bool;
+  rcode: rcode;
+}
+
+let parse_detail d = 
+  let qr = match (d land 0b0_1) |> int_to_qr with
+    | Some qr -> qr
+    | None -> failwith "bad qr"
+  in
+  let opcode = match (d land 0b0_1_1110) |> int_to_opcode with
+    | Some opcode -> opcode
+    | None -> failwith "bad opcode"
+  in
+  let aa = (d land 0b0_10_0000) |> int_to_bool in
+  let tc = (d land 0b0_100_0000) |> int_to_bool in
+  let rd = (d land 0b0_1000_0000) |> int_to_bool in
+  let ra = (d land 0b0_1_0000_0000) |> int_to_bool in
+  let rcode = match (d land 0b0_1111_0000_0000_0000) |> int_to_rcode with
+    | Some rcode -> rcode
+    | None -> failwith "bad rcode"
+  in
+  { qr; opcode; aa; tc; rd; ra; rcode }
+
 type dns = {
-  id          : uint16;
-  detail      : uint16;
+  id          : int;
+  detail      : detail;
   questions   : question list; (* Cstruct.iter; *)
   answers     : rr list; (* Cstruct.iter; *)
   authorities : rr list; (* Cstruct.iter; *)
@@ -651,7 +694,7 @@ let parse_dns names buf =
   in
 
   let id = get_h_id buf in
-  let detail = get_h_detail buf in
+  let detail = get_h_detail buf |> parse_detail in
   let qdcount = get_h_qdcount buf in
   let ancount = get_h_ancount buf in
   let nscount = get_h_nscount buf in
@@ -675,7 +718,6 @@ let dns_to_string d =
     (d.additionals ||> rr_to_string |> join ",")
 *)
 
-(*
 let marshal_dns dns = 
   (** Alias {! Bitstring.bitstring_length}, but in bytes. *)
   let bsl b = (Bitstring.bitstring_length b)/8 in 
@@ -752,8 +794,8 @@ let marshal_dns dns =
 
   let mr r = 
     let mrdata = function
-      | `A ip -> (BITSTRING { ip:32 }, `A)
-          
+      | RR.A [ip] -> (BITSTRING { ip:32 }, RR_A)
+(*          
       | `AAAA _ -> failwith (sprintf "AAAA")
           
       | `AFSDB (t, n)
@@ -866,18 +908,20 @@ let marshal_dns dns =
                        (bytes_to_string fp):-1:string
                      }, `SSHFP
           
+*)
+      | _ -> failwith "mrdata: unknown rtype"
     in
 
-    let name = mn r.rr_name in
+    let name = mn r.name in
     pos := !pos + (bsl name)+2+2+4+2;
-    let rdata, rr_type = mrdata r.rr_rdata in
+    let rdata, rr_type = mrdata r.rdata in
     let rdlength = bsl rdata in
     pos := !pos + rdlength;
     (BITSTRING {
       name:-1:bitstring;
       (rr_type_to_int rr_type):16;
-      (rr_class_to_int r.rr_class):16;
-      r.rr_ttl:32;
+      (rr_class_to_int r.cls):16;
+      r.ttl:32;
       rdlength:16;
       rdata:(rdlength*8):bitstring
     }) 
@@ -896,8 +940,8 @@ let marshal_dns dns =
   let header = 
     pos := !pos + 2+2+2+2+2+2;
     (BITSTRING {
-      (int16_to_int dns.id):16; 
-      dns.detail:16:bitstring; 
+      (dns.id):16; 
+      (*detail*)0:16; 
       (List.length dns.questions):16;
       (List.length dns.answers):16;
       (List.length dns.authorities):16;
@@ -911,4 +955,3 @@ let marshal_dns dns =
   let adds = dns.additionals ||> mr in
 
   Bitstring.concat (header :: qs @ ans @ auths @ adds)
-*)

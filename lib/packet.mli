@@ -27,7 +27,7 @@ open Name
 open Cstruct
 
 type digest_alg
-type gw_type
+type gateway_tc
 type pubkey_alg
 type ipseckey_alg
 type gateway
@@ -37,26 +37,141 @@ type fp_type
 (** Represent a DNSSEC algorithm, with the usual conversion functions. *)
 
 type dnssec_alg
+(*
 val int_to_dnssec_alg : int -> dnssec_alg
 val dnssec_alg_to_int : dnssec_alg -> int
 val string_to_dnssec_alg : string -> dnssec_alg
 val dnssec_alg_to_string : dnssec_alg -> string
+*)
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
 
 
-type rr_type
+type q_type = 
+  | Q_A
+  | Q_NS
+  | Q_MD
+  | Q_MF
+  | Q_CNAME
+  | Q_SOA
+  | Q_MB
+  | Q_MG
+  | Q_MR
+  | Q_NULL
+  | Q_WKS
+  | Q_PTR
+  | Q_HINFO
+  | Q_MINFO
+  | Q_MX
+  | Q_TXT
+  | Q_RP
+  | Q_AFSDB
+  | Q_X25
+  | Q_ISDN
+  | Q_RT
+  | Q_NSAP
+  | Q_NSAPPTR
+  | Q_SIG
+  | Q_KEY
+  | Q_PX
+  | Q_GPOS
+  | Q_AAAA
+  | Q_LOC
+  | Q_NXT
+  | Q_EID
+  | Q_NIMLOC
+  | Q_SRV
+  | Q_ATMA
+  | Q_NAPTR
+  | Q_KM
+  | Q_CERT
+  | Q_A6
+  | Q_DNAME
+  | Q_SINK
+  | Q_OPT
+  | Q_APL
+  | Q_DS
+  | Q_SSHFP
+  | Q_IPSECKEY
+  | Q_RRSIG
+  | Q_NSEC
+  | Q_DNSKEY
+  | Q_NSEC3
+  | Q_NSEC3PARAM
+  | Q_SPF
+  | Q_UINFO
+  | Q_UID
+  | Q_GID
+  | Q_UNSPEC
+
+  | Q_AXFR
+  | Q_MAILB
+  | Q_MAILA
+  | Q_ANY
+
+  | Q_TA
+  | Q_DLV 
+
+type rr_type =
+  | RR_A
+  | RR_NS
+  | RR_MD
+  | RR_MF
+  | RR_CNAME
+  | RR_SOA
+  | RR_MB
+  | RR_MG
+  | RR_MR
+  | RR_NULL
+  | RR_WKS
+  | RR_PTR
+  | RR_HINFO
+  | RR_MINFO
+  | RR_MX
+  | RR_TXT
+  | RR_RP
+  | RR_AFSDB
+  | RR_X25
+  | RR_ISDN
+  | RR_RT
+  | RR_NSAP
+  | RR_NSAPPTR
+  | RR_SIG
+  | RR_KEY
+  | RR_PX
+  | RR_GPOS
+  | RR_AAAA
+  | RR_LOC
+  | RR_NXT
+  | RR_EID
+  | RR_NIMLOC
+  | RR_SRV
+  | RR_ATMA
+  | RR_NAPTR
+  | RR_KM
+  | RR_CERT
+  | RR_A6
+  | RR_DNAME
+  | RR_SINK
+  | RR_OPT
+  | RR_APL
+  | RR_DS
+  | RR_SSHFP
+  | RR_IPSECKEY
+  | RR_RRSIG
+  | RR_NSEC
+  | RR_DNSKEY
+  | RR_NSEC3
+  | RR_NSEC3PARAM
+  | RR_SPF
+  | RR_UINFO
+  | RR_UID
+  | RR_GID
+  | RR_UNSPEC
+
+
+
 (*
- = [ 
-| `A | `NS | `MD | `MF | `CNAME | `SOA | `MB | `MG | `MR | `NULL 
-| `WKS | `PTR | `HINFO | `MINFO | `MX | `TXT | `RP | `AFSDB | `X25 
-| `ISDN | `RT | `NSAP | `NSAP_PTR | `SIG | `KEY | `PX | `GPOS | `AAAA 
-| `LOC | `NXT | `EID | `NIMLOC | `SRV | `ATMA | `NAPTR | `KM | `CERT 
-| `A6 | `DNAME | `SINK | `OPT | `APL | `DS | `SSHFP | `IPSECKEY | `RRSIG
-| `NSEC | `DNSKEY | `NSEC3 | `NSEC3PARAM | `SPF | `UINFO | `UID | `GID
-| `UNSPEC
-| `Unknown of int * bytes
-]
 val rr_type_to_int : rr_type -> int
 val int_to_rr_type : int -> rr_type
 val rr_type_to_string : rr_type -> string
@@ -112,8 +227,9 @@ val parse_rdata :
 
 (** The class of a {! rr}, and usual conversion functions. *)
 
-type rr_class = [ `CH | `CS | `HS | `IN ]
+type rr_class = IN | CS | CH | HS
 (*
+ = [ `CH | `CS | `HS | `IN ]
 val int_to_rr_class : int -> rr_class
 val rr_class_to_int : rr_class -> int
 val rr_class_to_string : rr_class -> string
@@ -129,12 +245,12 @@ type rr = {
 }
 val rr_to_string : rr -> string
 val parse_rr :
-  (int, label) Hashtbl.t -> int -> Cstruct.buf -> rr * Cstruct.buf
+  (int, label) Hashtbl.t -> int -> Cstruct.buf -> rr * (int * Cstruct.buf)
 
 (** A question type, with the usual conversion functions. *)
 
-type q_type
 (*
+type q_type
  = [ rr_type | `AXFR | `MAILB | `MAILA | `ANY | `TA | `DLV ]
 val int_to_q_type : int -> q_type
 val q_type_to_int : q_type -> int
@@ -162,37 +278,43 @@ type question = {
 }
 val question_to_string : question -> string
 val parse_question :
-  (int, label) Hashtbl.t -> int -> Cstruct.buf -> question * Cstruct.buf
+  (int, label) Hashtbl.t -> int -> Cstruct.buf
+  -> question * (int * Cstruct.buf)
 
 (** The [qr] field from the DNS header {! detail}. *)
 
-type qr = [ `Query | `Answer ]
+type qr = Query | Response
+(*
 val bool_to_qr : bool -> qr
 val qr_to_bool : qr -> bool
+*)
 
 (** A DNS opcode, with the usual conversion functions. *)
 
-type opcode = [ qr | `Status | `Reserved | `Notify | `Update ]
+type opcode = Standard | Inverse | Status | Reserved | Notify | Update
+(*
 val int_to_opcode : int -> opcode
 val opcode_to_int : opcode -> int
+*)
 
 (** A DNS response code, with the usual conversion functions. *)
 
-type rcode = [
-| `NoError  | `FormErr
-| `ServFail | `NXDomain | `NotImp  | `Refused
-| `YXDomain | `YXRRSet  | `NXRRSet | `NotAuth
-| `NotZone  | `BadVers  | `BadKey  | `BadTime
-| `BadMode  | `BadName  | `BadAlg 
-]
+type rcode =
+  | NoError  | FormErr
+  | ServFail | NXDomain | NotImp  | Refused
+  | YXDomain | YXRRSet  | NXRRSet | NotAuth
+  | NotZone  | BadVers  | BadKey  | BadTime
+  | BadMode  | BadName  | BadAlg 
+      
+(*
 val int_to_rcode : int -> rcode
 val rcode_to_int : rcode -> int
 val rcode_to_string : rcode -> string
+*)
 
 (** The [detail] field from the DNS header, with the usual conversion
     functions. *)
                  
-(*
 type detail = {
   qr: qr;
   opcode: opcode;
@@ -202,16 +324,17 @@ type detail = {
   ra: bool;
   rcode: rcode;
 }
+(* 
 val detail_to_string : detail -> string
-val parse_detail : Cstruct.buf -> detail
+val parse_detail : Cstruct.uint16 -> detail
 val build_detail : detail -> Cstruct.buf
 *)
 
 (** And finally, the DNS packet itself, with conversion functions. *)
 
 type dns = {
-  id          : uint16;
-  detail      : Bitstring.t;
+  id          : int;
+  detail      : detail;
   questions   : question list;
   answers     : rr list;
   authorities : rr list;
@@ -220,12 +343,10 @@ type dns = {
 (*
 val dns_to_string : dns -> string
 *)
-val parse_dns : (int, label) Hashtbl.t -> Bitstring.t-> dns
+val parse_dns : (int, label) Hashtbl.t -> Cstruct.buf -> dns
 
-(*
 (** The marshalling entry point, given a {! dns} structure. 
 
     @return the marshalled packet
 *)
-val marshal_dns : dns -> Bitstring.t
-*)
+val marshal_dns : dns -> Cstruct.buf
