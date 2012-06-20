@@ -71,7 +71,7 @@ let answer_query qname qtype trie =
   in
 
   let add_rrset owner ttl rdata section = 
-    let addrr ?(rrclass = Some Packet.IN) rr = 
+    let addrr ?(rrclass = Some Packet.RR_IN) rr = 
       let rrclass = match rrclass with
         | Some x -> x
         | None   -> failwith "unknown rrclass"
@@ -90,7 +90,7 @@ let answer_query qname qtype trie =
     (* having extracted record from trie, partially marshal it *)
     match rdata with 
       | RR.A l -> log_rrset owner Packet.RR_A; 
-          List.iter (fun ip -> addrr (RR.A [ip])) l
+          List.iter (fun ip -> addrr (Packet.A ip)) l
             
       (*
         | NS l -> log_rrset owner `NS;
@@ -238,7 +238,7 @@ let answer_query qname qtype trie =
         | (Packet.Q_MAILB, MB _) -> true
         | (Packet.Q_MAILB, MG _) -> true
         | (Packet.Q_MAILB, MR _) -> true
-        | (Packet.Q_ANY, _) -> true
+        | (Packet.Q_ANY_TYP, _) -> true
         | (_, CNAME _) -> cnames_ok
         | (_, _) -> false
     in List.filter (match_rrset qtype) sets
@@ -343,7 +343,7 @@ let answer_query qname qtype trie =
   try 
     let rc = main_lookup qname qtype trie in	
     List.iter (fun (o, t) -> 
-      add_opt_rrset o Packet.Q_ANY t `Additional) !addqueue;
+      add_opt_rrset o Packet.Q_ANY_TYP t `Additional) !addqueue;
     { rcode = rc; aa = !aa_flag; 
       answer = !ans_rrs; authority = !auth_rrs; additional = !add_rrs }
   with 

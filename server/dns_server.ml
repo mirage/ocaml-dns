@@ -23,7 +23,7 @@ module DR = Dns.RR
 module DP = Dns.Packet
 
 type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr ->
-  Dns.Packet.dns -> Dns.Query.query_answer option Lwt.t
+  Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
 
 let contain_exc l v = 
   try Some v
@@ -51,7 +51,7 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
     while_lwt !cont do
       Lwt_pool.use bufs (fun buf ->
         lwt len, dst = Lwt_bytes.recvfrom fd buf 0 (Lwt_bytes.length buf) [] in
-        let query = contain_exc "parse" (DP.parse_dns names buf) in
+        let query = contain_exc "parse" (DP.parse names buf) in
         match query with
         |None -> return ()
         |Some query -> begin
@@ -71,7 +71,8 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
               authorities=answer.DQ.authority; 
               additionals=answer.DQ.additional }) 
             in
-            let bits = contain_exc "marshal" (DP.marshal_dns response) in
+            Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00';
+            let bits = contain_exc "marshal" (DP.marshal buf response) in
             match bits with
               | None -> return ()
               | Some buf -> 

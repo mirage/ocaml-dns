@@ -20,9 +20,8 @@ open Lwt
 open Dns.Operators
 open Printf
 open Re_str
-open Uri_IP
 open Dns.Name
-
+open Uri_IP
 module DP = Dns.Packet
 
 let usage () = 
@@ -31,7 +30,7 @@ let usage () =
 
 let lookup_name s = 
   lwt ans = Dns_resolver.gethostbyname s in 
-  let ans = (ans ||> ipv4_to_string |> String.concat "; ") in
+  let ans = (ans ||> Cstruct.ipv4_to_string |> String.concat "; ") in
   printf "%s -> %s\n%!" s ans;
   return ()
            

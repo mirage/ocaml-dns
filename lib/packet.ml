@@ -216,44 +216,44 @@ let marshall_tbms tbms =
   tbms ||> marshall_tbm |> Bitstring.concat 
 *)
 
-(*
-type rr_rdata = [
-| `A of ipv4
-| `AAAA of string
-| `AFSDB of uint16 * domain_name
-| `CNAME of domain_name
-| `DNSKEY of uint16 * dnssec_alg * string
-| `DS of uint16 * dnssec_alg * digest_alg * string
-| `HINFO of string * string
-| `IPSECKEY of byte * gateway_tc * ipseckey_alg * gateway * string
-| `ISDN of string * string option
-| `MB of domain_name
-| `MD of domain_name
-| `MF of domain_name
-| `MG of domain_name
-| `MINFO of domain_name * domain_name
-| `MR of domain_name
-| `MX of uint16 * domain_name
-| `NS of domain_name
-| `NSEC of domain_name (* uncompressed *) * type_bit_maps
-| `NSEC3 of hash_alg * byte * uint16 * byte * string * byte * string * 
+type rdata =
+| A of ipv4
+| AAAA of string
+| AFSDB of uint16 * domain_name
+| CNAME of domain_name
+| DNSKEY of uint16 * dnssec_alg * string
+| DS of uint16 * dnssec_alg * digest_alg * string
+| HINFO of string * string
+| IPSECKEY of byte * gateway_tc * ipseckey_alg * gateway * string
+| ISDN of string * string option
+| MB of domain_name
+| MD of domain_name
+| MF of domain_name
+| MG of domain_name
+| MINFO of domain_name * domain_name
+| MR of domain_name
+| MX of uint16 * domain_name
+| NS of domain_name
+| NSEC of domain_name (* uncompressed *) * type_bit_maps
+| NSEC3 of hash_alg * byte * uint16 * byte * string * byte * string * 
     type_bit_maps
-| `NSEC3PARAM of hash_alg * byte * uint16 * byte * string
-| `PTR of domain_name
-| `RP of domain_name * domain_name
-| `RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
+| NSEC3PARAM of hash_alg * byte * uint16 * byte * string
+| PTR of domain_name
+| RP of domain_name * domain_name
+| RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
     domain_name (* uncompressed *) * string
-| `RT of uint16 * domain_name
-| `SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
-| `SRV of uint16 * uint16 * uint16 * domain_name
-| `SSHFP of pubkey_alg * fp_type * string
-| `TXT of string list
-| `UNKNOWN of int * string
-| `UNSPEC of string
-| `WKS of int32 * byte * string
-| `X25 of string 
-]
+| RT of uint16 * domain_name
+| SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
+| SRV of uint16 * uint16 * uint16 * domain_name
+| SSHFP of pubkey_alg * fp_type * string
+| TXT of string list
+| UNKNOWN of int * string
+| UNSPEC of string
+| WKS of int32 * byte * string
+| X25 of string 
 
+
+(*
 let rdata_to_string = function
   | `A ip -> sprintf "A (%s)" (ipv4_to_string ip)
   | `AAAA bs -> sprintf "AAAA (%s)" bs
@@ -337,10 +337,10 @@ let rdata_to_string = function
 *)
 
 cenum rr_class {
-  IN = 1;
-  CS = 2;
-  CH = 3;
-  HS = 4
+  RR_IN = 1;
+  RR_CS = 2;
+  RR_CH = 3;
+  RR_HS = 4
 } as uint8_t
       
 cstruct rr {
@@ -354,7 +354,7 @@ type rr = {
   name  : domain_name;
   cls   : rr_class;
   ttl   : int32;
-  rdata : RR.rdata;
+  rdata : rdata;
 }
 
 let rr_to_string rr = 
@@ -420,10 +420,10 @@ cenum q_type {
   Q_GID        = 102;
   Q_UNSPEC     = 103;
   
-  Q_AXFR  = 252;
-  Q_MAILB = 253;
-  Q_MAILA = 254;
-  Q_ANY   = 255;
+  Q_AXFR    = 252;
+  Q_MAILB   = 253;
+  Q_MAILA   = 254;
+  Q_ANY_TYP = 255;
   
   Q_TA    = 32768;
   Q_DLV   = 32769
@@ -442,12 +442,12 @@ let rrt_to_qt r =
 *)
                                             
 cenum q_class {
-  IN   = 1;
-  CS   = 2;
-  CH   = 3;
-  HS   = 4;
-  NONE = 254;
-  ANY  = 255
+  Q_IN   = 1;
+  Q_CS   = 2;
+  Q_CH   = 3;
+  Q_HS   = 4;
+  Q_NONE = 254;
+  Q_ANY_CLS = 255
 } as uint8_t
 
 cstruct q {
@@ -492,7 +492,7 @@ let parse_rdata names base t buf =
     to_string (sub buf 1 len), slide buf (1+len)
   in
   match t with
-    | RR_A -> RR.A [(BE.get_uint32 buf 0)]
+    | RR_A -> A (BE.get_uint32 buf 0)
 (*
     | Some NS -> `NS (buf |> parse_name names base |> stop)
     | Some CNAME -> `CNAME (buf |> parse_name names base |> stop)
@@ -654,6 +654,16 @@ type detail = {
   rcode: rcode;
 }
 
+let detail_to_string d = 
+  sprintf "%c:%02x %s:%s:%s:%s %d"
+    (match d.qr with Query -> 'Q' | Response -> 'R')
+    (opcode_to_int d.opcode)
+    (if d.aa then "a" else "na") (* authoritative vs not *)
+    (if d.tc then "t" else "c") (* truncated vs complete *)
+    (if d.rd then "r" else "nr") (* recursive vs not *)
+    (if d.ra then "ra" else "rn") (* recursion available vs not *)
+    (rcode_to_int d.rcode)
+
 let parse_detail d = 
   let qr = match (d land 0b0_1) |> int_to_qr with
     | Some qr -> qr
@@ -673,7 +683,7 @@ let parse_detail d =
   in
   { qr; opcode; aa; tc; rd; ra; rcode }
 
-type dns = {
+type t = {
   id          : int;
   detail      : detail;
   questions   : question list; (* Cstruct.iter; *)
@@ -682,7 +692,7 @@ type dns = {
   additionals : rr list; (* Cstruct.iter; *)
 }
 
-let parse_dns names buf = 
+let parse names buf = 
   let parsen f ns b n buf = 
     let rec aux rs n off buf = 
       match n with
@@ -708,26 +718,23 @@ let parse_dns names buf =
 
   { id; detail; questions; answers; authorities; additionals }
 
-(*
-let dns_to_string d = 
+let to_string d = 
   sprintf "%04x %s <qs:%s> <an:%s> <au:%s> <ad:%s>"
-    (int16_to_int d.id) (detail_to_string d.detail)
+    d.id (detail_to_string d.detail)
     (d.questions ||> question_to_string |> join ",")
     (d.answers ||> rr_to_string |> join ",")
     (d.authorities ||> rr_to_string |> join ",")
     (d.additionals ||> rr_to_string |> join ",")
-*)
 
-let marshal_dns dns = 
-  (** Alias {! Bitstring.bitstring_length}, but in bytes. *)
-  let bsl b = (Bitstring.bitstring_length b)/8 in 
-
-  (** Current position in buffer. *)
-  let pos = ref 0 in
-  
+let marshal buf dns = 
   (** Map name (list of labels) to an offset. *)
   let (names:(string list,int) Hashtbl.t) = Hashtbl.create 8 in
 
+  Cstruct.hexdump buf;
+
+  buf
+
+(*
   (** Marshall names, with compression. *)
   let mn_compress (labels:domain_name) = 
     let pos = ref (!pos) in
@@ -954,4 +961,6 @@ let marshal_dns dns =
   let auths = dns.authorities ||> mr in
   let adds = dns.additionals ||> mr in
 
+
   Bitstring.concat (header :: qs @ ans @ auths @ adds)
+*)
