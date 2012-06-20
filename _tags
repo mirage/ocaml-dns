@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: fc2a493e3e9e5ec32b73ec335a1f4bbd)
+# DO NOT EDIT (digest: 93a6b0f270c34af9bb372950e993cd2a)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -60,9 +60,11 @@
 <resolver/*.ml{,i}>: pkg_cstruct.syntax
 <resolver/*.ml{,i}>: pkg_cryptokit
 # Executable lwt_server
+<lib_test/lwt_server.{native,byte}>: use_server
 <lib_test/lwt_server.{native,byte}>: use_dns
 <lib_test/lwt_server.{native,byte}>: pkg_lwt
 <lib_test/lwt_server.{native,byte}>: pkg_lwt.unix
+<lib_test/lwt_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/lwt_server.{native,byte}>: pkg_bitstring
 <lib_test/lwt_server.{native,byte}>: pkg_bitstring.syntax
 <lib_test/lwt_server.{native,byte}>: pkg_re
@@ -70,6 +72,8 @@
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct.syntax
 <lib_test/lwt_server.{native,byte}>: pkg_cryptokit
+<lib_test/*.ml{,i}>: use_server
+<lib_test/*.ml{,i}>: pkg_lwt.syntax
 <lib_test/lwt_server.{native,byte}>: custom
 # Executable time_server
 <lib_test/time_server.{native,byte}>: use_dns
@@ -94,6 +98,7 @@
 <lib_test/*.ml{,i}>: pkg_cryptokit
 <lib_test/time_server.{native,byte}>: custom
 # Executable odig
+<client/odig.{native,byte}>: use_resolver
 <client/odig.{native,byte}>: use_dns
 <client/odig.{native,byte}>: pkg_lwt
 <client/odig.{native,byte}>: pkg_lwt.unix
@@ -102,9 +107,11 @@
 <client/odig.{native,byte}>: pkg_bitstring.syntax
 <client/odig.{native,byte}>: pkg_re
 <client/odig.{native,byte}>: pkg_re.str
+<client/odig.{native,byte}>: pkg_uri
 <client/odig.{native,byte}>: pkg_cstruct
 <client/odig.{native,byte}>: pkg_cstruct.syntax
 <client/odig.{native,byte}>: pkg_cryptokit
+<client/*.ml{,i}>: use_resolver
 <client/*.ml{,i}>: use_dns
 <client/*.ml{,i}>: pkg_lwt
 <client/*.ml{,i}>: pkg_lwt.unix
@@ -113,6 +120,7 @@
 <client/*.ml{,i}>: pkg_bitstring.syntax
 <client/*.ml{,i}>: pkg_re
 <client/*.ml{,i}>: pkg_re.str
+<client/*.ml{,i}>: pkg_uri
 <client/*.ml{,i}>: pkg_cstruct
 <client/*.ml{,i}>: pkg_cstruct.syntax
 <client/*.ml{,i}>: pkg_cryptokit

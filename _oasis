@@ -49,7 +49,7 @@ Executable lwt_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, dns
+  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, dns, dns.server
 
 Executable time_server
   Path:               lib_test
@@ -68,7 +68,8 @@ Executable odig
   CompiledObject:     best
   Install:            false
   BuildDepends:       
-    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, re, re.str, dns
+    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, re, re.str, dns,
+    dns.resolver, uri
 
 Test lwt_server
   Run$:               flag(tests)
