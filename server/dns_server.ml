@@ -26,7 +26,7 @@ type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr ->
   Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
 
 let contain_exc l v = 
-  try Some v
+  try Some (v ())
   with exn ->
     eprintf "dns %s exn: %s\n%!" l (Printexc.to_string exn); 
     None 
@@ -50,8 +50,8 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
     let names = Hashtbl.create 64 in
     while_lwt !cont do
       Lwt_pool.use bufs (fun buf ->
-        lwt len, dst = Lwt_bytes.recvfrom fd buf 0 (Lwt_bytes.length buf) [] in
-        let query = contain_exc "parse" (DP.parse names buf) in
+        lwt len, dst = Lwt_bytes.(recvfrom fd buf 0 (length buf) []) in
+        let query = contain_exc "parse" (fun () -> DP.parse names buf) in
         match query with
         |None -> return ()
         |Some query -> begin
@@ -65,14 +65,16 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
             })
             in
             let response = DP.({ 
-              id=query.id; detail; 
-              questions=query.questions; 
+              id=query.id; detail; questions=query.questions; 
               answers=answer.DQ.answer;
-              authorities=answer.DQ.authority; 
-              additionals=answer.DQ.additional }) 
+              authorities=answer.DQ.authority;
+              additionals=answer.DQ.additional
+            }) 
             in
             Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00';
-            let bits = contain_exc "marshal" (DP.marshal buf response) in
+            let bits = 
+              contain_exc "marshal" (fun () -> DP.marshal buf response) 
+            in
             match bits with
               | None -> return ()
               | Some buf -> 
@@ -103,7 +105,7 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
       (fun ~src ~dst d ->
          let open DP in
          let q = List.hd d.questions in
-         let r = contain_exc "answer" (get_answer q.q_name q.q_type d.id) in
+         let r = contain_exc "answer" (fun () -> get_answer q.q_name q.q_type d.id) in
          return r
       )
   in
