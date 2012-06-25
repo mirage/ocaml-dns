@@ -91,6 +91,20 @@ let parse_name ?(check_len=true) names offset buf = (* what. a. mess. *)
   eprintf "- parse_name: offset:%d len:%d\n%!" offset (Cstruct.len buf);
   List.rev name, (offset, buf)
 
+let marshal_name names base buf name = 
+  let not_compressed buf name = 
+    let names, base, buf = 
+      List.fold_left (fun (names,base,buf) label ->
+        let open Cstruct in
+            let llen = String.length label in
+            set_uint8 buf 0 llen;
+            set_buffer label 0 buf 1 llen;
+            names, base+llen, shift buf llen
+      ) (names, base, buf) name
+    in names, base+1, Cstruct.shift buf 1
+  in
+  not_compressed buf name
+
 (* Hash-consing: character strings *)
 module CSH = Hashcons.Make (struct 
   type t = string

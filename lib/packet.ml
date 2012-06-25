@@ -24,6 +24,7 @@ open Cstruct
 (** Encode string as label by prepending length. *)
 let charstr s = sprintf "%c%s" (s |> String.length |> char_of_int) s 
 
+(*
 let mn_nocompress (labels:domain_name) =
   let bits = ref [] in
   labels |> List.iter (fun s -> bits := (charstr s) :: !bits);
@@ -33,6 +34,7 @@ let mn_nocompress (labels:domain_name) =
       else
         BITSTRING { 0:8 }
     )
+*)
 
 cenum digest_alg {
   SHA1 = 1
@@ -485,10 +487,9 @@ let parse_question names base buf =
   { q_name; q_type; q_class }, (base+o+sizeof_q, Cstruct.shift buf sizeof_q)
 
 let marshal_question (names, base, buf) q =
-  
+  let names, base, buf = marshal_name names base buf q.q_name in
   set_q_typ buf (q_type_to_int q.q_type);
   set_q_cls buf (q_class_to_int q.q_class);
-
   names, base+sizeof_q, Cstruct.shift buf sizeof_q
 
 let parse_rdata names base t buf = 
@@ -645,18 +646,17 @@ let marshal_detail d =
   let (<<<) x y = x lsl y in
   let (|||) x y = x lor y in
   let (&&&) x y = x land y in
-  ( (qr_to_int d.qr)
-    ||| (((opcode_to_int d.opcode) &&& 0b0_1111) <<< 1)
-    ||| (if d.aa then 1 <<<  5 else 0)
-    ||| (if d.tc then 1 <<<  6 else 0)
-    ||| (if d.rd then 1 <<<  7 else 0)
-    ||| (if d.ra then 1 <<<  8 else 0)
-    ||| (rcode_to_int d.rcode <<< 15)
-  )
+  (qr_to_int d.qr <<< 15)
+  ||| (opcode_to_int d.opcode <<< 11)
+  ||| (if d.aa then 1 <<< 10 else 0)
+  ||| (if d.tc then 1 <<<  9 else 0)
+  ||| (if d.rd then 1 <<<  8 else 0)
+  ||| (if d.ra then 1 <<<  7 else 0)
+  ||| (rcode_to_int d.rcode)
 
 let detail_to_string d = 
-  sprintf "%c:%02x %s:%s:%s:%s %d"
-    (match d.qr with Query -> 'Q' | Response -> 'R')
+  sprintf "%s:%d %s:%s:%s:%s %d"
+    (qr_to_string d.qr)
     (opcode_to_int d.opcode)
     (if d.aa then "a" else "na") (* authoritative vs not *)
     (if d.tc then "t" else "c") (* truncated vs complete *)
@@ -665,19 +665,19 @@ let detail_to_string d =
     (rcode_to_int d.rcode)
 
 let parse_detail d = 
-  let qr = match (d land 0b0_1) |> int_to_qr with
+  let qr = match (d lsr 15 land 1) |> int_to_qr with
     | Some qr -> qr
     | None -> failwith "bad qr"
   in
-  let opcode = match (d land 0b0_1_1110) |> int_to_opcode with
+  let opcode = match (d lsr 11 land 0b0_1111) |> int_to_opcode with
     | Some opcode -> opcode
     | None -> failwith "bad opcode"
   in
-  let aa = (d land 0b0_10_0000) |> int_to_bool in
-  let tc = (d land 0b0_100_0000) |> int_to_bool in
-  let rd = (d land 0b0_1000_0000) |> int_to_bool in
-  let ra = (d land 0b0_1_0000_0000) |> int_to_bool in
-  let rcode = match (d land 0b0_1111_0000_0000_0000) |> int_to_rcode with
+  let aa = (d lsr 10 land 1) |> int_to_bool in
+  let tc = (d lsr  9 land 1) |> int_to_bool in
+  let rd = (d lsr  8 land 1) |> int_to_bool in
+  let ra = (d lsr  7 land 1) |> int_to_bool in
+  let rcode = match (d land 0b0_1111) |> int_to_rcode with
     | Some rcode -> rcode
     | None -> failwith "bad rcode"
   in
@@ -693,7 +693,7 @@ type t = {
 }
 
 let parse names buf = 
-  eprintf "+ parse: buf:%d\n%!" (Cstruct.len buf); Cstruct.hexdump buf;
+  eprintf "+ parse: buf:%d\n%!" (Cstruct.len buf); (* Cstruct.hexdump buf; *)
   let parsen f names base n buf = 
     eprintf "+ parsen: base:%d n:%d\n%!" base n;
     let rec aux acc n offset buf = 
@@ -740,21 +740,21 @@ let marshal txbuf dns =
   set_h_id txbuf dns.id;
   set_h_detail txbuf (marshal_detail dns.detail);
   set_h_qdcount txbuf (List.length dns.questions);
-  set_h_ancount txbuf (List.length dns.answers);
+  set_h_ancount txbuf 0; (* (List.length dns.answers); *)
   set_h_nscount txbuf (List.length dns.authorities);
   set_h_arcount txbuf (List.length dns.additionals);
 
   (** Map name (list of labels) to an offset. *)
-  let (names:(string list,int) Hashtbl.t) = Hashtbl.create 8 in
+  let (names:(domain_name, int) Hashtbl.t) = Hashtbl.create 8 in
   let base,buf = sizeof_h, Cstruct.shift txbuf sizeof_h in
   let names,base,buf = marshaln marshal_question names base buf dns.questions in
   let names,base,buf = marshaln marshal_rr names base buf dns.answers in
   let names,base,buf = marshaln marshal_rr names base buf dns.authorities in
   ignore(marshaln marshal_rr names base buf dns.additionals);
 
-  Cstruct.hexdump txbuf;
+(* Cstruct.hexdump txbuf;*)
   eprintf "txbuf: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string);
-  txbuf
+  Cstruct.(sub txbuf 0 (len txbuf - len buf))
 
 (*
   (** Marshall names, with compression. *)
@@ -955,34 +955,4 @@ let marshal txbuf dns =
       rdata:(rdlength*8):bitstring
     }) 
   in
-
-  let mq q =
-    let bits = mn q.q_name in
-    pos := !pos + (bsl bits)+2+2;
-    (BITSTRING {
-      bits:-1:bitstring; 
-      (q_type_to_int q.q_type):16;
-      (q_class_to_int q.q_class):16
-    })
-  in
-
-  let header = 
-    pos := !pos + 2+2+2+2+2+2;
-    (BITSTRING {
-      (dns.id):16; 
-      (*detail*)0:16; 
-      (List.length dns.questions):16;
-      (List.length dns.answers):16;
-      (List.length dns.authorities):16;
-      (List.length dns.additionals):16
-    })
-  in
-
-  let qs = dns.questions ||> mq in
-  let ans = dns.answers ||> mr in
-  let auths = dns.authorities ||> mr in
-  let adds = dns.additionals ||> mr in
-
-
-  Bitstring.concat (header :: qs @ ans @ auths @ adds)
 *)
