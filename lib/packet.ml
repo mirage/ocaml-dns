@@ -738,8 +738,10 @@ let marshal buf dns =
   (** Map name (list of labels) to an offset. *)
   let (names:(string list,int) Hashtbl.t) = Hashtbl.create 8 in
 
-  Cstruct.hexdump buf;
+  
+  set_h_id buf dns.id;
 
+  Cstruct.hexdump buf;
   buf
 
 (*
