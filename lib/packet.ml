@@ -484,6 +484,13 @@ let parse_question names base buf =
   eprintf "  base:%d o:%d Cstruct.shift:%d\n%!" base o sizeof_q;
   { q_name; q_type; q_class }, (base+o+sizeof_q, Cstruct.shift buf sizeof_q)
 
+let marshal_question (names, base, buf) q =
+  
+  set_q_typ buf (q_type_to_int q.q_type);
+  set_q_cls buf (q_class_to_int q.q_class);
+
+  names, base+sizeof_q, Cstruct.shift buf sizeof_q
+
 let parse_rdata names base t buf = 
   (** Drop remainder bitstring to stop parsing and demuxing. *) 
   let stop (x, _) = x in
@@ -577,6 +584,9 @@ let parse_rr names base buf =
                ((o+sizeof_rr+rdlen), Cstruct.shift buf (sizeof_rr+rdlen))
               )
 
+let marshal_rr (names, base, buf) rr =
+  names, base, buf
+
 cenum qr {
   Query = 0;
   Response = 1
@@ -612,31 +622,6 @@ cenum rcode {
   BadAlg = 21
 } as uint8_t
 
-(*
-let header_to_string h = 
-  sprintf "%04x %c:%02x %s:%s:%s:%s %d"
-    h.id
-    (match h.qr with `Query -> 'Q' | `Answer -> 'R')
-    (opcode_to_int h.opcode)
-    (if h.aa then "a" else "na") (* authoritative vs not *)
-    (if h.tc then "t" else "c") (* truncated vs complete *)
-    (if h.rd then "r" else "nr") (* recursive vs not *)
-    (if h.ra then "ra" else "rn") (* recursion available vs not *)
-    (rcode_to_int h.rcode)
-let parse_header buf = 
-  bitmatch bits with
-    | { qr:1; opcode:4; aa:1; tc:1; rd:1; ra:1; z:3; rcode:4 } 
-      -> { qr=bool_to_qr qr; opcode=int_to_opcode opcode; 
-           aa; tc; rd; ra; 
-           rcode=int_to_rcode rcode }
-let build_detail d = 
-  (BITSTRING {
-    (qr_to_bool d.qr):1; (opcode_to_int d.opcode):4; 
-    d.aa:1; d.tc:1; d.rd:1; d.ra:1; (* z *) 0:3;
-    (rcode_to_int d.rcode):4
-  })
-*)
-
 cstruct h {
   uint16_t id;
   uint16_t detail;
@@ -655,6 +640,19 @@ type detail = {
   ra: bool;
   rcode: rcode;
 }
+
+let marshal_detail d = 
+  let (<<<) x y = x lsl y in
+  let (|||) x y = x lor y in
+  let (&&&) x y = x land y in
+  ( (qr_to_int d.qr)
+    ||| (((opcode_to_int d.opcode) &&& 0b0_1111) <<< 1)
+    ||| (if d.aa then 1 <<<  5 else 0)
+    ||| (if d.tc then 1 <<<  6 else 0)
+    ||| (if d.rd then 1 <<<  7 else 0)
+    ||| (if d.ra then 1 <<<  8 else 0)
+    ||| (rcode_to_int d.rcode <<< 15)
+  )
 
 let detail_to_string d = 
   sprintf "%c:%02x %s:%s:%s:%s %d"
@@ -734,15 +732,29 @@ let to_string d =
     (d.authorities ||> rr_to_string |> join ",")
     (d.additionals ||> rr_to_string |> join ",")
 
-let marshal buf dns = 
+let marshal txbuf dns = 
+  let marshaln f names base buf values = 
+    List.fold_left f (names, base, buf) values
+  in
+                        
+  set_h_id txbuf dns.id;
+  set_h_detail txbuf (marshal_detail dns.detail);
+  set_h_qdcount txbuf (List.length dns.questions);
+  set_h_ancount txbuf (List.length dns.answers);
+  set_h_nscount txbuf (List.length dns.authorities);
+  set_h_arcount txbuf (List.length dns.additionals);
+
   (** Map name (list of labels) to an offset. *)
   let (names:(string list,int) Hashtbl.t) = Hashtbl.create 8 in
+  let base,buf = sizeof_h, Cstruct.shift txbuf sizeof_h in
+  let names,base,buf = marshaln marshal_question names base buf dns.questions in
+  let names,base,buf = marshaln marshal_rr names base buf dns.answers in
+  let names,base,buf = marshaln marshal_rr names base buf dns.authorities in
+  ignore(marshaln marshal_rr names base buf dns.additionals);
 
-  
-  set_h_id buf dns.id;
-
-  Cstruct.hexdump buf;
-  buf
+  Cstruct.hexdump txbuf;
+  eprintf "txbuf: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string);
+  txbuf
 
 (*
   (** Marshall names, with compression. *)
