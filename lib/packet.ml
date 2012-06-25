@@ -467,7 +467,8 @@ let question_to_string q =
     (q_type_to_string q.q_type) (q_class_to_string q.q_class)
 
 let parse_question names base buf = 
-  let q_name, (o,buf) = parse_name names base buf in
+  eprintf "+ parse_question: base:%d\n%!" base;
+  let q_name, (o,buf) = parse_name names base buf in  
   let q_type = 
     let typ = get_q_typ buf in
     match int_to_q_type typ with
@@ -480,7 +481,8 @@ let parse_question names base buf =
       | None -> failwith (sprintf "parse_question: cls %d" cls)
       | Some cls -> cls
   in
-  { q_name; q_type; q_class }, (base+o+sizeof_q, slide buf sizeof_q)
+  eprintf "  base:%d o:%d Cstruct.shift:%d\n%!" base o sizeof_q;
+  { q_name; q_type; q_class }, (base+o+sizeof_q, Cstruct.shift buf sizeof_q)
 
 let parse_rdata names base t buf = 
   (** Drop remainder bitstring to stop parsing and demuxing. *) 
@@ -489,7 +491,7 @@ let parse_rdata names base t buf =
       chaining. *)
   let parse_charstr buf = 
     let len = get_uint8 buf 0 in
-    to_string (sub buf 1 len), slide buf (1+len)
+    to_string (sub buf 1 len), Cstruct.shift buf (1+len)
   in
   match t with
     | RR_A -> A (BE.get_uint32 buf 0)
@@ -505,7 +507,7 @@ let parse_rdata names base t buf =
               | None -> failwith (sprintf "parse_rdata: DNSKEY alg %d" a)
               | Some a -> a
           in
-          let key = slide buf 4 |> to_string in
+          let key = Cstruct.shift buf 4 |> to_string in
           `DNSKEY (flags, alg, key)
         )
     | Some SOA -> 
@@ -522,7 +524,7 @@ let parse_rdata names base t buf =
         (
           let addr = BE.get_uint32 buf 0 in
           let proto = get_uint8 buf 4 in
-          let bitmap = slide buf 5 |> to_string in
+          let bitmap = Cstruct.shift buf 5 |> to_string in
           `WKS (addr, byte proto, bitmap)
         )
     | Some PTR -> `PTR (buf |> parse_name names base |> stop)
@@ -533,7 +535,7 @@ let parse_rdata names base t buf =
                     let em = buf |> parse_name names (base+o) |> stop in
                     `MINFO (rm, em)
     | Some MX -> `MX (BE.get_uint16 buf 0,
-                      slide buf 2 |> parse_name names base |> stop)
+                      Cstruct.shift buf 2 |> parse_name names base |> stop)
     | Some SRV -> 
         BE.(
           `SRV (get_uint16 buf 0, (* prio *)
@@ -572,7 +574,7 @@ let parse_rr names base buf =
           | None -> failwith "parse_rr: unknown class"
           | Some cls -> 
               ({ name; cls; ttl; rdata }, 
-               ((o+sizeof_rr+rdlen), slide buf (sizeof_rr+rdlen))
+               ((o+sizeof_rr+rdlen), Cstruct.shift buf (sizeof_rr+rdlen))
               )
 
 cenum qr {
@@ -693,14 +695,17 @@ type t = {
 }
 
 let parse names buf = 
-  let parsen f ns b n buf = 
-    let rec aux rs n off buf = 
+  eprintf "+ parse: buf:%d\n%!" (Cstruct.len buf); Cstruct.hexdump buf;
+  let parsen f names base n buf = 
+    eprintf "+ parsen: base:%d n:%d\n%!" base n;
+    let rec aux acc n offset buf = 
+      eprintf "+ parsen/aux: n:%d offset:%d\n%!" n offset;
       match n with
-        | 0 -> rs, (off, buf)
-        | _ -> let r, (o, buf) = f ns b buf in 
-               aux (r :: rs) (n-1) (o+off) buf
+        | 0 -> acc, (offset, buf)
+        | _ -> let r, (o, buf) = f names base buf in 
+               aux (r :: acc) (n-1) (o+offset) buf
     in
-    aux [] n b buf
+    aux [] n base buf
   in
 
   let id = get_h_id buf in
@@ -709,8 +714,11 @@ let parse names buf =
   let ancount = get_h_ancount buf in
   let nscount = get_h_nscount buf in
   let arcount = get_h_arcount buf in
+  eprintf "parse: id:%04x detail:%s qd:%d an:%d ns:%d ar:%d\n%!" 
+    id (detail_to_string detail) qdcount ancount nscount arcount;
 
   let base = sizeof_h in
+  let buf = Cstruct.shift buf base in
   let questions, (base, buf) = parsen parse_question names base qdcount buf in
   let answers, (base, buf) = parsen parse_rr names base ancount buf in
   let authorities, (base, buf) = parsen parse_rr names base nscount buf in

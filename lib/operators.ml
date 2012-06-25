@@ -55,10 +55,6 @@ let (>>>>) x y = Int64.shift_right_logical x y
 let join c l = String.concat c l
 (* let join c l = List.fold_left (fun x y -> x ^ c ^ y) "" l *)
 
-let slide buf i = match Cstruct.shift_left buf i with
-  | true -> buf 
-  | false -> failwith (sprintf "slide %d failed" i)
-
 let int_to_bool = function
   | 0 -> false
   | _ -> true
