@@ -544,27 +544,51 @@ let marshal_rdata names base buf rdata =
     base (Cstruct.len buf) (rdata_to_string rdata);
   
   let base, rdbuf = base+sizeof_rr, Cstruct.shift buf sizeof_rr in
-  let names, rdlen = match rdata with 
+  let t, names, rdlen = match rdata with 
     | A ip -> 
-        set_rr_typ buf (rr_type_to_int RR_A);
         BE.set_uint32 rdbuf 0 ip;
-        names, 4
+        RR_A, names, 4
           
+    | CNAME name -> 
+        let names, offset, _ = marshal_name names base rdbuf name in
+        RR_CNAME, names, offset-base
+
+    | MB name -> 
+        let names, offset, _ = marshal_name names base rdbuf name in
+        RR_MB, names, offset-base
+
+    | MD name -> 
+        let names, offset, _ = marshal_name names base rdbuf name in
+        RR_MD, names, offset-base
+
+    | MF name -> 
+        let names, offset, _ = marshal_name names base rdbuf name in
+        RR_MF, names, offset-base
+
+    | MG name -> 
+        let names, offset, _ = marshal_name names base rdbuf name in
+        RR_MG, names, offset-base
+
+    | MR name -> 
+        let names, offset, _ = marshal_name names base rdbuf name in
+        RR_MR, names, offset-base
+
     | MX (pref,xchg) ->
-        set_rr_typ buf (rr_type_to_int RR_MX);
         BE.set_uint16 rdbuf 0 pref;
         let names, offset, _ = 
           marshal_name names (base+2) (Cstruct.shift rdbuf 2) xchg 
         in 
-        names, offset-base
+        RR_MX, names, offset-base
 
     | NS name -> 
-        set_rr_typ buf (rr_type_to_int RR_NS);
         let names, offset, _ = marshal_name names base rdbuf name in
-        names, offset-base
+        RR_NS, names, offset-base
+
+    | PTR name -> 
+        let names, offset, _ = marshal_name names base rdbuf name in
+        RR_PTR, names, offset-base
 
     | SOA (mn,rn, serial, refresh, retry, expire, minimum) ->
-        set_rr_typ buf (rr_type_to_int RR_SOA);
         let names, offset, rdbuf = marshal_name names base rdbuf mn in
         let names, offset, rdbuf = marshal_name names offset rdbuf rn in
         BE.set_uint32 rdbuf 0 serial;
@@ -572,11 +596,10 @@ let marshal_rdata names base buf rdata =
         BE.set_uint32 rdbuf 8 retry;
         BE.set_uint32 rdbuf 12 expire;
         BE.set_uint32 rdbuf 16 minimum;
-        names, 20+offset-base
+        RR_SOA, names, 20+offset-base
 
     | TXT strings -> 
-        set_rr_typ buf (rr_type_to_int RR_TXT);
-        names, List.fold_left (fun acc s ->
+        RR_TXT, names, List.fold_left (fun acc s ->
           eprintf "  TXT: base:%d s:'%s'\n%!" base s;
           let s = charstr s in
           let slen = String.length s in
@@ -584,6 +607,7 @@ let marshal_rdata names base buf rdata =
           acc+slen
         ) 0 strings
   in
+  set_rr_typ buf (rr_type_to_int t);
   set_rr_rdlen buf rdlen;
   eprintf "- marshal_rdata: rdlen:%d\n%!" rdlen;
   names, base+sizeof_rr+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
@@ -858,17 +882,11 @@ let marshal txbuf dns =
      n)
   in
 
-  let mr r = 
-    let mrdata = function
-      | RR.A [ip] -> (BITSTRING { ip:32 }, RR_A)
-(*          
-      | `AAAA _ -> failwith (sprintf "AAAA")
-          
+mr:
       | `AFSDB (t, n)
         -> (BITSTRING { (int16_to_int t):16; (mn ~off:2 n):-1:bitstring }, 
             `AFSDB
         )
-      | `CNAME n -> BITSTRING { (mn n):-1:bitstring }, `CNAME
       | `HINFO (cpu, os) -> BITSTRING { cpu:-1:string; os:-1:string }, `HINFO
       | `ISDN (a, sa) -> (
         (match sa with 
@@ -877,43 +895,21 @@ let marshal txbuf dns =
             -> BITSTRING { (charstr a):-1:string; (charstr sa):-1:string }
         ), `ISDN
       )
-      | `MB n -> BITSTRING { (mn n):-1:bitstring }, `MB
-      | `MD n -> BITSTRING { (mn n):-1:bitstring }, `MD
-      | `MF n -> BITSTRING { (mn n):-1:bitstring }, `MF
-      | `MG n -> BITSTRING { (mn n):-1:bitstring }, `MG
       | `MINFO (rm,em)
         -> (let rm = mn rm in
             let em = mn ~off:(bsl rm) em in
             BITSTRING { rm:-1:bitstring; em:-1:bitstring }, `MINFO
         )
-      | `MR n -> BITSTRING { (mn n):-1:bitstring }, `MR
-      | `MX (pref, exchange)
-        -> BITSTRING { (int16_to_int pref):16; (mn ~off:2 exchange):-1:bitstring }, `MX
-      | `NS n -> BITSTRING { (mn n):-1:bitstring }, `NS
-      | `PTR n -> BITSTRING { (mn n):-1:bitstring }, `PTR
       | `RP (mbox, txt) 
         -> (let mbox = mn mbox in
             let txt = mn ~off:(bsl mbox) txt in
             BITSTRING { mbox:-1:bitstring; txt:-1:bitstring }, `RP
         )
       | `RT (p, ih) -> BITSTRING { (int16_to_int p):16; (mn ~off:2 ih):-1:bitstring }, `RT
-      | `SOA (mname, rname, serial, refresh, retry, expire, minimum) 
-        -> (let mname = mn mname in 
-            let rname = mn ~off:(bsl mname) rname in 
-            BITSTRING { mname:-1:bitstring; 
-                        rname:-1:bitstring; 
-                        serial:32; 
-                        refresh:32; retry:32; expire:32; minimum:32 }, `SOA
-        )
       | `SRV (prio, weight, port, target)
         -> BITSTRING { (int16_to_int prio):16; (int16_to_int weight):16; 
                        (int16_to_int port):16; (mn ~off:6 target):-1:bitstring
                      }, `SRV
-      | `TXT sl -> BITSTRING { (sl ||> charstr |> join ""):-1:string }, `TXT
-        
-      | `UNKNOWN _ -> failwith (sprintf "UNKNOWN")
-      | `UNSPEC _ -> failwith (sprintf "UNSPEC")
-          
       | `WKS (a, p, bm) 
         -> BITSTRING { a:32; (byte_to_int p):8; bm:-1:string }, `WKS
       | `X25 s -> BITSTRING { (charstr s):-1:string }, `X25
@@ -974,22 +970,4 @@ let marshal txbuf dns =
                        (bytes_to_string fp):-1:string
                      }, `SSHFP
           
-*)
-      | _ -> failwith "mrdata: unknown rtype"
-    in
-
-    let name = mn r.name in
-    pos := !pos + (bsl name)+2+2+4+2;
-    let rdata, rr_type = mrdata r.rdata in
-    let rdlength = bsl rdata in
-    pos := !pos + rdlength;
-    (BITSTRING {
-      name:-1:bitstring;
-      (rr_type_to_int rr_type):16;
-      (rr_class_to_int r.cls):16;
-      r.ttl:32;
-      rdlength:16;
-      rdata:(rdlength*8):bitstring
-    }) 
-  in
 *)
