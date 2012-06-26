@@ -22,6 +22,7 @@ open Operators
 open RR
 open Trie
 open Name
+open Printf
 
 module H = Hashcons
 
@@ -89,12 +90,15 @@ let answer_query qname qtype trie =
     
     (* having extracted record from trie, partially marshal it *)
     match rdata with 
-      | RR.A l -> log_rrset owner Packet.RR_A; 
+      | RR.A l -> 
+          log_rrset owner Packet.RR_A; 
           List.iter (fun ip -> addrr (Packet.A ip)) l
             
-      | RR.NS l -> log_rrset owner Packet.RR_NS;
+      | RR.NS l -> 
+          log_rrset owner Packet.RR_NS;
 	      List.iter (fun d -> 
-	        enqueue_additional d Packet.RR_A; enqueue_additional d Packet.RR_AAAA;
+	        enqueue_additional d Packet.RR_A; 
+            enqueue_additional d Packet.RR_AAAA;
             addrr (Packet.NS d.owner.H.node)
           ) l 
             
@@ -107,67 +111,63 @@ let answer_query qname qtype trie =
 		                       admin.owner.H.node, 
                                serial, refresh, retry, expiry, minttl))) l
             
-      (*
+      | RR.MB l -> 
+	      List.iter (fun d -> 
+	        enqueue_additional d Packet.RR_A; 
+            enqueue_additional d Packet.RR_AAAA;
+	        addrr (Packet.MB d.owner.H.node)) l
+            
+      | RR.MG l -> 
+	      List.iter (fun d -> addrr (Packet.MG d.owner.H.node)) l
+            
+      | RR.MR l -> 
+	      List.iter (fun d -> addrr (Packet.MR d.owner.H.node)) l
+            
+      | RR.WKS l -> 
+	      List.iter (fun (address, protocol, bitmap) -> 
+	        addrr (Packet.WKS (address, protocol, bitmap.H.node))) l
 
-        | MB l -> 
-	    List.iter (fun d -> 
-	    enqueue_additional d `A;
-	    enqueue_additional d `AAAA;
-	    addrr (`MB d.owner.H.node)) l
-        
-        | MG l -> 
-	    List.iter (fun d -> 
-	    addrr (`MG d.owner.H.node)) l
-        
-        | MR l -> 
-	    List.iter (fun d -> 
-	    addrr (`MR d.owner.H.node)) l
-        
-        | WKS l -> 
-	    List.iter (fun (address, protocol, bitmap) -> 
-	    addrr (`WKS (address, protocol, bitmap.H.node))) l
-
-        | PTR l -> 
-	    List.iter (fun d -> 
-	    addrr (`PTR d.owner.H.node)) l
-        
-        | HINFO l -> 
-	    List.iter (fun (cpu, os) -> 
-	    addrr (`HINFO (cpu.H.node, os.H.node))) l
-        
-        | MINFO l -> 
-	    List.iter (fun (rm, em) -> 
-	    addrr (`MINFO (rm.owner.H.node, em.owner.H.node))) l
-        
-        | MX l -> 
-	    List.iter (fun (preference, d) -> 
-	    enqueue_additional d `A;
-	    enqueue_additional d `AAAA;
-	    addrr (`MX (preference, d.owner.H.node))) l
-        
-        | TXT l ->
-	    List.iter (fun sl -> (* XXX handle multiple TXT cstrings properly *)
-	    let data = List.map (fun x -> x.H.node) sl in 
-        addrr (`TXT data)) l
-        
-        | RP l -> 
-	    List.iter (fun (mbox, txt) -> 
-	    addrr (`RP (mbox.owner.H.node, txt.owner.H.node))) l
-        
-        | AFSDB l ->
-	    List.iter (fun (t, d) -> 
-	    enqueue_additional d `A;
-	    enqueue_additional d `AAAA;
-	    addrr (`AFSDB (t, d.owner.H.node))) l
-        
-        | X25 l -> log_rrset owner `X25;
-	    List.iter (fun s -> 
-	    addrr (`X25 s.H.node)) l
-        
-        | ISDN l -> log_rrset owner `ISDN;
-	    List.iter (fun (a, sa) ->
-        let sa = match sa with None -> None | Some sa -> Some sa.H.node in
-        addrr (`ISDN (a.H.node, sa))) l
+      | RR.PTR l -> 
+	      List.iter (fun d -> addrr (Packet.PTR d.owner.H.node)) l
+            
+      | RR.HINFO l -> 
+	      List.iter (fun (cpu, os) -> 
+	        addrr (Packet.HINFO (cpu.H.node, os.H.node))) l
+            
+      | RR.MINFO l -> 
+	      List.iter (fun (rm, em) -> 
+	        addrr (Packet.MINFO (rm.owner.H.node, em.owner.H.node))) l
+            
+      | RR.MX l -> 
+	      List.iter (fun (preference, d) -> 
+	        enqueue_additional d Packet.RR_A;
+	        enqueue_additional d Packet.RR_AAAA;
+	        addrr (Packet.MX (preference, d.owner.H.node))) l
+            
+      | RR.TXT l ->
+	      List.iter (fun sl -> (* XXX handle multiple TXT cstrings properly *)
+	        let data = List.map (fun x -> x.H.node) sl in 
+            addrr (Packet.TXT data)) l
+            
+      | RR.RP l -> 
+	      List.iter (fun (mbox, txt) -> 
+	        addrr (Packet.RP (mbox.owner.H.node, txt.owner.H.node))) l
+            
+      | RR.AFSDB l ->
+	      List.iter (fun (t, d) -> 
+	        enqueue_additional d Packet.RR_A;
+	        enqueue_additional d Packet.RR_AAAA;
+	        addrr (Packet.AFSDB (t, d.owner.H.node))) l
+            
+      | RR.X25 l -> 
+          log_rrset owner Packet.RR_X25;
+	      List.iter (fun s -> addrr (Packet.X25 s.H.node)) l
+            
+      | RR.ISDN l -> 
+          log_rrset owner Packet.RR_ISDN;
+	      List.iter (fun (a, sa) ->
+            let sa = match sa with None -> None | Some sa -> Some sa.H.node in
+            addrr (Packet.ISDN (a.H.node, sa))) l
 
       (*
         (function (* XXX handle multiple cstrings properly *)
@@ -176,35 +176,40 @@ let answer_query qname qtype trie =
         | (addr, Some sa) (* XXX Handle multiple charstrings properly *)
         -> addrr (`ISDN (addr.H.node ^ sa.H.node))) l
       *)
-        
-        | RT l -> 
-	    List.iter (fun (preference, d) -> 
-	    enqueue_additional d `A;
-	    enqueue_additional d `AAAA;
-	    enqueue_additional d `X25;
-	    enqueue_additional d `ISDN;
-	    addrr (`RT (preference, d.owner.H.node))) l
-        
-        | AAAA l -> log_rrset owner `AAAA;
-	    List.iter (fun i -> addrr (`AAAA i.H.node)) l 
-        
-        | SRV l 
-        -> List.iter (fun (priority, weight, port, d) -> 
-	    enqueue_additional d `A;
-	    enqueue_additional d `AAAA;
-	    addrr (`SRV (priority, weight, port, d.owner.H.node))) l
-        
-        | UNSPEC l 
-        -> List.iter (fun s -> addrr (`UNSPEC s.H.node)) l
+            
+      | RR.RT l -> 
+	      List.iter (fun (preference, d) -> 
+	        enqueue_additional d Packet.RR_A;
+	        enqueue_additional d Packet.RR_AAAA;
+	        enqueue_additional d Packet.RR_X25;
+	        enqueue_additional d Packet.RR_ISDN;
+	        addrr (Packet.RT (preference, d.owner.H.node))) l
+            
+      | RR.AAAA l -> 
+          log_rrset owner Packet.RR_AAAA;
+	      List.iter (fun i -> addrr (Packet.AAAA i.H.node)) l 
+            
+      | RR.SRV l -> 
+          List.iter (fun (priority, weight, port, d) -> 
+	        enqueue_additional d Packet.RR_A;
+	        enqueue_additional d Packet.RR_AAAA;
+	        addrr (Packet.SRV (priority, weight, port, d.owner.H.node))) l
+            
+      | RR.UNSPEC l -> 
+          List.iter (fun s -> addrr (Packet.UNSPEC s.H.node)) l
 
-        | DNSKEY l
-        -> List.iter (fun  (fl, t, k) -> 
-        addrr (`DNSKEY (fl, (Packet.int_to_dnssec_alg t), k.H.node))) l
+      | RR.DNSKEY l -> 
+          List.iter (fun  (fl, t, k) ->
+            let tt = Packet.int_to_dnssec_alg t in
+            match tt with
+              | None -> failwith (sprintf "bad dnssec alg type t:%d" t)
+              | Some tt -> addrr (Packet.DNSKEY (fl, tt, k.H.node))
+          ) l
 
-        | Unknown (t,l)
-        -> let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
-        addrr (`UNKNOWN (t, s))
-      *)
+      | RR.Unknown (t,l) -> 
+          let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
+           addrr (Packet.UNKNOWN (t, s))
+
       | _ -> failwith "unknown rr"
   in
   

@@ -470,56 +470,56 @@ let parse_rdata names base t buf =
   in
   let v = match t with
     | RR_A -> A (BE.get_uint32 buf 0)
+    
+    | RR_CNAME -> CNAME (buf |> parse_name names base |> stop)
+    
     | RR_NS -> NS (buf |> parse_name names base |> stop)
-    (*
-      | Some CNAME -> `CNAME (buf |> parse_name names base |> stop)
-      | Some DNSKEY -> 
-      (
-      let flags = BE.get_uint16 buf 0 in
-      let alg = 
-      let a = get_uint8 buf 3 in
-      match int_to_dnssec_alg a with
-      | None -> failwith (sprintf "parse_rdata: DNSKEY alg %d" a)
-      | Some a -> a
-      in
-      let key = Cstruct.shift buf 4 |> to_string in
-      `DNSKEY (flags, alg, key)
-      )
-      | Some SOA -> 
-      let mn, (o, buf) = parse_name names base buf in
-      let rn, (_, buf) = parse_name names (base+o) buf in 
-      BE.(`SOA (mn, rn, 
-      get_uint32 buf 0,  (* serial *)
-      get_uint32 buf 4,  (* refresh *)
-      get_uint32 buf 8,  (* retry *)
-      get_uint32 buf 12, (* expire *)
-      get_uint32 buf 16  (* minimum *)
-      ))
-      | Some WKS -> 
-      (
-      let addr = BE.get_uint32 buf 0 in
-      let proto = get_uint8 buf 4 in
-      let bitmap = Cstruct.shift buf 5 |> to_string in
-      `WKS (addr, byte proto, bitmap)
-      )
-      | Some PTR -> `PTR (buf |> parse_name names base |> stop)
-      | Some HINFO -> let cpu, buf = parse_charstr buf in
-      let os = buf |> parse_charstr |> stop in
-      `HINFO (cpu, os)
-      | Some MINFO -> let rm, (o,buf) = buf |> parse_name names base in
-      let em = buf |> parse_name names (base+o) |> stop in
-      `MINFO (rm, em)
-      | Some MX -> `MX (BE.get_uint16 buf 0,
-      Cstruct.shift buf 2 |> parse_name names base |> stop)
-      | Some SRV -> 
-      BE.(
-      `SRV (get_uint16 buf 0, (* prio *)
-      get_uint16 buf 2, (* weight *)
-      get_uint16 buf 4, (* port *)
-      parse_name names (base+6) buf |> stop
-      )
-      )
-    *)
+    
+    | RR_SOA -> 
+        let mn, (base, buf) = parse_name names base buf in
+        let rn, (_, buf) = parse_name names base buf in 
+        BE.(SOA (mn, rn, 
+                 BE.get_uint32 buf 0,  (* serial *)
+                 BE.get_uint32 buf 4,  (* refresh *)
+                 BE.get_uint32 buf 8,  (* retry *)
+                 BE.get_uint32 buf 12, (* expire *)
+                 BE.get_uint32 buf 16  (* minimum *)
+        ))
+          
+    | RR_WKS -> 
+        let addr = BE.get_uint32 buf 0 in
+        let proto = get_uint8 buf 4 in
+        let bitmap = Cstruct.shift buf 5 |> to_string in
+        WKS (addr, byte proto, bitmap)
+
+    | RR_PTR -> PTR (buf |> parse_name names base |> stop)
+    | RR_HINFO -> let cpu, buf = parse_charstr buf in
+                  let os = buf |> parse_charstr |> stop in
+                  HINFO (cpu, os)
+    | RR_MINFO -> let rm, (o,buf) = buf |> parse_name names base in
+                  let em = buf |> parse_name names (base+o) |> stop in
+                  MINFO (rm, em)
+    | RR_MX -> MX (BE.get_uint16 buf 0,
+                   Cstruct.shift buf 2 |> parse_name names base |> stop)
+    | RR_SRV -> 
+        BE.(
+          SRV (get_uint16 buf 0, (* prio *)
+               get_uint16 buf 2, (* weight *)
+               get_uint16 buf 4, (* port *)
+               parse_name names (base+6) buf |> stop
+          ))
+          
+    | RR_DNSKEY -> 
+        let flags = BE.get_uint16 buf 0 in
+        let alg = 
+          let a = get_uint8 buf 3 in
+          match int_to_dnssec_alg a with
+            | None -> failwith (sprintf "parse_rdata: DNSKEY alg %d" a)
+            | Some a -> a
+        in
+        let key = Cstruct.shift buf 4 |> to_string in
+        DNSKEY (flags, alg, key)
+
     | RR_TXT -> 
         let strings = 
           let rec aux strings buf =
@@ -533,9 +533,8 @@ let parse_rdata names base t buf =
           aux [] buf
         in
         TXT strings
-    
+          
     | t -> failwith (sprintf "parse_rdata: %s" (rr_type_to_string t))
-        
   in
   eprintf "- parse_rdata\n%!";
   v
@@ -544,17 +543,36 @@ let marshal_rdata names base buf rdata =
   eprintf "+ marshal_rdata: base:%d len:%d rdata:%s\n%!" 
     base (Cstruct.len buf) (rdata_to_string rdata);
   
-  let rdbuf = Cstruct.shift buf sizeof_rr in
+  let base, rdbuf = base+sizeof_rr, Cstruct.shift buf sizeof_rr in
   let names, rdlen = match rdata with 
     | A ip -> 
         set_rr_typ buf (rr_type_to_int RR_A);
         BE.set_uint32 rdbuf 0 ip;
         names, 4
           
+    | MX (pref,xchg) ->
+        set_rr_typ buf (rr_type_to_int RR_MX);
+        BE.set_uint16 rdbuf 0 pref;
+        let names, offset, _ = 
+          marshal_name names (base+2) (Cstruct.shift rdbuf 2) xchg 
+        in 
+        names, offset-base
+
     | NS name -> 
         set_rr_typ buf (rr_type_to_int RR_NS);
-        let names, offset, buf = marshal_name names base rdbuf name in
+        let names, offset, _ = marshal_name names base rdbuf name in
         names, offset-base
+
+    | SOA (mn,rn, serial, refresh, retry, expire, minimum) ->
+        set_rr_typ buf (rr_type_to_int RR_SOA);
+        let names, offset, rdbuf = marshal_name names base rdbuf mn in
+        let names, offset, rdbuf = marshal_name names offset rdbuf rn in
+        BE.set_uint32 rdbuf 0 serial;
+        BE.set_uint32 rdbuf 4 refresh;
+        BE.set_uint32 rdbuf 8 retry;
+        BE.set_uint32 rdbuf 12 expire;
+        BE.set_uint32 rdbuf 16 minimum;
+        names, 20+offset-base
 
     | TXT strings -> 
         set_rr_typ buf (rr_type_to_int RR_TXT);

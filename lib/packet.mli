@@ -37,8 +37,8 @@ type fp_type
 (** Represent a DNSSEC algorithm, with the usual conversion functions. *)
 
 type dnssec_alg
+val int_to_dnssec_alg : int -> dnssec_alg option
 (*
-val int_to_dnssec_alg : int -> dnssec_alg
 val dnssec_alg_to_int : dnssec_alg -> int
 val string_to_dnssec_alg : string -> dnssec_alg
 val dnssec_alg_to_string : dnssec_alg -> string
