@@ -26,7 +26,11 @@ type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr ->
   Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
 
 let contain_exc l v = 
-  try Some (v ())
+  try 
+    eprintf "+ %s\n%!" l;
+    let r = Some (v ()) in 
+    eprintf "- %s\n%!" l;
+    r
   with exn ->
     eprintf "dns %s exn: %s\n%!" l (Printexc.to_string exn); 
     None 

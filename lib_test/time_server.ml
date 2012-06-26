@@ -19,7 +19,7 @@ open Printf
 
 let time_rsrc_record () =
   Dns.Packet.(
-    let name = ["time";"com"] in
+    let name = ["time"; "com"] in
     let cls = RR_IN in
     let ttl = 100l in
     let time = string_of_float (Unix.gettimeofday ()) in
