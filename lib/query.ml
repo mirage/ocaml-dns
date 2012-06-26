@@ -92,22 +92,22 @@ let answer_query qname qtype trie =
       | RR.A l -> log_rrset owner Packet.RR_A; 
           List.iter (fun ip -> addrr (Packet.A ip)) l
             
+      | RR.NS l -> log_rrset owner Packet.RR_NS;
+	      List.iter (fun d -> 
+	        enqueue_additional d Packet.RR_A; enqueue_additional d Packet.RR_AAAA;
+            addrr (Packet.NS d.owner.H.node)
+          ) l 
+            
+      | RR.CNAME l -> 
+          List.iter (fun d -> addrr (Packet.CNAME d.owner.H.node)) l
+            
+      | RR.SOA l -> log_rrset owner Packet.RR_SOA;
+	      List.iter (fun (prim,admin,serial,refresh,retry,expiry,minttl) ->
+            addrr (Packet.SOA (prim.owner.H.node,
+		                       admin.owner.H.node, 
+                               serial, refresh, retry, expiry, minttl))) l
+            
       (*
-        | NS l -> log_rrset owner `NS;
-	    List.iter (fun d -> 
-	    enqueue_additional d `A; enqueue_additional d `AAAA;
-        addrr (`NS d.owner.H.node)
-        ) l 
-        
-        | CNAME l -> 
-	    List.iter (fun d -> 
-	    addrr (`CNAME d.owner.H.node)) l
-        
-        | SOA l -> log_rrset owner `SOA;
-	    List.iter (fun (prim,admin,serial,refresh,retry,expiration,minttl) ->
-        addrr (`SOA (prim.owner.H.node,
-		admin.owner.H.node, 
-        serial, refresh, retry, expiration, minttl))) l
 
         | MB l -> 
 	    List.iter (fun d -> 
