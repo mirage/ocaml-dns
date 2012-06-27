@@ -230,7 +230,7 @@ type rdata =
   | SSHFP of pubkey_alg * fp_type * string
   | TXT of string list
   | UNKNOWN of int * string
-  | UNSPEC of string
+  (*  | UNSPEC of string -- wikipedia says deprecated in the 90s *)
   | WKS of int32 * byte * string
   | X25 of string 
 
@@ -276,7 +276,7 @@ let rdata_to_string = function
     -> sprintf "SRV (%d,%d,%d, %s)" x y z (domain_name_to_string n)
   | TXT sl -> sprintf "TXT (%s)" (join "" sl)
   | UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x bs
-  | UNSPEC bs -> sprintf "UNSPEC (%s)" bs
+  (* | UNSPEC bs -> sprintf "UNSPEC (%s)" bs*)
   | WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x (byte_to_int y) s
   | X25 s -> sprintf "X25 (%s)" s
 
@@ -473,6 +473,11 @@ let parse_rdata names base t buf =
   let v = match t with
     | RR_A -> A (BE.get_uint32 buf 0)
         
+    | RR_AAAA -> AAAA (buf |> parse_charstr |>stop)
+        
+    | RR_AFSDB -> AFSDB (BE.get_uint16 buf 0,
+                         buf |> parse_name names (base+2) |> stop)
+        
     | RR_CNAME -> CNAME (buf |> parse_name names base |> stop)
         
     | RR_DNSKEY -> 
@@ -518,6 +523,9 @@ let parse_rdata names base t buf =
                let txt = buf |> parse_name names (base+o) |> stop in
                RP (mbox, txt)
                  
+    | RR_RT -> RT (BE.get_uint16 buf 0,
+                   Cstruct.shift buf 2 |> parse_name names base |> stop)
+    
     | RR_SOA -> 
         let mn, (base, buf) = parse_name names base buf in
         let rn, (_, buf) = parse_name names base buf in 
@@ -550,12 +558,16 @@ let parse_rdata names base t buf =
           aux [] buf
         in
         TXT strings
-          
+              
     | RR_WKS -> 
         let addr = BE.get_uint32 buf 0 in
         let proto = get_uint8 buf 4 in
         let bitmap = Cstruct.shift buf 5 |> to_string in
         WKS (addr, byte proto, bitmap)
+    
+    | RR_X25 ->
+        let x25,_ = parse_charstr buf in
+        X25 x25
 
   (* | t -> failwith (sprintf "parse_rdata: %s" (rr_type_to_string t)) *)
   in
@@ -571,10 +583,30 @@ let marshal_rdata names base buf rdata =
     | A ip -> 
         BE.set_uint32 rdbuf 0 ip;
         RR_A, names, 4
+
+    | AAAA s -> 
+        let s, slen = charstr s in
+        Cstruct.set_buffer s 0 rdbuf 0 slen;
+        RR_AAAA, names, slen
+
+    | AFSDB (x,name) ->
+        BE.set_uint16 rdbuf 0 x;
+        let names, offset, _ = 
+          marshal_name names (base+2) (Cstruct.shift rdbuf 2) name 
+        in
+        RR_AFSDB, names, offset-base
           
     | CNAME name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
         RR_CNAME, names, offset-base
+
+    | DNSKEY (flags, alg, key) ->
+        BE.set_uint16 rdbuf 0 flags;
+        set_uint8 rdbuf 2 3;
+        set_uint8 rdbuf 3 (dnssec_alg_to_int alg);
+        let slen = String.length key in
+        Cstruct.set_buffer key 0 rdbuf 4 slen;
+        RR_DNSKEY, names, 4+slen
 
     | HINFO (cpu,os) ->
         let cpustr, cpulen = charstr cpu in
@@ -633,6 +665,13 @@ let marshal_rdata names base buf rdata =
         let names, offset, rdbuf = marshal_name names base rdbuf mbox in
         let names, offset, _ = marshal_name names offset rdbuf txt in
         RR_RP, names, offset-base
+    
+    | RT (x, name) ->
+        BE.set_uint16 rdbuf 0 x;
+        let names, offset, _ = 
+          marshal_name names (base+2) (Cstruct.shift rdbuf 2) name
+        in
+        RR_RT, names, offset-base
 
     | PTR name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
@@ -648,6 +687,15 @@ let marshal_rdata names base buf rdata =
         BE.set_uint32 rdbuf 16 minimum;
         RR_SOA, names, 20+offset-base
 
+    | SRV (prio, weight, port, name) ->
+        BE.set_uint16 rdbuf 0 prio;
+        BE.set_uint16 rdbuf 2 weight;
+        BE.set_uint16 rdbuf 4 port;
+        let names, offset, _ = 
+          marshal_name names (base+6) (Cstruct.shift rdbuf 6) name
+        in
+        RR_SRV, names, offset-base
+
     | TXT strings -> 
         RR_TXT, names, List.fold_left (fun acc s ->
           (* eprintf "  TXT: base:%d s:'%s'\n%!" base s; *)
@@ -662,7 +710,12 @@ let marshal_rdata names base buf rdata =
         let bmlen = String.length bm in
         Cstruct.set_buffer bm 0 rdbuf 5 bmlen;
         RR_WKS, names, 5+bmlen
-                   
+
+    | X25 x25 ->
+        let s,slen = charstr x25 in
+        Cstruct.set_buffer s 0 rdbuf 0 slen;
+        RR_X25, names, slen
+          
   in
   set_rr_typ buf (rr_type_to_int t);
   set_rr_rdlen buf rdlen;
@@ -869,43 +922,17 @@ let marshal txbuf dns =
   let _,_,buf = marshaln marshal_rr names base buf dns.additionals in
 
   let txbuf = Cstruct.(sub txbuf 0 (len txbuf - len buf)) in
-  Cstruct.hexdump txbuf; 
+  (* Cstruct.hexdump txbuf;  *)
   eprintf "TX: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string);
   txbuf
        
 (*
 mr:
-      | `AFSDB (t, n)
-        -> (BITSTRING { (int16_to_int t):16; (mn ~off:2 n):-1:bitstring }, 
-            `AFSDB
-        )
-
-      | `ISDN (a, sa) -> (
-        (match sa with 
-          | None -> BITSTRING { (charstr a):-1:string }
-          | Some sa
-            -> BITSTRING { (charstr a):-1:string; (charstr sa):-1:string }
-        ), `ISDN
-      )
-      | `MINFO (rm,em)
-        -> (let rm = mn rm in
-            let em = mn ~off:(bsl rm) em in
-            BITSTRING { rm:-1:bitstring; em:-1:bitstring }, `MINFO
-        )
-      | `RP (mbox, txt) 
-        -> (let mbox = mn mbox in
-            let txt = mn ~off:(bsl mbox) txt in
-            BITSTRING { mbox:-1:bitstring; txt:-1:bitstring }, `RP
-        )
       | `RT (p, ih) -> BITSTRING { (int16_to_int p):16; (mn ~off:2 ih):-1:bitstring }, `RT
       | `SRV (prio, weight, port, target)
         -> BITSTRING { (int16_to_int prio):16; (int16_to_int weight):16; 
                        (int16_to_int port):16; (mn ~off:6 target):-1:bitstring
                      }, `SRV
-      | `WKS (a, p, bm) 
-        -> BITSTRING { a:32; (byte_to_int p):8; bm:-1:string }, `WKS
-      | `X25 s -> BITSTRING { (charstr s):-1:string }, `X25
-        
       | `DNSKEY (flags, alg, key)
         -> let bkey = 
              Cryptokit.(transform_string (Base64.encode_compact ()) key) 

@@ -195,8 +195,8 @@ let answer_query qname qtype trie =
 	        enqueue_additional d Packet.RR_AAAA;
 	        addrr (Packet.SRV (priority, weight, port, d.owner.H.node))) l
             
-      | RR.UNSPEC l -> 
-          List.iter (fun s -> addrr (Packet.UNSPEC s.H.node)) l
+      (* | RR.UNSPEC l ->  *)
+      (*     List.iter (fun s -> addrr (Packet.UNSPEC s.H.node)) l *)
 
       | RR.DNSKEY l -> 
           List.iter (fun  (fl, t, k) ->
@@ -241,7 +241,7 @@ let answer_query qname qtype trie =
         | (Packet.Q_SRV, SRV _) -> true
         | (Packet.Q_AAAA, AAAA _) -> true
         | (Packet.Q_DNSKEY, DNSKEY _) -> true
-        | (Packet.Q_UNSPEC, UNSPEC _) -> true
+        (* | (Packet.Q_UNSPEC, UNSPEC _) -> true *)
         | (Packet.Q_MAILB, MB _) -> true
         | (Packet.Q_MAILB, MG _) -> true
         | (Packet.Q_MAILB, MR _) -> true

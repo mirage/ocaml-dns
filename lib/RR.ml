@@ -57,7 +57,7 @@ and rdata =
   | SOA of (dnsnode * dnsnode * serial * int32 * int32 * int32 * int32) list
   | SRV of (Cstruct.uint16 * Cstruct.uint16 * Cstruct.uint16 * dnsnode) list
   | TXT of (cstr list) list
-  | UNSPEC of cstr list
+  (* | UNSPEC of cstr list*)
   | Unknown of int * cstr list
   | WKS of (int32 * byte * cstr) list 
   | X25 of cstr list
@@ -85,7 +85,6 @@ let rdata_to_string = function
   | SOA _ -> "SOA"
   | SRV _ -> "SRV"
   | TXT _ -> "TXT"
-  | UNSPEC _ -> "UNSPEC"
   | Unknown _ -> "Unknown"
   | WKS _ -> "WKS"
   | X25 _ -> "X25"

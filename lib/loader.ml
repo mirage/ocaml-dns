@@ -138,9 +138,9 @@ let add_rrset rrset owner db =
             | (SRV l1, SRV l2) ->
                 (rrset.ttl, List.rev_append rest
                   ({ ttl = rrset.ttl; rdata = SRV (mfn l1 l2) } :: rrsets_done))
-            | (UNSPEC l1, UNSPEC l2) ->
-                (rrset.ttl, List.rev_append rest
-                  ({ ttl = rrset.ttl; rdata = UNSPEC (mfn l1 l2) } :: rrsets_done))
+            (* | (UNSPEC l1, UNSPEC l2) -> *)
+            (*     (rrset.ttl, List.rev_append rest *)
+            (*       ({ ttl = rrset.ttl; rdata = UNSPEC (mfn l1 l2) } :: rrsets_done)) *)
             | (DNSKEY l1, DNSKEY l2) ->
                 (rrset.ttl, List.rev_append rest
                   ({ ttl = rrset.ttl; rdata = DNSKEY (mfn l1 l2) } :: rrsets_done))          
@@ -266,9 +266,9 @@ let add_srv_rr pri weight port target ttl owner db =
   add_rrset { ttl; 
 	      rdata = SRV [ (pri, weight, port, targetnode) ] } owner db
 
-let add_unspec_rr str ttl owner db =
-  let s = hashcons_charstring str in 
-  add_rrset { ttl; rdata = UNSPEC [ s ] } owner db
+(* let add_unspec_rr str ttl owner db = *)
+(*   let s = hashcons_charstring str in  *)
+(*   add_rrset { ttl; rdata = UNSPEC [ s ] } owner db *)
  
 let add_dnskey_rr flags typ key ttl owner db =
   let flags = flags in

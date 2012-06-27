@@ -213,7 +213,7 @@ type rdata =
 | SSHFP of pubkey_alg * fp_type * string
 | TXT of string list
 | UNKNOWN of int * string
-| UNSPEC of string
+(* | UNSPEC of string *)
 | WKS of int32 * byte * string
 | X25 of string 
 
