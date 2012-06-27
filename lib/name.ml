@@ -105,7 +105,33 @@ let marshal_name names base buf name =
       ) (names, base, buf) name
     in names, base+1, Cstruct.shift buf 1
   in
-  let compressed buf name = 
+  
+  let compressed names base buf name = 
+    let pointer offset = (0b11_l <<< 14) +++ (Int32.of_int off) in
+    
+    let lookup name = 
+      Hashtbl.(if mem names name then Some (find names name) else None)
+    in
+    
+    let labelset = 
+      let rec aux = function
+        | [] -> []
+        | x :: [] -> [ x :: [] ]
+        | hd :: tl -> (hd :: tl) :: (aux tl)
+      in aux labels
+    in
+    
+    names, base, buf
+  in
+  (* not_compressed buf name *)
+  compressed names base buf name
+
+
+
+
+
+
+
 
 (*
   (** Marshall names, with compression. *)
@@ -173,9 +199,7 @@ let marshal_name names base buf name =
   in
 
 *)
-    ()
-  in
-  not_compressed buf name
+
 
 (* Hash-consing: character strings *)
 module CSH = Hashcons.Make (struct 
