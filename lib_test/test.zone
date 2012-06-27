@@ -48,12 +48,13 @@ types	IN 	A	127.0.0.1
 	IN	MF 	mf-target
 	IN	NS 	ns-target
 ;; Not CNAME!
-	IN	SOA 	master owner 2012031300 3600 1800 302400 1800
+	IN	SOA 	master owner 2012062700 3600 1800 302400 1800
 	IN	MB	mb-target
 	IN	MG 	mg-target
 	IN	MR 	mr-target
 	IN	WKS 	127.0.0.1 udp domain ntp 1600 
 	IN	WKS 	127.0.0.1 6 22 25 chargen
+	IN	WKS 	127.0.0.1 6 22 25 10
 	IN	PTR 	ptr-target
 	IN	HINFO 	"CPU" "Operating \"System\""
 	IN	MINFO 	rmailbx emailbx
