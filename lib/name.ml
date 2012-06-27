@@ -36,17 +36,17 @@ type label =
 
 let parse_label check_len base buf = 
   (* NB. we're shifting buf for each call; offset is for the names Hashtbl *)
-  eprintf "+ parse_label: base:%d len:%d\n%!" base (Cstruct.len buf);
+  (* eprintf "+ parse_label: base:%d len:%d\n%!" base (Cstruct.len buf); *)
   let v = Cstruct.get_uint8 buf 0 in
-  eprintf "  v:%d\n%!" v;
+  (* eprintf "  v:%d\n%!" v; *)
   match v with 
     | 0 -> 
-        eprintf "- parse_label: Z\n%!"; 
+        (* eprintf "- parse_label: Z\n%!";  *)
         Z base, 1
     
     | v when ((v land 0b0_11000000) != 0) -> 
         let ptr = ((v land 0b0_00111111) lsl 8) + Cstruct.get_uint8 buf 1 in 
-        eprintf "- parse_label: P ptr:%d\n%!" ptr;
+        (* eprintf "- parse_label: P ptr:%d\n%!" ptr; *)
         P (ptr, base), 2
     
     | v ->
@@ -54,16 +54,16 @@ let parse_label check_len base buf =
           failwith (sprintf "parse_label: invalid length %d" v)
         else (
           let name = Cstruct.(sub buf 1 v |> to_string) in
-          eprintf "- parse_label: L v:%d lbl:'%s'\n%!" v name;
+          (* eprintf "- parse_label: L v:%d lbl:'%s'\n%!" v name; *)
           L (name, base), 1+v
         )
                                           
 let parse_name ?(check_len=true) names base buf = (* what. a. mess. *)
-  eprintf "+ parse_name: base:%d len:%d\n%!" base (Cstruct.len buf);
+  (* eprintf "+ parse_name: base:%d len:%d\n%!" base (Cstruct.len buf); *)
   
   let rec aux offsets name base buf = 
-    eprintf "+ parse_name/aux: name:'%s' base:%d len:%d\n%!" 
-      (domain_name_to_string name) base (Cstruct.len buf);
+    (* eprintf "+ parse_name/aux: name:'%s' base:%d len:%d\n%!"  *)
+    (*   (domain_name_to_string name) base (Cstruct.len buf); *)
 
     match parse_label check_len base buf with
       | (L (n, o) as label, offset) -> 
@@ -86,11 +86,11 @@ let parse_name ?(check_len=true) names base buf = (* what. a. mess. *)
 
       | (Z o as zero, offset) -> 
           Hashtbl.add names o zero; 
-          eprintf "- parse_name/aux: o:%d offset:%d\n%!" o offset;
+          (* eprintf "- parse_name/aux: o:%d offset:%d\n%!" o offset; *)
           name, (base+offset, Cstruct.shift buf offset)
   in 
   let name, (base,buf) = aux [] [] base buf in
-  eprintf "- parse_name: base:%d len:%d\n%!" base (Cstruct.len buf);
+  (* eprintf "- parse_name: base:%d len:%d\n%!" base (Cstruct.len buf); *)
   List.rev name, (base,buf)
 
 let marshal_name names base buf name = 
@@ -104,6 +104,76 @@ let marshal_name names base buf name =
             names, base+llen+1, shift buf (llen+1)
       ) (names, base, buf) name
     in names, base+1, Cstruct.shift buf 1
+  in
+  let compressed buf name = 
+
+(*
+  (** Marshall names, with compression. *)
+  let mn_compress (labels:domain_name) = 
+    let pos = ref (!pos) in
+
+    let pointer off = 
+      let ptr = (0b11_l <<< 14) +++ (Int32.of_int off) in
+      let hi = ((ptr &&& 0xff00_l) >>> 8) |> Int32.to_int |> char_of_int in
+      let lo =  (ptr &&& 0x00ff_l)        |> Int32.to_int |> char_of_int in
+      sprintf "%c%c" hi lo
+    in
+    
+    let lookup h k =
+      if Hashtbl.mem h k then Some (Hashtbl.find h k) else None
+    in
+
+    let lset = 
+      let rec aux = function
+        | [] -> [] (* don't double up the terminating null? *)
+        | x :: [] -> [ x :: [] ]
+        | hd :: tl -> (hd :: tl) :: (aux tl)
+      in aux labels
+    in
+
+    let bits = ref [] in    
+    let pointed = ref false in
+    List.iter (fun ls ->
+      if (not !pointed) then (
+        match lookup names ls with
+          | None 
+            -> (Hashtbl.add names ls !pos;
+                match ls with 
+                  | [] 
+                    -> (bits := "\000" :: !bits; 
+                        pos := !pos + 1
+                    )
+                  | label :: tail
+                    -> (let len = String.length label in
+                        assert(len < 64);
+                        bits := (charstr label) :: !bits;
+                        pos := !pos + len +1
+                    )
+            )
+          | Some off
+            -> (bits := (pointer off) :: !bits;
+                pos := !pos + 2;
+                pointed := true
+            )
+      )
+    ) lset;
+    if (not !pointed) then (
+      bits := "\000" :: !bits;
+      pos := !pos + 1
+    );
+    !bits |> List.rev |> String.concat "" |> (fun s -> 
+      BITSTRING { s:((String.length s)*8):string })
+  in
+
+  let mn ?(off = 0) ls = 
+    pos := !pos + off;
+    let n = mn_compress ls in
+    (pos := !pos - off; 
+     n)
+  in
+
+*)
+    ()
   in
   not_compressed buf name
 
