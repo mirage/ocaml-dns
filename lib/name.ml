@@ -116,7 +116,6 @@ let marshal_name names base buf name =
             )     
               
         | Some o -> 
-            eprintf "P: ptr:%04x offset:%d\n%!" (pointer o) o;
             BE.set_uint16 buf offset (pointer o);
             offset+2
     in

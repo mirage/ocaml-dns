@@ -429,7 +429,6 @@ let question_to_string q =
     (q_type_to_string q.q_type) (q_class_to_string q.q_class)
 
 let parse_question names base buf = 
-  (* eprintf "+ parse_question: base:%d len:%d\n%!" base (Cstruct.len buf); *)
   let q_name, (base,buf) = parse_name names base buf in  
   let q_type = 
     let typ = get_q_typ buf in
@@ -443,8 +442,6 @@ let parse_question names base buf =
       | None -> failwith (sprintf "parse_question: cls %d" cls)
       | Some cls -> cls
   in
-  (* eprintf "- parse_question: base:%d offset:%d len:%d\n%!"  *)
-  (*   base sizeof_q (Cstruct.len buf); *)
   { q_name; q_type; q_class }, (base+sizeof_q, Cstruct.shift buf sizeof_q)
 
 let marshal_question (names, base, buf) q =
@@ -454,9 +451,6 @@ let marshal_question (names, base, buf) q =
   names, base+sizeof_q, Cstruct.shift buf sizeof_q
 
 let parse_rdata names base t buf = 
-  (* eprintf "+ parse_rdata: base:%d len:%d t:%s\n%!"  *)
-  (*   base (Cstruct.len buf) (rr_type_to_string t); *)
-
   (** Drop remainder bitstring to stop parsing and demuxing. *) 
   let stop (x, _) = x in
   (** Extract (length, string) encoded strings, with remainder for
@@ -465,7 +459,7 @@ let parse_rdata names base t buf =
     let len = get_uint8 buf 0 in
     to_string (sub buf 1 len), Cstruct.shift buf (1+len)
   in
-  let v = match t with
+  match t with
     | RR_A -> A (BE.get_uint32 buf 0)
         
     | RR_AAAA -> AAAA (buf |> parse_charstr |>stop)
@@ -546,7 +540,6 @@ let parse_rdata names base t buf =
             match Cstruct.len buf with
               | 0 -> strings
               | len ->
-                  (* eprintf "  buf:%d\n%!" len; *)
                   let s, buf = parse_charstr buf in
                   aux (s :: strings) buf
           in
@@ -564,15 +557,7 @@ let parse_rdata names base t buf =
         let x25,_ = parse_charstr buf in
         X25 x25
 
-  (* | t -> failwith (sprintf "parse_rdata: %s" (rr_type_to_string t)) *)
-  in
-  (* eprintf "- parse_rdata\n%!"; *)
-  v
-
 let marshal_rdata names base buf rdata = 
-  (* eprintf "+ marshal_rdata: base:%d len:%d rdata:%s\n%!"  *)
-  (*   base (Cstruct.len buf) (rdata_to_string rdata); *)
-  
   let base, rdbuf = base+sizeof_rr, Cstruct.shift buf sizeof_rr in
   let t, names, rdlen = match rdata with 
     | A ip -> 
@@ -693,7 +678,6 @@ let marshal_rdata names base buf rdata =
 
     | TXT strings -> 
         RR_TXT, names, List.fold_left (fun acc s ->
-          (* eprintf "  TXT: base:%d s:'%s'\n%!" base s; *)
           let s, slen = charstr s in
           Cstruct.set_buffer s 0 rdbuf acc slen;
           acc+slen
@@ -714,22 +698,17 @@ let marshal_rdata names base buf rdata =
   in
   set_rr_typ buf (rr_type_to_int t);
   set_rr_rdlen buf rdlen;
-  (* eprintf "- marshal_rdata: rdlen:%d\n%!" rdlen; *)
   names, base+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
 
 let parse_rr names base buf =
-  (* eprintf "+ parse_rr\n%!"; *)
   let name, (base,buf) = parse_name names base buf in
-  (* eprintf "  name:%s\n%!" (domain_name_to_string name); *)
   let t = get_rr_typ buf in
-  let v = match int_to_rr_type t with
+  match int_to_rr_type t with
     | None -> failwith (sprintf "parse_rr: unknown type: %d" t)
 
     | Some typ ->
         let ttl = get_rr_ttl buf in
         let rdlen = get_rr_rdlen buf in
-        (* eprintf "  typ:%s ttl:%ld rdlen:%d\n%!" *)
-        (*   (rr_type_to_string typ) ttl rdlen; *)
         let rdata = 
           let rdbuf = Cstruct.sub buf sizeof_rr rdlen in
           parse_rdata names (base+sizeof_rr) typ rdbuf
@@ -740,19 +719,12 @@ let parse_rr names base buf =
               ({ name; cls; ttl; rdata }, 
                ((base+sizeof_rr+rdlen), Cstruct.shift buf (sizeof_rr+rdlen))
               )
-  in 
-  (* eprintf "- parse_rr\n%!"; *)
-  v
 
 let marshal_rr (names, base, buf) rr =
-  (* eprintf "+ marshal_rr: base:%d len:%d rr:%s\n%!"  *)
-  (*   base (Cstruct.len buf) (rr_to_string rr); *)
   let names, base, buf = marshal_name names base buf rr.name in
   set_rr_cls buf (rr_class_to_int rr.cls);
   set_rr_ttl buf rr.ttl;
-  let v = marshal_rdata names base buf rr.rdata in
-  (* eprintf "- marshal_rr\n%!";  *)
-  v
+  marshal_rdata names base buf rr.rdata
 
 cenum qr {
   Query = 0;
@@ -867,7 +839,6 @@ let to_string d =
 
 let parse names buf = 
   let parsen f names base n buf = 
-    (* eprintf "+-parsen: base:%d n:%d\n%!" base n; *)
     let rec aux acc n base buf = 
       match n with
         | 0 -> acc, (base,buf)
@@ -891,7 +862,7 @@ let parse names buf =
   let authorities, (base,buf) = parsen parse_rr names base nscount buf in
   let additionals, _ = parsen parse_rr names base arcount buf in
   let dns = { id; detail; questions; answers; authorities; additionals } in
-  eprintf "RX: %s\n%!" (to_string dns);
+  (* eprintf "RX: %s\n%!" (to_string dns); *)
   dns
 
 let marshal txbuf dns = 
@@ -915,8 +886,8 @@ let marshal txbuf dns =
   let _,_,buf = marshaln marshal_rr names base buf dns.additionals in
 
   let txbuf = Cstruct.(sub txbuf 0 (len txbuf - len buf)) in
-  Cstruct.hexdump txbuf;  
-  eprintf "TX: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string);
+  (* Cstruct.hexdump txbuf;   *)
+  (* eprintf "TX: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string); *)
   txbuf
        
 (*
