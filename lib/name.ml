@@ -36,36 +36,29 @@ type label =
 
 let parse_label base buf = 
   (* NB. we're shifting buf for each call; offset is for the names Hashtbl *)
-  (* eprintf "+ parse_label: base:%d len:%d\n%!" base (Cstruct.len buf); *)
-  let v = Cstruct.get_uint8 buf 0 in
-  (* eprintf "  v:%d\n%!" v; *)
-  match v with 
+  match Cstruct.get_uint8 buf 0 with 
     | 0 -> 
-        (* eprintf "- parse_label: Z\n%!";  *)
         Z base, 1
           
     | v when ((v land 0b0_11000000) != 0) -> 
         let ptr = ((v land 0b0_00111111) lsl 8) + Cstruct.get_uint8 buf 1 in 
-        (* eprintf "- parse_label: P ptr:%d\n%!" ptr; *)
         P (ptr, base), 2
           
     | v ->
         if ((0 < v) && (v < 64)) then (
           let name = Cstruct.(sub buf 1 v |> to_string) in
-          (* eprintf "- parse_label: L v:%d lbl:'%s'\n%!" v name; *)
           L (name, base), 1+v
         )
         else 
           failwith (sprintf "parse_label: invalid length %d" v)
                                           
 let parse_name names base buf = (* what. a. mess. *)
-  (* eprintf "+ parse_name: base:%d len:%d\n%!" base (Cstruct.len buf); *)
-  
   let rec aux offsets name base buf = 
-    (* eprintf "+ parse_name/aux: name:'%s' base:%d len:%d\n%!"  *)
-    (*   (domain_name_to_string name) base (Cstruct.len buf); *)
-
     match parse_label base buf with
+      | (Z o as zero, offset) -> 
+          Hashtbl.add names o zero; 
+          name, base+offset, Cstruct.shift buf offset
+      
       | (L (n, o) as label, offset) -> 
           Hashtbl.add names o label;
           offsets |> List.iter (fun off -> (Hashtbl.add names off label));
@@ -73,24 +66,20 @@ let parse_name names base buf = (* what. a. mess. *)
 
       | (P (p, _), offset) -> 
           let ns = (Hashtbl.find_all names p
-                       |> List.filter (function L _ -> true | _ -> false)
-                       |> List.rev)
+                       |> List.filter (function L _ -> true | _ -> false))
           in
+          (* update the list of offsets-so-far to include current label *)
           offsets |> List.iter (fun o ->
             ns |> List.iter (fun n -> Hashtbl.add names o n)
           );
-          ((ns |> List.rev ||> (function
+          (* convert label list into string list *)
+          (ns ||> (function
             | L (nm,_) -> nm
             | _ -> failwith "parse_name")
-           ) @ name), (base+offset, Cstruct.shift buf offset)
+          ) @ name, base+offset, Cstruct.shift buf offset
 
-      | (Z o as zero, offset) -> 
-          Hashtbl.add names o zero; 
-          (* eprintf "- parse_name/aux: o:%d offset:%d\n%!" o offset; *)
-          name, (base+offset, Cstruct.shift buf offset)
   in 
-  let name, (base,buf) = aux [] [] base buf in
-  (* eprintf "- parse_name: base:%d len:%d\n%!" base (Cstruct.len buf); *)
+  let name, base, buf = aux [] [] base buf in
   List.rev name, (base,buf)
 
 let marshal_name names base buf name = 
