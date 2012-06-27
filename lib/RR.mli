@@ -74,6 +74,8 @@ and rdata =
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
 
+val rdata_to_string : rdata -> string
+
 (*
 (** Extract relevant RRSets given a query type, a list of RRSets and a flag to
     say whether to return CNAMEs too. 

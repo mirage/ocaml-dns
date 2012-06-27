@@ -66,3 +66,27 @@ and rdata =
 (* XXX add other RR types *)
 (* wire-domain type for non-rfc1035 rdata? *)
 
+let rdata_to_string = function
+  | A _ -> "A"
+  | AAAA _ -> "AAAA"
+  | AFSDB _ -> "AFSDB"
+  | CNAME _ -> "CNAME"
+  | HINFO _ -> "HINFO"
+  | ISDN _ -> "ISDN"
+  | MB _ -> "MB"
+  | MG _ -> "MG"
+  | MINFO _ -> "MINFO"
+  | MR _ -> "MR"
+  | MX _ -> "MX"
+  | NS _ -> "NS"
+  | PTR _ -> "PTR"
+  | RP _ -> "RP"
+  | RT _ -> "RT"
+  | SOA _ -> "SOA"
+  | SRV _ -> "SRV"
+  | TXT _ -> "TXT"
+  | UNSPEC _ -> "UNSPEC"
+  | Unknown _ -> "Unknown"
+  | WKS _ -> "WKS"
+  | X25 _ -> "X25"
+  | DNSKEY _ -> "DNSKEY"
