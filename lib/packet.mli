@@ -46,7 +46,6 @@ val dnssec_alg_to_string : dnssec_alg -> string
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
 
-
 type q_type = 
   | Q_A
   | Q_NS
@@ -218,9 +217,8 @@ type rdata =
 | WKS of int32 * byte * string
 | X25 of string 
 
-(*
 val rdata_to_string : rdata -> string
-*)
+
 (** Parse an RDATA element from a packet, given the set of already encountered
     names, a starting index, and the type of the RDATA. *)
 val parse_rdata : 
@@ -250,12 +248,13 @@ val parse_rr :
 
 (** A question type, with the usual conversion functions. *)
 
+val q_type_to_string : q_type -> string
+
 (*
 type q_type
  = [ rr_type | `AXFR | `MAILB | `MAILA | `ANY | `TA | `DLV ]
-val int_to_q_type : int -> q_type
 val q_type_to_int : q_type -> int
-val q_type_to_string : q_type -> string
+val int_to_q_type : int -> q_type
 val string_to_q_type : string -> q_type
 *)
 
