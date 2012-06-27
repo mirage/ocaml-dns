@@ -109,7 +109,9 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
       (fun ~src ~dst d ->
          let open DP in
          let q = List.hd d.questions in
-         let r = contain_exc "answer" (fun () -> get_answer q.q_name q.q_type d.id) in
+         let r = 
+           contain_exc "answer" (fun () -> get_answer q.q_name q.q_type d.id) 
+         in
          return r
       )
   in
