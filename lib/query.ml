@@ -217,8 +217,10 @@ let answer_query qname qtype trie =
      say whether to return Cnames too *)
   let get_rrsets qtype sets cnames_ok = 
     let match_rrset qtype set =
+      (* eprintf "MATCH q:%s r:%s\n%!"  *)
+      (*   (Packet.q_type_to_string qtype) (RR.rdata_to_string set.rdata); *)
       match (qtype, set.rdata) with 
-          (Packet.Q_A, A _) -> true
+        | (Packet.Q_A, A _) -> true
         | (Packet.Q_NS, NS _) -> true
         | (Packet.Q_CNAME, CNAME _) -> true
         | (Packet.Q_SOA, SOA _) -> true
@@ -245,7 +247,7 @@ let answer_query qname qtype trie =
         | (Packet.Q_MAILB, MR _) -> true
         | (Packet.Q_ANY_TYP, _) -> true
         | (_, CNAME _) -> cnames_ok
-        | (_, _) -> false
+        | (_, _) -> false 
     in List.filter (match_rrset qtype) sets
   in
 
