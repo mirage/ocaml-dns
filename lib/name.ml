@@ -34,7 +34,7 @@ type label =
   | P of int * int (* pointer *)
   | Z of int (* zero; terminator *)
 
-let parse_label check_len base buf = 
+let parse_label base buf = 
   (* NB. we're shifting buf for each call; offset is for the names Hashtbl *)
   (* eprintf "+ parse_label: base:%d len:%d\n%!" base (Cstruct.len buf); *)
   let v = Cstruct.get_uint8 buf 0 in
@@ -43,29 +43,29 @@ let parse_label check_len base buf =
     | 0 -> 
         (* eprintf "- parse_label: Z\n%!";  *)
         Z base, 1
-    
+          
     | v when ((v land 0b0_11000000) != 0) -> 
         let ptr = ((v land 0b0_00111111) lsl 8) + Cstruct.get_uint8 buf 1 in 
         (* eprintf "- parse_label: P ptr:%d\n%!" ptr; *)
         P (ptr, base), 2
-    
+          
     | v ->
-        if check_len && not ((0 < v) && (v < 64)) then
-          failwith (sprintf "parse_label: invalid length %d" v)
-        else (
+        if ((0 < v) && (v < 64)) then (
           let name = Cstruct.(sub buf 1 v |> to_string) in
           (* eprintf "- parse_label: L v:%d lbl:'%s'\n%!" v name; *)
           L (name, base), 1+v
         )
+        else 
+          failwith (sprintf "parse_label: invalid length %d" v)
                                           
-let parse_name ?(check_len=true) names base buf = (* what. a. mess. *)
+let parse_name names base buf = (* what. a. mess. *)
   (* eprintf "+ parse_name: base:%d len:%d\n%!" base (Cstruct.len buf); *)
   
   let rec aux offsets name base buf = 
     (* eprintf "+ parse_name/aux: name:'%s' base:%d len:%d\n%!"  *)
     (*   (domain_name_to_string name) base (Cstruct.len buf); *)
 
-    match parse_label check_len base buf with
+    match parse_label base buf with
       | (L (n, o) as label, offset) -> 
           Hashtbl.add names o label;
           offsets |> List.iter (fun off -> (Hashtbl.add names off label));
@@ -94,112 +94,47 @@ let parse_name ?(check_len=true) names base buf = (* what. a. mess. *)
   List.rev name, (base,buf)
 
 let marshal_name names base buf name = 
-  let not_compressed buf name = 
-    let names, base, buf = 
-      List.fold_left (fun (names,base,buf) label ->
-        let open Cstruct in
-            let llen = String.length label in
-            set_uint8 buf 0 llen;
-            set_buffer label 0 buf 1 llen;
-            names, base+llen+1, shift buf (llen+1)
-      ) (names, base, buf) name
+  let not_compressed names base buf name = 
+    let base, buf = 
+      List.fold_left (fun (base,buf) label ->
+        let label,llen = charstr label in
+        Cstruct.set_buffer label 0 buf 0 llen;
+        base+llen, Cstruct.shift buf llen
+      ) (base, buf) name
     in names, base+1, Cstruct.shift buf 1
   in
   
   let compressed names base buf name = 
-    let pointer offset = (0b11_l <<< 14) +++ (Int32.of_int off) in
+    let pointer o = ((0b11_l <<< 14) +++ (Int32.of_int o)) |> Int32.to_int in
     
-    let lookup name = 
-      Hashtbl.(if mem names name then Some (find names name) else None)
+    let lookup n = 
+      Hashtbl.(if mem names n then Some (find names n) else None)
     in
     
-    let labelset = 
-      let rec aux = function
-        | [] -> []
-        | x :: [] -> [ x :: [] ]
-        | hd :: tl -> (hd :: tl) :: (aux tl)
-      in aux labels
+    let rec aux offset labels = 
+      match lookup labels with
+        | None -> 
+            (match labels with
+              | [] -> 
+                  set_uint8 buf offset 0; 
+                  offset+1
+                    
+              | (hd :: tl) as ls -> 
+                  Hashtbl.replace names ls (base+offset);
+                  let label, llen = charstr hd in
+                  Cstruct.set_buffer label 0 buf offset llen;
+                  aux (offset+llen) tl
+            )     
+              
+        | Some o -> 
+            eprintf "P: ptr:%04x offset:%d\n%!" (pointer o) o;
+            BE.set_uint16 buf offset (pointer o);
+            offset+2
     in
-    
-    names, base, buf
+    let offset = aux 0 name in
+    names, (base+offset), Cstruct.shift buf offset
   in
-  (* not_compressed buf name *)
   compressed names base buf name
-
-
-
-
-
-
-
-
-(*
-  (** Marshall names, with compression. *)
-  let mn_compress (labels:domain_name) = 
-    let pos = ref (!pos) in
-
-    let pointer off = 
-      let ptr = (0b11_l <<< 14) +++ (Int32.of_int off) in
-      let hi = ((ptr &&& 0xff00_l) >>> 8) |> Int32.to_int |> char_of_int in
-      let lo =  (ptr &&& 0x00ff_l)        |> Int32.to_int |> char_of_int in
-      sprintf "%c%c" hi lo
-    in
-    
-    let lookup h k =
-      if Hashtbl.mem h k then Some (Hashtbl.find h k) else None
-    in
-
-    let lset = 
-      let rec aux = function
-        | [] -> [] (* don't double up the terminating null? *)
-        | x :: [] -> [ x :: [] ]
-        | hd :: tl -> (hd :: tl) :: (aux tl)
-      in aux labels
-    in
-
-    let bits = ref [] in    
-    let pointed = ref false in
-    List.iter (fun ls ->
-      if (not !pointed) then (
-        match lookup names ls with
-          | None 
-            -> (Hashtbl.add names ls !pos;
-                match ls with 
-                  | [] 
-                    -> (bits := "\000" :: !bits; 
-                        pos := !pos + 1
-                    )
-                  | label :: tail
-                    -> (let len = String.length label in
-                        assert(len < 64);
-                        bits := (charstr label) :: !bits;
-                        pos := !pos + len +1
-                    )
-            )
-          | Some off
-            -> (bits := (pointer off) :: !bits;
-                pos := !pos + 2;
-                pointed := true
-            )
-      )
-    ) lset;
-    if (not !pointed) then (
-      bits := "\000" :: !bits;
-      pos := !pos + 1
-    );
-    !bits |> List.rev |> String.concat "" |> (fun s -> 
-      BITSTRING { s:((String.length s)*8):string })
-  in
-
-  let mn ?(off = 0) ls = 
-    pos := !pos + off;
-    let n = mn_compress ls in
-    (pos := !pos - off; 
-     n)
-  in
-
-*)
-
 
 (* Hash-consing: character strings *)
 module CSH = Hashcons.Make (struct 

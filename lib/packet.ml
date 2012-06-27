@@ -21,11 +21,6 @@ open Operators
 open Name
 open Cstruct
 
-(** Encode string as label by prepending length. *)
-let charstr s = 
-  let s = sprintf "%c%s" (s |> String.length |> char_of_int) s in
-  s, String.length s
-
 cenum digest_alg {
   SHA1 = 1
 } as uint8_t
@@ -720,7 +715,7 @@ let marshal_rdata names base buf rdata =
   set_rr_typ buf (rr_type_to_int t);
   set_rr_rdlen buf rdlen;
   (* eprintf "- marshal_rdata: rdlen:%d\n%!" rdlen; *)
-  names, base+sizeof_rr+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
+  names, base+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
 
 let parse_rr names base buf =
   (* eprintf "+ parse_rr\n%!"; *)
@@ -728,9 +723,7 @@ let parse_rr names base buf =
   (* eprintf "  name:%s\n%!" (domain_name_to_string name); *)
   let t = get_rr_typ buf in
   let v = match int_to_rr_type t with
-    | None -> 
-        Cstruct.hexdump buf; 
-        failwith (sprintf "parse_rr: unknown type: %d" t)
+    | None -> failwith (sprintf "parse_rr: unknown type: %d" t)
 
     | Some typ ->
         let ttl = get_rr_ttl buf in
@@ -922,7 +915,7 @@ let marshal txbuf dns =
   let _,_,buf = marshaln marshal_rr names base buf dns.additionals in
 
   let txbuf = Cstruct.(sub txbuf 0 (len txbuf - len buf)) in
-  (* Cstruct.hexdump txbuf;  *)
+  Cstruct.hexdump txbuf;  
   eprintf "TX: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string);
   txbuf
        

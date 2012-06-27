@@ -58,3 +58,9 @@ let join c l = String.concat c l
 let int_to_bool = function
   | 0 -> false
   | _ -> true
+
+(** Encode string as label by prepending length. *)
+let charstr s = 
+  let s = sprintf "%c%s" (s |> String.length |> char_of_int) s in
+  s, String.length s
+
