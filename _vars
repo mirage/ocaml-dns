@@ -2,5 +2,6 @@ NAME=dns
 VERSION=0.3dev
 LIB="dns dns_server dns_proxy dns_resolver"
 SYNTAX=
-DEPS="cstruct lwt re re.str"
+DEPS="cstruct lwt re re.str uri lwt.unix"
 SYNTAX_DEPS="cstruct.syntax lwt.syntax"
+EXTRA=client/odig.native
