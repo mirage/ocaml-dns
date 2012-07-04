@@ -1,6 +1,5 @@
 <lib/*.ml>: for-pack(Dns)
-<server/*>: use_lib
-<lib_test/*>: use_lib, custom
+<lib_test/*> or <client/*>: use_lib, custom
 <syntax/*>: build_syntax
 not <syntax/*>: use_syntax
 true: camlp4o

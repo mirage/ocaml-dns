@@ -1,6 +1,6 @@
 NAME=dns
 VERSION=0.3dev
-LIB=dns
+LIB="dns dns_server dns_proxy dns_resolver"
 SYNTAX=
 DEPS="cstruct lwt re re.str"
 SYNTAX_DEPS="cstruct.syntax lwt.syntax"
