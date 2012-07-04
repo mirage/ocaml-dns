@@ -273,7 +273,7 @@ let add_srv_rr pri weight port target ttl owner db =
 let add_dnskey_rr flags typ key ttl owner db =
   let flags = flags in
   let typ = typ in
-  let tmp = Cryptokit.transform_string  (Cryptokit.Base64.decode ())  key in
+  let tmp = Base64.decode key in
   let dnskey = hashcons_charstring tmp in 
   add_rrset { ttl; rdata = DNSKEY [ (flags, typ, dnskey) ] } owner db
 

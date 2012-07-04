@@ -238,7 +238,7 @@ let rdata_to_string = function
   | DNSKEY (flags, alg, key) 
     -> (sprintf "DNSKEY (%x, %s, %s)" 
           flags (dnssec_alg_to_string alg) 
-          (Cryptokit.(transform_string (Base64.encode_compact ()) key))
+          (Base64.encode key)
     )
   | HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
   | ISDN (a, sa)

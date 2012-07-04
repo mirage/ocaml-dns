@@ -1,0 +1,6 @@
+NAME=dns
+VERSION=0.3dev
+LIB=dns
+SYNTAX=
+DEPS="cstruct lwt re re.str"
+SYNTAX_DEPS="cstruct.syntax lwt.syntax"
