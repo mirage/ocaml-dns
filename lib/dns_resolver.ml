@@ -63,13 +63,11 @@ let outfd addr port =
 
 let txbuf fd dst buf =
   lwt len = Lwt_bytes.sendto fd buf 0 (Cstruct.len buf) [] dst in
-  log_debug (sprintf "txbuf: len:%d" len);
   return(len)
 
 let rxbuf fd len = 
   let buf = Lwt_bytes.create len in
   lwt (len, sa) = Lwt_bytes.recvfrom fd buf 0 len [] in
-  log_debug (sprintf "rxbuf: len:%d" len);
   return (buf, sa)
 
 let resolve
