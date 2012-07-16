@@ -1,3 +1,6 @@
 *.swp
 _build/
 _config/
+setup.*
+*.native
+*.byte
