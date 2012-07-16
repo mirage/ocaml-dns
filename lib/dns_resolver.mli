@@ -15,9 +15,10 @@
  *)
 
 open Lwt
-open Uri_IP
+(* open Uri_IP *)
 open Dns.Name
 open Dns.Packet
+open Cstruct
 
 (** Lookup a {! domain_name }.
 
@@ -38,4 +39,4 @@ val gethostbyaddr : ipv4 -> string list Lwt.t
 *)
 val resolve : 
   ?server:string -> ?dns_port:int -> ?q_class:q_class -> ?q_type:q_type 
-  -> domain_name -> dns Lwt.t
+  -> domain_name -> Dns.Packet.t Lwt.t

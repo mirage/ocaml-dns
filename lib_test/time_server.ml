@@ -18,24 +18,25 @@ open Lwt
 open Printf
 
 let time_rsrc_record () =
-  let rr_name = ["time";"com"] in
-  let rr_class = `IN in
-  let rr_ttl = 100l in
-  let time = string_of_float (Unix.gettimeofday ()) in
-  let rr_rdata = `TXT [ "the"; "time"; "is"; time] in
-  { Dns.Packet.rr_name; rr_class; rr_ttl; rr_rdata }
+  Dns.Packet.(
+    let name = ["time"; "com"] in
+    let cls = RR_IN in
+    let ttl = 100l in
+    let time = string_of_float (Unix.gettimeofday ()) in
+    let rdata = Dns.Packet.TXT [ "the"; "time"; "is"; time ] in
+    { name; cls; ttl; rdata }
+  )
 
 let dnsfn ~src ~dst query =
   let open Dns.Packet in
       match query.questions with
         | q::_ -> (* Just take the first question *)
-          let answer = Dns.Query.({ rcode=`NoError; 
-                                    aa=true; 
-                                    answer=[ time_rsrc_record () ];
-                                    authority=[]; additional=[]; 
-                                  })
-          in
-          return (Some answer)
+            return (Some 
+              Dns.Query.({ 
+                rcode=NoError; aa=true; 
+                answer=[ time_rsrc_record () ]; authority=[]; additional=[]; 
+              })
+            )
         | _ -> return None (* No questions in packet *)
 
 let listen ~address ~port =

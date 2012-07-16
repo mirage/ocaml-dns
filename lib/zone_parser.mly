@@ -42,7 +42,7 @@ let parse_uint8 s =
   d
   with Failure _ -> raise Parsing.Parse_error
 
-let parse_byte s = Wire.byte (parse_uint8 s)
+let parse_byte s = Cstruct.byte (parse_uint8 s)
 
 let parse_uint16 s = 
   try 
@@ -88,7 +88,7 @@ let parse_wks proto services =
         try raise Not_found
 	with Not_found -> 
 	  parse_error ("unknown service \"" ^ s ^ "\" for protocol "
-		       ^ (string_of_int (Wire.byte_to_int proto)));
+		           ^ (string_of_int (Cstruct.byte_to_int proto)));
 	  raise Parsing.Parse_error
   in let addport bitmap n = 
     let byte = n/8 in 
@@ -224,7 +224,7 @@ let parse_ipv6 s =
 %token <string> TYPE_UINFO 
 %token <string> TYPE_UID 
 %token <string> TYPE_GID 
-%token <string> TYPE_UNSPEC 
+/* %token <string> TYPE_UNSPEC  */
 %token <string> TYPE_TKEY 
 %token <string> TYPE_TSIG 
 %token <string> TYPE_MAILB 
@@ -307,7 +307,7 @@ rr:
  | TYPE_AAAA s ipv6 { add_aaaa_rr $3 }
  | TYPE_DNSKEY s int16 s int16 s int16 s charstring {add_dnskey_rr $3 $7 $9 }
      /* Never properly defined: just testing the generic rdata format */
- | TYPE_UNSPEC s generic_rdata { add_unspec_rr $3 }
+ /* | TYPE_UNSPEC s generic_rdata { add_unspec_rr $3 } */
 
 ipv4: NUMBER DOT NUMBER DOT NUMBER DOT NUMBER 
      { try
@@ -500,7 +500,7 @@ keyword_or_number:
  | TYPE_UINFO { $1 }
  | TYPE_UID { $1 }
  | TYPE_GID { $1 }
- | TYPE_UNSPEC { $1 }
+ /* | TYPE_UNSPEC { $1 } */
  | TYPE_TKEY { $1 }
  | TYPE_TSIG { $1 }
  | TYPE_MAILB { $1 }

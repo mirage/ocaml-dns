@@ -1,34 +1,39 @@
-.PHONY: all clean install build
-all: build 
+.PHONY: all clean distclean setup build doc install test-build test 
+all: build
 
 NAME=dns
 J=4
 
 export OCAMLRUNPARAM=b
 
-setup.bin: setup.ml
-	ocamlopt.opt -o $@ $< || ocamlopt -o $@ $< || ocamlc -o $@ $<
-	$(RM) setup.cmx setup.cmi setup.o setup.cmo
 
-setup.data: setup.bin
-	./setup.bin -configure
+clean: setup.data
+	./setup.bin -clean
 
-build: setup.data setup.bin
+distclean: setup.data
+	./setup.bin -distclean
+	$(RM) setup.bin
+
+setup: setup.data
+
+build: setup.data $(wildcard lib/*.ml)
 	./setup.bin -build -j $(J)
 
 doc: setup.data setup.bin
 	./setup.bin -doc -j $(J)
 
-install: setup.bin
+install: 
+	ocamlfind remove $(NAME)
 	./setup.bin -install
 
-test: setup.bin build
-	./setup.bin -test
+##
 
-reinstall: setup.bin
-	ocamlfind remove $(NAME) || true
-	./setup.bin -reinstall
+setup.ml: _oasis
+	oasis setup
 
-clean:
-	ocamlbuild -clean
-	$(RM) setup.data setup.log setup.bin
+setup.bin: setup.ml
+	ocamlopt.opt -o $@ $< || ocamlopt -o $@ $< || ocamlc -o $@ $<
+	$(RM) setup.cmx setup.cmi setup.o setup.cmo
+
+setup.data: setup.bin
+	./setup.bin -configure --enable-tests

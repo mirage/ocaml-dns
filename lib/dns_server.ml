@@ -23,7 +23,14 @@ module DR = Dns.RR
 module DP = Dns.Packet
 
 type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr ->
-  Dns.Packet.dns -> Dns.Query.query_answer option Lwt.t
+  Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+
+let contain_exc l v = 
+  try
+    Some (v ())
+  with exn ->
+    eprintf "dns %s exn: %s\n%!" l (Printexc.to_string exn); 
+    None 
 
 let bind_fd ~address ~port =
   lwt src = try_lwt
@@ -81,22 +88,49 @@ let process_pkt fd buf len src dst names dnsfn =
 
 let listen ~fd ~src ~(dnsfn:dnsfn) =
   let cont = ref true in
-  let bufs = Lwt_pool.create 64 (fun () -> return (String.make 1024 '\000')) in
+  let bufs = Lwt_pool.create 64 (fun () -> return (Lwt_bytes.create 1024)) in
   let _ =
     let names = Hashtbl.create 64 in
     while_lwt !cont do
       Lwt_pool.use bufs (fun buf ->
-        lwt len, dst = Lwt_unix.recvfrom fd buf 0 (String.length buf) [] in
-          return ( Lwt.ignore_result(process_pkt fd buf len src dst names dnsfn) )
-          )
+        lwt len, dst = Lwt_bytes.(recvfrom fd buf 0 (length buf) []) in
+        let query = contain_exc "parse" (fun () -> DP.parse names buf) in
+        match query with
+        |None -> return ()
+        |Some query -> begin
+          lwt answer = dnsfn ~src ~dst query in
+          match answer with
+          |None -> return ()
+          |Some answer ->
+            let detail = DP.({ 
+              qr=Response; opcode=Standard; aa=answer.DQ.aa;
+              tc=false; rd=false; ra=false; rcode=answer.DQ.rcode 
+            })
+            in
+            let response = DP.({ 
+              id=query.id; detail; questions=query.questions; 
+              answers=answer.DQ.answer;
+              authorities=answer.DQ.authority;
+              additionals=answer.DQ.additional
+            }) 
+            in
+            Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00';
+            let bits = 
+              contain_exc "marshal" (fun () -> DP.marshal buf response) 
+            in
+            match bits with
+              | None -> return ()
+              | Some buf -> 
+                  (* TODO transmit queue, rather than ignoring result here *)
+                  let _ = Lwt_bytes.(sendto fd buf 0 (length buf) [] dst) in
+                  return ()
+        end
+      )
     done
   in
   let t,u = Lwt.task () in
   Lwt.on_cancel t
-    (fun () ->
-       Printf.eprintf "listen: cancelled\n%!";
-       cont := false
-    );
+    (fun () -> Printf.eprintf "listen: cancelled\n%!"; cont := false);
   Printf.eprintf "listen: done\n%!";
   t
 
@@ -115,11 +149,7 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
          let open DP in
          let q = List.hd d.questions in
          let r = 
-           try Some (get_answer q.q_name q.q_type d.id )
-           with exn -> (
-             eprintf "dns parse exn: %s\n%!" (Printexc.to_string exn); 
-             None 
-           )
+           contain_exc "answer" (fun () -> get_answer q.q_name q.q_type d.id) 
          in
          return r
       )

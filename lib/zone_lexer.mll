@@ -102,7 +102,7 @@ let kw_or_cs s = match (String.uppercase s) with
   | "UINFO" -> TYPE_UINFO s
   | "UID" -> TYPE_UID s
   | "GID" -> TYPE_GID s
-  | "UNSPEC" -> TYPE_UNSPEC s
+  (* | "UNSPEC" -> TYPE_UNSPEC s *)
   | "TKEY" -> TYPE_TKEY s
   | "TSIG" -> TYPE_TSIG s
   | "MAILB" -> TYPE_MAILB s

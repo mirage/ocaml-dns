@@ -20,9 +20,8 @@ open Lwt
 open Dns.Operators
 open Printf
 open Re_str
-open Uri_IP
 open Dns.Name
-
+open Cstruct
 module DP = Dns.Packet
 
 let usage () = 
@@ -31,21 +30,20 @@ let usage () =
 
 let lookup_name s = 
   lwt ans = Dns_resolver.gethostbyname s in 
-  let ans = (ans ||> ipv4_to_string |> String.concat "; ") in
+  let ans = (ans ||> Cstruct.ipv4_to_string |> String.concat "; ") in
   printf "%s -> %s\n%!" s ans;
   return ()
            
 let lookup_addr s = 
-  lwt ans = Dns_resolver.gethostbyaddr (string_to_ipv4 s) in
-  let ans = String.concat "; " ans in
-  printf "%s -> %s\n%!" s ans;
+  lwt ans = Dns_resolver.gethostbyaddr s in
+  printf "%s -> %s\n%!" (ipv4_to_string s) (String.concat "; " ans);
   return ()
            
 let _ = 
   let threads = 
     Sys.argv |> Array.to_list |> List.tl 
       ||> (fun s -> match Re.execp Uri_re.ipv4_address s with
-          | true -> lookup_addr s
+          | true -> (* lookup_addr s *) return ()
           | false -> lookup_name s
       ) 
   in 

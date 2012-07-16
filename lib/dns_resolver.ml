@@ -15,11 +15,11 @@
  *)
 
 open Lwt
-open Uri_IP
+(* open Uri_IP *)
 open Printf
 open Dns.Name
 open Dns.Operators
-open Dns.Wire
+(* open Dns.Wire *)
 
 module DP = Dns.Packet
 
@@ -38,14 +38,15 @@ let log_debug s = eprintf "DEBUG: %s\n%!" s
 let log_warn s = eprintf "WARN: %s\n%!" s
 
 let build_query q_class q_type q_name = 
-  let detail = DP.(build_detail { 
-    qr=DP.(`Query); opcode=DP.(`Query);
-    aa=true; tc=false; rd=true; ra=false; rcode=DP.(`NoError); })
-  in
-  let question = DP.({ q_name; q_type; q_class }) in 
-  DP.({ id=get_id () |> int16; detail; questions=[question]; 
-        answers=[]; authorities=[]; additionals=[]; 
-      })
+  DP.(
+    let detail = { qr=Query; opcode=Standard;
+                   aa=true; tc=false; rd=true; ra=false; rcode=NoError; }
+    in
+    let question = { q_name; q_type; q_class } in 
+    { id=get_id (); detail; questions=[question]; 
+      answers=[]; authorities=[]; additionals=[]; 
+    }
+  )
 
 let sockaddr addr port = 
   Lwt_unix.(ADDR_INET (Unix.inet_addr_of_string addr, port))
@@ -61,30 +62,28 @@ let outfd addr port =
   fd
 
 let txbuf fd dst buf =
-  lwt len = Lwt_unix.sendto fd buf 0 (String.length buf) [] dst in
-  log_debug (sprintf "txbuf: len:%d" len);
+  lwt len = Lwt_bytes.sendto fd buf 0 (Cstruct.len buf) [] dst in
   return(len)
 
 let rxbuf fd len = 
-  let buf = String.create len in
-  lwt _ = Lwt_unix.wait_read fd in 
-  lwt (len, sa) = Lwt_unix.recvfrom fd buf 0 len [] in
-  log_debug (sprintf "rxbuf: len:%d" len);
-  return (Bitstring.bitstring_of_string buf, sa)
+  let buf = Lwt_bytes.create len in
+  lwt (len, sa) = Lwt_bytes.recvfrom fd buf 0 len [] in
+  return (buf, sa)
 
 let resolve
     ?(server:string = ns)
     ?(dns_port:int = port)
-    ?(q_class:DP.q_class = `IN)
-    ?(q_type:DP.q_type = `ANY) 
+    ?(q_class:DP.q_class = DP.Q_IN)
+    ?(q_type:DP.q_type = DP.Q_ANY_TYP) 
     (q_name:domain_name) 
     =
 
   let ofd = outfd "0.0.0.0" 0 in
   (try_lwt
       let q = build_query q_class q_type q_name in
-      log_info (sprintf "query: %s\n%!" (DP.dns_to_string q));
-      let q = q |> DP.marshal_dns |> Bitstring.string_of_bitstring in
+      log_info (sprintf "query: %s\n%!" (DP.to_string q));
+      let buf = Lwt_bytes.create 4096 in
+      let q = DP.marshal buf q in
       let dst = sockaddr server dns_port in 
       txbuf ofd dst q
    with 
@@ -92,9 +91,8 @@ let resolve
   ) >> (
        lwt (buf,sa) = rxbuf ofd buflen in 
        let names = Hashtbl.create 8 in
-       let r = DP.parse_dns names buf in 
-       log_info (sprintf "response:%s sa:%s" 
-                   (DP.dns_to_string r) (sockaddr_to_string sa));
+       let r = DP.parse names buf in 
+       log_info (sprintf "response:%s sa:%s" (DP.to_string r) (sockaddr_to_string sa));
        return r
    )
 (*
@@ -109,30 +107,30 @@ let resolve
   );
 *)
 
-let gethostbyname ?(server:string = ns) ?(dns_port:int = port)
-                                      name = 
-  let domain = string_to_domain_name name in
-  lwt r = resolve ~server:server ~dns_port:dns_port ~q_class:DP.(`IN) 
-            ~q_type:DP.(`A) domain in 
-  return (DP.(r.answers ||> (fun x -> match x.rr_rdata with 
-    |`A ip -> Some ip
-    | _ -> None
-    )) 
-    |> List.fold_left (fun a -> function Some x -> x :: a | None -> a) []
-    |> List.rev
-  )
+let gethostbyname name = 
+  DP.(
+    let domain = string_to_domain_name name in
+    lwt r = resolve ~q_class:Q_IN ~q_type:Q_A domain in 
+     return (r.answers ||> (fun x -> match x.rdata with 
+       | DP.A ip -> Some ip
+       | _ -> None
+     )
+                |> List.fold_left (fun a -> function Some x -> x :: a | None -> a) []
+                |> List.rev
+     ))
 
 let gethostbyaddr addr = 
   let addr = for_reverse addr in
   log_info (sprintf "gethostbyaddr: %s" (domain_name_to_string addr));
-
-  lwt r = resolve ~q_class:DP.(`IN) ~q_type:DP.(`PTR) addr in
-  return (DP.(r.answers ||> (fun x -> match x.rr_rdata with 
-    |`PTR n -> Some n
-    | _ -> None
-    )) 
-    |> List.fold_left (fun a -> function 
-        | Some n -> (domain_name_to_string n) :: a
-        | None -> a) []
-    |> List.rev
-  )
+  
+  DP.(
+    lwt r = resolve ~q_class:Q_IN ~q_type:Q_PTR addr in
+    return (r.answers ||> (fun x -> match x.rdata with 
+      | DP.PTR n -> Some n
+      | _ -> None
+    )
+               |> List.fold_left (fun a -> function
+                   | None -> a
+                   | Some n -> (domain_name_to_string n) :: a) []
+               |> List.rev
+    ))

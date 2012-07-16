@@ -22,8 +22,7 @@
 *)
 
 open Name
-open Uri_IP
-open Wire
+open Cstruct
 
 (** Loader database: the DNS trie plus a hash table of other names in use. *)
 type db = { trie : Trie.dnstrie; 
@@ -66,7 +65,7 @@ val add_rt_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
 val add_aaaa_rr : string -> int32 -> domain_name -> db -> unit
 val add_srv_rr :
   int -> int -> int -> domain_name -> int32 -> domain_name -> db -> unit
-val add_unspec_rr : string -> int32 -> domain_name -> db -> unit
+(* val add_unspec_rr : string -> int32 -> domain_name -> db -> unit *)
 val add_txt_rr : string list -> int32 -> domain_name -> db -> unit
 val add_dnskey_rr : int -> int -> string -> int32 -> domain_name -> db -> unit
 

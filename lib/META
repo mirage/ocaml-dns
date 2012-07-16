@@ -1,26 +1,33 @@
 # OASIS_START
-# DO NOT EDIT (digest: 45400d260b5261d9e6c83b423f35db11)
+# DO NOT EDIT (digest: d26526a6d9210da17cf5cf21d6a5b086)
 version = "0.9-dev"
 description = "DNS protocol library for Lwt"
-requires = "bitstring bitstring.syntax re re.str uri cryptokit"
+requires =
+"cstruct cstruct.syntax re re.str cryptokit bitstring bitstring.syntax"
 archive(byte) = "dns.cma"
+archive(byte, plugin) = "dns.cma"
 archive(native) = "dns.cmxa"
+archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
 package "server" (
  version = "0.9-dev"
  description = "DNS protocol library for Lwt"
- requires = "lwt lwt.unix lwt.syntax bitstring bitstring.syntax uri dns cryptokit"
+ requires = "lwt lwt.unix lwt.syntax cstruct cstruct.syntax dns cryptokit"
  archive(byte) = "server.cma"
+ archive(byte, plugin) = "server.cma"
  archive(native) = "server.cmxa"
+ archive(native, plugin) = "server.cmxs"
  exists_if = "server.cma"
 )
 
 package "resolver" (
  version = "0.9-dev"
  description = "DNS protocol library for Lwt"
- requires = "lwt lwt.unix lwt.syntax bitstring bitstring.syntax uri dns"
+ requires = "lwt lwt.unix lwt.syntax cstruct cstruct.syntax dns"
  archive(byte) = "resolver.cma"
+ archive(byte, plugin) = "resolver.cma"
  archive(native) = "resolver.cmxa"
+ archive(native, plugin) = "resolver.cmxs"
  exists_if = "resolver.cma"
 )
 # OASIS_STOP

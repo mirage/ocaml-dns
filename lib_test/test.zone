@@ -48,12 +48,13 @@ types	IN 	A	127.0.0.1
 	IN	MF 	mf-target
 	IN	NS 	ns-target
 ;; Not CNAME!
-	IN	SOA 	master owner 2012031300 3600 1800 302400 1800
+	IN	SOA 	master owner 2012062702 3600 1800 302400 1800
 	IN	MB	mb-target
 	IN	MG 	mg-target
 	IN	MR 	mr-target
 	IN	WKS 	127.0.0.1 udp domain ntp 1600 
 	IN	WKS 	127.0.0.1 6 22 25 chargen
+	IN	WKS 	127.0.0.1 6 22 25 10
 	IN	PTR 	ptr-target
 	IN	HINFO 	"CPU" "Operating \"System\""
 	IN	MINFO 	rmailbx emailbx
@@ -69,6 +70,7 @@ types	IN 	A	127.0.0.1
 	IN	ISDN	150862028003217 004
 	IN	RT 	1 rt-target-1
 	IN	SRV	1 0 9 srv-target
+	IN	AAAA 	1080:0000:0000:0000:0008:0800:200C:417A
 	IN	AAAA 	1080:0:0:0:8:800:200C:417A
 	IN	AAAA 	FF01::101
 	IN	AAAA	1::
@@ -77,5 +79,5 @@ types	IN 	A	127.0.0.1
 	IN	AAAA	::13.1.68.3
 	IN	AAAA	0:0:0:0:0:FFFF:129.144.52.38
 ;; Dig's UNSPEC output is a wierd checksummed thing :(
-	IN	UNSPEC 	\# 7 55 6E73 706563 21
+;;	IN	UNSPEC 	\# 7 55 6E73 706563 21
         IN      DNSKEY  256 3 7 "AwEAAcAVwjuzHUCfFs7/U1BynkB/kGS37d3bXf8rBdeJul1F9I6nRD4mGyNNZOmgUis1QHxIoA5/xnI5Otsd0B3OcToie4UjFynnuibEcreT+GeakxskTbSbPyW4jdxshHeQ562Y1o0DZKOhHpDoD2q3uCJieBWABG5z7hm/TxSPBYN7"
