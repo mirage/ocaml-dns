@@ -209,8 +209,6 @@ let answer_query qname qtype trie =
       | RR.Unknown (t,l) -> 
           let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
            addrr (Packet.UNKNOWN (t, s))
-
-      | _ -> failwith "unknown rr"
   in
   
   (* Extract relevant RRSets given a query type, a list of RRSets and a flag to
