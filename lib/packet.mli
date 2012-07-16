@@ -38,11 +38,6 @@ type fp_type
 
 type dnssec_alg
 val int_to_dnssec_alg : int -> dnssec_alg option
-(*
-val dnssec_alg_to_int : dnssec_alg -> int
-val string_to_dnssec_alg : string -> dnssec_alg
-val dnssec_alg_to_string : dnssec_alg -> string
-*)
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
 
@@ -168,14 +163,6 @@ type rr_type =
   | RR_GID
   | RR_UNSPEC
 
-
-
-(*
-val rr_type_to_int : rr_type -> int
-val int_to_rr_type : int -> rr_type
-val rr_type_to_string : rr_type -> string
-val string_to_rr_type : string -> rr_type
-*)
 type type_bit_map
 type type_bit_maps
 
@@ -213,7 +200,6 @@ type rdata =
 | SSHFP of pubkey_alg * fp_type * string
 | TXT of string list
 | UNKNOWN of int * string
-(* | UNSPEC of string *)
 | WKS of int32 * byte * string
 | X25 of string 
 
@@ -225,17 +211,9 @@ val parse_rdata :
   (int, label) Hashtbl.t -> int -> rr_type -> buf -> rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
-
 type rr_class = RR_IN | RR_CS | RR_CH | RR_HS
-(*
- = [ `CH | `CS | `HS | `IN ]
-val int_to_rr_class : int -> rr_class
-val rr_class_to_int : rr_class -> int
-val rr_class_to_string : rr_class -> string
-val string_to_rr_class : string -> rr_class
-*)
-(** A [resource record], with usual conversion and parsing functions. *)
 
+(** A [resource record], with usual conversion and parsing functions. *)
 type rr = {
   name  : domain_name;
   cls   : rr_class;
@@ -247,30 +225,12 @@ val parse_rr :
   (int, label) Hashtbl.t -> int -> buf -> rr * (int * buf)
 
 (** A question type, with the usual conversion functions. *)
-
 val q_type_to_string : q_type -> string
 
-(*
-type q_type
- = [ rr_type | `AXFR | `MAILB | `MAILA | `ANY | `TA | `DLV ]
-val q_type_to_int : q_type -> int
-val int_to_q_type : int -> q_type
-val string_to_q_type : string -> q_type
-*)
-
 (** A question class, with the usual conversion functions. *)
-
 type q_class = Q_IN | Q_CS | Q_CH | Q_HS | Q_NONE | Q_ANY_CLS
-(*
- = [ rr_class | `NONE | `ANY ]
-val int_to_q_class : int -> q_class
-val q_class_to_int : q_class -> int
-val q_class_to_string : q_class -> string
-val string_to_q_class : string -> q_class
-*)
 
 (** A question, with the usual conversion functions. *)
-
 type question = {
   q_name  : domain_name;
   q_type  : q_type;
@@ -281,39 +241,22 @@ val parse_question :
   (int, label) Hashtbl.t -> int -> buf -> question * (int * buf)
 
 (** The [qr] field from the DNS header {! detail}. *)
-
 type qr = Query | Response
-(*
-val bool_to_qr : bool -> qr
-val qr_to_bool : qr -> bool
-*)
 
 (** A DNS opcode, with the usual conversion functions. *)
-
 type opcode = Standard | Inverse | Status | Reserved | Notify | Update
-(*
-val int_to_opcode : int -> opcode
-val opcode_to_int : opcode -> int
-*)
 
 (** A DNS response code, with the usual conversion functions. *)
-
 type rcode =
   | NoError  | FormErr
   | ServFail | NXDomain | NotImp  | Refused
   | YXDomain | YXRRSet  | NXRRSet | NotAuth
   | NotZone  | BadVers  | BadKey  | BadTime
   | BadMode  | BadName  | BadAlg 
-      
-(*
-val int_to_rcode : int -> rcode
-val rcode_to_int : rcode -> int
-val rcode_to_string : rcode -> string
-*)
 
 (** The [detail] field from the DNS header, with the usual conversion
     functions. *)
-                 
+                
 type detail = {
   qr: qr;
   opcode: opcode;
@@ -323,14 +266,8 @@ type detail = {
   ra: bool;
   rcode: rcode;
 }
-(* 
-val detail_to_string : detail -> string
-val parse_detail : Cstruct.uint16 -> detail
-val build_detail : detail -> Cstruct.buf
-*)
 
 (** And finally, the DNS packet itself, with conversion functions. *)
-
 type t = {
   id          : int;
   detail      : detail;
