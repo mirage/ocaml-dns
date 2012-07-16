@@ -13,7 +13,7 @@ Library dns
   Findlibname: dns
   Pack: true
   Modules: 
-    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
+    Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
     Zone, Zone_lexer, Zone_parser
   BuildDepends:	cstruct, cstruct.syntax, re, re.str, cryptokit,
     bitstring, bitstring.syntax
