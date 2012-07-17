@@ -51,14 +51,6 @@ let (<<<<) x y = Int64.shift_left x y
 let (>>>) x y = Int32.shift_right_logical x y
 let (>>>>) x y = Int64.shift_right_logical x y
 
-(** Miscellaneous. *)
-let join c l = String.concat c l
-(* let join c l = List.fold_left (fun x y -> x ^ c ^ y) "" l *)
-
-let int_to_bool = function
-  | 0 -> false
-  | _ -> true
-
 (** Encode string as label by prepending length. *)
 let charstr s = 
   let s = sprintf "%c%s" (s |> String.length |> char_of_int) s in

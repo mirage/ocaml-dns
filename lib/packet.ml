@@ -269,7 +269,7 @@ let rdata_to_string = function
     )
   | SRV (x, y, z, n) 
     -> sprintf "SRV (%d,%d,%d, %s)" x y z (domain_name_to_string n)
-  | TXT sl -> sprintf "TXT (%s)" (join "" sl)
+  | TXT sl -> sprintf "TXT (%s)" (String.concat "" sl)
   | UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x bs
   (* | UNSPEC bs -> sprintf "UNSPEC (%s)" bs*)
   | WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x (byte_to_int y) s
@@ -810,6 +810,10 @@ let parse_detail d =
     | Some opcode -> opcode
     | None -> failwith "bad opcode"
   in
+  let int_to_bool = function
+    | 0 -> false
+    | _ -> true
+  in
   let aa = (d lsr 10 land 1) |> int_to_bool in
   let tc = (d lsr  9 land 1) |> int_to_bool in
   let rd = (d lsr  8 land 1) |> int_to_bool in
@@ -832,10 +836,10 @@ type t = {
 let to_string d = 
   sprintf "%04x %s <qs:%s> <an:%s> <au:%s> <ad:%s>"
     d.id (detail_to_string d.detail)
-    (d.questions ||> question_to_string |> join ",")
-    (d.answers ||> rr_to_string |> join ",")
-    (d.authorities ||> rr_to_string |> join ",")
-    (d.additionals ||> rr_to_string |> join ",")
+    (d.questions ||> question_to_string |> String.concat ",")
+    (d.answers ||> rr_to_string |> String.concat ",")
+    (d.authorities ||> rr_to_string |> String.concat ",")
+    (d.additionals ||> rr_to_string |> String.concat ",")
 
 let parse names buf = 
   let parsen f names base n buf = 

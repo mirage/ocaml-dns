@@ -22,7 +22,7 @@ open Operators
 open Cstruct
 
 type domain_name = string list
-let domain_name_to_string dn = join "." dn
+let domain_name_to_string dn = String.concat "." dn
 let string_to_domain_name (s:string) : domain_name = 
   Re_str.split (Re_str.regexp "\\.") s
 
