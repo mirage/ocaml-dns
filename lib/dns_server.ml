@@ -44,48 +44,6 @@ let bind_fd ~address ~port =
   let () = Lwt_unix.bind fd src in
   return (fd,src)
 
-let process_pkt fd buf len src dst names dnsfn =
-  let bits = buf, 0, (len*8) in
-    let query =
-      try Some (DP.parse_dns names bits)
-      with exn ->
-        (eprintf "dns parse exn: %s\n%!" (Printexc.to_string exn); 
-         None )
-    in
-      match query with
-        |None -> return ()
-        |Some query -> begin
-           lwt answer = dnsfn ~src ~dst query in
-             match answer with
-               |None -> return ()
-               |Some answer ->
-                   let detail = DP.(build_detail {
-                     qr=`Answer; opcode=`Query; aa=answer.DQ.aa;
-                     tc=false; rd=false; ra=false; rcode=answer.DQ.rcode})
-           in
-           let response = DP.({ 
-             id=query.id; detail; 
-             questions=query.questions; 
-             answers=answer.DQ.answer;
-             authorities=answer.DQ.authority; 
-             additionals=answer.DQ.additional }) in
-           let bits = 
-             try Some (DP.marshal_dns response)
-             with exn -> (
-               eprintf "dns marshal exn: %s\n%!" (Printexc.to_string exn); 
-               None 
-             )
-           in
-             match bits with
-               | None -> return ()
-               | Some (buf, boff, blen) -> (
-                   (* TODO transmit queue, rather than ignoring result here *)
-                   let _ = Lwt_unix.sendto fd buf (boff/8) (blen/8) [] dst in
-                     return ()
-                 )
-         end
-
-
 let listen ~fd ~src ~(dnsfn:dnsfn) =
   let cont = ref true in
   let bufs = Lwt_pool.create 64 (fun () -> return (Lwt_bytes.create 1024)) in
