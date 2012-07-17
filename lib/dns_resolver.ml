@@ -15,11 +15,9 @@
  *)
 
 open Lwt
-(* open Uri_IP *)
 open Printf
 open Dns.Name
 open Dns.Operators
-(* open Dns.Wire *)
 
 module DP = Dns.Packet
 
@@ -115,8 +113,8 @@ let gethostbyname name =
        | DP.A ip -> Some ip
        | _ -> None
      )
-                |> List.fold_left (fun a -> function Some x -> x :: a | None -> a) []
-                |> List.rev
+     |> List.fold_left (fun a -> function Some x -> x :: a | None -> a) []
+     |> List.rev
      ))
 
 let gethostbyaddr addr = 
