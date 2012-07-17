@@ -15,7 +15,6 @@
  *)
 
 open Lwt
-(* open Uri_IP *)
 open Dns.Name
 open Dns.Packet
 open Cstruct
@@ -24,7 +23,7 @@ open Cstruct
 
     @return the corresponding {! ipv4 } addresses.
 *)
-val gethostbyname : ?server:string -> ?dns_port:int ->string -> ipv4 list Lwt.t
+val gethostbyname : string -> ipv4 list Lwt.t
 
 (** Reverse lookup an {! ipv4 } address. 
 
