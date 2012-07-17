@@ -38,7 +38,7 @@ val string_to_domain_name : string -> domain_name
 (** Construct name for reverse lookup given an {! ipv4} address. *)
 val for_reverse : ipv4 -> domain_name
 
-(** Parse a {! domain_name} out of a {! Bitstring.t} given a set of already
+(** Parse a {! domain_name} out of a {! Cstruct.buf} given a set of already
     observed names from the packet, and the offset we are into the packet.
     
     @return {! domain_name} and the remainder

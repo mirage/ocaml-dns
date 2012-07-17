@@ -15,8 +15,7 @@ Library dns
   Modules: 
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
     Zone, Zone_lexer, Zone_parser
-  BuildDepends:	cstruct, cstruct.syntax, re, re.str, cryptokit,
-    bitstring, bitstring.syntax
+  BuildDepends:	cstruct, cstruct.syntax, re, re.str, cryptokit
 
 Library server
   Path: lib
@@ -49,7 +48,7 @@ Executable lwt_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, dns, dns.server
+  BuildDepends:       lwt, lwt.unix, re, re.str, dns, dns.server
 
 Executable time_server
   Path:               lib_test
@@ -58,7 +57,7 @@ Executable time_server
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, bitstring, re, re.str, dns
+  BuildDepends:       lwt, lwt.unix, re, re.str, dns
 
 Executable odig
   Path:               client
@@ -68,8 +67,7 @@ Executable odig
   CompiledObject:     best
   Install:            false
   BuildDepends:       
-    lwt, lwt.unix, lwt.syntax, bitstring, bitstring.syntax, re, re.str, dns,
-    dns.resolver, uri
+    lwt, lwt.unix, lwt.syntax, re, re.str, dns, dns.resolver, uri
 
 Test lwt_server
   Run$:               flag(tests)

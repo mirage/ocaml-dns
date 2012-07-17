@@ -181,13 +181,6 @@ cenum rr_type {
 type type_bit_map = byte * byte * Cstruct.buf
 let type_bit_map_to_string (tbm:type_bit_map) : string = 
   "TYPE_BIT_MAP"
-(*
-let marshall_tbm (block, bitmapl, bitmap) = 
-  let bl = byte_to_int bitmapl in
-  BITSTRING { (byte_to_int block):8; 
-              bl:8; (bytes_to_string bitmap):(bl*8):string
-            }
-*)
 
 type type_bit_maps = type_bit_map list
 let type_bit_maps_to_string (tbms:type_bit_maps) : string = 
@@ -451,7 +444,7 @@ let marshal_question (names, base, buf) q =
   names, base+sizeof_q, Cstruct.shift buf sizeof_q
 
 let parse_rdata names base t buf = 
-  (** Drop remainder bitstring to stop parsing and demuxing. *) 
+  (** Drop remainder of buf to stop parsing and demuxing. *) 
   let stop (x, _) = x in
   (** Extract (length, string) encoded strings, with remainder for
       chaining. *)
@@ -490,7 +483,7 @@ let parse_rdata names base t buf =
                    | _ -> Some (buf |> parse_charstr |> stop)
                  in
                  ISDN (a, sa)        
-        
+                   
     | RR_MB -> MB (buf |> parse_name names base |> stop)
         
     | RR_MG -> MG (buf |> parse_name names base |> stop)
@@ -514,7 +507,7 @@ let parse_rdata names base t buf =
                  
     | RR_RT -> RT (BE.get_uint16 buf 0,
                    Cstruct.shift buf 2 |> parse_name names base |> stop)
-    
+        
     | RR_SOA -> 
         let mn, (base, buf) = parse_name names base buf in
         let rn, (_, buf) = parse_name names base buf in 
@@ -893,68 +886,3 @@ let marshal txbuf dns =
   (* Cstruct.hexdump txbuf;   *)
   (* eprintf "TX: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string); *)
   txbuf
-       
-(*
-mr:
-      | `RT (p, ih) -> BITSTRING { (int16_to_int p):16; (mn ~off:2 ih):-1:bitstring }, `RT
-      | `SRV (prio, weight, port, target)
-        -> BITSTRING { (int16_to_int prio):16; (int16_to_int weight):16; 
-                       (int16_to_int port):16; (mn ~off:6 target):-1:bitstring
-                     }, `SRV
-      | `DNSKEY (flags, alg, key)
-        -> let bkey = 
-             Cryptokit.(transform_string (Base64.encode_compact ()) key) 
-           in
-           (BITSTRING { (int16_to_int flags):16; 3:8; 
-                        (dnssec_alg_to_int alg):8; key:-1:string }, `DNSKEY)
-      | `DS (keytag, alg, digest_t, digest) 
-        -> BITSTRING { (int16_to_int keytag):16; (dnssec_alg_to_int alg):8;
-                       (digest_alg_to_int digest_t):8; digest:-1:string
-                     }, `DS
-
-      | `IPSECKEY (precedence, gw_type, alg, gw, pubkey)
-        -> (let gw, gw_l = gateway_to_bits gw in            
-            BITSTRING { (byte_to_int precedence):8; 
-                        (gw_type_to_int gw_type):8;
-                        (ipseckey_alg_to_int alg):8; gw:gw_l:bitstring;
-                        (bytes_to_string pubkey):-1:string
-                      }, `IPSECKEY
-        )
-
-      | `NSEC (next_name, tbms) 
-        -> BITSTRING { (mn_nocompress next_name):-1:bitstring;
-                       (marshall_tbms tbms):-1:bitstring
-                     }, `NSEC
-
-      | `NSEC3 (halg, flgs, iterations, salt_l, salt, hash_l, namehash, tbms)
-        -> BITSTRING { (hash_alg_to_int halg):8; (byte_to_int flgs):8; 
-                       (int16_to_int iterations):16; 
-                       (byte_to_int salt_l):8; 
-                       (bytes_to_string salt):-1:string; 
-                       (byte_to_int hash_l):8; 
-                       (bytes_to_string namehash):-1:string;
-                       (marshall_tbms tbms):-1:bitstring
-                     }, `NSEC3
-
-      | `NSEC3PARAM (halg, flgs, iterations, salt_l, salt)
-        -> BITSTRING { (hash_alg_to_int halg):8; (byte_to_int flgs):8; 
-                       (int16_to_int iterations):16; 
-                       (byte_to_int salt_l):8; 
-                       (bytes_to_string salt):-1:string
-                     }, `NSEC3PARAM
-
-      | `RRSIG (tc, alg, nlbls, ttl, expiration, inception, keytag, name, sgn)
-        -> BITSTRING { (rr_type_to_int tc):16; (dnssec_alg_to_int alg):8;
-                       (byte_to_int nlbls):8; ttl:32; expiration:32; inception:32;
-                       (int16_to_int keytag):16;
-                       (mn_nocompress name):-1:bitstring;
-                       (bytes_to_string sgn):-1:string
-                     }, `RRSIG
-
-      | `SSHFP (alg, fpt, fp)
-        -> BITSTRING { (pubkey_alg_to_int alg):8;
-                       (fp_type_to_int fpt):8;
-                       (bytes_to_string fp):-1:string
-                     }, `SSHFP
-          
-*)

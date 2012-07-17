@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 9bc2c0241e5abfbe01949c4456a0ce51)
+# DO NOT EDIT (digest: c5e76e2e8fdc3b910474dae9f7f1c2bb)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -35,8 +35,6 @@
 <lib/*.ml{,i}>: pkg_lwt
 <lib/*.ml{,i}>: pkg_lwt.unix
 <lib/*.ml{,i}>: pkg_lwt.syntax
-<lib/*.ml{,i}>: pkg_bitstring
-<lib/*.ml{,i}>: pkg_bitstring.syntax
 <lib/*.ml{,i}>: pkg_re
 <lib/*.ml{,i}>: pkg_re.str
 <lib/*.ml{,i}>: pkg_cstruct
@@ -48,8 +46,6 @@
 <lib_test/lwt_server.{native,byte}>: pkg_lwt
 <lib_test/lwt_server.{native,byte}>: pkg_lwt.unix
 <lib_test/lwt_server.{native,byte}>: pkg_lwt.syntax
-<lib_test/lwt_server.{native,byte}>: pkg_bitstring
-<lib_test/lwt_server.{native,byte}>: pkg_bitstring.syntax
 <lib_test/lwt_server.{native,byte}>: pkg_re
 <lib_test/lwt_server.{native,byte}>: pkg_re.str
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct
@@ -62,8 +58,6 @@
 <lib_test/time_server.{native,byte}>: use_dns
 <lib_test/time_server.{native,byte}>: pkg_lwt
 <lib_test/time_server.{native,byte}>: pkg_lwt.unix
-<lib_test/time_server.{native,byte}>: pkg_bitstring
-<lib_test/time_server.{native,byte}>: pkg_bitstring.syntax
 <lib_test/time_server.{native,byte}>: pkg_re
 <lib_test/time_server.{native,byte}>: pkg_re.str
 <lib_test/time_server.{native,byte}>: pkg_cstruct
@@ -72,8 +66,6 @@
 <lib_test/*.ml{,i}>: use_dns
 <lib_test/*.ml{,i}>: pkg_lwt
 <lib_test/*.ml{,i}>: pkg_lwt.unix
-<lib_test/*.ml{,i}>: pkg_bitstring
-<lib_test/*.ml{,i}>: pkg_bitstring.syntax
 <lib_test/*.ml{,i}>: pkg_re
 <lib_test/*.ml{,i}>: pkg_re.str
 <lib_test/*.ml{,i}>: pkg_cstruct
@@ -86,8 +78,6 @@
 <client/odig.{native,byte}>: pkg_lwt
 <client/odig.{native,byte}>: pkg_lwt.unix
 <client/odig.{native,byte}>: pkg_lwt.syntax
-<client/odig.{native,byte}>: pkg_bitstring
-<client/odig.{native,byte}>: pkg_bitstring.syntax
 <client/odig.{native,byte}>: pkg_re
 <client/odig.{native,byte}>: pkg_re.str
 <client/odig.{native,byte}>: pkg_uri
@@ -99,8 +89,6 @@
 <client/*.ml{,i}>: pkg_lwt
 <client/*.ml{,i}>: pkg_lwt.unix
 <client/*.ml{,i}>: pkg_lwt.syntax
-<client/*.ml{,i}>: pkg_bitstring
-<client/*.ml{,i}>: pkg_bitstring.syntax
 <client/*.ml{,i}>: pkg_re
 <client/*.ml{,i}>: pkg_re.str
 <client/*.ml{,i}>: pkg_uri

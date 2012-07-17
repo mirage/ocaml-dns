@@ -23,7 +23,7 @@
 
 (** Partially-marshalled query response; that is, it has been uncompacted from
     the compact {! Trie} representation, but not yet rendered into a {!
-    Bitstring.t }.
+    Cstruct.buf }.
 *)
 type query_answer = {
   rcode : Packet.rcode;
