@@ -69,10 +69,7 @@ let rxbuf fd len =
   return (buf, sa)
 
 let resolve
-    ?(server:string = ns)
-    ?(dns_port:int = port)
-    ?(q_class:DP.q_class = DP.Q_IN)
-    ?(q_type:DP.q_type = DP.Q_ANY_TYP) 
+    (server:string) (dns_port:int) (q_class:DP.q_class) (q_type:DP.q_type) 
     (q_name:domain_name) 
     =
 
@@ -105,10 +102,14 @@ let resolve
   );
 *)
 
-let gethostbyname name = 
+let gethostbyname
+    ?(server:string = ns) ?(dns_port:int = port) 
+    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_ANY_TYP)
+    name 
+    =
   DP.(
     let domain = string_to_domain_name name in
-    lwt r = resolve ~q_class:Q_IN ~q_type:Q_A domain in 
+    lwt r = resolve server dns_port DP.Q_IN DP.Q_A domain in
      return (r.answers ||> (fun x -> match x.rdata with 
        | DP.A ip -> Some ip
        | _ -> None
@@ -117,18 +118,22 @@ let gethostbyname name =
      |> List.rev
      ))
 
-let gethostbyaddr addr = 
+let gethostbyaddr 
+    ?(server:string = ns) ?(dns_port:int = port) 
+    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_ANY_TYP)
+    addr 
+    = 
   let addr = for_reverse addr in
   log_info (sprintf "gethostbyaddr: %s" (domain_name_to_string addr));
   
   DP.(
-    lwt r = resolve ~q_class:Q_IN ~q_type:Q_PTR addr in
+    lwt r = resolve server dns_port Q_IN Q_PTR addr in
     return (r.answers ||> (fun x -> match x.rdata with 
       | DP.PTR n -> Some n
       | _ -> None
     )
-               |> List.fold_left (fun a -> function
-                   | None -> a
-                   | Some n -> (domain_name_to_string n) :: a) []
-               |> List.rev
+    |> List.fold_left (fun a -> function
+        | None -> a
+        | Some n -> (domain_name_to_string n) :: a) []
+    |> List.rev
     ))

@@ -23,13 +23,17 @@ open Cstruct
 
     @return the corresponding {! ipv4 } addresses.
 *)
-val gethostbyname : string -> ipv4 list Lwt.t
+val gethostbyname : 
+  ?server:string -> ?dns_port:int -> ?q_class:q_class -> ?q_type:q_type
+  -> string -> ipv4 list Lwt.t
 
 (** Reverse lookup an {! ipv4 } address. 
 
     @return the corresponding {! domain_name }s.
 *)
-val gethostbyaddr : ipv4 -> string list Lwt.t
+val gethostbyaddr : 
+  ?server:string -> ?dns_port:int -> ?q_class:q_class -> ?q_type:q_type
+  -> ipv4 -> string list Lwt.t
 
 (** Resolve a fully specified query, {! q_class }, {! q_type } and {!
     domain_name }.
@@ -37,5 +41,4 @@ val gethostbyaddr : ipv4 -> string list Lwt.t
     @return the full a {! dns } structure.
 *)
 val resolve : 
-  ?server:string -> ?dns_port:int -> ?q_class:q_class -> ?q_type:q_type 
-  -> domain_name -> Dns.Packet.t Lwt.t
+  string -> int -> q_class -> q_type -> domain_name -> Dns.Packet.t Lwt.t
