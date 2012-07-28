@@ -2,8 +2,6 @@
 all: build
 
 NAME=dns
-J=4
-export OCAMLRUNPARAM=b
 
 -include Makefile.config
 
