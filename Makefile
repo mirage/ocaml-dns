@@ -1,6 +1,7 @@
 .PHONY: all clean distclean setup build doc install test-build test 
 all: build
 
+J ?= 2
 NAME=dns
 
 -include Makefile.config
