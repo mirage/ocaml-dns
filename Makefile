@@ -6,16 +6,16 @@ NAME=dns
 
 -include Makefile.config
 
-clean: setup.data
+clean: setup.data setup.bin
 	./setup.bin -clean $(OFLAGS)
 
-distclean: setup.data
+distclean: setup.data setup.bin
 	./setup.bin -distclean $(OFLAGS)
 	$(RM) setup.bin
 
 setup: setup.data
 
-build: setup.data $(wildcard lib/*.ml)
+build: setup.data  setup.bin
 	./setup.bin -build -j $(J) $(OFLAGS)
 
 doc: setup.data setup.bin
@@ -25,9 +25,7 @@ install:
 	ocamlfind remove $(NAME) $(OFLAGS)
 	./setup.bin -install
 
-##
-
-setup.bin: 
+setup.bin: setup.ml
 	ocamlopt.opt -o $@ $< || ocamlopt -o $@ $< || ocamlc -o $@ $<
 	$(RM) setup.cmx setup.cmi setup.o setup.cmo
 
