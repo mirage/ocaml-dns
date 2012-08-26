@@ -27,7 +27,7 @@ install:
 
 ##
 
-setup.bin: setup.ml
+setup.bin: 
 	ocamlopt.opt -o $@ $< || ocamlopt -o $@ $< || ocamlc -o $@ $<
 	$(RM) setup.cmx setup.cmi setup.o setup.cmo
 
