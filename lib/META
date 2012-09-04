@@ -1,6 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: a9f90a4ebb6f34dc2847681b99cf8173)
-version = "0.9-dev"
+# DO NOT EDIT (digest: 45df7cf5e8d405b610e1ad409cf85ef3)
+version = "0.4.0"
 description = "DNS protocol library for Lwt"
 requires = "cstruct cstruct.syntax re re.str cryptokit"
 archive(byte) = "dns.cma"
@@ -9,7 +9,7 @@ archive(native) = "dns.cmxa"
 archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
 package "server" (
- version = "0.9-dev"
+ version = "0.4.0"
  description = "DNS protocol library for Lwt"
  requires = "lwt lwt.unix lwt.syntax cstruct cstruct.syntax dns cryptokit"
  archive(byte) = "server.cma"
@@ -20,7 +20,7 @@ package "server" (
 )
 
 package "resolver" (
- version = "0.9-dev"
+ version = "0.4.0"
  description = "DNS protocol library for Lwt"
  requires = "lwt lwt.unix lwt.syntax cstruct cstruct.syntax dns"
  archive(byte) = "resolver.cma"
