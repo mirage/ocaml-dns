@@ -774,15 +774,13 @@ type detail = {
 }
 
 let marshal_detail d = 
-  let (<<<) x y = x lsl y in
-  let (|||) x y = x lor y in
-  (qr_to_int d.qr <<< 15)
-  ||| (opcode_to_int d.opcode <<< 11)
-    ||| (if d.aa then 1 <<< 10 else 0)
-      ||| (if d.tc then 1 <<<  9 else 0)
-        ||| (if d.rd then 1 <<<  8 else 0)
-          ||| (if d.ra then 1 <<<  7 else 0)
-            ||| (rcode_to_int d.rcode)
+  (qr_to_int d.qr lsl 15)
+  lor (opcode_to_int d.opcode lsl 11)
+    lor (if d.aa then 1 lsl 10 else 0)
+      lor (if d.tc then 1 lsl  9 else 0)
+        lor (if d.rd then 1 lsl 8 else 0)
+          lor (if d.ra then 1 lsl 7 else 0)
+            lor (rcode_to_int d.rcode)
 
 let detail_to_string d = 
   sprintf "%s:%d %s:%s:%s:%s %d"
