@@ -3,5 +3,6 @@ _build/
 _config/
 setup.data
 setup.bin
+setup.log
 *.native
 *.byte
