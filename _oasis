@@ -35,7 +35,7 @@ Library resolver
 
 Document dns
   Title:                DNS docs
-  Type:                 ocamlbuild (0.2)
+  Type:                 ocamlbuild (0.3)
   BuildTools+:          ocamldoc
   XOCamlbuildPath:      lib  
   XOCamlbuildModules:     
