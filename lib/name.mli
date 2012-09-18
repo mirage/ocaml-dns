@@ -46,7 +46,7 @@ val for_reverse : ipv4 -> domain_name
 val parse_name : 
   (int, label) Hashtbl.t -> int -> buf -> domain_name * (int * buf)
 
-val marshal_name :
+val marshal_name : ?compress:bool ->
   (domain_name, int) Hashtbl.t -> int -> buf -> domain_name
   -> ((domain_name, int) Hashtbl.t * int * buf)
      

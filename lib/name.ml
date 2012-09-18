@@ -82,7 +82,7 @@ let parse_name names base buf = (* what. a. mess. *)
   let name, base, buf = aux [] [] base buf in
   List.rev name, (base,buf)
 
-let marshal_name names base buf name = 
+let marshal_name ?(compress=true) names base buf name = 
   let not_compressed names base buf name = 
     let base, buf = 
       List.fold_left (fun (base,buf) label ->
@@ -122,7 +122,8 @@ let marshal_name names base buf name =
     let offset = aux 0 name in
     names, (base+offset), Cstruct.shift buf offset
   in
-  compressed names base buf name
+  if compress then compressed names base buf name
+  else not_compressed names base buf name
 
 (* Hash-consing: character strings *)
 module CSH = Hashcons.Make (struct 
