@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: c5e76e2e8fdc3b910474dae9f7f1c2bb)
+# DO NOT EDIT (digest: 2acc0fb7f827d909c54d39ffa34f4b5f)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -39,7 +39,6 @@
 <lib/*.ml{,i}>: pkg_re.str
 <lib/*.ml{,i}>: pkg_cstruct
 <lib/*.ml{,i}>: pkg_cstruct.syntax
-<lib/*.ml{,i}>: pkg_cryptokit
 # Executable lwt_server
 <lib_test/lwt_server.{native,byte}>: use_server
 <lib_test/lwt_server.{native,byte}>: use_dns
@@ -50,7 +49,6 @@
 <lib_test/lwt_server.{native,byte}>: pkg_re.str
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct.syntax
-<lib_test/lwt_server.{native,byte}>: pkg_cryptokit
 <lib_test/*.ml{,i}>: use_server
 <lib_test/*.ml{,i}>: pkg_lwt.syntax
 <lib_test/lwt_server.{native,byte}>: custom
@@ -62,7 +60,6 @@
 <lib_test/time_server.{native,byte}>: pkg_re.str
 <lib_test/time_server.{native,byte}>: pkg_cstruct
 <lib_test/time_server.{native,byte}>: pkg_cstruct.syntax
-<lib_test/time_server.{native,byte}>: pkg_cryptokit
 <lib_test/*.ml{,i}>: use_dns
 <lib_test/*.ml{,i}>: pkg_lwt
 <lib_test/*.ml{,i}>: pkg_lwt.unix
@@ -70,7 +67,6 @@
 <lib_test/*.ml{,i}>: pkg_re.str
 <lib_test/*.ml{,i}>: pkg_cstruct
 <lib_test/*.ml{,i}>: pkg_cstruct.syntax
-<lib_test/*.ml{,i}>: pkg_cryptokit
 <lib_test/time_server.{native,byte}>: custom
 # Executable odig
 <client/odig.{native,byte}>: use_resolver
@@ -83,7 +79,6 @@
 <client/odig.{native,byte}>: pkg_uri
 <client/odig.{native,byte}>: pkg_cstruct
 <client/odig.{native,byte}>: pkg_cstruct.syntax
-<client/odig.{native,byte}>: pkg_cryptokit
 <client/*.ml{,i}>: use_resolver
 <client/*.ml{,i}>: use_dns
 <client/*.ml{,i}>: pkg_lwt
@@ -94,7 +89,6 @@
 <client/*.ml{,i}>: pkg_uri
 <client/*.ml{,i}>: pkg_cstruct
 <client/*.ml{,i}>: pkg_cstruct.syntax
-<client/*.ml{,i}>: pkg_cryptokit
 <client/odig.{native,byte}>: custom
 # OASIS_STOP
 true: annot

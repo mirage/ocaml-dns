@@ -15,14 +15,14 @@ Library dns
   Modules: 
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
     Zone, Zone_lexer, Zone_parser
-  BuildDepends:	cstruct, cstruct.syntax, re, re.str, cryptokit
+  BuildDepends:	cstruct, cstruct.syntax, re, re.str
 
 Library server
   Path: lib
   Findlibname: server
   Modules: Dns_server
   BuildDepends: 
-    lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns, cryptokit
+    lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns
   FindlibParent: dns
 
 Library resolver
