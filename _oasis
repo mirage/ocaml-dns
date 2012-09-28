@@ -52,6 +52,14 @@ Document dns
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
     Zone, Zone_lexer, Zone_parser
 
+Document dns_lwt
+  Title:                DNS Lwt docs
+  Type:                 ocamlbuild (0.3)
+  BuildTools+:          ocamldoc
+  Build$:               flag(lwt)
+  XOCamlbuildPath:      lwt
+  XOCamlbuildModules:   Dns_resolver, Dns_server
+
 Executable lwt_server
   Path:               lib_test
   MainIs:             lwt_server.ml
