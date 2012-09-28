@@ -99,19 +99,39 @@ module OptionsValue = struct
 end
 
 module KeywordValue = struct
-  type t = Nameserver of string (* ipv4 dotted quad or ipv6 hex and colon *)
-         | Domain of string
-         | Lookup of LookupValue.t list
-         | Search of string list
-         | Sortlist of string list 
-         | Options of OptionsValue.t list
+  type t =
+  | Nameserver of string * int option (* ipv4 dotted quad or ipv6 hex and colon *)
+  | Port of int
+  | Domain of string
+  | Lookup of LookupValue.t list
+  | Search of string list
+  | Sortlist of string list 
+  | Options of OptionsValue.t list
   exception Unknown of string
   let split = Re_str.split (Re_str.regexp "[\t ]+")
-    
+   
+  let ns_of_string ns =
+    let open Re_str in
+    match string_match (regexp "\\[\\(.+\\)\\]:\\([0-9]+\\)") ns 0 with
+    |false -> Nameserver (ns, None)
+    |true ->
+      let ns = matched_group 1 ns in
+      let port = 
+        try Some (int_of_string (matched_group 2 ns))
+        with _ -> None
+      in
+      Nameserver (ns, port)
+
+  let string_of_ns ns =
+    match ns with
+    |ns, None -> ns
+    |ns, Some p -> Printf.sprintf "[%s]:%d" ns p
+
   let of_string x = 
     match split (String.lowercase x) with
-    | [ "nameserver"; ns ] -> Nameserver ns
+    | [ "nameserver"; ns ] -> ns_of_string ns
     | [ "domain"; domain ] -> Domain domain
+    | [ "port"; port ]     -> (try Port (int_of_string port) with _ -> raise (Unknown x))
     | "lookup"::lst        -> Lookup (List.map LookupValue.of_string lst)
     | "search"::lst        -> Search lst
     | "sortlist"::lst      -> Sortlist lst
@@ -120,7 +140,8 @@ module KeywordValue = struct
 
   let to_string = 
     let sc = String.concat " " in function
-    | Nameserver ns -> sc [ "nameserver"; ns ]
+    | Nameserver (n,p) -> sc [ "nameserver"; (string_of_ns (n,p)) ]
+    | Port p        -> sc [ "port" ; (string_of_int p) ]
     | Domain domain -> sc [ "domain"; domain ]
     | Lookup l      -> sc ( "lookup"::(List.map LookupValue.to_string l) )
     | Search lst    -> sc ( "search"::lst )
@@ -131,17 +152,27 @@ end
 (* The state of the resolver could be extended later *)
 type t = KeywordValue.t list
 
+(* Choose a DNS port, which will default to 53 or can be overridden by the
+   nameserver entry *)
+let choose_port config =
+  List.fold_left (fun port ->
+    function
+    | KeywordValue.Port x -> x
+    | _ -> port) 53 config
+ 
 let all_servers config =
+  let default_port = choose_port config in
   List.rev (List.fold_left (fun a ->
    function
-   | KeywordValue.Nameserver x -> x :: a
+   | KeywordValue.Nameserver (ns,Some p) -> (ns,p) :: a
+   | KeywordValue.Nameserver (ns,None) -> (ns,default_port) :: a
    | _ -> a) [] config)
-
+ 
 (* Choose a DNS server to query. Might do some round-robin thingy later *)
 let choose_server config =
   match (all_servers config) with
   | [] -> None
-  | x::_ -> Some x
+  | (ns, port)::_ -> Some (ns, port)
 
 (* Return a list of domain suffixes to search *)
 let search_domains config = 

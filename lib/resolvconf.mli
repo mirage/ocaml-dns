@@ -41,7 +41,8 @@ end
 
 module KeywordValue : sig
   type t =
-  | Nameserver of string
+  | Nameserver of string * int option
+  | Port of int
   | Domain of string
   | Lookup of LookupValue.t list
   | Search of string list
@@ -55,6 +56,6 @@ end
 val map_line : string -> string option
 
 type t = KeywordValue.t list
-val all_servers : KeywordValue.t list -> string list
-val choose_server : KeywordValue.t list -> string option
+val all_servers : KeywordValue.t list -> (string * int) list
+val choose_server : KeywordValue.t list -> (string * int) option
 val search_domains : KeywordValue.t list -> string list
