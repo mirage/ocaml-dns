@@ -112,19 +112,70 @@ let gethostbyaddr
 
 open Dns.Resolvconf
 
-let default_configuration_file = "/etc/resolv.conf"
+module type RESOLVER = sig
+  val servers : (string * int) list
+  val search_domains : string list
+end
 
-let get_resolvers ?(file=default_configuration_file) () =
-  Lwt_io.with_file ~mode:Lwt_io.input file (fun ic ->
-    (* Read lines and filter out whitespace/blanks *)
-    let lines = Lwt_stream.filter_map map_line (Lwt_io.read_lines ic) in
-    let warn x = prerr_endline (Printf.sprintf "resolvconf in file %s: %s" file x) in
-    (* Parse remaining lines *)
-    Lwt_stream.(to_list (filter_map (fun line ->
-      try Some (KeywordValue.of_string line)
-      with
-      | KeywordValue.Unknown x -> warn ("unknown keyword: " ^ x); None
-      | OptionsValue.Unknown x -> warn ("unknown option: " ^ x); None
-      | LookupValue.Unknown x  -> warn ("unknown lookup option: " ^ x); None
-    ) lines))
-  )
+type config = [
+  | `Resolv_conf
+  | `Static of (string * int) list * string list
+]
+
+type t = (module RESOLVER)
+
+module Resolv_conf = struct
+  let default_configuration_file = "/etc/resolv.conf"
+
+  let get_resolvers ?(file=default_configuration_file) () =
+    Lwt_io.with_file ~mode:Lwt_io.input file (fun ic ->
+      (* Read lines and filter out whitespace/blanks *)
+      let lines = Lwt_stream.filter_map map_line (Lwt_io.read_lines ic) in
+      let warn x = prerr_endline (Printf.sprintf "resolvconf in file %s: %s" file x) in
+      (* Parse remaining lines *)
+      Lwt_stream.(to_list (filter_map (fun line ->
+        try Some (KeywordValue.of_string line)
+        with
+        | KeywordValue.Unknown x -> warn ("unknown keyword: " ^ x); None
+        | OptionsValue.Unknown x -> warn ("unknown option: " ^ x); None
+        | LookupValue.Unknown x  -> warn ("unknown lookup option: " ^ x); None
+      ) lines))
+    )
+
+  let create () =
+    lwt t = get_resolvers () in
+    return
+    (module (struct
+      let servers = all_servers t
+      let search_domains = search_domains t
+     end) : RESOLVER)
+end
+
+module Static = struct
+  let create ?(servers=["8.8.8.8",53]) ?(search_domains=[]) () =
+    (module (struct
+      let servers = servers
+      let search_domains = search_domains
+     end) : RESOLVER)
+end
+
+let create ?(config=`Resolv_conf) () =
+  match config with
+  |`Static (servers, search_domains) ->
+     return (Static.create ~servers ~search_domains ())
+  |`Resolv_conf -> Resolv_conf.create ()
+
+let gethostbyname (module R:RESOLVER) ?q_class ?q_type q_name =
+  match R.servers with
+  |[] -> fail (Failure "No resolvers available")
+  |(server,dns_port)::_ -> gethostbyname ~server ~dns_port ?q_class ?q_type q_name
+
+let gethostbyaddr (module R:RESOLVER) ?q_class ?q_type q_name =
+  match R.servers with
+  |[] -> fail (Failure "No resolvers available")
+  |(server,dns_port)::_ -> gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
+
+let resolve (module R:RESOLVER) q_class q_type q_name =
+  match R.servers with
+  |[] -> fail (Failure "No resolvers available")
+  |(server,dns_port)::_ -> resolve server dns_port q_class q_type q_name

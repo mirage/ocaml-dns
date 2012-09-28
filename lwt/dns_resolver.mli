@@ -18,20 +18,35 @@ open Dns.Name
 open Dns.Packet
 open Cstruct
 
+module type RESOLVER = sig
+  val servers : (string * int) list
+  val search_domains : string list
+end
+
+type config = [
+  | `Resolv_conf
+  | `Static of (string * int) list * string list
+]
+
+type t = (module RESOLVER)
+
+(** Create a resolver instance that either uses the system
+    /etc/resolv.conf, or a statically specified preference
+  *)
+val create : ?config:config -> unit -> t Lwt.t
+
 (** Lookup a {! domain_name }.
 
     @return the corresponding {! ipv4 } addresses.
 *)
-val gethostbyname : 
-  ?server:string -> ?dns_port:int -> ?q_class:q_class -> ?q_type:q_type
+val gethostbyname : t -> ?q_class:q_class -> ?q_type:q_type
   -> string -> ipv4 list Lwt.t
 
 (** Reverse lookup an {! ipv4 } address. 
 
     @return the corresponding {! domain_name }s.
 *)
-val gethostbyaddr : 
-  ?server:string -> ?dns_port:int -> ?q_class:q_class -> ?q_type:q_type
+val gethostbyaddr : t -> ?q_class:q_class -> ?q_type:q_type
   -> ipv4 -> string list Lwt.t
 
 (** Resolve a fully specified query, {! q_class }, {! q_type } and {!
@@ -39,9 +54,4 @@ val gethostbyaddr :
 
     @return the full a {! dns } structure.
 *)
-val resolve : 
-  string -> int -> q_class -> q_type -> domain_name -> Dns.Packet.t Lwt.t
-
-val default_configuration_file : string
-val get_resolvers :
-  ?file:Lwt_io.file_name -> unit -> Dns.Resolvconf.t Lwt.t
+val resolve : t -> q_class -> q_type -> domain_name -> Dns.Packet.t Lwt.t
