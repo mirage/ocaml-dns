@@ -116,8 +116,10 @@ let default_configuration_file = "/etc/resolv.conf"
 
 let get_resolvers ?(file=default_configuration_file) () =
   Lwt_io.with_file ~mode:Lwt_io.input file (fun ic ->
-    let lines = Lwt_io.read_lines ic in
+    (* Read lines and filter out whitespace/blanks *)
+    let lines = Lwt_stream.filter_map map_line (Lwt_io.read_lines ic) in
     let warn x = prerr_endline (Printf.sprintf "resolvconf in file %s: %s" file x) in
+    (* Parse remaining lines *)
     Lwt_stream.(to_list (filter_map (fun line ->
       try Some (KeywordValue.of_string line)
       with

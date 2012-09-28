@@ -42,36 +42,26 @@ let raw_read_file filename =
     close_in c;
     List.rev (!lines)
 
-let whitespace = [ ' '; '\t' ] (* excluding \n already *)
-
-let split (txt: string) (pred: char -> bool): string list =               
-    let bits = Utils.split_string_on_char txt pred in
-    let bits = List.map (fun x -> Utils.implode (Utils.trim (Utils.explode x) pred)) bits in
-    List.filter (fun x -> x <> "") bits 
-
 (* Ignore everything on a line after a '#' or ';' *)
-let strip_comments x = match (split x (fun c -> c = '#' || c = ';')) with
-  | [] -> ""
-  | [x] -> x
-  | (x::_) -> x
-(* A blank line is either empty or one where every character is whitespace *)
-let filter_blanks = List.filter (fun line -> not( List.fold_left (&&) true (List.map (fun x -> List.mem x whitespace) (Utils.explode line)) ))
- 
-(* Remove any whitespace prefix and suffix from a line *)
-let trim s = 
-  let trim_prefix s = 
-    let chars = Utils.make_index 0 (Utils.explode s) in
-    match (List.filter (fun (i,c) -> not(List.mem c whitespace)) chars) with
-    | [] -> s
-    | (i,_)::_ -> String.sub s i (String.length s - i) in
-  let string_rev x = Utils.implode (List.rev (Utils.explode x)) in
-  string_rev (trim_prefix (string_rev (trim_prefix s)))
+let strip_comments =
+  let re = Re_str.regexp "[#;].*" in
+  fun x -> Re_str.global_replace re "" x
 
-(* Reads a file and strips out everything other than keywords and values ie no excess whitespace or blank lines *)
-let read_file file =
-  let all = raw_read_file file in
-  let all = List.map (fun line -> trim (strip_comments line)) all in
-  filter_blanks all 
+(* A blank line is either empty or one where every character is whitespace *)
+let filter_blanks =
+  let ws_regexp = Re_str.regexp "[\t ]+" in
+  let is_blank x = List.length (Re_str.split ws_regexp x) = 0 in
+  List.filter is_blank
+
+(* Remove any whitespace prefix and suffix from a line *)
+let ltrim = Re_str.(replace_first (regexp "^[\t ]+") "")
+let rtrim = Re_str.(replace_first (regexp "[\t ]+$") "")
+let trim x = ltrim (rtrim x)
+
+let map_line x =
+  match trim (strip_comments x) with
+  |"" -> None
+  |x -> Some x
 
 module LookupValue = struct
   type t = Bind | File | Yp
@@ -86,6 +76,7 @@ module LookupValue = struct
   | File -> "file"
   | Yp   -> "yp"
 end
+
 module OptionsValue = struct
   type t = Debug | Edns0 | Inet6 | Insecure1 | Insecure2 | Ndots of int
   exception Unknown of string
@@ -115,8 +106,10 @@ module KeywordValue = struct
          | Sortlist of string list 
          | Options of OptionsValue.t list
   exception Unknown of string
+  let split = Re_str.split (Re_str.regexp "[\t ]+")
+    
   let of_string x = 
-    let tokens = List.filter (fun x -> x <> "") (split (String.lowercase x) (fun c -> List.mem c whitespace)) in match tokens with
+    match split (String.lowercase x) with
     | [ "nameserver"; ns ] -> Nameserver ns
     | [ "domain"; domain ] -> Domain domain
     | "lookup"::lst        -> Lookup (List.map LookupValue.of_string lst)
@@ -124,6 +117,7 @@ module KeywordValue = struct
     | "sortlist"::lst      -> Sortlist lst
     | "options"::lst       -> Options (List.map OptionsValue.of_string lst)
     | _ -> raise (Unknown x)
+
   let to_string = 
     let sc = String.concat " " in function
     | Nameserver ns -> sc [ "nameserver"; ns ]
@@ -137,7 +131,11 @@ end
 (* The state of the resolver could be extended later *)
 type t = KeywordValue.t list
 
-let all_servers config = Utils.options (List.map (function (KeywordValue.Nameserver x) -> Some x | _ -> None) config)
+let all_servers config =
+  List.rev (List.fold_left (fun a ->
+   function
+   | KeywordValue.Nameserver x -> x :: a
+   | _ -> a) [] config)
 
 (* Choose a DNS server to query. Might do some round-robin thingy later *)
 let choose_server config =
@@ -147,11 +145,12 @@ let choose_server config =
 
 (* Return a list of domain suffixes to search *)
 let search_domains config = 
-  let relevant_entries = List.map (function
-    | KeywordValue.Domain x -> Some [x]
-    | (KeywordValue.Search xs) -> Some xs
-    | _ -> None) config in
+  let relevant_entries =
+    List.fold_left (fun a -> function
+      | KeywordValue.Domain x -> [x] :: a
+      | KeywordValue.Search xs -> xs :: a
+      | _ -> a) [] config in
   (* entries are mutually-exclusive, last one overrides *)
-  match (List.rev (Utils.options relevant_entries)) with
+  match relevant_entries with
   | [] -> []
   | x::_ -> x

@@ -4,7 +4,6 @@ all: build
 J ?= 2
 PREFIX ?= /usr/local
 NAME=dns
-NAME=cohttp
 
 LWT ?= $(shell if ocamlfind query lwt.ssl >/dev/null 2>&1; then echo --enable-lwt; fi)
 ASYNC ?= $(shell if ocamlfind query async_core >/dev/null 2>&1; then echo --enable-async; fi)

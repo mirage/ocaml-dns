@@ -40,7 +40,7 @@ Library lwt
   Findlibname: lwt
   Modules: Dns_server, Dns_resolver
   BuildDepends: 
-    lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns
+    lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns
   FindlibParent: dns
 
 Document dns

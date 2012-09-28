@@ -52,6 +52,8 @@ module KeywordValue : sig
   val to_string : t -> string
 end
 
+val map_line : string -> string option
+
 type t = KeywordValue.t list
 val all_servers : KeywordValue.t list -> string list
 val choose_server : KeywordValue.t list -> string option
