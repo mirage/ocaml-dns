@@ -1,5 +1,8 @@
 ===== 0.5.0 (unreleased) =====
 
+* Add Dns.Resolvconf for parsing /etc/resolv.conf files on
+  POSIX hosts.
+
 * Move the Lwt bits (resolver, server, cmdline client) into
   a separate directory, to follow the Cohttp convention.
 

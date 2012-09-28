@@ -28,23 +28,24 @@ let usage () =
   eprintf "Usage: %s <domain-name>\n%!" Sys.argv.(0); 
   exit 1
 
-let lookup_name s = 
-  lwt ans = Dns_resolver.gethostbyname s in 
+let lookup_name res s = 
+  lwt ans = Dns_resolver.gethostbyname res s in 
   let ans = (ans ||> Cstruct.ipv4_to_string |> String.concat "; ") in
   printf "%s -> %s\n%!" s ans;
   return ()
            
-let lookup_addr s = 
-  lwt ans = Dns_resolver.gethostbyaddr s in
+let lookup_addr res s = 
+  lwt ans = Dns_resolver.gethostbyaddr res s in
   printf "%s -> %s\n%!" (ipv4_to_string s) (String.concat "; " ans);
   return ()
            
-let _ = 
-  let threads = 
-    Sys.argv |> Array.to_list |> List.tl 
-      ||> (fun s -> match Re.execp Uri_re.ipv4_address s with
-          | true -> (* lookup_addr s *) return ()
-          | false -> lookup_name s
-      ) 
-  in 
-  Lwt_unix.(run (Lwt.join threads))
+let t =
+  lwt res = Dns_resolver.create () in
+  let args = List.tl (Array.to_list Sys.argv) in
+  Lwt_list.iter_p (fun s ->
+    match Re.execp Uri_re.ipv4_address s with
+    | true -> (* lookup_addr s *) return ()
+    | false -> lookup_name res s
+  ) args
+
+let _ = Lwt_unix.run t
