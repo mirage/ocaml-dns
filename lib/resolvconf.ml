@@ -155,15 +155,3 @@ let search_domains config =
   match (List.rev (Utils.options relevant_entries)) with
   | [] -> []
   | x::_ -> x
-
-let parse_file ?(file="/etc/resolv.conf") () = 
-  let all = read_file file in
-  let warn x = prerr_endline (Printf.sprintf "resolvconf in file %s: %s" file x) in
-  let all = List.map (fun line -> 
-    try Some (KeywordValue.of_string line)
-    with 
-    | KeywordValue.Unknown x -> warn ("unknown keyword: " ^ x); None
-    | OptionsValue.Unknown x -> warn ("unknown option: " ^ x); None
-    | LookupValue.Unknown x  -> warn ("unknown lookup option: " ^ x); None
-  ) all in
-  Utils.options all

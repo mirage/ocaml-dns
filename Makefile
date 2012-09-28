@@ -15,7 +15,7 @@ endif
 
 -include Makefile.config
 
-clean: setup.data setup.bin
+configure: setup.data setup.bin
 	./setup.bin -configure $(LWT) $(ASYNC) $(MIRAGE) $(TESTS) $(NETTESTS) --prefix $(PREFIX)
 
 distclean: setup.data setup.bin
@@ -26,6 +26,9 @@ setup: setup.data
 
 build: setup.data  setup.bin
 	./setup.bin -build -j $(J) $(OFLAGS)
+
+clean:
+	ocamlbuild -clean
 
 doc: setup.data setup.bin
 	./setup.bin -doc -j $(J) $(OFLAGS)

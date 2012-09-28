@@ -42,3 +42,7 @@ val gethostbyaddr :
 *)
 val resolve : 
   string -> int -> q_class -> q_type -> domain_name -> Dns.Packet.t Lwt.t
+
+val default_configuration_file : string
+val get_resolvers :
+  ?file:Lwt_io.file_name -> unit -> Dns.Resolvconf.t Lwt.t
