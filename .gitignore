@@ -6,3 +6,4 @@ setup.bin
 setup.log
 *.native
 *.byte
+*.docdir
