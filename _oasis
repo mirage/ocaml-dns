@@ -38,7 +38,7 @@ Library lwt
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt
-  Modules: Dns_server, Dns_resolver
+  Modules: Dns_server, Dns_resolver, Resolvconf
   BuildDepends: 
     lwt, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns
   FindlibParent: dns
