@@ -1,13 +1,22 @@
-.PHONY: all clean distclean setup build doc install test-build test 
+.PHONY: all clean distclean setup build doc install test
 all: build
 
 J ?= 2
+PREFIX ?= /usr/local
 NAME=dns
+NAME=cohttp
+
+LWT ?= $(shell if ocamlfind query lwt.ssl >/dev/null 2>&1; then echo --enable-lwt; fi)
+ASYNC ?= $(shell if ocamlfind query async_core >/dev/null 2>&1; then echo --enable-async; fi)
+MIRAGE ?= $(shell if ocamlfind query mirage-net >/dev/null 2>&1; then echo --enable-mirage; fi)
+ifneq ($(MIRAGE_OS),xen)
+TESTS ?= --enable-tests
+endif
 
 -include Makefile.config
 
 clean: setup.data setup.bin
-	./setup.bin -clean $(OFLAGS)
+	./setup.bin -configure $(LWT) $(ASYNC) $(MIRAGE) $(TESTS) $(NETTESTS) --prefix $(PREFIX)
 
 distclean: setup.data setup.bin
 	./setup.bin -distclean $(OFLAGS)
