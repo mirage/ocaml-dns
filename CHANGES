@@ -1,4 +1,4 @@
-===== 0.5.0 (unreleased) =====
+===== 0.5.0 (2012-09-29) =====
 
 * Add mldig as a full(ish)-featured dig clone, with similar
   output format.
