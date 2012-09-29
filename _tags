@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: fb505a3b2e23e2bf47ea03e8f48eb84a)
+# DO NOT EDIT (digest: b2156e103aecea976823909476b0e239)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -65,28 +65,6 @@
 <lib_test/*.ml{,i}>: pkg_cstruct
 <lib_test/*.ml{,i}>: pkg_cstruct.syntax
 <lib_test/time_server.{native,byte}>: custom
-# Executable odig
-<client/odig.{native,byte}>: use_lwt
-<client/odig.{native,byte}>: use_dns
-<client/odig.{native,byte}>: pkg_lwt
-<client/odig.{native,byte}>: pkg_lwt.unix
-<client/odig.{native,byte}>: pkg_lwt.syntax
-<client/odig.{native,byte}>: pkg_re
-<client/odig.{native,byte}>: pkg_re.str
-<client/odig.{native,byte}>: pkg_uri
-<client/odig.{native,byte}>: pkg_cstruct
-<client/odig.{native,byte}>: pkg_cstruct.syntax
-<client/*.ml{,i}>: use_lwt
-<client/*.ml{,i}>: use_dns
-<client/*.ml{,i}>: pkg_lwt
-<client/*.ml{,i}>: pkg_lwt.unix
-<client/*.ml{,i}>: pkg_lwt.syntax
-<client/*.ml{,i}>: pkg_re
-<client/*.ml{,i}>: pkg_re.str
-<client/*.ml{,i}>: pkg_uri
-<client/*.ml{,i}>: pkg_cstruct
-<client/*.ml{,i}>: pkg_cstruct.syntax
-<client/odig.{native,byte}>: custom
 # Executable mldig
 <lwt/mldig.{native,byte}>: use_lwt
 <lwt/mldig.{native,byte}>: use_dns

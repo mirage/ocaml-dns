@@ -78,16 +78,6 @@ Executable time_server
   Install:            false
   BuildDepends:       lwt, lwt.unix, re, re.str, dns.lwt
 
-Executable odig
-  Path:               client
-  MainIs:             odig.ml
-  Build$:             flag(tests) && flag(lwt)
-  Custom:             true
-  CompiledObject:     best
-  Install:            false
-  BuildDepends:       
-    lwt, lwt.unix, lwt.syntax, re, re.str, dns, dns.lwt, uri
-
 Executable mldig
   Path:               lwt
   MainIs:             mldig.ml
