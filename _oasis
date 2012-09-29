@@ -95,8 +95,7 @@ Executable mldig
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, lwt.syntax, re, re.str, dns, dns.lwt, uri
-
+  BuildDepends:       lwt, lwt.unix, lwt.syntax, re, re.str, dns, dns.lwt, uri, cmdliner
 
 Test lwt_server
   Run$:               flag(tests) && flag(lwt)

@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 69543ee246ee626b64e37fea09f0e5d4)
+# DO NOT EDIT (digest: fb505a3b2e23e2bf47ea03e8f48eb84a)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -96,6 +96,7 @@
 <lwt/mldig.{native,byte}>: pkg_re
 <lwt/mldig.{native,byte}>: pkg_re.str
 <lwt/mldig.{native,byte}>: pkg_uri
+<lwt/mldig.{native,byte}>: pkg_cmdliner
 <lwt/mldig.{native,byte}>: pkg_cstruct
 <lwt/mldig.{native,byte}>: pkg_cstruct.syntax
 <lwt/*.ml{,i}>: use_lwt
@@ -106,6 +107,7 @@
 <lwt/*.ml{,i}>: pkg_re
 <lwt/*.ml{,i}>: pkg_re.str
 <lwt/*.ml{,i}>: pkg_uri
+<lwt/*.ml{,i}>: pkg_cmdliner
 <lwt/*.ml{,i}>: pkg_cstruct
 <lwt/*.ml{,i}>: pkg_cstruct.syntax
 <lwt/mldig.{native,byte}>: custom
