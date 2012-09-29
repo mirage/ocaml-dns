@@ -31,7 +31,7 @@ Library dns
   Modules: 
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
     Zone, Zone_lexer, Zone_parser, Resolvconf
-  BuildDepends:	cstruct, cstruct.syntax, re, re.str
+  BuildDepends:	cstruct (>= 0.5.1), cstruct.syntax, re, re.str
 
 Library lwt
   Path: lwt
@@ -87,6 +87,16 @@ Executable odig
   Install:            false
   BuildDepends:       
     lwt, lwt.unix, lwt.syntax, re, re.str, dns, dns.lwt, uri
+
+Executable mldig
+  Path:               lwt
+  MainIs:             mldig.ml
+  Build$:             flag(tests) && flag(lwt)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       lwt, lwt.unix, lwt.syntax, re, re.str, dns, dns.lwt, uri
+
 
 Test lwt_server
   Run$:               flag(tests) && flag(lwt)

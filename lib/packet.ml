@@ -309,7 +309,22 @@ cenum rr_class {
   RR_CH = 3;
   RR_HS = 4
 } as uint8_t
-    
+
+let rr_class_to_string =
+  function
+  |RR_IN -> "IN"
+  |RR_CS -> "CS"    
+  |RR_CH -> "CH"
+  |RR_HS -> "HS"
+
+let string_to_rr_class =
+  function
+  |"IN" -> Some RR_IN
+  |"CS" -> Some RR_CS
+  |"CH" -> Some RR_CH
+  |"HS" -> Some RR_HS
+  |_ -> None
+
 cstruct rr {
   uint16_t typ;
   uint16_t cls;
@@ -395,7 +410,14 @@ cenum q_type {
   Q_TA    = 32768;
   Q_DLV   = 32769
 } as uint8_t
-                                            
+ 
+let q_type_to_string x =
+  let x = q_type_to_string x in
+  String.sub x 2 (String.length x - 2)
+
+let string_to_q_type x =
+  string_to_q_type ("Q_"^x)
+
 cenum q_class {
   Q_IN   = 1;
   Q_CS   = 2;
@@ -404,6 +426,13 @@ cenum q_class {
   Q_NONE = 254;
   Q_ANY_CLS = 255
 } as uint8_t
+
+let q_class_to_string x =
+  let x = q_class_to_string x in
+  String.sub x 2 (String.length x - 2)
+
+let string_to_q_class x =
+  string_to_q_class ("Q_"^x)
 
 cstruct q {
   uint16_t typ;
