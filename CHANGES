@@ -1,5 +1,8 @@
 ===== 0.5.0 (unreleased) =====
 
+* Add mldig as a full(ish)-featured dig clone, with similar
+  output format.
+
 * Add Dns.Resolvconf for parsing /etc/resolv.conf files on
   POSIX hosts.
 
