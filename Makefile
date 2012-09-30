@@ -14,7 +14,7 @@ endif
 
 -include Makefile.config
 
-configure: setup.data setup.bin
+setup.data: setup.bin
 	./setup.bin -configure $(LWT) $(ASYNC) $(MIRAGE) $(TESTS) $(NETTESTS) --prefix $(PREFIX)
 
 distclean: setup.data setup.bin
@@ -28,6 +28,7 @@ build: setup.data  setup.bin
 
 clean:
 	ocamlbuild -clean
+	rm -f setup.data setup.bin
 
 doc: setup.data setup.bin
 	./setup.bin -doc -j $(J) $(OFLAGS)
@@ -39,6 +40,3 @@ install:
 setup.bin: setup.ml
 	ocamlopt.opt -o $@ $< || ocamlopt -o $@ $< || ocamlc -o $@ $<
 	$(RM) setup.cmx setup.cmi setup.o setup.cmo
-
-setup.data: setup.bin
-	./setup.bin -configure --enable-tests
