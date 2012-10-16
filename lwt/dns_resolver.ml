@@ -1,0 +1,184 @@
+(*
+ * Copyright (c) 2012 Richard Mortier <mort@cantab.net>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *)
+
+open Lwt
+open Printf
+open Dns.Name
+open Dns.Operators
+
+module DP = Dns.Packet
+
+let buflen = 1514
+let ns = "8.8.8.8"
+let port = 53
+
+let id = ref 0xDEAD
+let get_id () =
+    let i = !id in
+    incr id;
+    i
+
+let log_info s = eprintf "INFO: %s\n%!" s
+let log_debug s = eprintf "DEBUG: %s\n%!" s
+let log_warn s = eprintf "WARN: %s\n%!" s
+
+let build_query q_class q_type q_name = 
+  DP.(
+    let detail = { qr=Query; opcode=Standard;
+                   aa=true; tc=false; rd=true; ra=false; rcode=NoError; }
+    in
+    let question = { q_name; q_type; q_class } in 
+    { id=get_id (); detail; questions=[question]; 
+      answers=[]; authorities=[]; additionals=[]; 
+    }
+  )
+
+let sockaddr addr port = 
+  Lwt_unix.(ADDR_INET (Unix.inet_addr_of_string addr, port))
+
+let sockaddr_to_string = Lwt_unix.(function
+  | ADDR_INET (a,p) -> sprintf "%s/%d" (Unix.string_of_inet_addr a) p
+  | ADDR_UNIX s -> s ^ "/UNIX"
+  )
+
+let outfd addr port = 
+  let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in 
+  Lwt_unix.(bind fd (sockaddr addr port));
+  fd
+
+let txbuf fd dst buf =
+  Lwt_bytes.sendto fd buf 0 (Cstruct.len buf) [] dst
+
+let rxbuf fd len = 
+  let buf = Lwt_bytes.create len in
+  lwt (len, sa) = Lwt_bytes.recvfrom fd buf 0 len [] in
+  return (buf, sa)
+
+let resolve
+    (server:string) (dns_port:int) (q_class:DP.q_class) (q_type:DP.q_type) 
+    (q_name:domain_name) =
+  let ofd = outfd "0.0.0.0" 0 in
+  lwt _ =
+    try_lwt
+      let q = build_query q_class q_type q_name in
+      log_info (sprintf "query: %s\n%!" (DP.to_string q));
+      let buf = Lwt_bytes.create 4096 in
+      let q = DP.marshal buf q in
+      let dst = sockaddr server dns_port in 
+      txbuf ofd dst q
+    with exn -> 
+      log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
+      fail exn in
+  lwt (buf,sa) = rxbuf ofd buflen in 
+  let names = Hashtbl.create 8 in
+  let r = DP.parse names buf in 
+  log_info (sprintf "response:%s sa:%s" (DP.to_string r) (sockaddr_to_string sa));
+  return r
+
+let gethostbyname
+    ?(server:string = ns) ?(dns_port:int = port) 
+    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_ANY_TYP)
+    name =
+  let open DP in
+  let domain = string_to_domain_name name in
+  resolve server dns_port Q_IN Q_A domain >|= fun r ->
+  List.fold_left (fun a x -> match x.rdata with |A ip -> ip::a |_ -> a) [] r.answers |>
+  List.rev
+
+let gethostbyaddr 
+    ?(server:string = ns) ?(dns_port:int = port) 
+    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_ANY_TYP)
+    addr 
+    = 
+  let addr = for_reverse addr in
+  log_info (sprintf "gethostbyaddr: %s" (domain_name_to_string addr));
+  let open DP in
+  resolve server dns_port Q_IN Q_PTR addr >|= fun r ->
+  List.fold_left (fun a x -> match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a) [] r.answers |>
+  List.rev
+
+open Dns.Resolvconf
+
+module type RESOLVER = sig
+  val servers : (string * int) list
+  val search_domains : string list
+end
+
+type config = [
+  | `Resolv_conf
+  | `Static of (string * int) list * string list
+]
+
+type t = (module RESOLVER)
+
+module Resolv_conf = struct
+  let default_configuration_file = "/etc/resolv.conf"
+
+  let get_resolvers ?(file=default_configuration_file) () =
+    Lwt_io.with_file ~mode:Lwt_io.input file (fun ic ->
+      (* Read lines and filter out whitespace/blanks *)
+      let lines = Lwt_stream.filter_map map_line (Lwt_io.read_lines ic) in
+      let warn x = prerr_endline (Printf.sprintf "resolvconf in file %s: %s" file x) in
+      (* Parse remaining lines *)
+      Lwt_stream.(to_list (filter_map (fun line ->
+        try Some (KeywordValue.of_string line)
+        with
+        | KeywordValue.Unknown x -> warn ("unknown keyword: " ^ x); None
+        | OptionsValue.Unknown x -> warn ("unknown option: " ^ x); None
+        | LookupValue.Unknown x  -> warn ("unknown lookup option: " ^ x); None
+      ) lines))
+    )
+
+  let create () =
+    lwt t = get_resolvers () in
+    return
+    (module (struct
+      let servers = all_servers t
+      let search_domains = search_domains t
+     end) : RESOLVER)
+end
+
+module Static = struct
+  let create ?(servers=["8.8.8.8",53]) ?(search_domains=[]) () =
+    (module (struct
+      let servers = servers
+      let search_domains = search_domains
+     end) : RESOLVER)
+end
+
+let create ?(config=`Resolv_conf) () =
+  match config with
+  |`Static (servers, search_domains) ->
+     return (Static.create ~servers ~search_domains ())
+  |`Resolv_conf -> Resolv_conf.create ()
+
+let gethostbyname t ?q_class ?q_type q_name =
+  let module R = (val t :RESOLVER ) in
+  match R.servers with
+  |[] -> fail (Failure "No resolvers available")
+  |(server,dns_port)::_ -> gethostbyname ~server ~dns_port ?q_class ?q_type q_name
+
+let gethostbyaddr t ?q_class ?q_type q_name =
+  let module R = (val t :RESOLVER ) in
+  match R.servers with
+  |[] -> fail (Failure "No resolvers available")
+  |(server,dns_port)::_ -> gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
+
+let resolve t q_class q_type q_name =
+  let module R = (val t :RESOLVER ) in
+  match R.servers with
+  |[] -> fail (Failure "No resolvers available")
+  |(server,dns_port)::_ -> resolve server dns_port q_class q_type q_name

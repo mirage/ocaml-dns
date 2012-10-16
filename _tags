@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: c5e76e2e8fdc3b910474dae9f7f1c2bb)
+# DO NOT EDIT (digest: b2156e103aecea976823909476b0e239)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -27,21 +27,15 @@
 "lib/zone.cmx": for-pack(Dns)
 "lib/zone_lexer.cmx": for-pack(Dns)
 "lib/zone_parser.cmx": for-pack(Dns)
-# Library server
-"lib/server.cmxs": use_server
-# Library resolver
-"lib/resolver.cmxs": use_resolver
-<lib/*.ml{,i}>: use_dns
-<lib/*.ml{,i}>: pkg_lwt
-<lib/*.ml{,i}>: pkg_lwt.unix
-<lib/*.ml{,i}>: pkg_lwt.syntax
+"lib/resolvconf.cmx": for-pack(Dns)
 <lib/*.ml{,i}>: pkg_re
 <lib/*.ml{,i}>: pkg_re.str
 <lib/*.ml{,i}>: pkg_cstruct
 <lib/*.ml{,i}>: pkg_cstruct.syntax
-<lib/*.ml{,i}>: pkg_cryptokit
+# Library lwt
+"lwt/lwt.cmxs": use_lwt
 # Executable lwt_server
-<lib_test/lwt_server.{native,byte}>: use_server
+<lib_test/lwt_server.{native,byte}>: use_lwt
 <lib_test/lwt_server.{native,byte}>: use_dns
 <lib_test/lwt_server.{native,byte}>: pkg_lwt
 <lib_test/lwt_server.{native,byte}>: pkg_lwt.unix
@@ -50,62 +44,55 @@
 <lib_test/lwt_server.{native,byte}>: pkg_re.str
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct.syntax
-<lib_test/lwt_server.{native,byte}>: pkg_cryptokit
-<lib_test/*.ml{,i}>: use_server
-<lib_test/*.ml{,i}>: pkg_lwt.syntax
 <lib_test/lwt_server.{native,byte}>: custom
 # Executable time_server
+<lib_test/time_server.{native,byte}>: use_lwt
 <lib_test/time_server.{native,byte}>: use_dns
 <lib_test/time_server.{native,byte}>: pkg_lwt
 <lib_test/time_server.{native,byte}>: pkg_lwt.unix
+<lib_test/time_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/time_server.{native,byte}>: pkg_re
 <lib_test/time_server.{native,byte}>: pkg_re.str
 <lib_test/time_server.{native,byte}>: pkg_cstruct
 <lib_test/time_server.{native,byte}>: pkg_cstruct.syntax
-<lib_test/time_server.{native,byte}>: pkg_cryptokit
+<lib_test/*.ml{,i}>: use_lwt
 <lib_test/*.ml{,i}>: use_dns
 <lib_test/*.ml{,i}>: pkg_lwt
 <lib_test/*.ml{,i}>: pkg_lwt.unix
+<lib_test/*.ml{,i}>: pkg_lwt.syntax
 <lib_test/*.ml{,i}>: pkg_re
 <lib_test/*.ml{,i}>: pkg_re.str
 <lib_test/*.ml{,i}>: pkg_cstruct
 <lib_test/*.ml{,i}>: pkg_cstruct.syntax
-<lib_test/*.ml{,i}>: pkg_cryptokit
 <lib_test/time_server.{native,byte}>: custom
-# Executable odig
-<client/odig.{native,byte}>: use_resolver
-<client/odig.{native,byte}>: use_dns
-<client/odig.{native,byte}>: pkg_lwt
-<client/odig.{native,byte}>: pkg_lwt.unix
-<client/odig.{native,byte}>: pkg_lwt.syntax
-<client/odig.{native,byte}>: pkg_re
-<client/odig.{native,byte}>: pkg_re.str
-<client/odig.{native,byte}>: pkg_uri
-<client/odig.{native,byte}>: pkg_cstruct
-<client/odig.{native,byte}>: pkg_cstruct.syntax
-<client/odig.{native,byte}>: pkg_cryptokit
-<client/*.ml{,i}>: use_resolver
-<client/*.ml{,i}>: use_dns
-<client/*.ml{,i}>: pkg_lwt
-<client/*.ml{,i}>: pkg_lwt.unix
-<client/*.ml{,i}>: pkg_lwt.syntax
-<client/*.ml{,i}>: pkg_re
-<client/*.ml{,i}>: pkg_re.str
-<client/*.ml{,i}>: pkg_uri
-<client/*.ml{,i}>: pkg_cstruct
-<client/*.ml{,i}>: pkg_cstruct.syntax
-<client/*.ml{,i}>: pkg_cryptokit
-<client/odig.{native,byte}>: custom
+# Executable mldig
+<lwt/mldig.{native,byte}>: use_lwt
+<lwt/mldig.{native,byte}>: use_dns
+<lwt/mldig.{native,byte}>: pkg_lwt
+<lwt/mldig.{native,byte}>: pkg_lwt.unix
+<lwt/mldig.{native,byte}>: pkg_lwt.syntax
+<lwt/mldig.{native,byte}>: pkg_re
+<lwt/mldig.{native,byte}>: pkg_re.str
+<lwt/mldig.{native,byte}>: pkg_uri
+<lwt/mldig.{native,byte}>: pkg_cmdliner
+<lwt/mldig.{native,byte}>: pkg_cstruct
+<lwt/mldig.{native,byte}>: pkg_cstruct.syntax
+<lwt/*.ml{,i}>: use_lwt
+<lwt/*.ml{,i}>: use_dns
+<lwt/*.ml{,i}>: pkg_lwt
+<lwt/*.ml{,i}>: pkg_lwt.unix
+<lwt/*.ml{,i}>: pkg_lwt.syntax
+<lwt/*.ml{,i}>: pkg_re
+<lwt/*.ml{,i}>: pkg_re.str
+<lwt/*.ml{,i}>: pkg_uri
+<lwt/*.ml{,i}>: pkg_cmdliner
+<lwt/*.ml{,i}>: pkg_cstruct
+<lwt/*.ml{,i}>: pkg_cstruct.syntax
+<lwt/mldig.{native,byte}>: custom
 # OASIS_STOP
 true: annot
-<lib/*>: syntax_camlp4o
-<lib/*>: bitstring.syntax
-<lib/*>: pkg_lwt.syntax
-<server/*>: syntax_camlp4o
-<server/*>: pkg_lwt.syntax
+<lib/*>: syntax_camlp4o, pkg_lwt.syntax
+<lwt/*>: syntax_camlp4o, pkg_lwt.syntax
 <lib_test/*>: syntax_camlp4o
 <lib_test/*>: pkg_lwt.syntax
-<resolver/*>: syntax_camlp4o
-<resolver/*>: pkg_lwt.syntax
-<client/*>: syntax_camlp4o
-<client/*>: pkg_lwt.syntax
+<client/*>: syntax_camlp4o, pkg_lwt.syntax

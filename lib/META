@@ -1,33 +1,22 @@
 # OASIS_START
-# DO NOT EDIT (digest: a9f90a4ebb6f34dc2847681b99cf8173)
-version = "0.9-dev"
-description = "DNS protocol library for Lwt"
-requires = "cstruct cstruct.syntax re re.str cryptokit"
+# DO NOT EDIT (digest: e6e19461008ccab0a05e30facec8faa8)
+version = "0.5.2"
+description = "DNS protocol library"
+requires = "cstruct cstruct.syntax re re.str"
 archive(byte) = "dns.cma"
 archive(byte, plugin) = "dns.cma"
 archive(native) = "dns.cmxa"
 archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
-package "server" (
- version = "0.9-dev"
- description = "DNS protocol library for Lwt"
- requires = "lwt lwt.unix lwt.syntax cstruct cstruct.syntax dns cryptokit"
- archive(byte) = "server.cma"
- archive(byte, plugin) = "server.cma"
- archive(native) = "server.cmxa"
- archive(native, plugin) = "server.cmxs"
- exists_if = "server.cma"
-)
-
-package "resolver" (
- version = "0.9-dev"
- description = "DNS protocol library for Lwt"
- requires = "lwt lwt.unix lwt.syntax cstruct cstruct.syntax dns"
- archive(byte) = "resolver.cma"
- archive(byte, plugin) = "resolver.cma"
- archive(native) = "resolver.cmxa"
- archive(native, plugin) = "resolver.cmxs"
- exists_if = "resolver.cma"
+package "lwt" (
+ version = "0.5.2"
+ description = "DNS protocol library"
+ requires = "lwt.unix lwt.syntax cstruct cstruct.syntax dns"
+ archive(byte) = "lwt.cma"
+ archive(byte, plugin) = "lwt.cma"
+ archive(native) = "lwt.cmxa"
+ archive(native, plugin) = "lwt.cmxs"
+ exists_if = "lwt.cma"
 )
 # OASIS_STOP
 

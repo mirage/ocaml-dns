@@ -1,0 +1,19 @@
+===== 0.5.1 (2012-10-05) =====
+
+* Remain compatible with OCaml-3.12.1 with the more verbose
+  first-class module syntax.
+
+===== 0.5.0 (2012-09-29) =====
+
+* Add mldig as a full(ish)-featured dig clone, with similar
+  output format.
+
+* Add Dns.Resolvconf for parsing /etc/resolv.conf files on
+  POSIX hosts.
+
+* Move the Lwt bits (resolver, server, cmdline client) into
+  a separate directory, to follow the Cohttp convention.
+
+===== 0.4.0 (2012-09-18) =====
+
+* Initial public release.

@@ -1,6 +1,9 @@
 *.swp
 _build/
 _config/
-setup.*
+setup.data
+setup.bin
+setup.log
 *.native
 *.byte
+*.docdir

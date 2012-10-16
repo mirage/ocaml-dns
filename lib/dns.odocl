@@ -1,5 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: f213179a159b6d676f41e3ce2b537e5e)
+# DO NOT EDIT (digest: ef12b2024fd36b126092821c8a89f523)
+Base64
 Hashcons
 Loader
 Name
@@ -9,4 +10,6 @@ Query
 RR
 Trie
 Zone
+Zone_lexer
+Zone_parser
 # OASIS_STOP

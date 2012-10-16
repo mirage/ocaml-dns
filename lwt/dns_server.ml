@@ -128,4 +128,3 @@ let listen_with_zonefile ~address ~port ~zonefile =
      return (Buffer.contents buf)
   in
   listen_with_zonebuf ~address ~port ~zonebuf ~mode:`none
-
