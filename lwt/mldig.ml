@@ -115,7 +115,7 @@ let dig res server source_ip dest_port q_class q_type args =
  
 let t =
   lwt res = Dns_resolver.create () in
-  let (module Res) = res in
+  let module Res = (val res :Dns_resolver.RESOLVER ) in
   let (default_server, default_dest_port) =
     match Res.servers with 
     |[] -> None,53 

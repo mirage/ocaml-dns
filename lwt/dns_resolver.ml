@@ -165,17 +165,20 @@ let create ?(config=`Resolv_conf) () =
      return (Static.create ~servers ~search_domains ())
   |`Resolv_conf -> Resolv_conf.create ()
 
-let gethostbyname (module R:RESOLVER) ?q_class ?q_type q_name =
+let gethostbyname t ?q_class ?q_type q_name =
+  let module R = (val t :RESOLVER ) in
   match R.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ -> gethostbyname ~server ~dns_port ?q_class ?q_type q_name
 
-let gethostbyaddr (module R:RESOLVER) ?q_class ?q_type q_name =
+let gethostbyaddr t ?q_class ?q_type q_name =
+  let module R = (val t :RESOLVER ) in
   match R.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ -> gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
 
-let resolve (module R:RESOLVER) q_class q_type q_name =
+let resolve t q_class q_type q_name =
+  let module R = (val t :RESOLVER ) in
   match R.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ -> resolve server dns_port q_class q_type q_name
