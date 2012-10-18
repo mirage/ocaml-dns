@@ -1,10 +1,12 @@
+===== 0.5.2 (unreleased) =====
+
+* Correct q_type/q_class arguments being ignored in the Lwt
+  Dns_resolver [Pierre Chambart] (#6)
+
 ===== 0.5.1 (2012-10-05) =====
 
 * Remain compatible with OCaml-3.12.1 with the more verbose
   first-class module syntax.
-
-* Correct q_type/q_class arguments being ignored in the Lwt
-  Dns_resolver [Pierre Chambart] (#6)
 
 ===== 0.5.0 (2012-09-29) =====
 
