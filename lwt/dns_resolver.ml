@@ -90,23 +90,23 @@ let resolve
 
 let gethostbyname
     ?(server:string = ns) ?(dns_port:int = port) 
-    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_ANY_TYP)
+    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
     name =
   let open DP in
   let domain = string_to_domain_name name in
-  resolve server dns_port Q_IN Q_A domain >|= fun r ->
+  resolve server dns_port q_class q_type domain >|= fun r ->
   List.fold_left (fun a x -> match x.rdata with |A ip -> ip::a |_ -> a) [] r.answers |>
   List.rev
 
 let gethostbyaddr 
     ?(server:string = ns) ?(dns_port:int = port) 
-    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_ANY_TYP)
+    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
     addr 
     = 
   let addr = for_reverse addr in
   log_info (sprintf "gethostbyaddr: %s" (domain_name_to_string addr));
   let open DP in
-  resolve server dns_port Q_IN Q_PTR addr >|= fun r ->
+  resolve server dns_port q_class q_type addr >|= fun r ->
   List.fold_left (fun a x -> match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a) [] r.answers |>
   List.rev
 

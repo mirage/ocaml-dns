@@ -1,5 +1,8 @@
 ===== 0.5.1 (unreleased) =====
 
+* Correct q_type/q_class arguments being ignored in the Lwt
+  Dns_resolver [Pierre Chambart] (#6)
+
 ===== 0.5.0 (2012-09-29) =====
 
 * Add mldig as a full(ish)-featured dig clone, with similar
