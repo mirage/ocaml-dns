@@ -1,5 +1,7 @@
 ===== 0.5.2 (unreleased) =====
 
+* Fix the server interface to be fully asynchronous.
+
 * Correct q_type/q_class arguments being ignored in the Lwt
   Dns_resolver [Pierre Chambart] (#6)
 
