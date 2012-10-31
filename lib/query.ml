@@ -36,7 +36,7 @@ type query_answer = {
   additional: Packet.rr list;
 } 
 
-let answer_query qname qtype trie = 
+let answer_query ?(dnssec=false) qname qtype trie = 
 
   let aa_flag = ref true in
   let ans_rrs = ref [] in
@@ -58,20 +58,22 @@ let answer_query qname qtype trie =
      does not have any RRSets of its own and matched a wildcard.*)
   let log_rrset owner rrtype =
     addqueue := List.filter 
-	  (fun (n, t) -> rrtype != t || owner != n.owner.H.node) !addqueue;
+	  (fun (n, t) -> rrtype != t || 
+                     owner != n.owner.H.node) !addqueue;
     rrlog := (owner, rrtype) :: !rrlog
   in
   
   let in_log owner rrtype = 
-    List.exists (fun (o, t) -> o == owner && t == rrtype) !rrlog
+    List.exists (fun (o, t) -> o == owner && t == rrtype)
+      !rrlog
   in
   
   let enqueue_additional dnsnode rrtype = 
-    if not (in_log dnsnode.owner.H.node rrtype) 
+    if not (in_log dnsnode.owner.H.node rrtype ) 
     then addqueue := (dnsnode, rrtype) :: !addqueue 
   in
 
-  let add_rrset owner ttl rdata section = 
+  let add_rrset owner ttl rdata subrrtype section = 
     let addrr ?(rrclass = Some Packet.RR_IN) rr = 
       let rrclass = match rrclass with
         | Some x -> x
@@ -205,6 +207,24 @@ let answer_query qname qtype trie =
               | None -> failwith (sprintf "bad dnssec alg type t:%d" t)
               | Some tt -> addrr (Packet.DNSKEY (fl, tt, k.H.node))
           ) l
+      | RR.RRSIG l -> begin
+          if (dnssec) then
+            match subrrtype with
+              | None -> 
+                  let _ = printf 
+                            "Found an rrsig record, looking for type None\n%!"  in
+ ()
+              | Some t -> 
+                  let _ = printf "Found an rrsig record, looking for type %s\n%!" 
+                            (Packet.rr_type_to_string t) in
+                  List.iter 
+                    (fun (typ, alg, lbl, ttl, exp_ts, inc_ts, tag,
+                          name, sign) ->
+                       if (typ = t) then
+                       addrr (Packet.RRSIG (typ, alg, lbl, ttl, 
+                                            exp_ts, inc_ts, tag, 
+                                            name, sign)) ) l
+        end
 
       | RR.Unknown (t,l) -> 
           let s = l ||> (fun x -> x.H.node) |> String.concat "" in 
@@ -239,11 +259,13 @@ let answer_query qname qtype trie =
         | (Packet.Q_SRV, SRV _) -> true
         | (Packet.Q_AAAA, AAAA _) -> true
         | (Packet.Q_DNSKEY, DNSKEY _) -> true
+        | (Packet.Q_RRSIG, RRSIG _) -> true
         (* | (Packet.Q_UNSPEC, UNSPEC _) -> true *)
         | (Packet.Q_MAILB, MB _) -> true
         | (Packet.Q_MAILB, MG _) -> true
         | (Packet.Q_MAILB, MR _) -> true
         | (Packet.Q_ANY_TYP, _) -> true
+        | (_, RRSIG _ ) -> dnssec 
         | (_, CNAME _) -> cnames_ok
         | (_, _) -> false 
     in List.filter (match_rrset qtype) sets
@@ -251,11 +273,11 @@ let answer_query qname qtype trie =
 
   (* Get an RRSet, which may not exist *)
   let add_opt_rrset node qtype rrtype section = 
-    if not (in_log node.owner.H.node rrtype)
+    if not (in_log node.owner.H.node rrtype )
     then
       let a = get_rrsets qtype node.rrsets false in
       List.iter (fun s -> 
-        add_rrset node.owner.H.node s.ttl s.rdata section) a 
+        add_rrset node.owner.H.node s.ttl s.rdata  (Some rrtype) section) a 
   in
 
   (* Get an RRSet, which must exist *)
@@ -265,7 +287,7 @@ let answer_query qname qtype trie =
       let a = get_rrsets qtype node.rrsets false in
       if a = [] then raise TrieCorrupt; 
       List.iter (fun s -> 
-        add_rrset node.owner.H.node s.ttl s.rdata section) a
+        add_rrset node.owner.H.node s.ttl s.rdata (Some rrtype) section) a
   in
 
   (* Get the SOA RRSet for a negative response *)
@@ -279,12 +301,14 @@ let answer_query qname qtype trie =
     List.iter (fun s -> 
       match s.rdata with
 	      SOA ((_, _, _, _, _, _, ttl) :: _) -> 
-	        add_rrset node.owner.H.node (min s.ttl ttl) s.rdata `Authority
+	        add_rrset node.owner.H.node (min s.ttl ttl) 
+           s.rdata (Some Packet.RR_SOA) `Authority
         | _ -> raise TrieCorrupt ) a
   in
 
   (* Fill in the ANSWER section *)
-  let rec add_answer_rrsets owner ?(lc = 5) rrsets qtype = 
+  let rec add_answer_rrsets owner ?(lc = 5) rrsets qtype =
+    let Some(qt) = Packet.int_to_rr_type (Packet.q_type_to_int qtype) in
     let add_answer_rrset s = 
       match s with 
 	      { rdata = CNAME (d::_) } -> 
@@ -292,8 +316,10 @@ let answer_query qname qtype trie =
 	        if not (lc < 1 || qtype = Packet.Q_CNAME ) then begin 
               add_answer_rrsets d.owner.H.node ~lc:(lc - 1) d.rrsets qtype 
             end;
-	        add_rrset owner s.ttl s.rdata `Answer;
-        | _ -> add_rrset owner s.ttl s.rdata `Answer
+	        add_rrset owner s.ttl s.rdata 
+           (Some qt ) `Answer;
+        | _ -> add_rrset owner s.ttl s.rdata 
+           (Some qt ) `Answer
     in
     let a = get_rrsets qtype rrsets true in
     List.iter add_answer_rrset a
@@ -349,6 +375,13 @@ let answer_query qname qtype trie =
     let rc = main_lookup qname qtype trie in	
     List.iter (fun (o, t) -> 
       add_opt_rrset o Packet.Q_ANY_TYP t `Additional) !addqueue;
+    let _ = 
+      if (dnssec) then
+      let rr = Packet.({ name = []; cls = RR_IN; ttl = 0x00008000l; 
+                         rdata = EDNS0(1500, 0, true, [])}) 
+      in
+        add_rrs := !add_rrs @ [(rr)] 
+    in
     { rcode = rc; aa = !aa_flag; 
       answer = !ans_rrs; authority = !auth_rrs; additional = !add_rrs }
   with 

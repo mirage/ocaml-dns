@@ -21,6 +21,7 @@ open RR
 open Trie
 open Name
 open Operators
+open Printf
 
 (* Loader database: the DNS trie plus a hash table of other names in use *)
 type db = {
@@ -277,6 +278,23 @@ let add_dnskey_rr flags typ key ttl owner db =
   let dnskey = hashcons_charstring tmp in 
   add_rrset { ttl; rdata = DNSKEY [ (flags, typ, dnskey) ] } owner db
 
+let add_rrsig_rr typ alg lbl orig_ttl exp_ts inc_ts tag name sign ttl owner db = 
+  printf "typ: %s, alf:%d\n%!" typ alg; 
+  let typ = 
+    match (Packet.string_to_rr_type ("RR_"^typ)) with 
+      | None -> failwith (sprintf "add_rrsig_rr failed: uknown type %s" typ)
+      | Some a -> a 
+  in
+  let alg = 
+    match (Packet.int_to_dnssec_alg alg) with
+      | None -> failwith (sprintf "add_rrsig_rr failed: uknown dnssec alg %d" alg)
+      | Some a -> a 
+  in 
+    (* TODO: Check if sign is in the future or if the sign has expired *)
+  let sign = Base64.decode sign in
+  let rr = RRSIG [ (typ, alg, (char_of_int lbl), orig_ttl, exp_ts, 
+                  inc_ts, tag, name, sign)] in
+  add_rrset { ttl; rdata = rr; } owner db 
 
 (* State variables for the parser & lexer *)
 type parserstate = {

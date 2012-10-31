@@ -53,6 +53,11 @@ let process_query fd buf len src dst dnsfn names =
           match answer with
           |None -> return ()
           |Some answer ->
+(*            let edns_rec = 
+              try 
+                List.find (fun rr -> ) query.additionals 
+              with Not_found -> []
+            in *)
             let detail = DP.({ 
               qr=Response; opcode=Standard; aa=answer.DQ.aa;
               tc=false; rd=false; ra=false; rcode=answer.DQ.rcode 
@@ -102,7 +107,7 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
   let dnstrie = DL.(state.db.trie) in
   let get_answer qname qtype id =
     let qname = List.map String.lowercase qname in  
-    DQ.answer_query qname qtype dnstrie
+    DQ.answer_query ~dnssec:true qname qtype dnstrie
   in
   let (dnsfn:dnsfn) =
     match mode with

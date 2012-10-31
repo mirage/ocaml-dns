@@ -306,6 +306,8 @@ rr:
      /* RFC 3596 */
  | TYPE_AAAA s ipv6 { add_aaaa_rr $3 }
  | TYPE_DNSKEY s int16 s int16 s int16 s charstring {add_dnskey_rr $3 $7 $9 }
+ | TYPE_RRSIG s keyword_or_number s int16 s int16 s int32 s int32 s int32 s int16 s
+      domain s charstring {add_rrsig_rr $3 $5 $7 $9 $11 $13 $15 $17 $19 } 
      /* Never properly defined: just testing the generic rdata format */
  /* | TYPE_UNSPEC s generic_rdata { add_unspec_rr $3 } */
 

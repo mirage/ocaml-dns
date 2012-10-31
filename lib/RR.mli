@@ -73,9 +73,10 @@ and rdata =
   | WKS of (int32 * byte * cstr) list
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
+  | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 * 
+               int32 * int32 * int * Name.domain_name * string) list
 
 val rdata_to_string : rdata -> string
-
 (*
 (** Extract relevant RRSets given a query type, a list of RRSets and a flag to
     say whether to return CNAMEs too. 

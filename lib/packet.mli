@@ -106,7 +106,9 @@ cenum q_type {
   Q_TA    = 32768;
   Q_DLV   = 32769
 } as uint8_t
- 
+
+val q_type_to_int : q_type -> int
+
 type rr_type =
   | RR_A
   | RR_NS
@@ -163,6 +165,9 @@ type rr_type =
   | RR_UID
   | RR_GID
   | RR_UNSPEC
+val string_to_rr_type : string -> rr_type option
+val rr_type_to_string : rr_type -> string
+val int_to_rr_type : int -> rr_type option 
 
 type type_bit_map
 type type_bit_maps
@@ -202,14 +207,16 @@ type rdata =
 | TXT of string list
 | UNKNOWN of int * string
 | WKS of int32 * byte * string
-| X25 of string 
+| X25 of string
+           (* udp size, rcode, do bit, options *)
+| EDNS0 of (int * int * bool * ((int * string) list)) 
 
 val rdata_to_string : rdata -> string
 
 (** Parse an RDATA element from a packet, given the set of already encountered
     names, a starting index, and the type of the RDATA. *)
 val parse_rdata : 
-  (int, label) Hashtbl.t -> int -> rr_type -> buf -> rdata
+  (int, label) Hashtbl.t -> int -> rr_type -> int -> int32 -> buf -> rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
 type rr_class = RR_IN | RR_CS | RR_CH | RR_HS

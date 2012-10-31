@@ -38,5 +38,5 @@ type query_answer = {
 
     @return the {! query_answer}
 *)
-val answer_query : 
+val answer_query : ?dnssec:bool -> 
   Name.domain_name -> Packet.q_type -> Trie.dnstrie -> query_answer

@@ -19,7 +19,7 @@
   
 open Name
 open Cstruct
-  
+
 (* Mnemonicity! *)
 type serial = int32
 type cstr = string Hashcons.hash_consed
@@ -62,6 +62,8 @@ and rdata =
   | WKS of (int32 * byte * cstr) list 
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
+  | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 * 
+               int32 * int32 * int * Name.domain_name * string) list
 
 (* XXX add other RR types *)
 (* wire-domain type for non-rfc1035 rdata? *)
@@ -89,3 +91,4 @@ let rdata_to_string = function
   | WKS _ -> "WKS"
   | X25 _ -> "X25"
   | DNSKEY _ -> "DNSKEY"
+  | RRSIG _ -> "RRSIG"
