@@ -36,7 +36,19 @@ type fp_type
 
 (** Represent a DNSSEC algorithm, with the usual conversion functions. *)
 
-type dnssec_alg
+cenum dnssec_alg {
+  RSAMD5     = 1; 
+  DH         = 2; 
+  DSA        = 3;
+  ECC        = 4;
+  RSASHA1    = 5;
+  RSANSEC3   = 7;
+  RSASHA256  = 8;
+  RSASHA512  = 10;
+  INDIRECT   = 252;
+  PRIVATEDNS = 253;
+  PRIVATEOID = 254
+} as uint8_t
 val int_to_dnssec_alg : int -> dnssec_alg option
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
@@ -212,6 +224,9 @@ type rdata =
 | EDNS0 of (int * int * bool * ((int * string) list)) 
 
 val rdata_to_string : rdata -> string
+val rdata_to_rr_type : rdata -> rr_type
+val marshal_rdata: (Name.domain_name, int) Hashtbl.t -> int -> buf -> rdata ->
+  (rr_type *  (Name.domain_name, int) Hashtbl.t * int)
 
 (** Parse an RDATA element from a packet, given the set of already encountered
     names, a starting index, and the type of the RDATA. *)
@@ -230,6 +245,9 @@ type rr = {
   rdata : rdata;
 }
 val rr_to_string : rr -> string
+val marshal_rr : ((Name.domain_name, int) Hashtbl.t * int * buf) -> rr -> 
+  ( (Name.domain_name, int) Hashtbl.t * int * buf)
+
 val parse_rr :
   (int, label) Hashtbl.t -> int -> buf -> rr * (int * buf)
 

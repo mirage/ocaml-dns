@@ -309,7 +309,46 @@ let rdata_to_string = function
     -> (sprintf "SSHFP (%s,%s, '%s')" (pubkey_alg_to_string alg) 
           (fp_type_to_string fpt) fp
     )
-    
+let rdata_to_rr_type = function 
+ | A _        ->  RR_A           
+ | AAAA _      -> RR_AAAA     
+ | AFSDB _     -> RR_AFSDB    
+ | CNAME _     -> RR_CNAME    
+ | DNSKEY _    -> RR_DNSKEY   
+ | DS _        -> RR_DS       
+ | HINFO _     -> RR_HINFO    
+ | IPSECKEY _  -> RR_IPSECKEY 
+ | ISDN _      -> RR_ISDN     
+ | MB _        -> RR_MB       
+ | MD _        -> RR_MD       
+ | MF _        -> RR_MF       
+ | MG _        -> RR_MG       
+ | MINFO _     -> RR_MINFO    
+ | MR _        -> RR_MR       
+ | MX _        -> RR_MX       
+ | NS _        -> RR_NS       
+ | NSEC _      -> RR_NSEC     
+ | NSEC3 _     -> RR_NSEC3    
+ | NSEC3PARAM _-> RR_NSEC3PARAM
+ | PTR _       -> RR_PTR      
+ | RP _        -> RR_RP       
+ | RRSIG _     -> RR_RRSIG    
+ | RT _        -> RR_RT       
+ | SOA _       -> RR_SOA      
+ | SRV _       -> RR_SRV      
+ | SSHFP _     -> RR_SSHFP    
+ | TXT _       -> RR_TXT      
+ | UNKNOWN _   -> RR_UNSPEC  
+ | WKS _       -> RR_WKS      
+ | X25 _       -> RR_X25      
+ | EDNS0 _     -> RR_OPT   
+
+
+
+
+
+
+
 cenum rr_class {
   RR_IN = 1;
   RR_CS = 2;
@@ -615,29 +654,23 @@ let parse_rdata names base t cls ttl buf =
         let x25,_ = parse_charstr buf in
         X25 x25
 
-let marshal_rdata names base buf rdata = 
-  let base, rdbuf = base+sizeof_rr, Cstruct.shift buf sizeof_rr in
-  let t, names, rdlen = match rdata with 
+  let marshal_rdata names base rdbuf = function
     | A ip -> 
         BE.set_uint32 rdbuf 0 ip;
         RR_A, names, 4
-
     | AAAA s -> 
         let s, slen = charstr s in
         Cstruct.set_buffer s 0 rdbuf 0 slen;
         RR_AAAA, names, slen
-
     | AFSDB (x,name) ->
         BE.set_uint16 rdbuf 0 x;
         let names, offset, _ = 
           marshal_name names (base+2) (Cstruct.shift rdbuf 2) name 
        in
         RR_AFSDB, names, offset-base
-          
     | CNAME name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
         RR_CNAME, names, offset-base
-
     | DNSKEY (flags, alg, key) ->
         BE.set_uint16 rdbuf 0 flags;
         set_uint8 rdbuf 2 3;
@@ -645,8 +678,6 @@ let marshal_rdata names base buf rdata =
         let slen = String.length key in
         Cstruct.set_buffer key 0 rdbuf 4 slen;
         RR_DNSKEY, names, 4+slen
-
-
     | RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) ->
         let _ = Cstruct.BE.set_uint16 rdbuf 0 (rr_type_to_int typ) in 
         let _ = Cstruct.set_uint8 rdbuf 2 (dnssec_alg_to_int alg) in 
@@ -659,14 +690,12 @@ let marshal_rdata names base buf rdata =
         let (names, len, rdbuf) = Name.marshal_name names 0 rdbuf name in 
         let _ = Cstruct.set_buffer sign 0 rdbuf 0 (String.length sign) in
           RR_RRSIG, names, (18+len+(String.length sign))
-
     | HINFO (cpu,os) ->
         let cpustr, cpulen = charstr cpu in
         Cstruct.set_buffer cpustr 0 rdbuf 0 cpulen;
         let osstr, oslen = charstr os in
         Cstruct.set_buffer osstr 0 rdbuf cpulen oslen;
         RR_HINFO, names, cpulen+oslen
-          
     | ISDN (a,sa) ->
         let astr, alen = charstr a in
         Cstruct.set_buffer astr 0 rdbuf 0 alen;
@@ -676,59 +705,47 @@ let marshal_rdata names base buf rdata =
         in
         Cstruct.set_buffer sastr 0 rdbuf alen salen;
         RR_ISDN, names, alen+salen
-          
     | MB name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
         RR_MB, names, offset-base
-
     | MD name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
         RR_MD, names, offset-base
-
     | MF name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
         RR_MF, names, offset-base
-
     | MG name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
         RR_MG, names, offset-base
-
     | MINFO (rm,em) ->
         let names, offset, rdbuf = marshal_name names base rdbuf rm in
         let names, offset, _ = marshal_name names offset rdbuf em in
         RR_MINFO, names, offset-base
-
     | MR name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
         RR_MR, names, offset-base
-
     | MX (pref,xchg) ->
         BE.set_uint16 rdbuf 0 pref;
         let names, offset, _ = 
           marshal_name names (base+2) (Cstruct.shift rdbuf 2) xchg 
         in 
         RR_MX, names, offset-base
-
     | NS name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
         RR_NS, names, offset-base
-
     | RP (mbox,txt) ->
         let names, offset, rdbuf = marshal_name names base rdbuf mbox in
         let names, offset, _ = marshal_name names offset rdbuf txt in
         RR_RP, names, offset-base
-    
     | RT (x, name) ->
         BE.set_uint16 rdbuf 0 x;
         let names, offset, _ = 
           marshal_name names (base+2) (Cstruct.shift rdbuf 2) name
         in
         RR_RT, names, offset-base
-
     | PTR name -> 
         let names, offset, _ = marshal_name names base rdbuf name in
         RR_PTR, names, offset-base
-
     | SOA (mn,rn, serial, refresh, retry, expire, minimum) ->
         let names, offset, rdbuf = marshal_name names base rdbuf mn in
         let names, offset, rdbuf = marshal_name names offset rdbuf rn in
@@ -738,7 +755,6 @@ let marshal_rdata names base buf rdata =
         BE.set_uint32 rdbuf 12 expire;
         BE.set_uint32 rdbuf 16 minimum;
         RR_SOA, names, 20+offset-base
-
     | SRV (prio, weight, port, name) ->
         BE.set_uint16 rdbuf 0 prio;
         BE.set_uint16 rdbuf 2 weight;
@@ -747,39 +763,26 @@ let marshal_rdata names base buf rdata =
           marshal_name names (base+6) (Cstruct.shift rdbuf 6) name
         in
         RR_SRV, names, offset-base
-
     | TXT strings -> 
         RR_TXT, names, List.fold_left (fun acc s ->
           let s, slen = charstr s in
           Cstruct.set_buffer s 0 rdbuf acc slen;
           acc+slen
         ) 0 strings
-
     | WKS (a,p, bm) ->
         BE.set_uint32 rdbuf 0 a;
         set_uint8 rdbuf 4 (byte_to_int p);
         let bmlen = String.length bm in
         Cstruct.set_buffer bm 0 rdbuf 5 bmlen;
         RR_WKS, names, 5+bmlen
-
     | X25 x25 ->
         let s,slen = charstr x25 in
         Cstruct.set_buffer s 0 rdbuf 0 slen;
         RR_X25, names, slen
-
     | EDNS0 (len, rcode, do_bit, _) ->
-        set_rr_cls buf len;
-        let ttl = Int32.logor
-                    (Int32.shift_left (Int32.of_int rcode) 24)
-                    (Int32.shift_left (if (do_bit) then 1l else 0l) 15)
-        in
-        set_rr_ttl buf ttl;
-        RR_OPT, names, 0
-          
-  in
-  set_rr_typ buf (rr_type_to_int t);
-  set_rr_rdlen buf rdlen;
-  names, base+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
+       RR_OPT, names, 0
+ 
+(* let marshal_rr names base buf rdata =  *)
 
 let parse_rr names base buf =
   let name, (base,buf) = parse_name names base buf in
@@ -808,9 +811,26 @@ let parse_rr names base buf =
 
 let marshal_rr (names, base, buf) rr =
   let names, base, buf = marshal_name names base buf rr.name in 
-  set_rr_cls buf (rr_class_to_int rr.cls);
-  set_rr_ttl buf rr.ttl;
-  marshal_rdata names base buf rr.rdata
+  let base, rdbuf = base+sizeof_rr, Cstruct.shift buf sizeof_rr in
+  let t, names, rdlen = marshal_rdata names base rdbuf rr.rdata in
+  set_rr_typ buf (rr_type_to_int t);
+  set_rr_rdlen buf rdlen;
+  (* in case the record is an edns field, we need to treat it specially 
+   * for its ttl and class fields. *)
+  let _ = match rr.rdata with
+  | EDNS0 (len, rcode, do_bit, _) -> 
+      let _ = set_rr_cls buf len in 
+      let ttl = 
+        Int32.logor
+          (Int32.shift_left (Int32.of_int rcode) 24)
+          (Int32.shift_left (if (do_bit) then 1l else 0l) 15)
+      in
+        set_rr_ttl buf ttl
+   | _ -> 
+       set_rr_cls buf (rr_class_to_int rr.cls);
+       set_rr_ttl buf rr.ttl
+  in
+  names, base+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
 
 cenum qr {
   Query = 0;
