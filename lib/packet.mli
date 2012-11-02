@@ -50,6 +50,7 @@ cenum dnssec_alg {
   PRIVATEOID = 254
 } as uint8_t
 val int_to_dnssec_alg : int -> dnssec_alg option
+val dnssec_alg_to_int : dnssec_alg -> int
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
 cenum q_type {

@@ -17,6 +17,6 @@
 open Lwt
 
 let t = Dns_server.listen_with_zonefile
-  ~address:"0.0.0.0" ~port:5335 ~zonefile:"test.zone" 
+  ~address:"0.0.0.0" ~port:5335 ~zonefile:"lib_test/test.zone" 
 
 let _ = Lwt_main.run t

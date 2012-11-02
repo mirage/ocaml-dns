@@ -113,11 +113,10 @@ let sign_records
     (* Firstly marshal the rrsig field *)
     let buf = Lwt_bytes.create 4096 in 
     let name_len = char_of_int (List.length name) in 
-    let unsign_sig_rr = RRSIG(typ, alg, name_len, 0l, expiration, inception,
+    let unsign_sig_rr = RRSIG(typ, alg, name_len, ttl, expiration, inception,
     tag, owner, "") in
     let names = Hashtbl.create 0 in 
     let (_, names, rdbuf) = Packet.marshal_rdata names 0 buf unsign_sig_rr in 
-    printf "got %d bytes in rr\n%!" rdbuf; 
     let rec marshall_rrset off buf = function
       | [] -> off
       | rr :: rrset -> 
@@ -125,34 +124,17 @@ let sign_records
           let buf = Cstruct.shift buf off in 
           let _, rdlen, _ = 
             marshal_rr (names, 0, buf) 
-            Packet.({name=rr.name; ttl=0l; cls=rr.cls;
+            Packet.({name=rr.name; ttl=ttl; cls=rr.cls;
                     rdata=rr.rdata;}) in
-          printf "got %d bytes in rr\n%!" rdlen; 
             off + (marshall_rrset rdlen buf rrset)
     in 
     let rdlen = marshall_rrset rdbuf buf rrset in
-    let _ = Cstruct.hexdump (Cstruct.sub buf 0 rdlen) in  
     let data = Cstruct.to_string (Cstruct.sub buf 0 rdlen) in
-
-    let _ = Printf.printf "data:\n" in
-    let _ = 
-      String.iter (
-        fun a -> Printf.printf "%02x " (int_of_char a)
-      ) data in
-    let _ = Printf.printf "\n" in
- 
    let sign = 
       match key with
-      | Rsa key -> Rsa.sign alg key data
+      | Rsa key -> Rsa.sign_msg alg key data
       | _ -> failwith "invalid key type"
     in
-    
-    let _ = Printf.printf "sign: \n" in
-    let _ = 
-      String.iter (
-        fun a -> Printf.printf "%02x " (int_of_char a)
-      ) sign in
-    let _ = Printf.printf "\n" in
      Packet.({
        name=name; cls=Packet.RR_IN; ttl=ttl;
        rdata=(RRSIG(typ, alg, name_len, ttl, expiration, inception,

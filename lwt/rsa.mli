@@ -29,4 +29,5 @@ type param =
 type rsa_key
 
 val new_rsa_key_from_param : param -> rsa_key
-val sign : Packet.dnssec_alg -> rsa_key -> string -> string 
+val sign_msg : Packet.dnssec_alg -> rsa_key -> string -> string
+val rsa_write_privkey : string -> rsa_key -> unit

@@ -49,15 +49,24 @@ external rsa_set_dp : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_dp"
 external rsa_get_dq : rsa_key -> string = "ocaml_ssl_ext_rsa_get_dq"
 external rsa_set_dq : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_dq"
 external rsa_get_qinv : rsa_key -> string = "ocaml_ssl_ext_rsa_get_qinv"
-external rsa_set_qinv : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_qinv"
+external rsa_set_qinv : rsa_key -> string -> unit = 
+  "ocaml_ssl_ext_rsa_set_qinv"
+
+external rsa_write_privkey :  string -> rsa_key -> unit = 
+  "ocaml_ssl_ext_rsa_write_privkey"
+
+external rsa_sign_msg : rsa_key -> string -> int -> string = 
+  "ocaml_ssl_sign_msg"
 
 let hex_of_string s = 
   let ret = ref "" in 
-  String.iter (fun x -> ret := !ret ^ (Printf.sprintf "%02x" (Char.code x)) ) s;
+  String.iter 
+    (fun x -> 
+       ret := !ret ^ (Printf.sprintf "%02x" (Char.code x)) ) s;
   !ret
 
-let from_hex s = (* if s = "" then "" else *) C.transform_string (C.Hexa.decode()) s
-let to_hex s = (* if s = "" then "" else *) C.transform_string (C.Hexa.encode()) s
+let from_hex s = C.transform_string (C.Hexa.decode()) s
+let to_hex s = C.transform_string (C.Hexa.encode()) s
 
 let new_rsa_key_from_param param = 
   let ret = new_rsa_key () in 
@@ -71,5 +80,7 @@ let new_rsa_key_from_param param =
     rsa_set_qinv ret (hex_of_string param.qinv);
     ret
 
-let sign alg key data =
-  failwith "unimplemented rsa sign"
+let sign_msg alg key data =
+  let ret = rsa_sign_msg key data 
+              (Packet.dnssec_alg_to_int alg) in
+    ret

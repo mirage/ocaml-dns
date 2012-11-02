@@ -33,6 +33,9 @@
 #include <openssl/err.h>
 #include <openssl/crypto.h>
 
+#include <openssl/md5.h>
+#include <openssl/sha.h>
+
 // SSL
 /* Some definitions from Ocaml-SSL */
 #define Cert_val(v) (*((X509**)Data_custom_val(v)))
@@ -40,6 +43,21 @@
 #define EVP_val(v) (*((EVP_PKEY**)Data_custom_val(v)))
 #define Ctx_val(v) (*((SSL_CTX**)Data_custom_val(v)))
 #define SSL_val(v) (*((SSL**)Data_custom_val(v)))
+
+// RSA
+
+#define RSA_val(v) (*((RSA**)Data_custom_val(v)))
+
+/* Convert a BIGNUM into a string */
+char *bn_to_hex(const BIGNUM *bn)
+{
+    char *res = "";
+    caml_enter_blocking_section();
+    if (bn != NULL)
+        res = BN_bn2hex(bn);
+    caml_leave_blocking_section();
+    return res;
+}
 
 CAMLprim value ocaml_ssl_ext_new_rsa_key(value vfilename) {
     value block;
@@ -192,4 +210,115 @@ CAMLprim value ocaml_ssl_ext_rsa_set_qinv(value key, value val) {
     char *hex_val = String_val(val);
     BN_hex2bn(&rsa->iqmp, hex_val);
     CAMLreturn(Val_unit);
+}
+
+unsigned char* 
+get_message_digest(const unsigned char *msg, int msg_len,
+        int hash_method) {
+  switch(hash_method)
+  {
+    case NID_md5:
+      return MD5(msg, msg_len, NULL);
+      break;
+    case NID_sha1:
+      return SHA1(msg, msg_len, NULL);
+      break;
+    case NID_sha256:
+      return SHA256(msg, msg_len, NULL);
+      break;
+    case NID_sha512:
+      return SHA512(msg, msg_len, NULL);
+      break;
+    default:
+      caml_raise_constant(*caml_named_value("ssl_ext_exn_rsa_error"));
+      break;
+  }
+}
+
+int digest_len(int hash_method) {
+  switch(hash_method) {
+    case NID_md5: return MD5_DIGEST_LENGTH;
+    case NID_sha1: return SHA_DIGEST_LENGTH;
+    case NID_sha256: return SHA256_DIGEST_LENGTH;
+    case NID_sha512: return SHA512_DIGEST_LENGTH;
+    default: return 0;
+  }
+}
+
+CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
+    value dnssec_alg) {
+  CAMLparam3(key, msg, dnssec_alg);
+  
+  CAMLlocal1(signature);
+  RSA *rsa = RSA_val(key);
+  int digest_alg, encryption_alg;
+  int alg = Int_val(dnssec_alg);
+  unsigned char *buf = malloc(caml_string_length(msg));
+  printf("message is %d bytes long\n", caml_string_length(msg));
+  memcpy(buf, String_val(msg),caml_string_length(msg));
+
+  switch(alg) {
+    case 1:
+      digest_alg = NID_md5;
+      encryption_alg = NID_rsa;
+      break;
+    case 5:
+      digest_alg = NID_sha1;
+      encryption_alg = NID_rsa;
+      break;
+    case 8:
+      printf ("sha256 used\n");
+      digest_alg = NID_sha256;
+      encryption_alg = NID_rsa;
+      break;
+    case 10:
+      digest_alg = NID_sha512;
+      encryption_alg = NID_rsa;
+      break;
+    default:
+      caml_raise_constant(*caml_named_value("ssl_ext_exn_rsa_error"));
+      break;
+  }
+
+  int dgs_len = digest_len(digest_alg);
+  unsigned char * dgs =
+    get_message_digest((const unsigned char *)buf, 
+        caml_string_length(msg), digest_alg);
+  unsigned char *sign = malloc(RSA_size(rsa));
+  unsigned int sig_len;
+
+  if(RSA_sign(digest_alg, dgs, dgs_len,
+      sign, &sig_len, rsa) == 0) {
+    caml_named_value("ssl_ext_exn_rsa_error");
+  }
+
+  signature =  caml_alloc_string(sig_len);
+  memcpy(String_val(signature), sign, sig_len);
+
+  CAMLreturn(signature);
+}
+
+
+CAMLprim value ocaml_ssl_ext_rsa_write_privkey(value vfilename,
+    value key) {
+  CAMLparam2(vfilename, key);
+  RSA *rsa = RSA_val(key);
+  char *filename = String_val(vfilename);
+  FILE *fh = NULL;
+
+  if((fh = fopen(filename, "w")) == NULL) {
+    caml_raise_constant(*caml_named_value("ssl_ext_exn_rsa_error"));
+  }
+
+  caml_enter_blocking_section();
+  if((PEM_write_RSAPrivateKey(fh, rsa, NULL, NULL, 0,
+          PEM_def_callback, NULL)) == NULL){
+    fclose(fh);
+    caml_leave_blocking_section();
+    caml_raise_constant(*caml_named_value("ssl_ext_exn_rsa_error"));
+  }
+  fclose(fh);
+  caml_leave_blocking_section();
+
+  CAMLreturn(Val_unit);
 }
