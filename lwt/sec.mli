@@ -19,4 +19,8 @@ type key =
 val load_key : string -> (Packet.dnssec_alg * key)
 val sign_records : ?inception:int32 -> ?expiration:int32 -> 
   Packet.dnssec_alg -> key -> int -> Name.domain_name -> 
-    Packet.rr list -> Packet.rr 
+    Packet.rr list -> Packet.rr
+
+
+val get_dnssec_key: ?zsk:bool -> ?sep:bool -> Packet.dnssec_alg -> 
+  key -> Packet.rdata 

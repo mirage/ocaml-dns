@@ -80,6 +80,26 @@ let new_rsa_key_from_param param =
     rsa_set_qinv ret (hex_of_string param.qinv);
     ret
 
+let get_dnssec_rdata key =
+  let e = from_hex (rsa_get_e key) in 
+  let n = from_hex (rsa_get_n key) in  
+  let ret = Lwt_bytes.create 4096 in
+  let _ = Printf.printf "e len : %d\n%!" (String.length e) in 
+  let len = 
+    if (String.length e > 255) then
+      let _ = Cstruct.LE.set_uint16 ret (String.length e) in
+        2
+    else 
+      let _ = Cstruct.set_uint8 ret (String.length e) in 
+        1
+  in
+  let buf = Cstruct.shift ret len in 
+  let _ = Cstruct.set_buffer e 0 buf 0 (String.length e) in
+  let buf = Cstruct.shift buf (String.length e) in 
+  let _ = Cstruct.set_buffer n 0 buf 0 (String.length n) in 
+  let len = len + (String.length e) + (String.length n) in 
+    Cstruct.to_string (Cstruct.sub ret 0 len)
+
 let sign_msg alg key data =
   let ret = rsa_sign_msg key data 
               (Packet.dnssec_alg_to_int alg) in

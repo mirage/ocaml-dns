@@ -254,7 +254,6 @@ CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
   int digest_alg, encryption_alg;
   int alg = Int_val(dnssec_alg);
   unsigned char *buf = malloc(caml_string_length(msg));
-  printf("message is %d bytes long\n", caml_string_length(msg));
   memcpy(buf, String_val(msg),caml_string_length(msg));
 
   switch(alg) {
@@ -267,7 +266,6 @@ CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
       encryption_alg = NID_rsa;
       break;
     case 8:
-      printf ("sha256 used\n");
       digest_alg = NID_sha256;
       encryption_alg = NID_rsa;
       break;
@@ -282,7 +280,7 @@ CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
 
   int dgs_len = digest_len(digest_alg);
   unsigned char * dgs =
-    get_message_digest((const unsigned char *)buf, 
+    get_message_digest((const unsigned char *)buf,
         caml_string_length(msg), digest_alg);
   unsigned char *sign = malloc(RSA_size(rsa));
   unsigned int sig_len;
@@ -294,7 +292,6 @@ CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
 
   signature =  caml_alloc_string(sig_len);
   memcpy(String_val(signature), sign, sig_len);
-
   CAMLreturn(signature);
 }
 

@@ -101,6 +101,20 @@ let extract_type_from_rrset rrset =
       | _ -> failwith "SInged rr's must have the same ttl, name and type"
   ) rrset None
 
+let get_dnssec_key ?(zsk=true) ?(sep=false) alg key =
+  let flags = 0x80
+(*    lor 
+     (if (zsk) then 0x80 else 0x0)
+     (if (sep) then 0x8000 else 0x0) *)
+  in
+  let key_bytes = 
+    match (key) with
+      | Rsa key -> Rsa.get_dnssec_rdata key 
+      | _ -> failwith "Unsupported key type"
+  in 
+    DNSKEY(flags, alg, key_bytes)
+
+
 let sign_records 
   ?(inception=(Int32.of_float (Unix.gettimeofday ()))) (* inception now *)
   ?(expiration=604800l) (* 1 week duration *) 
