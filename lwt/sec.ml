@@ -198,16 +198,30 @@ let marshal_rrsig_data ttl name rrsig rrset =
   let (_, names, rdbuf) = Packet.marshal_rdata names 
                             0 buf rrsig in 
   (* TODO If more than one records, I need to order them *)
+
+  let rrset = 
+    List.map (
+      fun rr -> 
+        let buf = Lwt_bytes.create 1024 in
+        let _, rdlen, _ =
+          marshal_rr ((Hashtbl.create 1), 0, buf)
+          Packet.({name=rr.name; ttl=ttl; cls=rr.cls;
+          rdata=rr.rdata;}) in
+          Cstruct.sub buf 0 rdlen 
+    ) rrset in 
+  let rrset = 
+    List.sort (
+      fun a b -> 
+        String.compare (Cstruct.to_string a) (Cstruct.to_string b)
+    ) rrset in 
+
   let rec marshall_rrset off buf = function
     | [] -> off
     | rr :: rrset -> 
-      let names = Hashtbl.create 0 in 
+      let len = Cstruct.len rr in 
       let buf = Cstruct.shift buf off in 
-      let _, rdlen, _ = 
-        marshal_rr (names, 0, buf) 
-          Packet.({name=rr.name; ttl=ttl; cls=rr.cls;
-                   rdata=rr.rdata;}) in
-          off + (marshall_rrset rdlen buf rrset)
+      let _ = Cstruct.blit_buffer rr 0 buf 0 len in 
+        off + (marshall_rrset len buf rrset)
   in 
   let rdlen = marshall_rrset rdbuf buf rrset in
     Cstruct.to_string (Cstruct.sub buf 0 rdlen)
