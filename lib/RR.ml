@@ -62,6 +62,7 @@ and rdata =
   | WKS of (int32 * byte * cstr) list 
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
+  | DS of (int * Packet.dnssec_alg * Packet.digest_alg * cstr) list
   | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 * 
                int32 * int32 * int * Name.domain_name * string) list
 

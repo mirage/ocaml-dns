@@ -26,7 +26,14 @@
 open Name
 open Cstruct
 
-type digest_alg
+cenum digest_alg {
+  SHA1 = 1;
+  SHA256 = 2
+} as uint8_t
+
+val digest_alg_to_int : digest_alg -> int
+val int_to_digest_alg : int -> digest_alg option 
+
 type gateway_tc
 type pubkey_alg
 type ipseckey_alg
@@ -181,7 +188,7 @@ type rr_type =
 val string_to_rr_type : string -> rr_type option
 val rr_type_to_string : rr_type -> string
 val int_to_rr_type : int -> rr_type option 
-
+val rr_type_to_int : rr_type -> int 
 type type_bit_map
 type type_bit_maps
 
@@ -224,6 +231,7 @@ type rdata =
            (* udp size, rcode, do bit, options *)
 | EDNS0 of (int * int * bool * ((int * string) list)) 
 
+val hex_of_string : string -> string 
 val rdata_to_string : rdata -> string
 val rdata_to_rr_type : rdata -> rr_type
 val marshal_rdata: (Name.domain_name, int) Hashtbl.t -> int -> buf -> rdata ->

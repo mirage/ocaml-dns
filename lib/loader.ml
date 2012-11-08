@@ -145,7 +145,10 @@ let add_rrset rrset owner db =
             | (DNSKEY l1, DNSKEY l2) ->
                 (rrset.ttl, List.rev_append rest
                   ({ ttl = rrset.ttl; rdata = DNSKEY (mfn l1 l2) } :: rrsets_done))          
-            | (Unknown (t1, l1), Unknown (t2, l2)) ->
+            | (DS l1, DS l2) ->
+                (rrset.ttl, List.rev_append rest
+                  ({ ttl = rrset.ttl; rdata = DS (mfn l1 l2) } :: rrsets_done))          
+             | (Unknown (t1, l1), Unknown (t2, l2)) ->
                 if t1 = t2 then 
                   (rrset.ttl, List.rev_append rest
                     ({ ttl = rrset.ttl; rdata = Unknown (t1,(mfn l1 l2)) } 
@@ -278,13 +281,68 @@ let add_dnskey_rr flags typ key ttl owner db =
   let dnskey = hashcons_charstring tmp in 
   add_rrset { ttl; rdata = DNSKEY [ (flags, typ, dnskey) ] } owner db
 
+(** valeur entière d'un chiffre hexa *)
+let char_of_hex_value c =
+  int_of_char c - (
+    if c >= '0' && c <= '9' then 48 (*int_of_char '0'*)
+              else if c >= 'A' && c <= 'F' then 55 (* int_of_char 'A' - 10 *)
+    else if c >= 'a' && c <= 'f' then 87 (* int_of_char 'a' - 10
+                  *)
+              else assert false
+  )
+
+let init n f =
+  if n >= 0
+  then
+    let s = String.create n in
+    for i = 0 to pred n do
+      String.set s i (f i)
+    done ;
+    s
+    else
+      let n = (- n) in
+      let s = String.create n in
+      for i = pred n downto 0 do
+        String.set s i (f (n-i-1))
+    done ;
+    s
+
+let string_of_hex s = 
+  let l = String.length s in
+  if l land 1 = 1 then invalid_arg "String.from_hex" ;
+        init (l lsr 1) (
+          fun i ->
+            let i = i lsl 1 in
+            Char.chr (
+              (char_of_hex_value (String.get s i) lsl 4)
+              + (char_of_hex_value (String.get s (i+1)))
+            )
+       )
+
+
+let add_ds_rr tag alg digest key ttl owner db =
+  let alg = 
+    match (Packet.int_to_dnssec_alg alg) with
+      | None -> failwith (sprintf "add_ds_rr: unsupported alg id %d" alg)
+      | Some a -> a 
+  in 
+  let digest = 
+    match (Packet.int_to_digest_alg digest) with
+      | Some a -> a
+      | None -> failwith (sprintf "add_ds_rr : invalid hashing alg %d" digest)
+  in
+  let tmp = string_of_hex key in
+  let ds = hashcons_charstring tmp in
+  printf "reading %s key (len %d)\n%!" key (String.length tmp); 
+  add_rrset { ttl; rdata = DS [ (tag, alg, digest, ds) ] } owner db
+
 let add_rrsig_rr typ alg lbl orig_ttl exp_ts inc_ts tag name sign ttl owner db = 
-  printf "typ: %s, alf:%d\n%!" typ alg; 
+    printf "typ: %s, alf:%d\n%!" typ alg; 
   let typ = 
     match (Packet.string_to_rr_type ("RR_"^typ)) with 
       | None -> failwith (sprintf "add_rrsig_rr failed: uknown type %s" typ)
       | Some a -> a 
-  in
+            in
   let alg = 
     match (Packet.int_to_dnssec_alg alg) with
       | None -> failwith (sprintf "add_rrsig_rr failed: uknown dnssec alg %d" alg)
@@ -296,9 +354,9 @@ let add_rrsig_rr typ alg lbl orig_ttl exp_ts inc_ts tag name sign ttl owner db =
                   inc_ts, tag, name, sign)] in
   add_rrset { ttl; rdata = rr; } owner db 
 
-(* State variables for the parser & lexer *)
+  (* State variables for the parser & lexer *)
 type parserstate = {
-    mutable db: db;
+  mutable db: db;
     mutable paren: int;
     mutable filename: string;
     mutable lineno: int;

@@ -22,7 +22,8 @@ open Name
 open Cstruct
 
 cenum digest_alg {
-  SHA1 = 1
+  SHA1 = 1;
+  SHA256 = 2
 } as uint8_t
 
 cenum gateway_tc {
@@ -223,6 +224,14 @@ type rdata =
   | X25 of string 
   | EDNS0 of (int * int * bool * ((int * string) list)) 
 
+let hex_of_string in_str = 
+  let out_str = ref "" in 
+  let _ = String.iter (
+    fun ch ->
+      out_str := !out_str ^ (sprintf "%02x" (int_of_char ch))
+  ) in_str in 
+    !out_str
+
 let rdata_to_string = function
   | A ip -> sprintf "A (%s)" (ipv4_to_string ip)
   | AAAA bs -> sprintf "AAAA (%s)" bs
@@ -230,7 +239,7 @@ let rdata_to_string = function
     -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
   | CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
   | DNSKEY (flags, alg, key) 
-    -> (sprintf "DNSKEY (%x, %s, %s)" 
+    -> (sprintf "DNSKEY (%d, %s, %s)" 
           flags (dnssec_alg_to_string alg) 
           (Base64.encode key)
     )
@@ -277,7 +286,8 @@ let rdata_to_string = function
         tag (Name.domain_name_to_string name) (Base64.encode sign)
   | DS (keytag, alg, digest_t, digest) 
     -> (sprintf "DS (%d,%s,%s, '%s')" keytag
-          (dnssec_alg_to_string alg) (digest_alg_to_string digest_t) digest
+          (dnssec_alg_to_string alg) (digest_alg_to_string digest_t) 
+          (hex_of_string digest)
     )
   | IPSECKEY (precedence, gw_type, alg, gw, pubkey)
     -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" (byte_to_int precedence)
@@ -342,12 +352,6 @@ let rdata_to_rr_type = function
  | WKS _       -> RR_WKS      
  | X25 _       -> RR_X25      
  | EDNS0 _     -> RR_OPT   
-
-
-
-
-
-
 
 cenum rr_class {
   RR_IN = 1;
@@ -523,9 +527,9 @@ let parse_rdata names base t cls ttl buf =
   let stop (x, _) = x in
   (** Extract (length, string) encoded strings, with remainder for
       chaining. *)
-  let parse_charstr buf = 
+  let parse_charstr buf =
     let len = get_uint8 buf 0 in
-    to_string (sub buf 1 len), Cstruct.shift buf (1+len)
+      to_string (sub buf 1 len), Cstruct.shift buf (1+len) 
   in
   match t with
     | RR_OPT -> 
@@ -559,8 +563,7 @@ let parse_rdata names base t cls ttl buf =
     
     | RR_A -> A (BE.get_uint32 buf 0)
         
-    | RR_AAAA -> AAAA (buf |> parse_charstr |>stop)
-        
+    | RR_AAAA -> AAAA (Cstruct.to_string buf)
     | RR_AFSDB -> AFSDB (BE.get_uint16 buf 0,
                          buf |> parse_name names (base+2) |> stop)
         
@@ -576,7 +579,20 @@ let parse_rdata names base t cls ttl buf =
         in
         let key = Cstruct.shift buf 4 |> to_string in
         DNSKEY (flags, alg, key)
-
+    | RR_DS ->
+        let tag = BE.get_uint16 buf 0 in 
+        let alg = 
+          match (int_to_dnssec_alg (get_uint8 buf 2)) with
+          | Some a -> a 
+          | None -> failwith "parse_rdata unsupported dnssec_alg id"
+        in 
+        let digest = 
+          match (int_to_digest_alg (get_uint8 buf 3)) with
+          |Some a -> a
+          | None -> failwith "parse_rdata unsupported hash algorithm id"
+        in 
+        let key = Cstruct.shift buf 4 |> to_string in
+          DS(tag, alg, digest, key)
     | RR_HINFO -> let cpu, buf = parse_charstr buf in
                   let os = buf |> parse_charstr |> stop in
                   HINFO (cpu, os)
@@ -678,7 +694,14 @@ let parse_rdata names base t cls ttl buf =
         let slen = String.length key in
         Cstruct.set_buffer key 0 rdbuf 4 slen;
         RR_DNSKEY, names, 4+slen
-    | RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) ->
+    | DS (tag, alg, digest, key) ->
+        BE.set_uint16 rdbuf 0 tag;
+        set_uint8 rdbuf 2 (dnssec_alg_to_int alg);
+        set_uint8 rdbuf 3 (digest_alg_to_int digest);
+        let slen = String.length key in
+        Cstruct.set_buffer key 0 rdbuf 4 slen;
+        RR_DS, names, 4+slen
+     | RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) ->
         let _ = Cstruct.BE.set_uint16 rdbuf 0 (rr_type_to_int typ) in 
         let _ = Cstruct.set_uint8 rdbuf 2 (dnssec_alg_to_int alg) in 
         let _ = Cstruct.set_uint8 rdbuf 3 (int_of_char lbl) in 
@@ -795,9 +818,9 @@ let parse_rr names base buf =
         let rdlen = get_rr_rdlen buf in
         let cls = get_rr_cls buf in 
         let rdata = 
-          let rdbuf = Cstruct.sub buf sizeof_rr rdlen in
-          parse_rdata names (base+sizeof_rr) typ cls ttl rdbuf
-        in
+        let rdbuf = Cstruct.sub buf sizeof_rr rdlen in
+          parse_rdata names (base+sizeof_rr) typ cls ttl rdbuf 
+          in
         match (typ, (get_rr_cls buf |> int_to_rr_class)) with
           | (RR_OPT, _) ->
               ({ name; cls=RR_IN; ttl; rdata }, 
