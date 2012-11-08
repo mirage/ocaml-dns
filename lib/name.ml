@@ -175,3 +175,17 @@ let canon2key domain_name =
     s 
   in List.fold_left (fun s l -> (labelize l) ^ "\000" ^ s) "" domain_name
 
+let rec dnssec_compare a b =
+  match (a, b) with
+  | [], [] -> 0
+  | [], _ -> -1
+  | _, [] -> 1
+  | a::a_tl, b::b_tl ->
+      if (String.compare a b = 0) then
+        compare a_tl b_tl
+      else
+        ( if (String.length a) = (String.length b) then 
+            String.compare a b
+          else 
+            compare (String.length a) (String.length b)
+        )
