@@ -59,7 +59,7 @@ char *bn_to_hex(const BIGNUM *bn)
     return res;
 }
 
-CAMLprim value ocaml_ssl_ext_new_rsa_key(value vfilename) {
+CAMLprim value ocaml_ssl_new_rsa_key(value vfilename) {
     value block;
     RSA *rsa = NULL;
     caml_enter_blocking_section();
@@ -75,14 +75,14 @@ CAMLprim value ocaml_ssl_ext_new_rsa_key(value vfilename) {
     return block;
 }
 
-CAMLprim value ocaml_ssl_ext_free_rsa_key(value key) {
+CAMLprim value ocaml_ssl_free_rsa_key(value key) {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
     RSA_free(rsa);
     CAMLreturn(Val_unit);
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_get_size(value key)
+CAMLprim value ocaml_ssl_rsa_get_size(value key)
 {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
@@ -93,14 +93,14 @@ CAMLprim value ocaml_ssl_ext_rsa_get_size(value key)
     CAMLreturn(Val_int(size));
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_get_n(value key)
+CAMLprim value ocaml_ssl_rsa_get_n(value key)
 {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
     CAMLreturn(caml_copy_string(String_val(bn_to_hex(rsa->n))));
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_set_n(value key, value val) {
+CAMLprim value ocaml_ssl_rsa_set_n(value key, value val) {
     CAMLparam2(key, val);
     RSA *rsa = RSA_val(key);
     char *hex_val = String_val(val);
@@ -110,14 +110,14 @@ CAMLprim value ocaml_ssl_ext_rsa_set_n(value key, value val) {
     CAMLreturn(Val_unit);
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_get_e(value key)
+CAMLprim value ocaml_ssl_rsa_get_e(value key)
 {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
     CAMLreturn(caml_copy_string(String_val(bn_to_hex(rsa->e))));
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_set_e(value key, value val) {
+CAMLprim value ocaml_ssl_rsa_set_e(value key, value val) {
     CAMLparam2(key, val);
     RSA *rsa = RSA_val(key);
     char *hex_val = String_val(val);
@@ -125,14 +125,14 @@ CAMLprim value ocaml_ssl_ext_rsa_set_e(value key, value val) {
     CAMLreturn(Val_unit);
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_get_d(value key)
+CAMLprim value ocaml_ssl_rsa_get_d(value key)
 {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
     CAMLreturn(caml_copy_string(String_val(bn_to_hex(rsa->d))));
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_set_d(value key, value val) {
+CAMLprim value ocaml_ssl_rsa_set_d(value key, value val) {
     CAMLparam2(key, val);
     RSA *rsa = RSA_val(key);
     char *hex_val = String_val(val);
@@ -140,13 +140,13 @@ CAMLprim value ocaml_ssl_ext_rsa_set_d(value key, value val) {
     CAMLreturn(Val_unit);
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_get_p(value key)
+CAMLprim value ocaml_ssl_rsa_get_p(value key)
 {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
     CAMLreturn(caml_copy_string(String_val(bn_to_hex(rsa->p))));
 }
-CAMLprim value ocaml_ssl_ext_rsa_set_p(value key, value val) {
+CAMLprim value ocaml_ssl_rsa_set_p(value key, value val) {
     CAMLparam2(key, val);
     RSA *rsa = RSA_val(key);
     char *hex_val = String_val(val);
@@ -154,14 +154,14 @@ CAMLprim value ocaml_ssl_ext_rsa_set_p(value key, value val) {
     CAMLreturn(Val_unit);
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_get_q(value key)
+CAMLprim value ocaml_ssl_rsa_get_q(value key)
 {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
     CAMLreturn(caml_copy_string(String_val(bn_to_hex(rsa->q))));
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_set_q(value key, value val) {
+CAMLprim value ocaml_ssl_rsa_set_q(value key, value val) {
     CAMLparam2(key, val);
     RSA *rsa = RSA_val(key);
     char *hex_val = String_val(val);
@@ -169,13 +169,13 @@ CAMLprim value ocaml_ssl_ext_rsa_set_q(value key, value val) {
     CAMLreturn(Val_unit);
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_get_dp(value key)
+CAMLprim value ocaml_ssl_rsa_get_dp(value key)
 {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
     CAMLreturn(caml_copy_string(String_val(bn_to_hex(rsa->dmp1))));
 }
-CAMLprim value ocaml_ssl_ext_rsa_set_dp(value key, value val) {
+CAMLprim value ocaml_ssl_rsa_set_dp(value key, value val) {
     CAMLparam2(key, val);
     RSA *rsa = RSA_val(key);
     char *hex_val = String_val(val);
@@ -183,14 +183,14 @@ CAMLprim value ocaml_ssl_ext_rsa_set_dp(value key, value val) {
     CAMLreturn(Val_unit);
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_get_dq(value key)
+CAMLprim value ocaml_ssl_rsa_get_dq(value key)
 {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
     CAMLreturn(caml_copy_string(String_val(bn_to_hex(rsa->dmq1))));
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_set_dq(value key, value val) {
+CAMLprim value ocaml_ssl_rsa_set_dq(value key, value val) {
     CAMLparam2(key, val);
     RSA *rsa = RSA_val(key);
     char *hex_val = String_val(val);
@@ -198,13 +198,13 @@ CAMLprim value ocaml_ssl_ext_rsa_set_dq(value key, value val) {
     CAMLreturn(Val_unit);
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_get_qinv(value key)
+CAMLprim value ocaml_ssl_rsa_get_qinv(value key)
 {
     CAMLparam1(key);
     RSA *rsa = RSA_val(key);
     CAMLreturn(caml_copy_string(String_val(bn_to_hex(rsa->iqmp))));
 }
-CAMLprim value ocaml_ssl_ext_rsa_set_qinv(value key, value val) {
+CAMLprim value ocaml_ssl_rsa_set_qinv(value key, value val) {
     CAMLparam2(key, val);
     RSA *rsa = RSA_val(key);
     char *hex_val = String_val(val);
@@ -333,8 +333,6 @@ CAMLprim value ocaml_ssl_verify_msg(value key, value msg,
   RSA *rsa = RSA_val(key);
   int digest_alg;
   int alg = Int_val(dnssec_alg);
-  unsigned char *buf = malloc(caml_string_length(msg));
-  memcpy(buf, String_val(msg),caml_string_length(msg));
   switch(alg) {
     case 1:
       digest_alg = NID_md5;
@@ -353,9 +351,11 @@ CAMLprim value ocaml_ssl_verify_msg(value key, value msg,
       break;
   }
 
+  unsigned char *buf = malloc(caml_string_length(msg));
+  memcpy(buf, String_val(msg),caml_string_length(msg));
   int dgs_len = digest_len(digest_alg);
   unsigned char * dgs =
-    get_message_digest((const unsigned char *)buf,
+    get_message_digest((const unsigned char*) buf,
         caml_string_length(msg), digest_alg);
   int ret = RSA_verify(digest_alg, dgs, dgs_len,
       String_val(sign), caml_string_length(sign), 
@@ -364,7 +364,7 @@ CAMLprim value ocaml_ssl_verify_msg(value key, value msg,
   CAMLreturn (Val_int(ret));
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_write_pubkey(value vfilename,
+CAMLprim value ocaml_ssl_rsa_write_pubkey(value vfilename,
     value key) {
   CAMLparam2(vfilename, key);
   RSA *rsa = RSA_val(key);
@@ -387,7 +387,7 @@ CAMLprim value ocaml_ssl_ext_rsa_write_pubkey(value vfilename,
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value ocaml_ssl_ext_rsa_write_privkey(value vfilename,
+CAMLprim value ocaml_ssl_rsa_write_privkey(value vfilename,
     value key) {
   CAMLparam2(vfilename, key);
   RSA *rsa = RSA_val(key);

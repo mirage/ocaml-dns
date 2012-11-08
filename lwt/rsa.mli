@@ -28,7 +28,10 @@ type param =
 
 type rsa_key
 
+val load_key: string -> (Packet.dnssec_alg * rsa_key)
 val new_rsa_key_from_param : param -> rsa_key
+val free_rsa_key : rsa_key -> unit 
+
 val sign_msg : Packet.dnssec_alg -> rsa_key -> string -> string
 val verify_msg : Packet.dnssec_alg -> rsa_key -> string -> 
   string -> bool

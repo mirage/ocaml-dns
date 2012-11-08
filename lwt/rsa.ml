@@ -14,6 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Packet
+open Printf
+
 module C = Cryptokit
 
 type param =
@@ -30,32 +33,32 @@ type param =
 
 type rsa_key
 
-external new_rsa_key : unit -> rsa_key = "ocaml_ssl_ext_new_rsa_key"
-external free_rsa_key : rsa_key -> unit = "ocaml_ssl_ext_free_rsa_key"
+external new_rsa_key : unit -> rsa_key = "ocaml_ssl_new_rsa_key"
+external free_rsa_key : rsa_key -> unit = "ocaml_ssl_free_rsa_key"
 
-external rsa_get_size : rsa_key -> int = "ocaml_ssl_ext_rsa_get_size"
-external rsa_get_n : rsa_key -> string = "ocaml_ssl_ext_rsa_get_n"
-external rsa_set_n : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_n"
-external rsa_get_e : rsa_key -> string = "ocaml_ssl_ext_rsa_get_e"
-external rsa_set_e : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_e"
-external rsa_get_d : rsa_key -> string = "ocaml_ssl_ext_rsa_get_d"
-external rsa_set_d : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_d"
-external rsa_get_p : rsa_key -> string = "ocaml_ssl_ext_rsa_get_p"
-external rsa_set_p : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_p"
-external rsa_get_q : rsa_key -> string = "ocaml_ssl_ext_rsa_get_q"
-external rsa_set_q : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_q"
-external rsa_get_dp : rsa_key -> string = "ocaml_ssl_ext_rsa_get_dp"
-external rsa_set_dp : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_dp"
-external rsa_get_dq : rsa_key -> string = "ocaml_ssl_ext_rsa_get_dq"
-external rsa_set_dq : rsa_key -> string -> unit = "ocaml_ssl_ext_rsa_set_dq"
-external rsa_get_qinv : rsa_key -> string = "ocaml_ssl_ext_rsa_get_qinv"
+external rsa_get_size : rsa_key -> int = "ocaml_ssl_rsa_get_size"
+external rsa_get_n : rsa_key -> string = "ocaml_ssl_rsa_get_n"
+external rsa_set_n : rsa_key -> string -> unit = "ocaml_ssl_rsa_set_n"
+external rsa_get_e : rsa_key -> string = "ocaml_ssl_rsa_get_e"
+external rsa_set_e : rsa_key -> string -> unit = "ocaml_ssl_rsa_set_e"
+external rsa_get_d : rsa_key -> string = "ocaml_ssl_rsa_get_d"
+external rsa_set_d : rsa_key -> string -> unit = "ocaml_ssl_rsa_set_d"
+external rsa_get_p : rsa_key -> string = "ocaml_ssl_rsa_get_p"
+external rsa_set_p : rsa_key -> string -> unit = "ocaml_ssl_rsa_set_p"
+external rsa_get_q : rsa_key -> string = "ocaml_ssl_rsa_get_q"
+external rsa_set_q : rsa_key -> string -> unit = "ocaml_ssl_rsa_set_q"
+external rsa_get_dp : rsa_key -> string = "ocaml_ssl_rsa_get_dp"
+external rsa_set_dp : rsa_key -> string -> unit = "ocaml_ssl_rsa_set_dp"
+external rsa_get_dq : rsa_key -> string = "ocaml_ssl_rsa_get_dq"
+external rsa_set_dq : rsa_key -> string -> unit = "ocaml_ssl_rsa_set_dq"
+external rsa_get_qinv : rsa_key -> string = "ocaml_ssl_rsa_get_qinv"
 external rsa_set_qinv : rsa_key -> string -> unit = 
-  "ocaml_ssl_ext_rsa_set_qinv"
+  "ocaml_ssl_rsa_set_qinv"
 
 external rsa_write_privkey :  string -> rsa_key -> unit = 
-  "ocaml_ssl_ext_rsa_write_privkey"
+  "ocaml_ssl_rsa_write_privkey"
 external rsa_write_pubkey :  string -> rsa_key -> unit = 
-  "ocaml_ssl_ext_rsa_write_pubkey"
+  "ocaml_ssl_rsa_write_pubkey"
 
 
 external rsa_sign_msg : rsa_key -> string -> int -> string = 
@@ -133,3 +136,69 @@ let verify_msg alg key data sign =
 
 let sign_msg alg key data =
   rsa_sign_msg key data (Packet.dnssec_alg_to_int alg)
+
+let decode_value value = 
+    C.transform_string (C.Base64.decode ()) 
+        (Re_str.global_replace (Re_str.regexp "=") "" value)
+
+let load_key file =
+  let size = ref 0 in
+  let n = ref "" in
+  let e = ref "" in
+  let d = ref "" in 
+  let p = ref "" in
+  let q = ref "" in 
+  let dp = ref "" in 
+  let dq = ref "" in 
+  let qinv = ref "" in
+  let dnssec_alg = ref RSAMD5 in 
+  let fd = open_in file in 
+  let rec parse_file in_stream =
+    try
+      let line = Re_str.split (Re_str.regexp "[\ \r]*:[\ \t]*") (input_line in_stream) in 
+        match line with
+          (* TODO: Need to check if this is an RSA key *)
+          | "Modulus" :: value ->
+              n := decode_value (List.hd value); 
+              size := (String.length !n) * 8;
+              parse_file in_stream 
+          | "PublicExponent" :: value ->
+              e := decode_value (List.hd value); parse_file in_stream             
+          | "PrivateExponent" :: value ->
+              d := decode_value (List.hd value); parse_file in_stream             
+          | "Prime1" :: value ->
+              p := decode_value (List.hd value); parse_file in_stream             
+          | "Prime2" :: value ->
+              q := decode_value (List.hd value); parse_file in_stream             
+          | "Exponent1" :: value ->
+              dp := decode_value (List.hd value); parse_file in_stream             
+          | "Exponent2" :: value ->
+              dq:= decode_value (List.hd value); parse_file in_stream             
+          | "Coefficient" :: value ->
+              qinv := decode_value (List.hd value); parse_file in_stream            
+          | "Algorithm" :: value -> begin 
+              let _ = 
+                dnssec_alg := 
+                match (int_to_dnssec_alg (int_of_string
+                (List.hd (Re_str.split (Re_str.regexp "[\ \t]+") (List.hd
+                value))))) with
+                | None -> failwith "Unsupported dnssec algorithm" 
+                | Some(a) when 
+                ((a=RSAMD5) || (a=RSASHA1) || (a=RSASHA256) || 
+                 (a = RSASHA512)) -> a
+                | Some a -> failwith (sprintf "Unsupported dnssec algorithm %s"
+                                      (dnssec_alg_to_string a))
+              in 
+             parse_file in_stream 
+          end
+          | typ :: value -> parse_file in_stream
+          | [] -> parse_file in_stream
+    with  End_of_file -> ()
+  in 
+  let _ = parse_file fd in 
+  let key = 
+    {size=(!size);n=(!n);e=(!e);d=(!d);p=(!p);q=(!q);dp=(!dp);
+    dq=(!dq);qinv=(!qinv);} 
+  in
+    (!dnssec_alg, new_rsa_key_from_param key)
+
