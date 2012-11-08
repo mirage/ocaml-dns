@@ -247,13 +247,9 @@ int digest_len(int hash_method) {
 
 CAMLprim value ocaml_ssl_hash_msg(value hash_alg, value msg) {
   CAMLparam2(hash_alg, msg);
-  
   CAMLlocal1(signature);
   int digest_alg;
   int alg = Int_val(hash_alg);
-  unsigned char *buf = malloc(caml_string_length(msg));
-  memcpy(buf, String_val(msg),caml_string_length(msg));
-
   switch(alg) {
     case 1:
       digest_alg = NID_sha1;
@@ -268,7 +264,7 @@ CAMLprim value ocaml_ssl_hash_msg(value hash_alg, value msg) {
 
   int dgs_len = digest_len(digest_alg);
   unsigned char * dgs =
-    get_message_digest((const unsigned char *)buf,
+    get_message_digest((const unsigned char *) String_val(msg),
         caml_string_length(msg), digest_alg);
 
   signature =  caml_alloc_string(dgs_len);
@@ -279,14 +275,10 @@ CAMLprim value ocaml_ssl_hash_msg(value hash_alg, value msg) {
 CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
     value dnssec_alg) {
   CAMLparam3(key, msg, dnssec_alg);
-  
   CAMLlocal1(signature);
   RSA *rsa = RSA_val(key);
   int digest_alg, encryption_alg;
   int alg = Int_val(dnssec_alg);
-  unsigned char *buf = malloc(caml_string_length(msg));
-  memcpy(buf, String_val(msg),caml_string_length(msg));
-
   switch(alg) {
     case 1:
       digest_alg = NID_md5;
@@ -308,10 +300,9 @@ CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
       caml_raise_constant(*caml_named_value("ssl_ext_exn_rsa_error"));
       break;
   }
-
   int dgs_len = digest_len(digest_alg);
   unsigned char * dgs =
-    get_message_digest((const unsigned char *)buf,
+    get_message_digest((const unsigned char *)String_val(msg),
         caml_string_length(msg), digest_alg);
   unsigned char *sign = malloc(RSA_size(rsa));
   unsigned int sig_len;
@@ -323,6 +314,8 @@ CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
 
   signature =  caml_alloc_string(sig_len);
   memcpy(String_val(signature), sign, sig_len);
+  free(sign);
+
   CAMLreturn(signature);
 }
 
@@ -351,11 +344,9 @@ CAMLprim value ocaml_ssl_verify_msg(value key, value msg,
       break;
   }
 
-  unsigned char *buf = malloc(caml_string_length(msg));
-  memcpy(buf, String_val(msg),caml_string_length(msg));
-  int dgs_len = digest_len(digest_alg);
+ int dgs_len = digest_len(digest_alg);
   unsigned char * dgs =
-    get_message_digest((const unsigned char*) buf,
+    get_message_digest((const unsigned char*) String_val(msg),
         caml_string_length(msg), digest_alg);
   int ret = RSA_verify(digest_alg, dgs, dgs_len,
       String_val(sign), caml_string_length(sign), 

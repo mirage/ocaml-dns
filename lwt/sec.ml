@@ -27,6 +27,11 @@ external ssl_hash_msg : int -> string -> string =
 type key = 
 | Rsa of Rsa.rsa_key
 
+type 'a dnssec_result = 
+  | Signed of 'a
+  | Failed of 'a
+  | Unsigned of 'a 
+
 let get_dnskey_tag rdata =
   match rdata with
   | Packet.DNSKEY(_, Packet.RSAMD5, key) -> 
@@ -94,8 +99,13 @@ let add_anchor st anchor =
 
 let cache_timeout st =
   st.cache <- List.filter (
-    fun (rr, ts, _) -> 
-      ((Int32.to_float rr.ttl) +. ts >= Unix.gettimeofday ())
+    fun (rr, ts, key) -> 
+      if ((Int32.to_float rr.ttl) +. ts < Unix.gettimeofday ()) then
+        let _ = match key with 
+                | Rsa k -> Rsa.free_rsa_key k 
+        in 
+          false
+      else true
  ) st.cache 
 
 let lookup_dnskey_cache st tag owner =
@@ -346,6 +356,9 @@ let rec verify_rr st rr rrsig =
   with ex -> 
     let _ = eprintf "verify_rr failed: %s\n%!" (Printexc.to_string ex)in 
       return false 
+
+let resolve st q typ name = 
+  return ( Failed([]) )
   
 (*
  * Key reading methods

@@ -13,6 +13,10 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
+
+open Packet 
+open Name 
+
 type key = 
   | Rsa of Rsa.rsa_key
 
@@ -22,10 +26,10 @@ val init_dnssec : ?resolver:Dns_resolver.t option -> unit ->
   dnssec_state Lwt.t
 val add_anchor : dnssec_state -> Packet.rr -> unit
 
-(* type dnssec_result = 
+type 'a dnssec_result = 
   | Signed of 'a
   | Failed of 'a
-  | Unsigned of 'a *)
+  | Unsigned of 'a 
 
 (* Methods to resolve dnssec verified records from dns *)
 val verify_rr : dnssec_state -> Packet.rr list -> Packet.rdata ->
@@ -41,4 +45,7 @@ val get_ds_rr : Name.domain_name -> Packet.digest_alg ->
   Packet.rdata -> Packet.rdata
 
 val get_dnskey_rr : ?ksk:bool -> ?zsk:bool -> Packet.dnssec_alg -> 
-  key -> Packet.rdata 
+  key -> Packet.rdata
+
+val resolve : dnssec_state -> q_class -> q_type -> domain_name ->
+  Packet.rr list dnssec_result Lwt.t 
