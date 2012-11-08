@@ -89,12 +89,8 @@ let add_anchor st anchor =
         st.anchors <- st.anchors @ [(anchor, key)]
     | DNSKEY (_, alg, _) -> 
       failwith (sprintf "add_anchor: unsupported %s" 
-      (dnssec_alg_to_string alg)) 
-
-(* type dnssec_result = 
-  | Signed of 'a
-  | Failed of 'a
-  | Unsigned of 'a *)
+      (dnssec_alg_to_string alg))
+    | _ -> failwith "add_anchor: Invalid rdata type"
 
 let cache_timeout st =
   st.cache <- List.filter (
@@ -190,39 +186,30 @@ let get_ds_rr owner digest rdata =
         Packet.DS(tag, alg, digest, value)
   | _ -> failwith("get_dnssec_key_tag: Invalid rdata ")
 
-let marshal_rrsig_data ttl name rrsig rrset = 
+let marshal_rrsig_data ttl rrsig rrset = 
   let buf = Lwt_bytes.create 4096 in 
   (* Firstly marshal the rrsig field *)
-  let name_len = char_of_int (List.length name) in 
   let names = Hashtbl.create 0 in 
   let (_, names, rdbuf) = Packet.marshal_rdata names 
                             0 buf rrsig in 
-  (* TODO If more than one records, I need to order them *)
-
-  let rrset = 
-    List.map (
-      fun rr -> 
-        let buf = Lwt_bytes.create 1024 in
-        let _, rdlen, _ =
-          marshal_rr ((Hashtbl.create 1), 0, buf)
-          Packet.({name=rr.name; ttl=ttl; cls=rr.cls;
-          rdata=rr.rdata;}) in
-          Cstruct.sub buf 0 rdlen 
-    ) rrset in 
   let rrset = 
     List.sort (
       fun a b -> 
-        String.compare (Cstruct.to_string a) (Cstruct.to_string b)
+        Packet.compare_rdata a.rdata b.rdata
     ) rrset in 
 
-  let rec marshall_rrset off buf = function
+ let rec marshall_rrset off buf = function
     | [] -> off
     | rr :: rrset -> 
-      let len = Cstruct.len rr in 
-      let buf = Cstruct.shift buf off in 
-      let _ = Cstruct.blit_buffer rr 0 buf 0 len in 
-        off + (marshall_rrset len buf rrset)
+        let names = Hashtbl.create 0 in 
+        let buf = Cstruct.shift buf off in 
+        let _, rdlen, _ = 
+          marshal_rr ~compress:false (names, 0, buf) 
+          Packet.({name=rr.name; ttl=ttl; cls=rr.cls;
+                   rdata=rr.rdata;}) in
+        off + (marshall_rrset rdlen buf rrset)
   in 
+
   let rdlen = marshall_rrset rdbuf buf rrset in
     Cstruct.to_string (Cstruct.sub buf 0 rdlen)
   
@@ -234,7 +221,7 @@ let sign_records
   let lbl = char_of_int (List.length name ) in 
   let unsign_sig_rr = RRSIG(typ, alg, lbl, ttl, expiration, inception,
     tag, owner, "") in
-  let data = marshal_rrsig_data ttl name unsign_sig_rr rrset in 
+  let data = marshal_rrsig_data ttl unsign_sig_rr rrset in 
   let sign = 
       match key with
       | Rsa key -> Rsa.sign_msg alg key data
@@ -244,6 +231,23 @@ let sign_records
        name=name; cls=Packet.RR_IN; ttl=ttl;
        rdata=(RRSIG(typ, alg, lbl, ttl, expiration, inception,
               tag, owner, sign)); })
+
+let verify_rrsig ttl inception expiration alg key tag 
+      owner rrset sign =
+ let _, name, typ = extract_type_from_rrset rrset in 
+  (* Firstly marshal the rrsig field *)
+  printf "checking key %s using key  for %s - %d\n%!" 
+          (Name.domain_name_to_string name) 
+          (Name.domain_name_to_string owner) tag;
+   let lbl = char_of_int (List.length name ) in 
+  let unsign_sig_rr = 
+    RRSIG(typ, alg, lbl, ttl, expiration, inception, 
+          tag, owner, "") in
+  let data = marshal_rrsig_data ttl unsign_sig_rr rrset in 
+    match key with
+      | Rsa key -> Rsa.verify_msg alg key data sign
+      | _ -> failwith "invalid key type"
+
 (*
  * Methods to resolve and verify dnssec records 
  * *)
@@ -272,20 +276,6 @@ let resolve_record st typ owner =
   with ex -> 
     failwith (sprintf "get_ds_record failed:%s" (Printexc.to_string ex))
 
-let verify_rr_inner ttl inception expiration alg key tag 
-      owner rrset sign =
-  printf "checking key using key \n%!";
-  let _, name, typ = extract_type_from_rrset rrset in 
-  (* Firstly marshal the rrsig field *)
-  let lbl = char_of_int (List.length name ) in 
-  let unsign_sig_rr = 
-    RRSIG(typ, alg, lbl, ttl, expiration, inception, 
-          tag, owner, "") in
-  let data = marshal_rrsig_data ttl name unsign_sig_rr rrset in 
-    match key with
-      | Rsa key -> Rsa.verify_msg alg key data sign
-      | _ -> failwith "invalid key type"
-
 let rec verify_rr st rr rrsig =
   try_lwt
     match rrsig with 
@@ -298,12 +288,12 @@ let rec verify_rr st rr rrsig =
           | (Some key, _) -> 
               let _ = printf "signing dnskey for %s found in anchor\n%!"
                 (Packet.rdata_to_string rrsig) in 
-              return (verify_rr_inner ttl inc_ts exp_ts alg
+              return (verify_rrsig ttl inc_ts exp_ts alg
                         key tag owner rr sign)
           | (_, Some key) -> 
-              let _ = printf "signing dnskey for %s is cache \n%!"
+              let _ = printf "signing dnskey for %s in cache \n%!"
                 (Packet.rdata_to_string rrsig) in
-              return (verify_rr_inner ttl inc_ts exp_ts alg 
+              return (verify_rrsig ttl inc_ts exp_ts alg 
                         key tag owner rr sign)
           | (_, _) ->
             match typ with 
@@ -341,7 +331,7 @@ let rec verify_rr st rr rrsig =
                   return false
             end 
           | _ ->
-              printf "non-dnskey. look for signing dnskey for %s\n%!"
+              printf "look for signing dnskey for %s\n%!"
                       (Name.domain_name_to_string owner); 
               lwt dnskey_rr, dnskey_rrsig  = 
                 resolve_record st Q_DNSKEY owner in 
@@ -361,74 +351,6 @@ let rec verify_rr st rr rrsig =
  * Key reading methods
  *
  * *)
-
-let decode_value value = 
-    C.transform_string (C.Base64.decode ()) 
-        (Re_str.global_replace (Re_str.regexp "=") "" value)
-
-let load_key file =
-  let size = ref 0 in
-  let n = ref "" in
-  let e = ref "" in
-  let d = ref "" in 
-  let p = ref "" in
-  let q = ref "" in 
-  let dp = ref "" in 
-  let dq = ref "" in 
-  let qinv = ref "" in
-  let dnssec_alg = ref RSAMD5 in 
-  let fd = open_in file in 
-  let rec parse_file in_stream =
-    try
-      let line = Re_str.split (Re_str.regexp "[\ \r]*:[\ \t]*") (input_line in_stream) in 
-        match line with
-          (* TODO: Need to check if this is an RSA key *)
-          | "Modulus" :: value ->
-              n := decode_value (List.hd value); 
-              size := (String.length !n) * 8;
-              parse_file in_stream 
-          | "PublicExponent" :: value ->
-              e := decode_value (List.hd value); parse_file in_stream             
-          | "PrivateExponent" :: value ->
-              d := decode_value (List.hd value); parse_file in_stream             
-          | "Prime1" :: value ->
-              p := decode_value (List.hd value); parse_file in_stream             
-          | "Prime2" :: value ->
-              q := decode_value (List.hd value); parse_file in_stream             
-          | "Exponent1" :: value ->
-              dp := decode_value (List.hd value); parse_file in_stream             
-          | "Exponent2" :: value ->
-              dq:= decode_value (List.hd value); parse_file in_stream             
-          | "Coefficient" :: value ->
-              qinv := decode_value (List.hd value); parse_file in_stream            
-          | "Algorithm" :: value -> begin 
-              let _ = 
-                dnssec_alg := 
-                match (int_to_dnssec_alg (int_of_string
-                (List.hd (Re_str.split (Re_str.regexp "[\ \t]+") (List.hd
-                value))))) with
-                | None -> failwith "Unsupported dnssec algorithm" 
-                | Some(a) when ((a=RSAMD5) || (a=RSASHA1) || (a=RSASHA256) || 
-                                (a = RSASHA512)) -> a
-                | Some a -> failwith (sprintf "Unsupported dnssec algorithm %s"
-                                      (dnssec_alg_to_string a))
-              in 
-             parse_file in_stream 
-          end
-          | typ :: value -> parse_file in_stream
-          | [] -> parse_file in_stream
-    with  End_of_file -> ()
-  in 
-  let _ = parse_file fd in 
-  let key = 
-(*    C.RSA.new_key 1024 *)
-    Rsa.({size=(!size);n=(!n);e=(!e);d=(!d);p=(!p);q=(!q);dp=(!dp);
-    dq=(!dq);qinv=(!qinv);}) 
-  in
-    (!dnssec_alg, (Rsa (Rsa.new_rsa_key_from_param key)))
-(* 
- * Helper function to extract the ttl, type and name of a number
- * of records from an rr list. 
- * *)
-
-
+let load_rsa_key file =
+  let alg, key = (Rsa.load_key file) in 
+    alg, Rsa key

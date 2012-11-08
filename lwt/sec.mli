@@ -32,7 +32,7 @@ val verify_rr : dnssec_state -> Packet.rr list -> Packet.rdata ->
   bool Lwt.t
 
 (* Methods to sign a zone file *)
-val load_key : string -> (Packet.dnssec_alg * key)
+val load_rsa_key : string -> (Packet.dnssec_alg * key)
 val sign_records : ?inception:int32 -> ?expiration:int32 -> 
   Packet.dnssec_alg -> key -> int -> Name.domain_name -> 
   Packet.rr list -> Packet.rr
