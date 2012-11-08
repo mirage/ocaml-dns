@@ -16,7 +16,7 @@
  *)
 
 open Printf
-open Dns.Packet
+open Packet
 
 let debug_active = ref false
 let debug x = if !debug_active then prerr_endline (sprintf "[debug] %s" x)
@@ -109,7 +109,7 @@ let dig res server source_ip dest_port q_class q_type args =
   |None -> error "dig" "Must specify a DNS resolver (with @<hostname>)"
   |Some x -> 
     debug (sprintf "Querying DNS server %s" x);
-    let domain = Dns.Name.string_to_domain_name (List.hd domains) in
+    let domain = Name.string_to_domain_name (List.hd domains) in
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
     Dns_resolver.resolve res q_class q_type domain >|= print_answers
  

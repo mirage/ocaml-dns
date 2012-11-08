@@ -54,9 +54,15 @@ external rsa_set_qinv : rsa_key -> string -> unit =
 
 external rsa_write_privkey :  string -> rsa_key -> unit = 
   "ocaml_ssl_ext_rsa_write_privkey"
+external rsa_write_pubkey :  string -> rsa_key -> unit = 
+  "ocaml_ssl_ext_rsa_write_pubkey"
+
 
 external rsa_sign_msg : rsa_key -> string -> int -> string = 
   "ocaml_ssl_sign_msg"
+external rsa_verify_msg : rsa_key -> string -> string -> int -> bool = 
+  "ocaml_ssl_verify_msg"
+
 
 let hex_of_string s = 
   let ret = ref "" in 
@@ -80,17 +86,17 @@ let new_rsa_key_from_param param =
     rsa_set_qinv ret (hex_of_string param.qinv);
     ret
 
-let get_dnssec_rdata key =
+let rsa_key_to_dnskey key =
   let e = from_hex (rsa_get_e key) in 
   let n = from_hex (rsa_get_n key) in  
   let ret = Lwt_bytes.create 4096 in
-  let _ = Printf.printf "e len : %d\n%!" (String.length e) in 
   let len = 
     if (String.length e > 255) then
-      let _ = Cstruct.LE.set_uint16 ret (String.length e) in
-        2
+      let _ = Cstruct.set_uint8 ret 0 0 in
+      let _ = Cstruct.BE.set_uint16 ret 1 (String.length e) in
+        3
     else 
-      let _ = Cstruct.set_uint8 ret (String.length e) in 
+      let _ = Cstruct.set_uint8 ret 0 (String.length e) in 
         1
   in
   let buf = Cstruct.shift ret len in 
@@ -100,7 +106,30 @@ let get_dnssec_rdata key =
   let len = len + (String.length e) + (String.length n) in 
     Cstruct.to_string (Cstruct.sub ret 0 len)
 
+let dnskey_to_rsa_key data =
+  let buf = Lwt_bytes.of_string data in 
+  let ret = new_rsa_key () in
+  let (e, n) = 
+    match (Cstruct.get_uint8 buf 0) with
+    | 0 -> 
+        let len = Cstruct.BE.get_uint16 buf 1 in 
+        let buf = Cstruct.shift buf 3 in 
+        let e = Cstruct.to_string (Cstruct.sub buf 0 len) in 
+        let buf = Cstruct.shift buf len in 
+        let n = Cstruct.to_string buf in 
+          (e, n)
+    | len -> 
+        let buf = Cstruct.shift buf 1 in 
+        let e = Cstruct.to_string (Cstruct.sub buf 0 len) in 
+        let buf = Cstruct.shift buf len in 
+        let n = Cstruct.to_string buf in 
+          (e, n)
+  in
+  let _ = rsa_set_e ret (hex_of_string e) in 
+  let _ = rsa_set_n ret (hex_of_string n) in 
+    ret 
+let verify_msg alg key data sign =
+  rsa_verify_msg key data sign (Packet.dnssec_alg_to_int alg)
+
 let sign_msg alg key data =
-  let ret = rsa_sign_msg key data 
-              (Packet.dnssec_alg_to_int alg) in
-    ret
+  rsa_sign_msg key data (Packet.dnssec_alg_to_int alg)

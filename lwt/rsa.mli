@@ -30,7 +30,10 @@ type rsa_key
 
 val new_rsa_key_from_param : param -> rsa_key
 val sign_msg : Packet.dnssec_alg -> rsa_key -> string -> string
-val get_dnssec_rdata : rsa_key -> string
+val verify_msg : Packet.dnssec_alg -> rsa_key -> string -> 
+  string -> bool
+val rsa_key_to_dnskey : rsa_key -> string
+val dnskey_to_rsa_key : string -> rsa_key
 
 (* Just for debugging purposes *)
 val rsa_write_privkey : string -> rsa_key -> unit

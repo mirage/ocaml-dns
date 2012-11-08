@@ -245,6 +245,37 @@ int digest_len(int hash_method) {
   }
 }
 
+CAMLprim value ocaml_ssl_hash_msg(value hash_alg, value msg) {
+  CAMLparam2(hash_alg, msg);
+  
+  CAMLlocal1(signature);
+  int digest_alg;
+  int alg = Int_val(hash_alg);
+  unsigned char *buf = malloc(caml_string_length(msg));
+  memcpy(buf, String_val(msg),caml_string_length(msg));
+
+  switch(alg) {
+    case 1:
+      digest_alg = NID_sha1;
+      break;
+    case 2:
+      digest_alg = NID_sha256;
+      break;
+    default:
+      caml_raise_constant(*caml_named_value("ssl_ext_exn_rsa_error"));
+      break;
+  }
+
+  int dgs_len = digest_len(digest_alg);
+  unsigned char * dgs =
+    get_message_digest((const unsigned char *)buf,
+        caml_string_length(msg), digest_alg);
+
+  signature =  caml_alloc_string(dgs_len);
+  memcpy(String_val(signature), dgs, dgs_len);
+  CAMLreturn(signature);
+}
+
 CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
     value dnssec_alg) {
   CAMLparam3(key, msg, dnssec_alg);
@@ -295,6 +326,66 @@ CAMLprim value ocaml_ssl_sign_msg(value key, value msg,
   CAMLreturn(signature);
 }
 
+CAMLprim value ocaml_ssl_verify_msg(value key, value msg,
+    value sign, value dnssec_alg) {
+  CAMLparam4(key, msg, sign, dnssec_alg);
+  
+  RSA *rsa = RSA_val(key);
+  int digest_alg;
+  int alg = Int_val(dnssec_alg);
+  unsigned char *buf = malloc(caml_string_length(msg));
+  memcpy(buf, String_val(msg),caml_string_length(msg));
+  switch(alg) {
+    case 1:
+      digest_alg = NID_md5;
+      break;
+    case 5:
+      digest_alg = NID_sha1;
+      break;
+    case 8:
+      digest_alg = NID_sha256;
+      break;
+    case 10:
+      digest_alg = NID_sha512;
+      break;
+   default:
+      caml_raise_constant(*caml_named_value("ssl_ext_exn_rsa_error"));
+      break;
+  }
+
+  int dgs_len = digest_len(digest_alg);
+  unsigned char * dgs =
+    get_message_digest((const unsigned char *)buf,
+        caml_string_length(msg), digest_alg);
+  int ret = RSA_verify(digest_alg, dgs, dgs_len,
+      String_val(sign), caml_string_length(sign), 
+      rsa);
+  printf ("verify %d\n", ret);
+  CAMLreturn (Val_int(ret));
+}
+
+CAMLprim value ocaml_ssl_ext_rsa_write_pubkey(value vfilename,
+    value key) {
+  CAMLparam2(vfilename, key);
+  RSA *rsa = RSA_val(key);
+  char *filename = String_val(vfilename);
+  FILE *fh = NULL;
+
+  if((fh = fopen(filename, "w")) == NULL) {
+    caml_raise_constant(*caml_named_value("ssl_ext_exn_rsa_error"));
+  }
+
+  caml_enter_blocking_section();
+  if((PEM_write_RSAPublicKey(fh, rsa)) == 0){
+    fclose(fh);
+    caml_leave_blocking_section();
+    caml_raise_constant(*caml_named_value("ssl_ext_exn_rsa_error"));
+  }
+  fclose(fh);
+  caml_leave_blocking_section();
+
+  CAMLreturn(Val_unit);
+}
 
 CAMLprim value ocaml_ssl_ext_rsa_write_privkey(value vfilename,
     value key) {

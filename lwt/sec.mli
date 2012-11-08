@@ -16,11 +16,29 @@
 type key = 
   | Rsa of Rsa.rsa_key
 
+type dnssec_state
+
+val init_dnssec : ?resolver:Dns_resolver.t option -> unit -> 
+  dnssec_state Lwt.t
+val add_anchor : dnssec_state -> Packet.rr -> unit
+
+(* type dnssec_result = 
+  | Signed of 'a
+  | Failed of 'a
+  | Unsigned of 'a *)
+
+(* Methods to resolve dnssec verified records from dns *)
+val verify_rr : dnssec_state -> Packet.rr list -> Packet.rdata ->
+  bool Lwt.t
+
+(* Methods to sign a zone file *)
 val load_key : string -> (Packet.dnssec_alg * key)
 val sign_records : ?inception:int32 -> ?expiration:int32 -> 
   Packet.dnssec_alg -> key -> int -> Name.domain_name -> 
-    Packet.rr list -> Packet.rr
+  Packet.rr list -> Packet.rr
+val get_dnskey_tag : Packet.rdata -> int
+val get_ds_rr : Name.domain_name -> Packet.digest_alg -> 
+  Packet.rdata -> Packet.rdata
 
-
-val get_dnssec_key: ?zsk:bool -> ?sep:bool -> Packet.dnssec_alg -> 
+val get_dnskey_rr : ?ksk:bool -> ?zsk:bool -> Packet.dnssec_alg -> 
   key -> Packet.rdata 

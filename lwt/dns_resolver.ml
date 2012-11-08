@@ -16,16 +16,17 @@
 
 open Lwt
 open Printf
-open Dns.Name
-open Dns.Operators
+open Name
+open Operators
 
-module DP = Dns.Packet
+module DP = Packet
 
-let buflen = 1514
+let buflen = 4096
 let ns = "8.8.8.8"
 let port = 53
 
 let id = ref 0xDEAD
+
 let get_id () =
     let i = !id in
     incr id;
@@ -35,14 +36,22 @@ let log_info s = eprintf "INFO: %s\n%!" s
 let log_debug s = eprintf "DEBUG: %s\n%!" s
 let log_warn s = eprintf "WARN: %s\n%!" s
 
-let build_query q_class q_type q_name = 
+let build_query ?(dnssec=false) q_class q_type q_name = 
   DP.(
     let detail = { qr=Query; opcode=Standard;
                    aa=true; tc=false; rd=true; ra=false; rcode=NoError; }
     in
+    let additionals = 
+      if dnssec then 
+        [ ( {
+          name=[]; cls=RR_IN; ttl=0l;
+          rdata=(EDNS0(1500, 0, true, []));} ) ]
+      else
+        []
+    in
     let question = { q_name; q_type; q_class } in 
     { id=get_id (); detail; questions=[question]; 
-      answers=[]; authorities=[]; additionals=[]; 
+      answers=[]; authorities=[]; additionals; 
     }
   )
 
@@ -68,12 +77,14 @@ let rxbuf fd len =
   return (buf, sa)
 
 let resolve
-    (server:string) (dns_port:int) (q_class:DP.q_class) (q_type:DP.q_type) 
+    ?(dnssec=false)
+    (server:string) (dns_port:int) 
+    (q_class:DP.q_class) (q_type:DP.q_type) 
     (q_name:domain_name) =
   let ofd = outfd "0.0.0.0" 0 in
   lwt _ =
     try_lwt
-      let q = build_query q_class q_type q_name in
+      let q = build_query ~dnssec q_class q_type q_name in
       log_info (sprintf "query: %s\n%!" (DP.to_string q));
       let buf = Lwt_bytes.create 4096 in
       let q = DP.marshal buf q in
@@ -110,7 +121,7 @@ let gethostbyaddr
   List.fold_left (fun a x -> match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a) [] r.answers |>
   List.rev
 
-open Dns.Resolvconf
+open Resolvconf
 
 module type RESOLVER = sig
   val servers : (string * int) list
@@ -177,8 +188,8 @@ let gethostbyaddr t ?q_class ?q_type q_name =
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ -> gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
 
-let resolve t q_class q_type q_name =
+let resolve t ?(dnssec=false) q_class q_type q_name =
   let module R = (val t :RESOLVER ) in
   match R.servers with
   |[] -> fail (Failure "No resolvers available")
-  |(server,dns_port)::_ -> resolve server dns_port q_class q_type q_name
+  |(server,dns_port)::_ -> resolve ~dnssec server dns_port q_class q_type q_name
