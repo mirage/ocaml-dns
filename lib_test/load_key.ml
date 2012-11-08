@@ -5,7 +5,7 @@ open Lwt
 (* replicate examples from rfc 5702 *)
 
 lwt _ = 
-  let (alg, key) = Sec.load_key "lib_test/rsa-sha256-test.private" in  
+  let (alg, key) = Sec.load_rsa_key "lib_test/rsa-sha256-test.private" in  
   let rr = Packet.({name=(Name.string_to_domain_name "www.example.net.");
                     cls=RR_IN; ttl=3600l; 
                     rdata=(A (Uri_IP.string_to_ipv4 "192.0.2.91"));}) in
@@ -32,7 +32,7 @@ lwt _ =
   let rdata_ds = Sec.get_ds_rr rr_dnskey.name Packet.SHA1 
                   rdata_dnskey in 
 
-  let (alg, key) = Sec.load_key "lib_test/rsa-sha512-test.private" in  
+  let (alg, key) = Sec.load_rsa_key "lib_test/rsa-sha512-test.private" in  
   let rr_ds = Packet.({name=(Name.string_to_domain_name "example.net.");
                            cls=RR_IN; ttl=3600l;rdata=rdata_ds}) in
   let _ = printf "ds record %s\n%!" (rr_to_string rr_ds) in 
@@ -68,7 +68,6 @@ lwt _ =
   lwt resolver = Dns_resolver.create () in 
   lwt st = Sec.init_dnssec ~resolver:(Some resolver) () in  
   
-  let _ = printf "hello1\n%!" in 
   lwt p = Dns_resolver.resolve resolver Packet.Q_IN Packet.Q_DNSKEY 
             (Name.string_to_domain_name ".") in
   let rec add_root_dnskey = function
@@ -78,19 +77,8 @@ lwt _ =
           add_root_dnskey tl 
   in 
   let _ = add_root_dnskey p.Packet.answers in 
-  let _ = printf "hello2\n%!" in 
-  lwt p = Dns_resolver.resolve resolver ~dnssec:true 
-            Packet.Q_IN Packet.Q_A
+  lwt p = Sec.resolve st Packet.Q_IN Packet.Q_SOA
             (Name.string_to_domain_name "www.nlnetlabs.nl.") in
 
-  let (soa_rr, Some(rrsig)) = 
-    List.fold_right (
-      fun rr (soa_rr, rrsig) ->
-        match rr.rdata with 
-        | A _ -> (soa_rr @ [rr], rrsig) 
-        | RRSIG _ -> (soa_rr, Some(rr.rdata) )
-        | _ -> (soa_rr, rrsig)
-    ) p.Packet.answers ([], None) in
-  lwt res = Sec.verify_rr st soa_rr rrsig in
-  let _ = printf "verification failed: %s\n%!" (string_of_bool res) in 
+  let _ = printf "verifying %s\n%!" (Sec.dnssec_result_to_string p) in
     return (printf "Key loaded successfully.\n%!")

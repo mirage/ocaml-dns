@@ -26,10 +26,11 @@ val init_dnssec : ?resolver:Dns_resolver.t option -> unit ->
   dnssec_state Lwt.t
 val add_anchor : dnssec_state -> Packet.rr -> unit
 
-type 'a dnssec_result = 
-  | Signed of 'a
-  | Failed of 'a
-  | Unsigned of 'a 
+type dnssec_result = 
+  | Signed of Packet.rr list
+  | Failed of Packet.rr list
+  | Unsigned of Packet.rr list
+val dnssec_result_to_string : dnssec_result -> string
 
 (* Methods to resolve dnssec verified records from dns *)
 val verify_rr : dnssec_state -> Packet.rr list -> Packet.rdata ->
@@ -48,4 +49,4 @@ val get_dnskey_rr : ?ksk:bool -> ?zsk:bool -> Packet.dnssec_alg ->
   key -> Packet.rdata
 
 val resolve : dnssec_state -> q_class -> q_type -> domain_name ->
-  Packet.rr list dnssec_result Lwt.t 
+  dnssec_result Lwt.t 

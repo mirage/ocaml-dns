@@ -27,10 +27,27 @@ external ssl_hash_msg : int -> string -> string =
 type key = 
 | Rsa of Rsa.rsa_key
 
-type 'a dnssec_result = 
-  | Signed of 'a
-  | Failed of 'a
-  | Unsigned of 'a 
+type dnssec_result = 
+  | Signed of Packet.rr list 
+  | Failed of Packet.rr list
+  | Unsigned of Packet.rr list
+
+let dnssec_result_to_string = function
+  | Signed r -> 
+      sprintf "Signed result: %s\n"
+      (List.fold_right 
+      (fun r ret -> sprintf "%s\n%s" ret (Packet.rr_to_string r)) 
+      r "" )
+  | Failed r -> 
+      sprintf "Failed result: %s\n"
+      (List.fold_right 
+      (fun r ret -> sprintf "%s\n%s" ret (Packet.rr_to_string r)) 
+      r "" )
+  | Unsigned r -> 
+      sprintf "Unsigned result: %s\n"
+      (List.fold_right 
+      (fun r ret -> sprintf "%s\n%s" ret (Packet.rr_to_string r)) 
+      r "" )
 
 let get_dnskey_tag rdata =
   match rdata with
@@ -357,9 +374,28 @@ let rec verify_rr st rr rrsig =
     let _ = eprintf "verify_rr failed: %s\n%!" (Printexc.to_string ex)in 
       return false 
 
-let resolve st q typ name = 
-  return ( Failed([]) )
-  
+let resolve st q typ name =
+  lwt p = Dns_resolver.resolve st.resolver ~dnssec:true q typ name in
+  let Some(rr_type) = int_to_rr_type (q_type_to_int typ) in 
+  let (rr, rrsig) = 
+    List.fold_right (
+      fun r (rr, rrsig) ->
+        match r.rdata with 
+        | a when (Packet.rdata_to_rr_type a = rr_type ) -> 
+            (rr @ [r], rrsig) 
+        | RRSIG (typ, _, _, _, _, _, _, _, _) when (typ = rr_type) -> 
+            (rr, Some(r.rdata) )
+        | _ -> (rr, rrsig)
+    ) p.Packet.answers ([], None) in
+    match rrsig with
+    | None -> return (Unsigned rr)
+    | Some rrsig -> begin
+        lwt res = verify_rr st rr rrsig in
+          if (res) then 
+            return (Signed rr)
+          else 
+            return (Failed rr)
+    end 
 (*
  * Key reading methods
  *
