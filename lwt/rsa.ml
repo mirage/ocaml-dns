@@ -18,18 +18,7 @@ open Dns.Packet
 open Printf
 
 module C = Cryptokit
-
-type param =
-  { size: int;    (** Size of the modulus [n], in bits *)
-      n: string;    (** Modulus [n = p.q] *)
-      e: string;    (** Public exponent [e] *)
-      d: string;    (** Private exponent [d] *)
-      p: string;    (** Prime factor [p] of [n] *)
-      q: string;    (** The other prime factor [q] of [n] *)
-      dp: string;   (** [dp] is [d mod (p-1)] *)
-      dq: string;   (** [dq] is [d mod (q-1)] *)
-      qinv: string  (** [qinv] is a multiplicative inverse of [q] modulo [p] *)
-  }
+open C.RSA
 
 type rsa_key
 
@@ -77,7 +66,7 @@ let hex_of_string s =
 let from_hex s = C.transform_string (C.Hexa.decode()) s
 let to_hex s = C.transform_string (C.Hexa.encode()) s
 
-let new_rsa_key_from_param param = 
+let new_rsa_key_from_param param =
   let ret = new_rsa_key () in 
     rsa_set_n ret (hex_of_string param.n); 
     rsa_set_e ret (hex_of_string param.e); 
@@ -197,8 +186,8 @@ let load_key file =
   in 
   let _ = parse_file fd in 
   let key = 
-    {size=(!size);n=(!n);e=(!e);d=(!d);p=(!p);q=(!q);dp=(!dp);
-    dq=(!dq);qinv=(!qinv);} 
+    C.RSA.({size=(!size);n=(!n);e=(!e);d=(!d);p=(!p);q=(!q);dp=(!dp);
+    dq=(!dq);qinv=(!qinv);} )
   in
     (!dnssec_alg, new_rsa_key_from_param key)
 

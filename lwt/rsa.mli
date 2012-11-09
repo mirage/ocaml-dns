@@ -15,22 +15,10 @@
  *)
 open Dns.Packet
 
-type param =
-  { size: int;    (** Size of the modulus [n], in bits *)
-      n: string;    (** Modulus [n = p.q] *)
-      e: string;    (** Public exponent [e] *)
-      d: string;    (** Private exponent [d] *)
-      p: string;    (** Prime factor [p] of [n] *)
-      q: string;    (** The other prime factor [q] of [n] *)
-      dp: string;   (** [dp] is [d mod (p-1)] *)
-      dq: string;   (** [dq] is [d mod (q-1)] *)
-      qinv: string  (** [qinv] is a multiplicative inverse of [q] modulo [p] *)
-  }
-
 type rsa_key
 
 val load_key: string -> (dnssec_alg * rsa_key)
-val new_rsa_key_from_param : param -> rsa_key
+val new_rsa_key_from_param : Cryptokit.RSA.key -> rsa_key
 val free_rsa_key : rsa_key -> unit 
 
 val sign_msg : dnssec_alg -> rsa_key -> string -> string
