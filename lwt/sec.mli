@@ -18,7 +18,7 @@ open Dns.Packet
 open Dns.Name 
 
 type key = 
-  | Rsa of Rsa.rsa_key
+  | Rsa of Dnssec_rsa.rsa_key
 
 type dnssec_state
 

@@ -26,7 +26,7 @@ external ssl_hash_msg : int -> string -> string =
   "ocaml_ssl_hash_msg"
 
 type key = 
-| Rsa of Rsa.rsa_key
+| Rsa of Dnssec_rsa.rsa_key
 
 type dnssec_result = 
   | Signed of rr list 
@@ -108,7 +108,7 @@ let add_anchor st anchor =
     | DNSKEY (_, RSASHA1, key)
     | DNSKEY (_, RSASHA256, key)
     | DNSKEY (_, RSASHA512, key) -> 
-      let key =  Rsa (Rsa.dnskey_to_rsa_key key) in 
+      let key =  Rsa (Dnssec_rsa.dnskey_to_rsa_key key) in 
         st.anchors <- st.anchors @ [(anchor, key)]
     | DNSKEY (_, alg, _) -> 
       failwith (sprintf "add_anchor: unsupported %s" 
@@ -120,7 +120,7 @@ let cache_timeout st =
     fun (rr, ts, key) -> 
       if ((Int32.to_float rr.ttl) +. ts < Unix.gettimeofday ()) then
         let _ = match key with 
-                | Rsa k -> Rsa.free_rsa_key k 
+                | Rsa k -> Dnssec_rsa.free_rsa_key k 
         in 
           false
       else true
@@ -159,7 +159,7 @@ let add_dnskey_to_cache st rr =
   | DNSKEY (_, RSASHA1, key)
   | DNSKEY (_, RSASHA256, key)
   | DNSKEY (_, RSASHA512, key) -> 
-      let key = Rsa.dnskey_to_rsa_key key in 
+      let key = Dnssec_rsa.dnskey_to_rsa_key key in 
         st.cache <- st.cache @ [(rr, Unix.gettimeofday (), Rsa key)]
   | DNSKEY (_, alg, _) -> 
       failwith (sprintf "add_dnskey_to_cache: unsupported %s" 
@@ -185,7 +185,7 @@ let get_dnskey_rr ?(ksk=true) ?(zsk=false) alg key =
      (if (zsk) then 0x1 else 0x0) in
   let key_bytes = 
     match (key) with
-      | Rsa key -> Rsa.rsa_key_to_dnskey key 
+      | Rsa key -> Dnssec_rsa.rsa_key_to_dnskey key 
       | _ -> failwith "Unsupported key type"
   in 
     DNSKEY(flags, alg, key_bytes)
@@ -252,7 +252,7 @@ let sign_records
   let data = marshal_rrsig_data ttl unsign_sig_rr rrset in 
   let sign = 
       match key with
-      | Rsa key -> Rsa.sign_msg alg key data
+      | Rsa key -> Dnssec_rsa.sign_msg alg key data
       | _ -> failwith "invalid key type"
     in
      ({
@@ -273,7 +273,7 @@ let verify_rrsig ttl inception expiration alg key tag
           tag, owner, "") in
   let data = marshal_rrsig_data ttl unsign_sig_rr rrset in 
     match key with
-      | Rsa key -> Rsa.verify_msg alg key data sign
+      | Rsa key -> Dnssec_rsa.verify_msg alg key data sign
       | _ -> failwith "invalid key type"
 
 (*
@@ -402,5 +402,5 @@ let resolve st q typ name =
  *
  * *)
 let load_rsa_key file =
-  let alg, key = (Rsa.load_key file) in 
+  let alg, key = (Dnssec_rsa.load_key file) in 
     alg, Rsa key
