@@ -39,8 +39,8 @@ Library lwt
   Install$: flag(lwt)
   Findlibname: lwt
   CSources:   binding_crypto.c
-  CCLib:      -lssl -lcrypto
-  Modules: Dns_server, Dns_resolver, Sec, Rsa
+  CCLib:      -lcrypto
+  Modules: Dns_server, Dns_resolver, Sec, Dnssec_rsa
   BuildDepends: 
     lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns, cryptokit
   FindlibParent: dns
@@ -93,12 +93,10 @@ Executable load_key
   Path:               lib_test
   MainIs:             load_key.ml
   Build$:             flag(tests) && flag(lwt)
-  CSources:   binding_crypto.c
-  CCLib:      -lssl -lcrypto
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, lwt.syntax, re, re.str, uri, cstruct, cryptokit
+  BuildDepends:       dns.lwt, uri, cryptokit
 
 
 Test lwt_server

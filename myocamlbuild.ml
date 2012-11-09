@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 960e676f1f1c8521b1dcea092fb14b6c) *)
+(* DO NOT EDIT (digest: a762c96073d746e8e9b6d0ed0e747b41) *)
 module OASISGettext = struct
 # 21 "/root/.opam/4.00.1+raspberrypi/build/oasis.0.3.0/src/oasis/OASISGettext.ml"
 
@@ -478,23 +478,13 @@ open Ocamlbuild_plugin;;
 let package_default =
   {
      MyOCamlbuildBase.lib_ocaml = [("dns", ["lib"]); ("lwt", ["lwt"])];
-     lib_c = [("lwt", "lwt", []); ("load_key", "lib_test", [])];
+     lib_c = [("lwt", "lwt", [])];
      flags =
        [
           (["oasis_library_lwt_cclib"; "link"],
-            [
-               (OASISExpr.EBool true,
-                 S [A "-cclib"; A "-lssl"; A "-cclib"; A "-lcrypto"])
-            ]);
+            [(OASISExpr.EBool true, S [A "-cclib"; A "-lcrypto"])]);
           (["oasis_library_lwt_cclib"; "ocamlmklib"; "c"],
-            [(OASISExpr.EBool true, S [A "-lssl"; A "-lcrypto"])]);
-          (["oasis_executable_load_key_cclib"; "link"],
-            [
-               (OASISExpr.EBool true,
-                 S [A "-cclib"; A "-lssl"; A "-cclib"; A "-lcrypto"])
-            ]);
-          (["oasis_executable_load_key_cclib"; "ocamlmklib"; "c"],
-            [(OASISExpr.EBool true, S [A "-lssl"; A "-lcrypto"])])
+            [(OASISExpr.EBool true, S [A "-lcrypto"])])
        ];
      includes = [("lwt", ["lib"]); ("lib_test", ["lib"; "lwt"])];
      }
@@ -502,6 +492,6 @@ let package_default =
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default package_default;;
 
-# 506 "myocamlbuild.ml"
+# 496 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch dispatch_default;;

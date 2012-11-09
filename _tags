@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 5a04184900998164aff0f8a1dae60606)
+# DO NOT EDIT (digest: 42b808821b71febde49e500e9226c998)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -42,93 +42,81 @@
 <lwt/lwt.{cma,cmxa}>: use_liblwt_stubs
 <lwt/*.ml{,i}>: pkg_cryptokit
 "lwt/binding_crypto.c": use_dns
+"lwt/binding_crypto.c": pkg_cryptokit
 "lwt/binding_crypto.c": pkg_lwt.unix
 "lwt/binding_crypto.c": pkg_lwt.syntax
 "lwt/binding_crypto.c": pkg_re
 "lwt/binding_crypto.c": pkg_re.str
 "lwt/binding_crypto.c": pkg_cstruct
-"lwt/binding_crypto.c": pkg_cryptokit
 "lwt/binding_crypto.c": pkg_cstruct.syntax
 # Executable lwt_server
 <lib_test/lwt_server.{native,byte}>: use_lwt
 <lib_test/lwt_server.{native,byte}>: use_dns
+<lib_test/lwt_server.{native,byte}>: pkg_cryptokit
 <lib_test/lwt_server.{native,byte}>: pkg_lwt
 <lib_test/lwt_server.{native,byte}>: pkg_lwt.unix
 <lib_test/lwt_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/lwt_server.{native,byte}>: pkg_re
 <lib_test/lwt_server.{native,byte}>: pkg_re.str
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct
-<lib_test/lwt_server.{native,byte}>: pkg_cryptokit
 <lib_test/lwt_server.{native,byte}>: pkg_cstruct.syntax
 <lib_test/lwt_server.{native,byte}>: custom
 # Executable time_server
 <lib_test/time_server.{native,byte}>: use_lwt
 <lib_test/time_server.{native,byte}>: use_dns
+<lib_test/time_server.{native,byte}>: pkg_cryptokit
 <lib_test/time_server.{native,byte}>: pkg_lwt
 <lib_test/time_server.{native,byte}>: pkg_lwt.unix
 <lib_test/time_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/time_server.{native,byte}>: pkg_re
 <lib_test/time_server.{native,byte}>: pkg_re.str
 <lib_test/time_server.{native,byte}>: pkg_cstruct
-<lib_test/time_server.{native,byte}>: pkg_cryptokit
 <lib_test/time_server.{native,byte}>: pkg_cstruct.syntax
-<lib_test/*.ml{,i}>: use_lwt
-<lib_test/*.ml{,i}>: use_dns
-<lib_test/*.ml{,i}>: pkg_cstruct.syntax
+<lib_test/*.ml{,i}>: pkg_lwt
 <lib_test/time_server.{native,byte}>: custom
 # Executable mldig
 <lwt/mldig.{native,byte}>: use_dns
+<lwt/mldig.{native,byte}>: pkg_uri
 <lwt/mldig.{native,byte}>: pkg_lwt
 <lwt/mldig.{native,byte}>: pkg_lwt.unix
 <lwt/mldig.{native,byte}>: pkg_lwt.syntax
 <lwt/mldig.{native,byte}>: pkg_re
 <lwt/mldig.{native,byte}>: pkg_re.str
-<lwt/mldig.{native,byte}>: pkg_uri
 <lwt/mldig.{native,byte}>: pkg_cstruct
 <lwt/mldig.{native,byte}>: pkg_cmdliner
 <lwt/mldig.{native,byte}>: pkg_cstruct.syntax
 <lwt/*.ml{,i}>: use_dns
+<lwt/*.ml{,i}>: pkg_uri
 <lwt/*.ml{,i}>: pkg_lwt
 <lwt/*.ml{,i}>: pkg_lwt.unix
 <lwt/*.ml{,i}>: pkg_lwt.syntax
 <lwt/*.ml{,i}>: pkg_re
 <lwt/*.ml{,i}>: pkg_re.str
-<lwt/*.ml{,i}>: pkg_uri
 <lwt/*.ml{,i}>: pkg_cstruct
 <lwt/*.ml{,i}>: pkg_cmdliner
 <lwt/*.ml{,i}>: pkg_cstruct.syntax
 <lwt/mldig.{native,byte}>: custom
 # Executable load_key
-<lib_test/load_key.{native,byte}>: oasis_executable_load_key_cclib
-"lib_test/libload_key_stubs.lib": oasis_executable_load_key_cclib
-"lib_test/dllload_key_stubs.dll": oasis_executable_load_key_cclib
-"lib_test/libload_key_stubs.a": oasis_executable_load_key_cclib
-"lib_test/dllload_key_stubs.so": oasis_executable_load_key_cclib
-<lib_test/load_key.{native,byte}>: use_libload_key_stubs
-<lib_test/load_key.{native,byte}>: pkg_lwt
+<lib_test/load_key.{native,byte}>: use_lwt
+<lib_test/load_key.{native,byte}>: use_dns
+<lib_test/load_key.{native,byte}>: pkg_uri
+<lib_test/load_key.{native,byte}>: pkg_cryptokit
 <lib_test/load_key.{native,byte}>: pkg_lwt.unix
 <lib_test/load_key.{native,byte}>: pkg_lwt.syntax
 <lib_test/load_key.{native,byte}>: pkg_re
 <lib_test/load_key.{native,byte}>: pkg_re.str
-<lib_test/load_key.{native,byte}>: pkg_uri
 <lib_test/load_key.{native,byte}>: pkg_cstruct
-<lib_test/load_key.{native,byte}>: pkg_cryptokit
-<lib_test/*.ml{,i}>: pkg_lwt
+<lib_test/load_key.{native,byte}>: pkg_cstruct.syntax
+<lib_test/*.ml{,i}>: use_lwt
+<lib_test/*.ml{,i}>: use_dns
+<lib_test/*.ml{,i}>: pkg_uri
+<lib_test/*.ml{,i}>: pkg_cryptokit
 <lib_test/*.ml{,i}>: pkg_lwt.unix
 <lib_test/*.ml{,i}>: pkg_lwt.syntax
 <lib_test/*.ml{,i}>: pkg_re
 <lib_test/*.ml{,i}>: pkg_re.str
-<lib_test/*.ml{,i}>: pkg_uri
 <lib_test/*.ml{,i}>: pkg_cstruct
-<lib_test/*.ml{,i}>: pkg_cryptokit
-"lib_test/binding_crypto.c": pkg_lwt
-"lib_test/binding_crypto.c": pkg_lwt.unix
-"lib_test/binding_crypto.c": pkg_lwt.syntax
-"lib_test/binding_crypto.c": pkg_re
-"lib_test/binding_crypto.c": pkg_re.str
-"lib_test/binding_crypto.c": pkg_uri
-"lib_test/binding_crypto.c": pkg_cstruct
-"lib_test/binding_crypto.c": pkg_cryptokit
+<lib_test/*.ml{,i}>: pkg_cstruct.syntax
 <lib_test/load_key.{native,byte}>: custom
 # OASIS_STOP
 true: annot
