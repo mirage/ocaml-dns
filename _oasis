@@ -87,7 +87,7 @@ Executable mldig
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, lwt.syntax, re, re.str, cstruct, uri, cmdliner
+  BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, re, re.str, cstruct, uri, cmdliner
 
 Executable load_key
   Path:               lib_test

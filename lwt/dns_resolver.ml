@@ -16,10 +16,10 @@
 
 open Lwt
 open Printf
-open Name
-open Operators
+open Dns.Name
+open Dns.Operators
 
-module DP = Packet
+module DP = Dns.Packet
 
 let buflen = 4096
 let ns = "8.8.8.8"
@@ -121,7 +121,7 @@ let gethostbyaddr
   List.fold_left (fun a x -> match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a) [] r.answers |>
   List.rev
 
-open Resolvconf
+open Dns.Resolvconf
 
 module type RESOLVER = sig
   val servers : (string * int) list

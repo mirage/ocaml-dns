@@ -14,8 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Packet 
-open Name 
+open Dns.Packet 
+open Dns.Name 
 
 type key = 
   | Rsa of Rsa.rsa_key
@@ -24,29 +24,27 @@ type dnssec_state
 
 val init_dnssec : ?resolver:Dns_resolver.t option -> unit -> 
   dnssec_state Lwt.t
-val add_anchor : dnssec_state -> Packet.rr -> unit
+val add_anchor : dnssec_state -> rr -> unit
 
 type dnssec_result = 
-  | Signed of Packet.rr list
-  | Failed of Packet.rr list
-  | Unsigned of Packet.rr list
+  | Signed of rr list
+  | Failed of rr list
+  | Unsigned of rr list
 val dnssec_result_to_string : dnssec_result -> string
 
 (* Methods to resolve dnssec verified records from dns *)
-val verify_rr : dnssec_state -> Packet.rr list -> Packet.rdata ->
+val verify_rr : dnssec_state -> rr list -> rdata ->
   bool Lwt.t
 
 (* Methods to sign a zone file *)
-val load_rsa_key : string -> (Packet.dnssec_alg * key)
+val load_rsa_key : string -> (dnssec_alg * key)
 val sign_records : ?inception:int32 -> ?expiration:int32 -> 
-  Packet.dnssec_alg -> key -> int -> Name.domain_name -> 
-  Packet.rr list -> Packet.rr
-val get_dnskey_tag : Packet.rdata -> int
-val get_ds_rr : Name.domain_name -> Packet.digest_alg -> 
-  Packet.rdata -> Packet.rdata
+  dnssec_alg -> key -> int -> domain_name -> rr list -> rr
+val get_dnskey_tag : rdata -> int
+val get_ds_rr : domain_name -> digest_alg -> rdata -> rdata
 
-val get_dnskey_rr : ?ksk:bool -> ?zsk:bool -> Packet.dnssec_alg -> 
-  key -> Packet.rdata
+val get_dnskey_rr : ?ksk:bool -> ?zsk:bool -> dnssec_alg -> 
+  key -> rdata
 
 val resolve : dnssec_state -> q_class -> q_type -> domain_name ->
   dnssec_result Lwt.t 

@@ -14,8 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Name
-open Packet
+open Dns.Name
+open Dns.Packet
 open Cstruct
 
 module type RESOLVER = sig
@@ -55,4 +55,4 @@ val gethostbyaddr : t -> ?q_class:q_class -> ?q_type:q_type
     @return the full a {! dns } structure.
 *)
 val resolve : t -> ?dnssec:bool -> q_class -> q_type -> 
-  domain_name -> Packet.t Lwt.t
+  domain_name -> Dns.Packet.t Lwt.t

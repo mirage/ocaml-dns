@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Packet
+open Dns.Packet
 open Printf
 
 module C = Cryptokit
@@ -132,10 +132,10 @@ let dnskey_to_rsa_key data =
   let _ = rsa_set_n ret (hex_of_string n) in 
     ret 
 let verify_msg alg key data sign =
-  rsa_verify_msg key data sign (Packet.dnssec_alg_to_int alg)
+  rsa_verify_msg key data sign (dnssec_alg_to_int alg)
 
 let sign_msg alg key data =
-  rsa_sign_msg key data (Packet.dnssec_alg_to_int alg)
+  rsa_sign_msg key data (dnssec_alg_to_int alg)
 
 let decode_value value = 
     C.transform_string (C.Base64.decode ()) 

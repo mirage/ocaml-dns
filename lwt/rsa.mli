@@ -13,6 +13,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
+open Dns.Packet
 
 type param =
   { size: int;    (** Size of the modulus [n], in bits *)
@@ -28,12 +29,12 @@ type param =
 
 type rsa_key
 
-val load_key: string -> (Packet.dnssec_alg * rsa_key)
+val load_key: string -> (dnssec_alg * rsa_key)
 val new_rsa_key_from_param : param -> rsa_key
 val free_rsa_key : rsa_key -> unit 
 
-val sign_msg : Packet.dnssec_alg -> rsa_key -> string -> string
-val verify_msg : Packet.dnssec_alg -> rsa_key -> string -> 
+val sign_msg : dnssec_alg -> rsa_key -> string -> string
+val verify_msg : dnssec_alg -> rsa_key -> string -> 
   string -> bool
 val rsa_key_to_dnskey : rsa_key -> string
 val dnskey_to_rsa_key : string -> rsa_key
