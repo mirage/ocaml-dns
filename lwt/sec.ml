@@ -243,7 +243,7 @@ let marshal_rrsig_data ttl rrsig rrset =
   
 let sign_records 
   ?(inception=(Int32.of_float (Unix.gettimeofday ()))) (* inception now *)
-  ?(expiration=604800l) (* 1 week duration *) 
+  ?(expiration=(Int32.of_float ((Unix.gettimeofday ()) +. 604800.0))) (* 1 week duration *)
   alg key tag owner rrset =
   let ttl, name, typ = extract_type_from_rrset rrset in
   let lbl = char_of_int (List.length name ) in 
