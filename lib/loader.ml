@@ -333,11 +333,9 @@ let add_ds_rr tag alg digest key ttl owner db =
   in
   let tmp = string_of_hex key in
   let ds = hashcons_charstring tmp in
-  printf "reading %s key (len %d)\n%!" key (String.length tmp); 
   add_rrset { ttl; rdata = DS [ (tag, alg, digest, ds) ] } owner db
 
 let add_rrsig_rr typ alg lbl orig_ttl exp_ts inc_ts tag name sign ttl owner db = 
-    printf "typ: %s, alf:%d\n%!" typ alg; 
   let typ = 
     match (Packet.string_to_rr_type ("RR_"^typ)) with 
       | None -> failwith (sprintf "add_rrsig_rr failed: uknown type %s" typ)

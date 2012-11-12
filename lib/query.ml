@@ -213,13 +213,8 @@ let answer_query ?(dnssec=false) qname qtype trie =
       | RR.RRSIG l -> begin
           if (dnssec) then
             match subrrtype with
-              | None -> 
-                  let _ = printf 
-                            "Found an rrsig record, looking for type None\n%!"  in
- ()
+              | None -> ()
               | Some t -> 
-                  let _ = printf "Found an rrsig record, looking for type %s\n%!" 
-                            (Packet.rr_type_to_string t) in
                   List.iter 
                     (fun (typ, alg, lbl, ttl, exp_ts, inc_ts, tag,
                           name, sign) ->
