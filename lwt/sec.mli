@@ -40,6 +40,11 @@ val verify_rr : dnssec_state -> rr list -> rdata ->
 val load_rsa_key : string -> (dnssec_alg * key)
 val sign_records : ?inception:int32 -> ?expiration:int32 -> 
   dnssec_alg -> key -> int -> domain_name -> rr list -> rr
+  (* sig(0) signature *)
+val sign_packet :  ?inception:int32 -> ?expiration:int32 -> 
+  dnssec_alg -> key -> int -> domain_name -> Dns.Packet.t -> 
+    Dns.Packet.t
+
 val get_dnskey_tag : rdata -> int
 val get_ds_rr : domain_name -> digest_alg -> rdata -> rdata
 

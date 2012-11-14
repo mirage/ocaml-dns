@@ -76,6 +76,7 @@ cenum dnssec_alg {
 } as uint8_t
 
 cenum rr_type {
+  RR_UNUSED     = 0;
   RR_A          = 1;
   RR_NS         = 2;
   RR_MD         = 3;
@@ -213,7 +214,8 @@ type rdata =
   | RP of domain_name * domain_name
   | RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
       domain_name (* uncompressed *) * string
-  | RT of uint16 * domain_name
+  | SIG of dnssec_alg * int32 * int32 * uint16 * domain_name * string
+   | RT of uint16 * domain_name
   | SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
   | SRV of uint16 * uint16 * uint16 * domain_name
   | SSHFP of pubkey_alg * fp_type * string
@@ -281,10 +283,15 @@ let rdata_to_string = function
       sprintf "EDNS0 (version:0, UDP: %d, flags: %s)"
         len (if (do_bit) then "do" else "")
   | RRSIG  (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) ->
-      sprintf "RRSIG (%s %d %ld %ld %ld %d %s %s)" 
+      sprintf "RRSIG (%s %s %d %ld %ld %ld %d %s %s)" 
+        (rr_type_to_string typ)
         (dnssec_alg_to_string alg) (int_of_char lbl) orig_ttl exp_ts inc_ts 
         tag (Name.domain_name_to_string name) (Base64.encode sign)
-  | DS (keytag, alg, digest_t, digest) 
+  | SIG  (alg, exp_ts, inc_ts, tag, name, sign) ->
+      sprintf "SIG (UNUSED %s 0 0 %ld %ld %d %s %s)" 
+        (dnssec_alg_to_string alg) exp_ts inc_ts 
+        tag (Name.domain_name_to_string name) (Base64.encode sign)
+   | DS (keytag, alg, digest_t, digest) 
     -> (sprintf "DS (%d,%s,%s, '%s')" keytag
           (dnssec_alg_to_string alg) (digest_alg_to_string digest_t) 
           (hex_of_string digest)
@@ -309,13 +316,7 @@ let rdata_to_string = function
           (hash_alg_to_string halg) (byte_to_int flgs) iterations 
           (byte_to_int salt_l) salt
     )
-  | RRSIG (tc, alg, nlbls, ttl, expiration, inception, keytag, name, sign)
-    -> (sprintf "RRSIG (%s,%s,%d, %ld, %ld,%ld, %d, %s, %s)"
-          (rr_type_to_string tc) (dnssec_alg_to_string alg) 
-          (byte_to_int nlbls) ttl expiration inception keytag
-          (domain_name_to_string name) sign
-    )
-  | SSHFP (alg, fpt, fp)
+ | SSHFP (alg, fpt, fp)
     -> (sprintf "SSHFP (%s,%s, '%s')" (pubkey_alg_to_string alg) 
           (fp_type_to_string fpt) fp
     )
@@ -343,6 +344,7 @@ let rdata_to_rr_type = function
  | PTR _       -> RR_PTR      
  | RP _        -> RR_RP       
  | RRSIG _     -> RR_RRSIG    
+ | SIG _     -> RR_SIG    
  | RT _        -> RR_RT       
  | SOA _       -> RR_SOA      
  | SRV _       -> RR_SRV      
@@ -357,7 +359,8 @@ cenum rr_class {
   RR_IN = 1;
   RR_CS = 2;
   RR_CH = 3;
-  RR_HS = 4
+  RR_HS = 4;
+  RR_ANY = 0xff
 } as uint8_t
 
 let rr_class_to_string =
@@ -366,6 +369,7 @@ let rr_class_to_string =
   |RR_CS -> "CS"    
   |RR_CH -> "CH"
   |RR_HS -> "HS"
+  |RR_ANY -> "RR_ANY"
 
 let string_to_rr_class =
   function
@@ -373,6 +377,7 @@ let string_to_rr_class =
   |"CS" -> Some RR_CS
   |"CH" -> Some RR_CH
   |"HS" -> Some RR_HS
+  | "ANY" -> Some RR_ANY
   |_ -> None
 
 cstruct rr {
@@ -560,7 +565,22 @@ let parse_rdata names base t cls ttl buf =
         let (name, (len, buf)) = Name.parse_name names 0 buf in 
         let sign = Cstruct.to_string buf in 
           RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) 
-    
+
+    | RR_SIG -> 
+       let alg = 
+          let a =Cstruct.get_uint8 buf 2 in 
+            match (int_to_dnssec_alg a) with
+              | None -> failwith (sprintf "parse_rdata: DNSKEY alg %d" a)
+              | Some a -> a
+        in 
+        let exp_ts = Cstruct.BE.get_uint32 buf 8 in
+        let inc_ts = Cstruct.BE.get_uint32 buf 12 in 
+        let tag = Cstruct.BE.get_uint16 buf 16 in
+        let buf = Cstruct.shift buf 18 in 
+        let (name, (len, buf)) = Name.parse_name names 0 buf in 
+        let sign = Cstruct.to_string buf in 
+          SIG (alg, exp_ts, inc_ts, tag, name, sign) 
+     
     | RR_A -> A (BE.get_uint32 buf 0)
         
     | RR_AAAA -> AAAA (Cstruct.to_string buf)
@@ -717,7 +737,19 @@ let parse_rdata names base t cls ttl buf =
         let (names, len, rdbuf) = Name.marshal_name ~compress names 0 rdbuf name in 
         let _ = Cstruct.set_buffer sign 0 rdbuf 0 (String.length sign) in
           RR_RRSIG, names, (18+len+(String.length sign))
-    | HINFO (cpu,os) ->
+     | SIG (alg, exp_ts, inc_ts, tag, name, sign) ->
+        let _ = Cstruct.BE.set_uint16 rdbuf 0 0 in 
+        let _ = Cstruct.set_uint8 rdbuf 2 (dnssec_alg_to_int alg) in 
+        let _ = Cstruct.set_uint8 rdbuf 3 0 in 
+        let _ = Cstruct.BE.set_uint32 rdbuf 4 0l in
+        let _ = Cstruct.BE.set_uint32 rdbuf 8 exp_ts in
+        let _ = Cstruct.BE.set_uint32 rdbuf 12 inc_ts in 
+        let _ = Cstruct.BE.set_uint16 rdbuf 16 tag in
+        let rdbuf = Cstruct.shift rdbuf 18 in
+        let (names, len, rdbuf) = Name.marshal_name ~compress names 0 rdbuf name in 
+        let _ = Cstruct.set_buffer sign 0 rdbuf 0 (String.length sign) in
+          RR_SIG, names, (18+len+(String.length sign))
+     | HINFO (cpu,os) ->
         let cpustr, cpulen = charstr cpu in
         Cstruct.set_buffer cpustr 0 rdbuf 0 cpulen;
         let osstr, oslen = charstr os in

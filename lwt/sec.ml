@@ -255,10 +255,38 @@ let sign_records
       | Rsa key -> Dnssec_rsa.sign_msg alg key data
       | _ -> failwith "invalid key type"
     in
-     ({
-       name=name; cls=RR_IN; ttl=ttl;
+      ({
+       name=[]; cls=RR_IN; ttl=0l;
        rdata=(RRSIG(typ, alg, lbl, ttl, expiration, inception,
               tag, owner, sign)); })
+
+let sign_packet 
+  ?(inception=(Int32.of_float (Unix.gettimeofday ()))) (* inception now *)
+  ?(expiration=(Int32.of_float ((Unix.gettimeofday ()) +. 300.0))) (* 1 week duration *)
+  alg key tag owner pkt =
+ 
+  let data = Lwt_bytes.create 4096 in 
+  let lbl = char_of_int 0 in 
+  let rdata = SIG(alg, expiration, inception, tag, owner, "") in
+  let names = Hashtbl.create 0 in 
+  let (_, _, rdlen) = 
+    marshal_rdata names ~compress:false 0 data rdata in
+  let buf = Cstruct.shift data rdlen in 
+  let datalen = Cstruct.len (marshal buf pkt) in
+  let buf = Cstruct.to_string (Cstruct.sub data 0 (rdlen + datalen)) in
+  let sign = 
+    match key with
+      | Rsa key -> Dnssec_rsa.sign_msg alg key buf
+      | _ -> failwith "invalid key type"
+  in
+  let _ = Cstruct.hexdump (Lwt_bytes.of_string sign) in 
+  let sig0 = ({
+    name=[]; cls=RR_ANY; ttl=0l;
+    rdata=(SIG(alg, expiration, inception, tag, owner, sign)); }) in
+    {id=pkt.id; detail=pkt.detail;questions=pkt.questions; 
+     answers=pkt.answers; authorities=pkt.authorities; 
+     additionals=(pkt.additionals@[sig0]);} 
+
 
 let verify_rrsig ttl inception expiration alg key tag 
       owner rrset sign =

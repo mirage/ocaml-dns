@@ -130,6 +130,7 @@ cenum q_type {
 val q_type_to_int : q_type -> int
 
 type rr_type =
+  | RR_UNUSED   (* required by sig(0)*)
   | RR_A
   | RR_NS
   | RR_MD
@@ -220,6 +221,7 @@ type rdata =
 | RP of domain_name * domain_name
 | RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
     domain_name (* uncompressed *) * string
+| SIG of dnssec_alg * int32 * int32 * uint16 * domain_name * string
 | RT of uint16 * domain_name
 | SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | SRV of uint16 * uint16 * uint16 * domain_name
@@ -245,7 +247,7 @@ val parse_rdata :
   (int, label) Hashtbl.t -> int -> rr_type -> int -> int32 -> buf -> rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
-type rr_class = RR_IN | RR_CS | RR_CH | RR_HS
+type rr_class = RR_IN | RR_CS | RR_CH | RR_HS | RR_ANY
 val rr_class_to_string : rr_class -> string
 
 (** A [resource record], with usual conversion and parsing functions. *)

@@ -176,6 +176,32 @@ let create ?(config=`Resolv_conf) () =
      return (Static.create ~servers ~search_domains ())
   |`Resolv_conf -> Resolv_conf.create ()
 
+let send_pkt t pkt =
+  let module R = (val t :RESOLVER ) in
+  let (server, dns_port) = 
+    match R.servers with
+      |[] -> failwith "No resolvers available"
+      |(server,dns_port)::_ -> (server,dns_port)
+  in
+  let ofd = outfd "0.0.0.0" 0 in
+  lwt _ =
+    try_lwt
+      log_info (sprintf "query: %s\n%!" (DP.to_string pkt));
+      let buf = Lwt_bytes.create 4096 in
+      let q = DP.marshal buf pkt in
+      let dst = sockaddr server dns_port in 
+      txbuf ofd dst q
+    with exn -> 
+      log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
+      fail exn in
+  lwt (buf,sa) = rxbuf ofd buflen in 
+  let names = Hashtbl.create 8 in
+  let r = DP.parse names buf in 
+  log_info (sprintf "response:%s sa:%s" (DP.to_string r) (sockaddr_to_string sa));
+  return r
+
+
+
 let gethostbyname t ?q_class ?q_type q_name =
   let module R = (val t :RESOLVER ) in
   match R.servers with
