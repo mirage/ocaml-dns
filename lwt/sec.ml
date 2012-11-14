@@ -214,19 +214,43 @@ let get_ds_rr owner digest rdata =
         DS(tag, alg, digest, value)
   | _ -> failwith("get_dnssec_key_tag: Invalid rdata ")
 
-let marshal_rrsig_data ttl rrsig rrset = 
-  let buf = Lwt_bytes.create 4096 in 
-  (* Firstly marshal the rrsig field *)
-  let names = Hashtbl.create 0 in 
-  let (_, names, rdbuf) = marshal_rdata names 
-                            0 buf rrsig in 
-  let rrset = 
-    List.sort (
-      fun a b -> 
-        compare_rdata a.rdata b.rdata
-    ) rrset in 
+let resolve_record st typ owner = 
+  try_lwt
+   lwt pkt = Dns_resolver.resolve ~dnssec:true 
+              st.resolver Q_IN typ owner in 
+   let (ds_rr, ds_rrsig) = 
+     List.fold_right 
+        (fun rr (ds_rr, ds_rrsig) ->
+          match (rr.rdata) with
+          | RRSIG (signed_typ, _, _, _, _, _, _, _, _)  
+              when ((q_type_to_int typ) = (rr_type_to_int signed_typ)) -> 
+              (ds_rr, Some(rr.rdata))
+          | a when 
+          (rr_type_to_int (rdata_to_rr_type a)) = (q_type_to_int typ) ->
+            (ds_rr @ [rr], ds_rrsig) 
+          | _ -> (ds_rr, ds_rrsig) 
+        ) pkt.answers ([], None) in 
+    match (ds_rr, ds_rrsig) with
+      | [], _ -> failwith (sprintf "no ds record found for %s"
+                    (domain_name_to_string owner))
+      | _, None -> failwith (sprintf "no rrsig record of %s records for %s"
+                    (Dns.Packet.q_type_to_string typ) (domain_name_to_string owner))
+      | a, Some b -> return (a, b)
+  with ex -> 
+    failwith (sprintf "get_ds_record failed:%s" (Printexc.to_string ex))
 
- let rec marshall_rrset off buf = function
+let marshal_rrsig_data ttl rrsig rrset =
+  let buf = Lwt_bytes.create 4096 in
+  (* Firstly marshal the rrsig field *)
+  let names = Hashtbl.create 0 in
+  let (_, names, rdbuf) = marshal_rdata names
+                            0 buf rrsig in
+  let rrset =
+    List.sort (
+      fun a b ->
+        compare_rdata a.rdata b.rdata
+    ) rrset in
+  let rec marshall_rrset off buf = function
     | [] -> off
     | rr :: rrset -> 
         let names = Hashtbl.create 0 in 
@@ -260,34 +284,6 @@ let sign_records
        rdata=(RRSIG(typ, alg, lbl, ttl, expiration, inception,
               tag, owner, sign)); })
 
-let sign_packet 
-  ?(inception=(Int32.of_float (Unix.gettimeofday ()))) (* inception now *)
-  ?(expiration=(Int32.of_float ((Unix.gettimeofday ()) +. 300.0))) (* 1 week duration *)
-  alg key tag owner pkt =
- 
-  let data = Lwt_bytes.create 4096 in 
-  let lbl = char_of_int 0 in 
-  let rdata = SIG(alg, expiration, inception, tag, owner, "") in
-  let names = Hashtbl.create 0 in 
-  let (_, _, rdlen) = 
-    marshal_rdata names ~compress:false 0 data rdata in
-  let buf = Cstruct.shift data rdlen in 
-  let datalen = Cstruct.len (marshal buf pkt) in
-  let buf = Cstruct.to_string (Cstruct.sub data 0 (rdlen + datalen)) in
-  let sign = 
-    match key with
-      | Rsa key -> Dnssec_rsa.sign_msg alg key buf
-      | _ -> failwith "invalid key type"
-  in
-  let _ = Cstruct.hexdump (Lwt_bytes.of_string sign) in 
-  let sig0 = ({
-    name=[]; cls=RR_ANY; ttl=0l;
-    rdata=(SIG(alg, expiration, inception, tag, owner, sign)); }) in
-    {id=pkt.id; detail=pkt.detail;questions=pkt.questions; 
-     answers=pkt.answers; authorities=pkt.authorities; 
-     additionals=(pkt.additionals@[sig0]);} 
-
-
 let verify_rrsig ttl inception expiration alg key tag 
       owner rrset sign =
  let _, name, typ = extract_type_from_rrset rrset in 
@@ -307,31 +303,6 @@ let verify_rrsig ttl inception expiration alg key tag
 (*
  * Methods to resolve and verify dnssec records 
  * *)
-let resolve_record st typ owner = 
-  try_lwt
-   lwt pkt = Dns_resolver.resolve ~dnssec:true 
-              st.resolver Q_IN typ owner in 
-   let (ds_rr, ds_rrsig) = 
-     List.fold_right 
-        (fun rr (ds_rr, ds_rrsig) ->
-          match (rr.rdata) with
-          | RRSIG (signed_typ, _, _, _, _, _, _, _, _)  
-              when ((q_type_to_int typ) = (rr_type_to_int signed_typ)) -> 
-              (ds_rr, Some(rr.rdata))
-          | a when 
-          (rr_type_to_int (rdata_to_rr_type a)) = (q_type_to_int typ) ->
-            (ds_rr @ [rr], ds_rrsig) 
-          | _ -> (ds_rr, ds_rrsig) 
-        ) pkt.answers ([], None) in 
-    match (ds_rr, ds_rrsig) with
-      | [], _ -> failwith (sprintf "no ds record found for %s"
-                    (domain_name_to_string owner))
-      | _, None -> failwith (sprintf "no rrsig record for DS records for %s"
-                    (domain_name_to_string owner))
-      | a, Some b -> return (a, b)
-  with ex -> 
-    failwith (sprintf "get_ds_record failed:%s" (Printexc.to_string ex))
-
 let rec verify_rr st rr rrsig =
   try_lwt
     match rrsig with 
@@ -402,6 +373,101 @@ let rec verify_rr st rr rrsig =
   with ex -> 
     let _ = eprintf "verify_rr failed: %s\n%!" (Printexc.to_string ex)in 
       return false 
+
+let get_dnssec_key_of_owner st tag owner = 
+  let anchor_key = lookup_dnskey_anchors st tag owner in 
+  let cache_key = lookup_dnskey_cache st tag owner in
+  match (anchor_key, cache_key) with
+    | (Some key, _) 
+    | (_, Some key) -> 
+        return key
+    | (None, None) -> 
+      lwt keys, rrsig = resolve_record st Q_DNSKEY owner in
+      lwt ret = verify_rr st keys rrsig in 
+        match ret with 
+        | false -> failwith "cannot find signing key"
+        | true ->
+            let rr = 
+              List.find 
+                (fun rr -> 
+                  match rr.rdata with 
+                  | DNSKEY (_, RSAMD5, dnskey) 
+                  | DNSKEY (_, RSASHA1, dnskey) 
+                  | DNSKEY (_, RSASHA256, dnskey) 
+                  | DNSKEY (_, RSASHA512, dnskey) ->
+                    let dnskey_tag = get_dnskey_tag rr.rdata in
+                      (dnskey_tag = tag) && (owner = rr.name) 
+                  | _ -> false
+                ) keys in
+            let DNSKEY(_, _, key) = rr.rdata in 
+             return (Rsa (Dnssec_rsa.dnskey_to_rsa_key key))
+
+let sign_packet 
+  ?(inception=(Int32.of_float (Unix.gettimeofday ()))) (* inception now *)
+  ?(expiration=(Int32.of_float ((Unix.gettimeofday ()) +. 300.0))) (* 1 week duration *)
+  alg key tag owner pkt =
+  let data = Lwt_bytes.create 4096 in 
+  let rdata = SIG(alg, expiration, inception, tag, owner, "") in
+  let names = Hashtbl.create 0 in 
+  let (_, _, rdlen) = 
+    marshal_rdata names ~compress:false 0 data rdata in
+  let buf = Cstruct.shift data rdlen in 
+  let datalen = Cstruct.len (marshal buf pkt) in
+  let buf = Cstruct.to_string (Cstruct.sub data 0 (rdlen + datalen)) in
+  let sign = 
+    match key with
+      | Rsa key -> Dnssec_rsa.sign_msg alg key buf
+      | _ -> failwith "invalid key type"
+  in
+  let sig0 = ({
+    name=[]; cls=RR_ANY; ttl=0l;
+    rdata=(SIG(alg, expiration, inception, tag, owner, sign)); }) in
+    {id=pkt.id; detail=pkt.detail;questions=pkt.questions; 
+     answers=pkt.answers; authorities=pkt.authorities; 
+     additionals=(pkt.additionals@[sig0]);} 
+
+
+let verify_packet st pkt =
+  try_lwt 
+    let rec fetch_sig0 sig0 = function
+      | [] -> ([], sig0)
+      | hd::tl 
+          when (Dns.Packet.rdata_to_rr_type hd.rdata = RR_SIG) ->
+          let SIG(alg, exp_ts, inc_ts, tag, name, sign) = hd.rdata in 
+          let additionals, _ = fetch_sig0 sig0 tl in 
+           ((additionals), Some(alg, exp_ts, inc_ts, tag, name, sign))
+      | hd :: tl -> 
+          let additionals, sig0 = fetch_sig0 sig0 tl in 
+            ((additionals @ [hd]), sig0)
+    in
+    let additionals, sig0 = fetch_sig0 None pkt.additionals in 
+    let alg, expiration, inception, tag, owner, sign = 
+      match sig0 with 
+      | None -> failwith "sig0 records not found"
+      | Some(alg, exp_ts, inc_ts, tag, owner, sign) -> 
+          alg, exp_ts, inc_ts, tag, owner, sign 
+    in
+    let pkt = 
+      {id=pkt.id; detail=pkt.detail;questions=pkt.questions; 
+        answers=pkt.answers; authorities=pkt.authorities; 
+        additionals;} in 
+   let data = Lwt_bytes.create 4096 in 
+   let rdata = SIG(alg, expiration, inception, tag, owner, "") in
+   let names = Hashtbl.create 0 in 
+   let (_, _, rdlen) = 
+     marshal_rdata names ~compress:false 0 data rdata in
+   let buf = Cstruct.shift data rdlen in 
+   let datalen = Cstruct.len (marshal buf pkt) in
+   let buf = Cstruct.to_string (Cstruct.sub data 0 (rdlen + datalen)) in
+   lwt key = get_dnssec_key_of_owner st tag owner in
+     match key with
+      | Rsa key -> return (Dnssec_rsa.verify_msg alg key buf sign)
+      | _ -> return false
+  with exn -> 
+    let _ = eprintf "[sec] verify_packet failed:%s\n%!" 
+              (Printexc.to_string exn) in
+      return false
+
 
 let resolve st q typ name =
   lwt p = Dns_resolver.resolve st.resolver ~dnssec:true q typ name in

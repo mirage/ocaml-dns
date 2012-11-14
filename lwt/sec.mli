@@ -44,6 +44,7 @@ val sign_records : ?inception:int32 -> ?expiration:int32 ->
 val sign_packet :  ?inception:int32 -> ?expiration:int32 -> 
   dnssec_alg -> key -> int -> domain_name -> Dns.Packet.t -> 
     Dns.Packet.t
+val verify_packet : dnssec_state -> Dns.Packet.t -> bool Lwt.t
 
 val get_dnskey_tag : rdata -> int
 val get_ds_rr : domain_name -> digest_alg -> rdata -> rdata
