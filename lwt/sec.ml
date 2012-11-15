@@ -59,6 +59,7 @@ let get_dnskey_tag rdata =
   | DNSKEY(_,RSASHA512, key) ->
       let names = Hashtbl.create 0 in 
       let buf = Lwt_bytes.create 1024 in 
+      let _ = Lwt_bytes.fill data 0 1024 (char_of_int 0) in 
       let (_, _, len) = marshal_rdata names 0 buf rdata in
       let buf = Cstruct.sub buf 0 len in 
       let res = ref 0l in
@@ -195,6 +196,7 @@ let get_ds_rr owner digest rdata =
   | DNSKEY(_, alg, key) -> 
      let names = Hashtbl.create 0 in 
       let buf = Lwt_bytes.create 1024 in
+      let _ = Lwt_bytes.fill data 0 1024 (char_of_int 0) in 
       let (_, name_len, _) = marshal_name names 0 buf owner in  
       let (_, _, len) = marshal_rdata names 0 
                           (Cstruct.shift buf name_len) rdata in
@@ -241,6 +243,7 @@ let resolve_record st typ owner =
 
 let marshal_rrsig_data ttl rrsig rrset =
   let buf = Lwt_bytes.create 4096 in
+  let _ = Lwt_bytes.fill data 0 4096 (char_of_int 0) in 
   (* Firstly marshal the rrsig field *)
   let names = Hashtbl.create 0 in
   let (_, names, rdbuf) = marshal_rdata names
@@ -406,7 +409,8 @@ let sign_packet
   ?(inception=(Int32.of_float (Unix.gettimeofday ()))) (* inception now *)
   ?(expiration=(Int32.of_float ((Unix.gettimeofday ()) +. 300.0))) (* 1 week duration *)
   alg key tag owner pkt =
-  let data = Lwt_bytes.create 4096 in 
+  let data = Lwt_bytes.create 4096 in
+  let _ = Lwt_bytes.fill data 0 4096 (char_of_int 0) in 
   let rdata = SIG(alg, expiration, inception, tag, owner, "") in
   let names = Hashtbl.create 0 in 
   let (_, _, rdlen) = 
@@ -452,6 +456,7 @@ let verify_packet st pkt =
         answers=pkt.answers; authorities=pkt.authorities; 
         additionals;} in 
    let data = Lwt_bytes.create 4096 in 
+   let _ = Lwt_bytes.fill data 0 4096 (char_of_int 0) in 
    let rdata = SIG(alg, expiration, inception, tag, owner, "") in
    let names = Hashtbl.create 0 in 
    let (_, _, rdlen) = 
