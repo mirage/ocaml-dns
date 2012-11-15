@@ -52,5 +52,6 @@ val get_ds_rr : domain_name -> digest_alg -> rdata -> rdata
 val get_dnskey_rr : ?ksk:bool -> ?zsk:bool -> dnssec_alg -> 
   key -> rdata
 
-val resolve : dnssec_state -> q_class -> q_type -> domain_name ->
-  dnssec_result Lwt.t 
+val resolve : dnssec_state -> 
+  ?sig0:(Dns.Packet.dnssec_alg * int * key * Dns.Name.domain_name) option -> 
+    q_class -> q_type -> domain_name -> dnssec_result Lwt.t 
