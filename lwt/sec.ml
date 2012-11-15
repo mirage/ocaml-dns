@@ -134,7 +134,9 @@ let lookup_dnskey_cache st tag owner =
         match rr.rdata with 
         | DNSKEY (_, alg, dnskey) ->
             let dnskey_tag = get_dnskey_tag rr.rdata in
-            (dnskey_tag = tag) && (owner = rr.name) 
+            (dnskey_tag = tag) && 
+            ((Dns.Name.domain_name_to_string owner) = 
+               (Dns.Name.domain_name_to_string rr.name)) 
         | _ -> false
     ) st.cache in
       Some (key)
@@ -147,7 +149,9 @@ let lookup_dnskey_anchors st tag owner =
         match rr.rdata with 
         | DNSKEY (_, alg, dnskey) ->
             let dnskey_tag = get_dnskey_tag rr.rdata in
-            (dnskey_tag = tag) && (owner = rr.name) 
+            (dnskey_tag = tag) && 
+            ((Dns.Name.domain_name_to_string owner) = 
+               (Dns.Name.domain_name_to_string rr.name)) 
         | _ -> false
     ) st.anchors in
       Some (key)
