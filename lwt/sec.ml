@@ -469,8 +469,16 @@ let verify_packet st pkt =
       return false
 
 
-let resolve st q typ name =
-  lwt p = Dns_resolver.resolve st.resolver ~dnssec:true q typ name in
+let resolve st ?(sig0=None) q typ name =
+(*  lwt p = Dns_resolver.resolve st.resolver ~dnssec:true q typ name in *)
+  let pkt = Dns_resolver.build_query ~dnssec:true q typ name in 
+  let pkt = 
+    match sig0 with
+    | None -> pkt
+    | Some (alg, tag, key, owner) -> 
+        sign_packet alg key tag owner pkt  
+  in
+  lwt p = Dns_resolver.send_pkt st.resolver pkt in 
   let Some(rr_type) = int_to_rr_type (q_type_to_int typ) in 
   let (rr, rrsig) = 
     List.fold_right (
