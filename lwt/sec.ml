@@ -135,7 +135,9 @@ let lookup_dnskey_cache st tag owner =
         match rr.rdata with 
         | DNSKEY (_, alg, dnskey) ->
             let dnskey_tag = get_dnskey_tag rr.rdata in
-            (dnskey_tag = tag) && (owner = rr.name) 
+            (dnskey_tag = tag) && 
+            ((Dns.Name.domain_name_to_string owner) = 
+               (Dns.Name.domain_name_to_string rr.name)) 
         | _ -> false
     ) st.cache in
       Some (key)
@@ -148,7 +150,9 @@ let lookup_dnskey_anchors st tag owner =
         match rr.rdata with 
         | DNSKEY (_, alg, dnskey) ->
             let dnskey_tag = get_dnskey_tag rr.rdata in
-            (dnskey_tag = tag) && (owner = rr.name) 
+            (dnskey_tag = tag) && 
+            ((Dns.Name.domain_name_to_string owner) = 
+               (Dns.Name.domain_name_to_string rr.name)) 
         | _ -> false
     ) st.anchors in
       Some (key)
@@ -274,6 +278,7 @@ let sign_records
   alg key tag owner rrset =
   let ttl, name, typ = extract_type_from_rrset rrset in
   let lbl = char_of_int (List.length name ) in 
+  let _ = printf "name : %s\n%!" (Dns.Name.domain_name_to_string name) in
   let unsign_sig_rr = RRSIG(typ, alg, lbl, ttl, expiration, inception,
     tag, owner, "") in
   let data = marshal_rrsig_data ttl unsign_sig_rr rrset in 
@@ -283,7 +288,7 @@ let sign_records
       | _ -> failwith "invalid key type"
     in
       ({
-       name=[]; cls=RR_IN; ttl=0l;
+       name; cls=RR_IN; ttl=0l;
        rdata=(RRSIG(typ, alg, lbl, ttl, expiration, inception,
               tag, owner, sign)); })
 
