@@ -87,10 +87,10 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
   let cont = ref true in
   let bufs = Lwt_pool.create 64 (fun () -> return (Lwt_bytes.create 1024)) in
   let _ =
-    let names = Hashtbl.create 64 in
     while_lwt !cont do
       Lwt_pool.use bufs (fun buf ->
         lwt len, dst = Lwt_bytes.(recvfrom fd buf 0 (length buf) []) in
+          let names = Hashtbl.create 64 in
 	  return (Lwt.ignore_result (process_query fd buf len src dst dnsfn names) )
      )
     done
