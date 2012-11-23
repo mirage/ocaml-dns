@@ -60,72 +60,72 @@ val int_to_dnssec_alg : int -> dnssec_alg option
 val dnssec_alg_to_int : dnssec_alg -> int
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
-cenum q_type {
-  Q_A          = 1;
-  Q_NS         = 2;
-  Q_MD         = 3;
-  Q_MF         = 4;
-  Q_CNAME      = 5;
-  Q_SOA        = 6;
-  Q_MB         = 7;
-  Q_MG         = 8;
-  Q_MR         = 9;
-  Q_NULL       = 10;
-  Q_WKS        = 11;
-  Q_PTR        = 12;
-  Q_HINFO      = 13;
-  Q_MINFO      = 14;
-  Q_MX         = 15;
-  Q_TXT        = 16;
-  Q_RP         = 17;
-  Q_AFSDB      = 18;
-  Q_X25        = 19;
-  Q_ISDN       = 20;
-  Q_RT         = 21;
-  Q_NSAP       = 22;
-  Q_NSAPPTR    = 23;
-  Q_SIG        = 24;
-  Q_KEY        = 25;
-  Q_PX         = 26;
-  Q_GPOS       = 27;
-  Q_AAAA       = 28;
-  Q_LOC        = 29;
-  Q_NXT        = 30;
-  Q_EID        = 31;
-  Q_NIMLOC     = 32;
-  Q_SRV        = 33;
-  Q_ATMA       = 34;
-  Q_NAPTR      = 35;
-  Q_KM         = 36;
-  Q_CERT       = 37;
-  Q_A6         = 38;
-  Q_DNAME      = 39;
-  Q_SINK       = 40;
-  Q_OPT        = 41;
-  Q_APL        = 42;
-  Q_DS         = 43;
-  Q_SSHFP      = 44;
-  Q_IPSECKEY   = 45;
-  Q_RRSIG      = 46;
-  Q_NSEC       = 47;
-  Q_DNSKEY     = 48;
-  Q_NSEC3      = 50;
-  Q_NSEC3PARAM = 51;
+type q_type =
+  |  Q_A       
+  |  Q_NS      
+  |  Q_MD      
+  |  Q_MF      
+  |  Q_CNAME   
+  |  Q_SOA     
+  |  Q_MB      
+  |  Q_MG      
+  |  Q_MR      
+  |  Q_NULL    
+  |  Q_WKS     
+  |  Q_PTR     
+  |  Q_HINFO   
+  |  Q_MINFO   
+  |  Q_MX      
+  |  Q_TXT     
+  |  Q_RP      
+  |  Q_AFSDB   
+  |  Q_X25     
+  |  Q_ISDN    
+  |  Q_RT      
+  |  Q_NSAP    
+  |  Q_NSAPPTR 
+  |  Q_SIG     
+  |  Q_KEY     
+  |  Q_PX      
+  |  Q_GPOS    
+  |  Q_AAAA    
+  |  Q_LOC     
+  |  Q_NXT     
+  |  Q_EID     
+  |  Q_NIMLOC  
+  |  Q_SRV     
+  |  Q_ATMA    
+  |  Q_NAPTR   
+  |  Q_KM      
+  |  Q_CERT    
+  |  Q_A6      
+  |  Q_DNAME   
+  |  Q_SINK    
+  |  Q_OPT     
+  |  Q_APL     
+  |  Q_DS      
+  |  Q_SSHFP   
+  |  Q_IPSECKEY
+  |  Q_RRSIG   
+  |  Q_NSEC    
+  |  Q_DNSKEY  
+  |  Q_NSEC3   
+  |  Q_NSEC3PARAM
 
-  Q_SPF        = 99;
-  Q_UINFO      = 100;
-  Q_UID        = 101;
-  Q_GID        = 102;
-  Q_UNSPEC     = 103;
-  
-  Q_AXFR    = 252;
-  Q_MAILB   = 253;
-  Q_MAILA   = 254;
-  Q_ANY_TYP = 255;
-  
-  Q_TA    = 32768;
-  Q_DLV   = 32769
-} as uint8_t
+  |  Q_SPF     
+  |  Q_UINFO
+  |  Q_UID     
+  |  Q_GID     
+  |  Q_UNSPEC
+
+  |  Q_AXFR    
+  |  Q_MAILB   
+  |  Q_MAILA   
+  |  Q_ANY_TYP 
+    
+  |  Q_TA
+  |  Q_DLV   
+  |  Q_UNKNOWN of int
 
 val q_type_to_int : q_type -> int
 
