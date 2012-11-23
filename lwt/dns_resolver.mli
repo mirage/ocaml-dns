@@ -18,6 +18,8 @@ open Dns.Name
 open Dns.Packet
 open Cstruct
 
+exception Dns_resolve_timeout
+
 module type RESOLVER = sig
   val servers : (string * int) list
   val search_domains : string list

@@ -21,6 +21,8 @@ open Dns.Operators
 
 module DP = Dns.Packet
 
+exception Dns_resolve_timeout
+
 let buflen = 4096
 let ns = "8.8.8.8"
 let port = 53
@@ -76,28 +78,55 @@ let rxbuf fd len =
   lwt (len, sa) = Lwt_bytes.recvfrom fd buf 0 len [] in
   return (buf, sa)
 
+let rec send_req ofd dst q = function
+  | 0 -> raise Dns_resolve_timeout
+  | count ->
+      lwt _ = txbuf ofd dst q in
+      lwt _ = Lwt_unix.sleep 1.0 in
+      printf "retrying query for %d times\n%!" (4-count); 
+        send_req ofd dst q (count - 1)
+
+let rec rcv_query ofd q =
+  lwt (buf,sa) = rxbuf ofd buflen in
+  let names = Hashtbl.create 8 in
+  let r = DP.parse names buf in 
+    if (r.DP.id = q.DP.id) then
+      return r
+    else
+      rcv_query ofd q 
+
+let send_pkt (server:string) (dns_port:int) pkt =
+ let ofd = outfd "0.0.0.0" 0 in
+ let buf = Lwt_bytes.create 4096 in
+ let q = DP.marshal buf pkt in
+  try_lwt
+      let dst = sockaddr server dns_port in 
+      let ret = ref None in 
+      lwt _ =
+        pick [
+          (send_req ofd dst q 3);
+          (lwt r = rcv_query ofd pkt in 
+            return (ret := Some(r))) ]
+      in
+        match !ret with
+        | None -> raise Dns_resolve_timeout
+        | Some r -> return r 
+    with exn -> 
+      log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
+      fail exn
+
 let resolve
     ?(dnssec=false)
     (server:string) (dns_port:int) 
     (q_class:DP.q_class) (q_type:DP.q_type) 
     (q_name:domain_name) =
-  let ofd = outfd "0.0.0.0" 0 in
-  lwt _ =
     try_lwt
       let q = build_query ~dnssec q_class q_type q_name in
       log_info (sprintf "query: %s\n%!" (DP.to_string q));
-      let buf = Lwt_bytes.create 4096 in
-      let q = DP.marshal buf q in
-      let dst = sockaddr server dns_port in 
-      txbuf ofd dst q
-    with exn -> 
+      send_pkt server dns_port q 
+   with exn -> 
       log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
-      fail exn in
-  lwt (buf,sa) = rxbuf ofd buflen in 
-  let names = Hashtbl.create 8 in
-  let r = DP.parse names buf in 
-  log_info (sprintf "response:%s sa:%s" (DP.to_string r) (sockaddr_to_string sa));
-  return r
+      fail exn 
 
 let gethostbyname
     ?(server:string = ns) ?(dns_port:int = port) 
@@ -176,31 +205,6 @@ let create ?(config=`Resolv_conf) () =
      return (Static.create ~servers ~search_domains ())
   |`Resolv_conf -> Resolv_conf.create ()
 
-let send_pkt t pkt =
-  let module R = (val t :RESOLVER ) in
-  let (server, dns_port) = 
-    match R.servers with
-      |[] -> failwith "No resolvers available"
-      |(server,dns_port)::_ -> (server,dns_port)
-  in
-  let ofd = outfd "0.0.0.0" 0 in
-  lwt _ =
-    try_lwt
-      log_info (sprintf "query: %s\n%!" (DP.to_string pkt));
-      let buf = Lwt_bytes.create 4096 in
-      let q = DP.marshal buf pkt in
-      let dst = sockaddr server dns_port in 
-      txbuf ofd dst q
-    with exn -> 
-      log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
-      fail exn in
-  lwt (buf,sa) = rxbuf ofd buflen in 
-  let names = Hashtbl.create 8 in
-  let r = DP.parse names buf in 
-  log_info (sprintf "response:%s sa:%s" (DP.to_string r) (sockaddr_to_string sa));
-  return r
-
-
 
 let gethostbyname t ?q_class ?q_type q_name =
   let module R = (val t :RESOLVER ) in
@@ -213,6 +217,12 @@ let gethostbyaddr t ?q_class ?q_type q_name =
   match R.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ -> gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
+
+let send_pkt t pkt =
+  let module R = (val t :RESOLVER ) in
+  match R.servers with
+  |[] -> fail (Failure "No resolvers available")
+  |(server,dns_port)::_ -> send_pkt server dns_port pkt
 
 let resolve t ?(dnssec=false) q_class q_type q_name =
   let module R = (val t :RESOLVER ) in
