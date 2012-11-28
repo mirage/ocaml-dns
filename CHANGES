@@ -1,4 +1,4 @@
-===== 0.5.2 (unreleased) =====
+===== 0.5.2 (2012-11-28) =====
 
 * Fix the server interface to be fully asynchronous.
 
