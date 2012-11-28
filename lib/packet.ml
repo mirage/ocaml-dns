@@ -22,7 +22,8 @@ open Name
 open Cstruct
 
 cenum digest_alg {
-  SHA1 = 1
+  SHA1 = 1;
+  SHA256 = 2
 } as uint8_t
 
 cenum gateway_tc {
@@ -75,6 +76,7 @@ cenum dnssec_alg {
 } as uint8_t
 
 cenum rr_type {
+  RR_UNUSED     = 0;
   RR_A          = 1;
   RR_NS         = 2;
   RR_MD         = 3;
@@ -212,7 +214,8 @@ type rdata =
   | RP of domain_name * domain_name
   | RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
       domain_name (* uncompressed *) * string
-  | RT of uint16 * domain_name
+  | SIG of dnssec_alg * int32 * int32 * uint16 * domain_name * string
+   | RT of uint16 * domain_name
   | SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
   | SRV of uint16 * uint16 * uint16 * domain_name
   | SSHFP of pubkey_alg * fp_type * string
@@ -221,6 +224,15 @@ type rdata =
   (*  | UNSPEC of string -- wikipedia says deprecated in the 90s *)
   | WKS of int32 * byte * string
   | X25 of string 
+  | EDNS0 of (int * int * bool * ((int * string) list))
+
+let hex_of_string in_str = 
+  let out_str = ref "" in 
+  let _ = String.iter (
+    fun ch ->
+      out_str := !out_str ^ (sprintf "%02x" (int_of_char ch))
+  ) in_str in 
+    !out_str
 
 let rdata_to_string = function
   | A ip -> sprintf "A (%s)" (ipv4_to_string ip)
@@ -229,7 +241,7 @@ let rdata_to_string = function
     -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
   | CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
   | DNSKEY (flags, alg, key) 
-    -> (sprintf "DNSKEY (%x, %s, %s)" 
+    -> (sprintf "DNSKEY (%d, %s, %s)" 
           flags (dnssec_alg_to_string alg) 
           (Base64.encode key)
     )
@@ -263,14 +275,26 @@ let rdata_to_string = function
   | SRV (x, y, z, n) 
     -> sprintf "SRV (%d,%d,%d, %s)" x y z (domain_name_to_string n)
   | TXT sl -> sprintf "TXT (%s)" (String.concat "" sl)
-  | UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x bs
+  | UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (Base64.encode bs)
   (* | UNSPEC bs -> sprintf "UNSPEC (%s)" bs*)
   | WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x (byte_to_int y) s
   | X25 s -> sprintf "X25 (%s)" s
-
-  | DS (keytag, alg, digest_t, digest) 
+  | EDNS0 (len, rcode, do_bit, opts) -> 
+      sprintf "EDNS0 (version:0, UDP: %d, flags: %s)"
+        len (if (do_bit) then "do" else "")
+  | RRSIG  (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) ->
+      sprintf "RRSIG (%s %s %d %ld %ld %ld %d %s %s)" 
+        (rr_type_to_string typ)
+        (dnssec_alg_to_string alg) (int_of_char lbl) orig_ttl exp_ts inc_ts 
+        tag (Name.domain_name_to_string name) (Base64.encode sign)
+  | SIG  (alg, exp_ts, inc_ts, tag, name, sign) ->
+      sprintf "SIG (UNUSED %s 0 0 %ld %ld %d %s %s)" 
+        (dnssec_alg_to_string alg) exp_ts inc_ts 
+        tag (Name.domain_name_to_string name) (Base64.encode sign)
+   | DS (keytag, alg, digest_t, digest) 
     -> (sprintf "DS (%d,%s,%s, '%s')" keytag
-          (dnssec_alg_to_string alg) (digest_alg_to_string digest_t) digest
+          (dnssec_alg_to_string alg) (digest_alg_to_string digest_t) 
+          (hex_of_string digest)
     )
   | IPSECKEY (precedence, gw_type, alg, gw, pubkey)
     -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" (byte_to_int precedence)
@@ -292,22 +316,51 @@ let rdata_to_string = function
           (hash_alg_to_string halg) (byte_to_int flgs) iterations 
           (byte_to_int salt_l) salt
     )
-  | RRSIG (tc, alg, nlbls, ttl, expiration, inception, keytag, name, sign)
-    -> (sprintf "RRSIG (%s,%s,%d, %ld, %ld,%ld, %d, %s, %s)"
-          (rr_type_to_string tc) (dnssec_alg_to_string alg) 
-          (byte_to_int nlbls) ttl expiration inception keytag
-          (domain_name_to_string name) sign
-    )
-  | SSHFP (alg, fpt, fp)
+ | SSHFP (alg, fpt, fp)
     -> (sprintf "SSHFP (%s,%s, '%s')" (pubkey_alg_to_string alg) 
           (fp_type_to_string fpt) fp
     )
+let rdata_to_rr_type = function 
+ | A _        ->  RR_A           
+ | AAAA _      -> RR_AAAA     
+ | AFSDB _     -> RR_AFSDB    
+ | CNAME _     -> RR_CNAME    
+ | DNSKEY _    -> RR_DNSKEY   
+ | DS _        -> RR_DS       
+ | HINFO _     -> RR_HINFO    
+ | IPSECKEY _  -> RR_IPSECKEY 
+ | ISDN _      -> RR_ISDN     
+ | MB _        -> RR_MB       
+ | MD _        -> RR_MD       
+ | MF _        -> RR_MF       
+ | MG _        -> RR_MG       
+ | MINFO _     -> RR_MINFO    
+ | MR _        -> RR_MR       
+ | MX _        -> RR_MX       
+ | NS _        -> RR_NS       
+ | NSEC _      -> RR_NSEC     
+ | NSEC3 _     -> RR_NSEC3    
+ | NSEC3PARAM _-> RR_NSEC3PARAM
+ | PTR _       -> RR_PTR      
+ | RP _        -> RR_RP       
+ | RRSIG _     -> RR_RRSIG    
+ | SIG _     -> RR_SIG    
+ | RT _        -> RR_RT       
+ | SOA _       -> RR_SOA      
+ | SRV _       -> RR_SRV      
+ | SSHFP _     -> RR_SSHFP    
+ | TXT _       -> RR_TXT      
+ | UNKNOWN _   -> RR_UNSPEC  
+ | WKS _       -> RR_WKS      
+ | X25 _       -> RR_X25      
+ | EDNS0 _     -> RR_OPT   
 
 cenum rr_class {
   RR_IN = 1;
   RR_CS = 2;
   RR_CH = 3;
-  RR_HS = 4
+  RR_HS = 4;
+  RR_ANY = 0xff
 } as uint8_t
 
 let rr_class_to_string =
@@ -316,6 +369,7 @@ let rr_class_to_string =
   |RR_CS -> "CS"    
   |RR_CH -> "CH"
   |RR_HS -> "HS"
+  |RR_ANY -> "RR_ANY"
 
 let string_to_rr_class =
   function
@@ -323,6 +377,7 @@ let string_to_rr_class =
   |"CS" -> Some RR_CS
   |"CH" -> Some RR_CH
   |"HS" -> Some RR_HS
+  | "ANY" -> Some RR_ANY
   |_ -> None
 
 cstruct rr {
@@ -344,79 +399,293 @@ let rr_to_string rr =
     (domain_name_to_string rr.name) (rr_class_to_string rr.cls) 
     rr.ttl (rdata_to_string rr.rdata)
 
-cenum q_type {
-  Q_A          = 1;
-  Q_NS         = 2;
-  Q_MD         = 3;
-  Q_MF         = 4;
-  Q_CNAME      = 5;
-  Q_SOA        = 6;
-  Q_MB         = 7;
-  Q_MG         = 8;
-  Q_MR         = 9;
-  Q_NULL       = 10;
-  Q_WKS        = 11;
-  Q_PTR        = 12;
-  Q_HINFO      = 13;
-  Q_MINFO      = 14;
-  Q_MX         = 15;
-  Q_TXT        = 16;
-  Q_RP         = 17;
-  Q_AFSDB      = 18;
-  Q_X25        = 19;
-  Q_ISDN       = 20;
-  Q_RT         = 21;
-  Q_NSAP       = 22;
-  Q_NSAPPTR    = 23;
-  Q_SIG        = 24;
-  Q_KEY        = 25;
-  Q_PX         = 26;
-  Q_GPOS       = 27;
-  Q_AAAA       = 28;
-  Q_LOC        = 29;
-  Q_NXT        = 30;
-  Q_EID        = 31;
-  Q_NIMLOC     = 32;
-  Q_SRV        = 33;
-  Q_ATMA       = 34;
-  Q_NAPTR      = 35;
-  Q_KM         = 36;
-  Q_CERT       = 37;
-  Q_A6         = 38;
-  Q_DNAME      = 39;
-  Q_SINK       = 40;
-  Q_OPT        = 41;
-  Q_APL        = 42;
-  Q_DS         = 43;
-  Q_SSHFP      = 44;
-  Q_IPSECKEY   = 45;
-  Q_RRSIG      = 46;
-  Q_NSEC       = 47;
-  Q_DNSKEY     = 48;
-  Q_NSEC3      = 50;
-  Q_NSEC3PARAM = 51;
+type q_type =
+|  Q_A |  Q_NS |  Q_MD |  Q_MF         
+|  Q_CNAME |  Q_SOA |  Q_MB         
+|  Q_MG |  Q_MR |  Q_NULL |  Q_WKS        
+|  Q_PTR |  Q_HINFO |  Q_MINFO      
+|  Q_MX |  Q_TXT |  Q_RP |  Q_AFSDB      
+|  Q_X25 |  Q_ISDN |  Q_RT |  Q_NSAP       
+|  Q_NSAPPTR |  Q_SIG |  Q_KEY        
+|  Q_PX |  Q_GPOS |  Q_AAAA |  Q_LOC        
+|  Q_NXT |  Q_EID |  Q_NIMLOC |  Q_SRV        
+|  Q_ATMA |  Q_NAPTR |  Q_KM |  Q_CERT       
+|  Q_A6 |  Q_DNAME |  Q_SINK |  Q_OPT        
+|  Q_APL |  Q_DS |  Q_SSHFP |  Q_IPSECKEY   
+|  Q_RRSIG |  Q_NSEC |  Q_DNSKEY |  Q_NSEC3      
+|  Q_NSEC3PARAM |  Q_SPF |  Q_UINFO      
+|  Q_UID |  Q_GID |  Q_UNSPEC |  Q_AXFR
+|  Q_MAILB |  Q_MAILA |  Q_ANY_TYP
+|  Q_TA |  Q_DLV
+| Q_UNKNOWN of int
 
-  Q_SPF        = 99;
-  Q_UINFO      = 100;
-  Q_UID        = 101;
-  Q_GID        = 102;
-  Q_UNSPEC     = 103;
-  
-  Q_AXFR    = 252;
-  Q_MAILB   = 253;
-  Q_MAILA   = 254;
-  Q_ANY_TYP = 255;
-  
-  Q_TA    = 32768;
-  Q_DLV   = 32769
-} as uint8_t
- 
-let q_type_to_string x =
+let q_type_to_int = function
+  |  Q_A          -> 1
+  |  Q_NS         -> 2
+  |  Q_MD         -> 3
+  |  Q_MF         -> 4
+  |  Q_CNAME      -> 5
+  |  Q_SOA        -> 6
+  |  Q_MB         -> 7
+  |  Q_MG         -> 8
+  |  Q_MR         -> 9
+  |  Q_NULL       -> 10
+  |  Q_WKS        -> 11
+  |  Q_PTR        -> 12
+  |  Q_HINFO      -> 13
+  |  Q_MINFO      -> 14
+  |  Q_MX         -> 15
+  |  Q_TXT        -> 16
+  |  Q_RP         -> 17
+  |  Q_AFSDB      -> 18
+  |  Q_X25        -> 19
+  |  Q_ISDN       -> 20
+  |  Q_RT         -> 21
+  |  Q_NSAP       -> 22
+  |  Q_NSAPPTR    -> 23
+  |  Q_SIG        -> 24
+  |  Q_KEY        -> 25
+  |  Q_PX         -> 26
+  |  Q_GPOS       -> 27
+  |  Q_AAAA       -> 28
+  |  Q_LOC        -> 29
+  |  Q_NXT        -> 30
+  |  Q_EID        -> 31
+  |  Q_NIMLOC     -> 32
+  |  Q_SRV        -> 33
+  |  Q_ATMA       -> 34
+  |  Q_NAPTR      -> 35
+  |  Q_KM         -> 36
+  |  Q_CERT       -> 37
+  |  Q_A6         -> 38
+  |  Q_DNAME      -> 39
+  |  Q_SINK       -> 40
+  |  Q_OPT        -> 41
+  |  Q_APL        -> 42
+  |  Q_DS         -> 43
+  |  Q_SSHFP      -> 44
+  |  Q_IPSECKEY   -> 45
+  |  Q_RRSIG      -> 46
+  |  Q_NSEC       -> 47
+  |  Q_DNSKEY     -> 48
+  |  Q_NSEC3      -> 50
+  |  Q_NSEC3PARAM -> 51
+  |  Q_SPF        -> 99
+  |  Q_UINFO      -> 100
+  |  Q_UID        -> 101
+  |  Q_GID        -> 102
+  |  Q_UNSPEC     -> 103
+  |  Q_AXFR       -> 252
+  |  Q_MAILB      -> 253
+  |  Q_MAILA      -> 254
+  |  Q_ANY_TYP    -> 255
+  |  Q_TA         -> 32768
+  |  Q_DLV        -> 32769
+  |  Q_UNKNOWN id -> id
+let int_to_q_type = function
+  | 1    -> Some(Q_A         ) 
+  | 2    -> Some(Q_NS        ) 
+  | 3    -> Some(Q_MD        ) 
+  | 4    -> Some(Q_MF        ) 
+  | 5    -> Some(Q_CNAME     ) 
+  | 6    -> Some(Q_SOA       ) 
+  | 7    -> Some(Q_MB        ) 
+  | 8    -> Some(Q_MG        ) 
+  | 9    -> Some(Q_MR        ) 
+  | 10   -> Some(Q_NULL      ) 
+  | 11   -> Some(Q_WKS       ) 
+  | 12   -> Some(Q_PTR       ) 
+  | 13   -> Some(Q_HINFO     ) 
+  | 14   -> Some(Q_MINFO     ) 
+  | 15   -> Some(Q_MX        ) 
+  | 16   -> Some(Q_TXT       ) 
+  | 17   -> Some(Q_RP        ) 
+  | 18   -> Some(Q_AFSDB     ) 
+  | 19   -> Some(Q_X25       ) 
+  | 20   -> Some(Q_ISDN      ) 
+  | 21   -> Some(Q_RT        ) 
+  | 22   -> Some(Q_NSAP      ) 
+  | 23   -> Some(Q_NSAPPTR   ) 
+  | 24   -> Some(Q_SIG       ) 
+  | 25   -> Some(Q_KEY       ) 
+  | 26   -> Some(Q_PX        ) 
+  | 27   -> Some(Q_GPOS      ) 
+  | 28   -> Some(Q_AAAA      ) 
+  | 29   -> Some(Q_LOC       ) 
+  | 30   -> Some(Q_NXT       ) 
+  | 31   -> Some(Q_EID       ) 
+  | 32   -> Some(Q_NIMLOC    ) 
+  | 33   -> Some(Q_SRV       ) 
+  | 34   -> Some(Q_ATMA      ) 
+  | 35   -> Some(Q_NAPTR     ) 
+  | 36   -> Some(Q_KM        ) 
+  | 37   -> Some(Q_CERT      ) 
+  | 38   -> Some(Q_A6        ) 
+  | 39   -> Some(Q_DNAME     ) 
+  | 40   -> Some(Q_SINK      ) 
+  | 41   -> Some(Q_OPT       ) 
+  | 42   -> Some(Q_APL       ) 
+  | 43   -> Some(Q_DS        ) 
+  | 44   -> Some(Q_SSHFP     ) 
+  | 45   -> Some(Q_IPSECKEY  ) 
+  | 46   -> Some(Q_RRSIG     ) 
+  | 47   -> Some(Q_NSEC      ) 
+  | 48   -> Some(Q_DNSKEY    ) 
+  | 50   -> Some(Q_NSEC3     ) 
+  | 51   -> Some(Q_NSEC3PARAM) 
+  | 99   -> Some(Q_SPF       ) 
+  | 100  -> Some(Q_UINFO     ) 
+  | 101  -> Some(Q_UID       ) 
+  | 102  -> Some(Q_GID       ) 
+  | 103  -> Some(Q_UNSPEC    ) 
+  | 252  -> Some(Q_AXFR      ) 
+  | 253  -> Some(Q_MAILB     ) 
+  | 254  -> Some(Q_MAILA     ) 
+  | 255  -> Some(Q_ANY_TYP   ) 
+  | 32768-> Some(Q_TA        ) 
+  | 32769-> Some(Q_DLV       ) 
+  | id   -> Some( Q_UNKNOWN id)
+
+
+let q_type_to_string = function
+  |  Q_A          -> "A" 
+  |  Q_NS         -> "NS"
+  |  Q_MD         -> "MD"
+  |  Q_MF         -> "MF"
+  |  Q_CNAME      -> "CNAME" 
+  |  Q_SOA        -> "SOA" 
+  |  Q_MB         -> "MB" 
+  |  Q_MG         -> "MG" 
+  |  Q_MR         -> "MR" 
+  |  Q_NULL       -> "NULL" 
+  |  Q_WKS        -> "WKS" 
+  |  Q_PTR        -> "PTR" 
+  |  Q_HINFO      -> "HINFO" 
+  |  Q_MINFO      -> "MINFO" 
+  |  Q_MX         -> "MX" 
+  |  Q_TXT        -> "TXT" 
+  |  Q_RP         -> "RP" 
+  |  Q_AFSDB      -> "AFSDB" 
+  |  Q_X25        -> "X25" 
+  |  Q_ISDN       -> "ISDN" 
+  |  Q_RT         -> "RT" 
+  |  Q_NSAP       -> "NSAP" 
+  |  Q_NSAPPTR    -> "NSAPPTR" 
+  |  Q_SIG        -> "SIG" 
+  |  Q_KEY        -> "KEY" 
+  |  Q_PX         -> "PX" 
+  |  Q_GPOS       -> "GPOS" 
+  |  Q_AAAA       -> "AAAA" 
+  |  Q_LOC        -> "LOC" 
+  |  Q_NXT        -> "NXT" 
+  |  Q_EID        -> "EID" 
+  |  Q_NIMLOC     -> "NIMLOC" 
+  |  Q_SRV        -> "SRV" 
+  |  Q_ATMA       -> "ATMA" 
+  |  Q_NAPTR      -> "NAPTR" 
+  |  Q_KM         -> "KM" 
+  |  Q_CERT       -> "CERT" 
+  |  Q_A6         -> "A6" 
+  |  Q_DNAME      -> "DNAME" 
+  |  Q_SINK       -> "SINK" 
+  |  Q_OPT        -> "OPT" 
+  |  Q_APL        -> "APL" 
+  |  Q_DS         -> "DS" 
+  |  Q_SSHFP      -> "SSHFP" 
+  |  Q_IPSECKEY   -> "IPSECKEY" 
+  |  Q_RRSIG      -> "RRSIG" 
+  |  Q_NSEC       -> "NSEC" 
+  |  Q_DNSKEY     -> "DNSKEY" 
+  |  Q_NSEC3      -> "NSEC3" 
+  |  Q_NSEC3PARAM -> "NSEC3PARAM"
+  |  Q_SPF        -> "SPF" 
+  |  Q_UINFO      -> "UINFO" 
+  |  Q_UID        -> "UID" 
+  |  Q_GID        -> "GID" 
+  |  Q_UNSPEC     -> "UNSPEC" 
+  |  Q_AXFR       -> "AXFR" 
+  |  Q_MAILB      -> "MAILB" 
+  |  Q_MAILA      -> "MAILA" 
+  |  Q_ANY_TYP    -> "ANY_TYP" 
+  |  Q_TA         -> "TA" 
+  |  Q_DLV        -> "DLV"
+  |  Q_UNKNOWN id -> (sprintf "TYPE%03d" id)
+
+let string_to_q_type = function
+  |"A"          -> Some(Q_A)          
+  |"NS"         -> Some(Q_NS)         
+  |"MD"         -> Some(Q_MD)        
+  |"MF"         -> Some(Q_MF)        
+  |"CNAME"      -> Some(Q_CNAME)
+  |"SOA"        -> Some(Q_SOA)    
+  |"MB"         -> Some(Q_MB)       
+  |"MG"         -> Some(Q_MG)        
+  |"MR"         -> Some(Q_MR)        
+  |"NULL"       -> Some(Q_NULL)
+  |"WKS"        -> Some(Q_WKS)
+  |"PTR"        -> Some(Q_PTR)
+  |"HINFO"      -> Some(Q_HINFO)
+  |"MINFO"      -> Some(Q_MINFO)
+  |"MX"         -> Some(Q_MX)
+  |"TXT"        -> Some(Q_TXT)
+  |"RP"         -> Some(Q_RP)
+  |"AFSDB"      -> Some(Q_AFSDB)
+  |"X25"        -> Some(Q_X25)
+  |"ISDN"       -> Some(Q_ISDN)
+  |"RT"         -> Some(Q_RT)
+  |"NSAP"       -> Some(Q_NSAP)
+  |"NSAPPTR"    -> Some(Q_NSAPPTR)
+  |"SIG"        -> Some(Q_SIG)  
+  |"KEY"        -> Some(Q_KEY)
+  |"PX"         -> Some(Q_PX)       
+  |"GPOS"       -> Some(Q_GPOS)
+  |"AAAA"       -> Some(Q_AAAA)
+  |"LOC"        -> Some(Q_LOC)
+  |"NXT"        -> Some(Q_NXT)
+  |"EID"        -> Some(Q_EID)
+  |"NIMLOC"     -> Some(Q_NIMLOC)
+  |"SRV"        -> Some(Q_SRV)   
+  |"ATMA"       -> Some(Q_ATMA)       
+  |"NAPTR"      -> Some(Q_NAPTR)      
+  |"KM"         -> Some(Q_KM)         
+  |"CERT"       -> Some(Q_CERT)
+  |"A6"         -> Some(Q_A6)         
+  |"DNAME"      -> Some(Q_DNAME)
+  |"SINK"       -> Some(Q_SINK)
+  |"OPT"        -> Some(Q_OPT)        
+  |"APL"        -> Some(Q_APL)        
+  |"DS"         -> Some(Q_DS)         
+  |"SSHFP"      -> Some(Q_SSHFP)
+  |"IPSECKEY"   -> Some(Q_IPSECKEY)
+  |"RRSIG"      -> Some(Q_RRSIG)      
+  |"NSEC"       -> Some(Q_NSEC)       
+  |"DNSKEY"     -> Some(Q_DNSKEY)
+  |"NSEC3"      -> Some(Q_NSEC3)      
+  |"NSEC3PARAM" -> Some(Q_NSEC3PARAM)
+  |"SPF"        -> Some(Q_SPF)         
+  |"UINFO"      -> Some(Q_UINFO)       
+  |"UID"        -> Some(Q_UID)         
+  |"GID"        -> Some(Q_GID)         
+  |"UNSPEC"     -> Some(Q_UNSPEC)
+  |"AXFR"       -> Some(Q_AXFR)        
+  |"MAILB"      -> Some(Q_MAILB)       
+  |"MAILA"      -> Some(Q_MAILA)       
+  |"ANY_TYP"    -> Some(Q_ANY_TYP)     
+  |"TA"         -> Some(Q_TA)  
+  |"DLV"        -> Some(Q_DLV) 
+  | value when (String.sub value 0 4) = "TYPE" ->
+      Some(Q_UNKNOWN 
+      (int_of_string (String.sub value 4 
+      ((String.length value) - 4))))
+  | _           -> None
+
+
+(*let q_type_to_string x =
   let x = q_type_to_string x in
   String.sub x 2 (String.length x - 2)
-
 let string_to_q_type x =
-  string_to_q_type ("Q_"^x)
+  string_to_q_type ("Q_"^x) *)
+
 
 cenum q_class {
   Q_IN   = 1;
@@ -466,26 +735,69 @@ let parse_question names base buf =
   in
   { q_name; q_type; q_class }, (base+sizeof_q, Cstruct.shift buf sizeof_q)
 
-let marshal_question (names, base, buf) q =
+let marshal_question ?(compress=true) (names, base, buf) q =
   let names, base, buf = marshal_name names base buf q.q_name in
   set_q_typ buf (q_type_to_int q.q_type);
   set_q_cls buf (q_class_to_int q.q_class);
   names, base+sizeof_q, Cstruct.shift buf sizeof_q
 
-let parse_rdata names base t buf = 
+let parse_rdata names base t cls ttl buf = 
   (** Drop remainder of buf to stop parsing and demuxing. *) 
   let stop (x, _) = x in
   (** Extract (length, string) encoded strings, with remainder for
       chaining. *)
-  let parse_charstr buf = 
+  let parse_charstr buf =
     let len = get_uint8 buf 0 in
-    to_string (sub buf 1 len), Cstruct.shift buf (1+len)
+      to_string (sub buf 1 len), Cstruct.shift buf (1+len) 
   in
   match t with
+    | RR_OPT -> 
+        let rcode = Int32.to_int (Int32.shift_right ttl 24) in 
+        let do_bit = ((Int32.logand ttl 0x8000l) = 0x8000l) in
+          (* TODO: add here some code to parse the options of the edns rr *)
+        EDNS0 (cls, rcode, do_bit, [])
+    
+    | RR_RRSIG -> 
+        let typ = 
+          let a = Cstruct.BE.get_uint16 buf 0 in 
+          match (int_to_rr_type a) with
+            | None -> RR_UNSPEC 
+            | Some a -> a
+        in
+        let alg = 
+          let a =Cstruct.get_uint8 buf 2 in 
+            match (int_to_dnssec_alg a) with
+              | None -> failwith (sprintf "parse_rdata: DNSKEY alg %d" a)
+              | Some a -> a
+        in 
+        let lbl = char_of_int (Cstruct.get_uint8 buf 3) in 
+        let orig_ttl = Cstruct.BE.get_uint32 buf 4 in
+        let exp_ts = Cstruct.BE.get_uint32 buf 8 in
+        let inc_ts = Cstruct.BE.get_uint32 buf 12 in 
+        let tag = Cstruct.BE.get_uint16 buf 16 in
+        let buf = Cstruct.shift buf 18 in 
+        let (name, (len, buf)) = Name.parse_name names 0 buf in 
+        let sign = Cstruct.to_string buf in 
+          RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) 
+
+    | RR_SIG -> 
+       let alg = 
+          let a =Cstruct.get_uint8 buf 2 in 
+            match (int_to_dnssec_alg a) with
+              | None -> failwith (sprintf "parse_rdata: DNSKEY alg %d" a)
+              | Some a -> a
+        in 
+        let exp_ts = Cstruct.BE.get_uint32 buf 8 in
+        let inc_ts = Cstruct.BE.get_uint32 buf 12 in 
+        let tag = Cstruct.BE.get_uint16 buf 16 in
+        let buf = Cstruct.shift buf 18 in 
+        let (name, (len, buf)) = Name.parse_name names 0 buf in 
+        let sign = Cstruct.to_string buf in 
+          SIG (alg, exp_ts, inc_ts, tag, name, sign) 
+     
     | RR_A -> A (BE.get_uint32 buf 0)
         
-    | RR_AAAA -> AAAA (buf |> parse_charstr |>stop)
-        
+    | RR_AAAA -> AAAA (Cstruct.to_string buf)
     | RR_AFSDB -> AFSDB (BE.get_uint16 buf 0,
                          buf |> parse_name names (base+2) |> stop)
         
@@ -501,7 +813,24 @@ let parse_rdata names base t buf =
         in
         let key = Cstruct.shift buf 4 |> to_string in
         DNSKEY (flags, alg, key)
-
+    | RR_DS ->
+        let tag = BE.get_uint16 buf 0 in 
+        let alg = 
+          match (int_to_dnssec_alg (get_uint8 buf 2)) with
+          | Some a -> a 
+          | None -> failwith "parse_rdata unsupported dnssec_alg id"
+        in 
+        let digest = 
+          match (int_to_digest_alg (get_uint8 buf 3)) with
+          |Some a -> a
+          | None -> failwith "parse_rdata unsupported hash algorithm id"
+        in 
+        let key = Cstruct.shift buf 4 |> to_string in
+          DS(tag, alg, digest, key)
+    | RR_NSEC -> 
+        let (name, (len, buf)) = Name.parse_name names 0 buf in
+        NSEC (name, [(char_of_int 0), (char_of_int 0), buf] )
+ 
     | RR_HINFO -> let cpu, buf = parse_charstr buf in
                   let os = buf |> parse_charstr |> stop in
                   HINFO (cpu, os)
@@ -579,29 +908,23 @@ let parse_rdata names base t buf =
         let x25,_ = parse_charstr buf in
         X25 x25
 
-let marshal_rdata names base buf rdata = 
-  let base, rdbuf = base+sizeof_rr, Cstruct.shift buf sizeof_rr in
-  let t, names, rdlen = match rdata with 
+  let marshal_rdata names ?(compress=true) base rdbuf = function
     | A ip -> 
         BE.set_uint32 rdbuf 0 ip;
         RR_A, names, 4
-
-    | AAAA s -> 
+    | AAAA s ->
         let s, slen = charstr s in
         Cstruct.set_buffer s 0 rdbuf 0 slen;
         RR_AAAA, names, slen
-
     | AFSDB (x,name) ->
         BE.set_uint16 rdbuf 0 x;
         let names, offset, _ = 
-          marshal_name names (base+2) (Cstruct.shift rdbuf 2) name 
-        in
+          marshal_name ~compress names (base+2) (Cstruct.shift rdbuf 2) name 
+       in
         RR_AFSDB, names, offset-base
-          
     | CNAME name -> 
-        let names, offset, _ = marshal_name names base rdbuf name in
+        let names, offset, _ = marshal_name ~compress names base rdbuf name in
         RR_CNAME, names, offset-base
-
     | DNSKEY (flags, alg, key) ->
         BE.set_uint16 rdbuf 0 flags;
         set_uint8 rdbuf 2 3;
@@ -609,14 +932,43 @@ let marshal_rdata names base buf rdata =
         let slen = String.length key in
         Cstruct.set_buffer key 0 rdbuf 4 slen;
         RR_DNSKEY, names, 4+slen
-
-    | HINFO (cpu,os) ->
+    | DS (tag, alg, digest, key) ->
+        BE.set_uint16 rdbuf 0 tag;
+        set_uint8 rdbuf 2 (dnssec_alg_to_int alg);
+        set_uint8 rdbuf 3 (digest_alg_to_int digest);
+        let slen = String.length key in
+        Cstruct.set_buffer key 0 rdbuf 4 slen;
+        RR_DS, names, 4+slen
+     | RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) ->
+        let _ = Cstruct.BE.set_uint16 rdbuf 0 (rr_type_to_int typ) in 
+        let _ = Cstruct.set_uint8 rdbuf 2 (dnssec_alg_to_int alg) in 
+        let _ = Cstruct.set_uint8 rdbuf 3 (int_of_char lbl) in 
+        let _ = Cstruct.BE.set_uint32 rdbuf 4 orig_ttl in
+        let _ = Cstruct.BE.set_uint32 rdbuf 8 exp_ts in
+        let _ = Cstruct.BE.set_uint32 rdbuf 12 inc_ts in 
+        let _ = Cstruct.BE.set_uint16 rdbuf 16 tag in
+        let rdbuf = Cstruct.shift rdbuf 18 in
+        let (names, len, rdbuf) = Name.marshal_name ~compress names 0 rdbuf name in 
+        let _ = Cstruct.set_buffer sign 0 rdbuf 0 (String.length sign) in
+          RR_RRSIG, names, (18+len+(String.length sign))
+     | SIG (alg, exp_ts, inc_ts, tag, name, sign) ->
+        let _ = Cstruct.BE.set_uint16 rdbuf 0 0 in 
+        let _ = Cstruct.set_uint8 rdbuf 2 (dnssec_alg_to_int alg) in 
+        let _ = Cstruct.set_uint8 rdbuf 3 0 in 
+        let _ = Cstruct.BE.set_uint32 rdbuf 4 0l in
+        let _ = Cstruct.BE.set_uint32 rdbuf 8 exp_ts in
+        let _ = Cstruct.BE.set_uint32 rdbuf 12 inc_ts in 
+        let _ = Cstruct.BE.set_uint16 rdbuf 16 tag in
+        let rdbuf = Cstruct.shift rdbuf 18 in
+        let (names, len, rdbuf) = Name.marshal_name ~compress names 0 rdbuf name in 
+        let _ = Cstruct.set_buffer sign 0 rdbuf 0 (String.length sign) in
+          RR_SIG, names, (18+len+(String.length sign))
+     | HINFO (cpu,os) ->
         let cpustr, cpulen = charstr cpu in
         Cstruct.set_buffer cpustr 0 rdbuf 0 cpulen;
         let osstr, oslen = charstr os in
         Cstruct.set_buffer osstr 0 rdbuf cpulen oslen;
         RR_HINFO, names, cpulen+oslen
-          
     | ISDN (a,sa) ->
         let astr, alen = charstr a in
         Cstruct.set_buffer astr 0 rdbuf 0 alen;
@@ -626,127 +978,185 @@ let marshal_rdata names base buf rdata =
         in
         Cstruct.set_buffer sastr 0 rdbuf alen salen;
         RR_ISDN, names, alen+salen
-          
     | MB name -> 
-        let names, offset, _ = marshal_name names base rdbuf name in
+        let names, offset, _ = marshal_name ~compress names base rdbuf name in
         RR_MB, names, offset-base
-
     | MD name -> 
-        let names, offset, _ = marshal_name names base rdbuf name in
+        let names, offset, _ = marshal_name ~compress names base rdbuf name in
         RR_MD, names, offset-base
-
     | MF name -> 
-        let names, offset, _ = marshal_name names base rdbuf name in
+        let names, offset, _ = marshal_name ~compress names base rdbuf name in
         RR_MF, names, offset-base
-
     | MG name -> 
-        let names, offset, _ = marshal_name names base rdbuf name in
+        let names, offset, _ = marshal_name ~compress names base rdbuf name in
         RR_MG, names, offset-base
-
     | MINFO (rm,em) ->
-        let names, offset, rdbuf = marshal_name names base rdbuf rm in
-        let names, offset, _ = marshal_name names offset rdbuf em in
+        let names, offset, rdbuf = marshal_name ~compress names base rdbuf rm in
+        let names, offset, _ = marshal_name ~compress names offset rdbuf em in
         RR_MINFO, names, offset-base
-
     | MR name -> 
-        let names, offset, _ = marshal_name names base rdbuf name in
+        let names, offset, _ = marshal_name ~compress names base rdbuf name in
         RR_MR, names, offset-base
-
     | MX (pref,xchg) ->
         BE.set_uint16 rdbuf 0 pref;
         let names, offset, _ = 
-          marshal_name names (base+2) (Cstruct.shift rdbuf 2) xchg 
+          marshal_name ~compress names (base+2) (Cstruct.shift rdbuf 2) xchg 
         in 
         RR_MX, names, offset-base
-
     | NS name -> 
-        let names, offset, _ = marshal_name names base rdbuf name in
+        let names, offset, _ = marshal_name ~compress names base rdbuf name in
         RR_NS, names, offset-base
-
     | RP (mbox,txt) ->
-        let names, offset, rdbuf = marshal_name names base rdbuf mbox in
-        let names, offset, _ = marshal_name names offset rdbuf txt in
+        let names, offset, rdbuf = marshal_name ~compress names base rdbuf mbox in
+        let names, offset, _ = marshal_name ~compress names offset rdbuf txt in
         RR_RP, names, offset-base
-    
     | RT (x, name) ->
         BE.set_uint16 rdbuf 0 x;
         let names, offset, _ = 
-          marshal_name names (base+2) (Cstruct.shift rdbuf 2) name
+          marshal_name ~compress names (base+2) (Cstruct.shift rdbuf 2) name
         in
         RR_RT, names, offset-base
-
     | PTR name -> 
-        let names, offset, _ = marshal_name names base rdbuf name in
+        let names, offset, _ = marshal_name ~compress names base rdbuf name in
         RR_PTR, names, offset-base
-
     | SOA (mn,rn, serial, refresh, retry, expire, minimum) ->
-        let names, offset, rdbuf = marshal_name names base rdbuf mn in
-        let names, offset, rdbuf = marshal_name names offset rdbuf rn in
+        let names, offset, rdbuf = marshal_name ~compress names base rdbuf mn in
+        let names, offset, rdbuf = marshal_name ~compress names offset rdbuf rn in
         BE.set_uint32 rdbuf 0 serial;
         BE.set_uint32 rdbuf 4 refresh;
         BE.set_uint32 rdbuf 8 retry;
         BE.set_uint32 rdbuf 12 expire;
         BE.set_uint32 rdbuf 16 minimum;
         RR_SOA, names, 20+offset-base
-
     | SRV (prio, weight, port, name) ->
         BE.set_uint16 rdbuf 0 prio;
         BE.set_uint16 rdbuf 2 weight;
         BE.set_uint16 rdbuf 4 port;
         let names, offset, _ = 
-          marshal_name names (base+6) (Cstruct.shift rdbuf 6) name
+          marshal_name ~compress names (base+6) (Cstruct.shift rdbuf 6) name
         in
         RR_SRV, names, offset-base
-
     | TXT strings -> 
         RR_TXT, names, List.fold_left (fun acc s ->
           let s, slen = charstr s in
           Cstruct.set_buffer s 0 rdbuf acc slen;
           acc+slen
         ) 0 strings
-
     | WKS (a,p, bm) ->
         BE.set_uint32 rdbuf 0 a;
         set_uint8 rdbuf 4 (byte_to_int p);
         let bmlen = String.length bm in
         Cstruct.set_buffer bm 0 rdbuf 5 bmlen;
         RR_WKS, names, 5+bmlen
-
     | X25 x25 ->
         let s,slen = charstr x25 in
         Cstruct.set_buffer s 0 rdbuf 0 slen;
         RR_X25, names, slen
-          
-  in
-  set_rr_typ buf (rr_type_to_int t);
-  set_rr_rdlen buf rdlen;
-  names, base+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
+    | EDNS0 (len, rcode, do_bit, _) ->
+       RR_OPT, names, 0
+    | UNKNOWN (typ, data) -> 
+        Cstruct.set_buffer data 0 rdbuf 0 (String.length data);
+        RR_UNSPEC, names, (String.length data)
 
+  let compare_rdata a_rdata b_rdata =
+    match (a_rdata, b_rdata) with 
+    | A a_ip, A b_ip -> Int32.compare a_ip b_ip
+    | X25 a, X25 b
+    | AAAA a, AAAA b -> String.compare a b
+    | AFSDB (a_x,a_name), AFSDB (b_x, b_name) ->
+        if (a_x = b_x) then
+          Name.dnssec_compare a_name b_name
+        else
+          compare a_x b_x 
+    | DNSKEY (a_f, a_a, a_k), DNSKEY (b_f, b_a, b_k)->
+        if (a_f = b_f) then
+          (if (dnssec_alg_to_int a_a) = (dnssec_alg_to_int b_a) then
+            String.compare a_k b_k
+          else
+            compare (dnssec_alg_to_int a_a) (dnssec_alg_to_int b_a)
+          ) else 
+            compare a_f b_f 
+    | MB a, MB b  | MD a, MD b | MF a, MF b | MG a, MG b 
+    | MR a, MR b | NS a, NS b | PTR a, PTR b | TXT a, TXT b
+    | CNAME a, CNAME b -> 
+        Name.dnssec_compare a b 
+(*| DS (tag, alg, digest, key) ->
+  | HINFO (cpu,os) ->
+  | ISDN (a,sa) ->
+  | MINFO (rm,em) ->
+  | MX (pref,xchg) ->
+  | RP (mbox,txt) ->
+  | RT (x, name) ->
+  | SOA (mn,rn, serial, refresh, retry, expire, minimum) ->
+  | SRV (prio, weight, port, name) ->
+  | WKS (a,p, bm) ->*)
+  | RRSIG _, RRSIG _ ->  failwith "cannot compare RRSIG"
+  | EDNS0 _, EDNS0 _ -> failwith "cannot compare EDNS0"
+  | _ -> failwith (sprintf "unsported rdata compare : %s - %s"
+                    (rdata_to_string a_rdata) (rdata_to_string b_rdata)) 
 let parse_rr names base buf =
   let name, (base,buf) = parse_name names base buf in
   let t = get_rr_typ buf in
   match int_to_rr_type t with
-    | None -> failwith (sprintf "parse_rr: unknown type: %d" t)
-
+    | None -> 
+        let ttl = get_rr_ttl buf in
+        let rdlen = get_rr_rdlen buf in
+        let Some(cls) = int_to_rr_class (get_rr_cls buf) in 
+        let data = Cstruct.to_string 
+        (Cstruct.sub buf sizeof_rr rdlen) in 
+        ({name; cls; ttl; rdata=UNKNOWN(t, data) }, 
+          ((base+sizeof_rr+rdlen), Cstruct.shift buf (sizeof_rr+rdlen))
+        )
     | Some typ ->
         let ttl = get_rr_ttl buf in
         let rdlen = get_rr_rdlen buf in
+        let cls = get_rr_cls buf in 
         let rdata = 
-          let rdbuf = Cstruct.sub buf sizeof_rr rdlen in
-          parse_rdata names (base+sizeof_rr) typ rdbuf
-        in
-        match get_rr_cls buf |> int_to_rr_class with
-          | None -> failwith "parse_rr: unknown class"
-          | Some cls -> 
-              ({ name; cls; ttl; rdata }, 
-               ((base+sizeof_rr+rdlen), Cstruct.shift buf (sizeof_rr+rdlen))
+        let rdbuf = Cstruct.sub buf sizeof_rr rdlen in
+          parse_rdata names (base+sizeof_rr) typ cls ttl rdbuf 
+          in
+        match (typ, (get_rr_cls buf |> int_to_rr_class)) with
+          | (RR_OPT, _) ->
+              ({ name; cls=RR_IN; ttl; rdata }, 
+               ((base+sizeof_rr+rdlen), 
+               Cstruct.shift buf (sizeof_rr+rdlen))
               )
+          | (_, (Some cls)) -> 
+              ({ name; cls; ttl; rdata }, 
+               ((base+sizeof_rr+rdlen), 
+               Cstruct.shift buf (sizeof_rr+rdlen))
+              )
+          | (_, None) -> failwith "parse_rr: unknown class"
 
-let marshal_rr (names, base, buf) rr =
-  let names, base, buf = marshal_name names base buf rr.name in
-  set_rr_cls buf (rr_class_to_int rr.cls);
-  set_rr_ttl buf rr.ttl;
-  marshal_rdata names base buf rr.rdata
+let marshal_rr ?(compress=true) (names, base, buf) rr =
+  let names, base, buf = marshal_name ~compress names base 
+                          buf rr.name in 
+  let base, rdbuf = base+sizeof_rr, Cstruct.shift buf sizeof_rr in
+  let t, names, rdlen = marshal_rdata names ~compress base 
+                          rdbuf rr.rdata in
+  set_rr_typ buf (rr_type_to_int t);
+  set_rr_rdlen buf rdlen;
+  (* in case the record is an edns field, we need to treat it specially 
+   * for its ttl and class fields. *)
+  let _ = match rr.rdata with
+  | EDNS0 (len, rcode, do_bit, _) -> 
+      let _ = set_rr_cls buf len in 
+      let ttl = 
+        Int32.logor
+          (Int32.shift_left (Int32.of_int rcode) 24)
+          (Int32.shift_left (if (do_bit) then 1l else 0l) 15)
+      in
+        set_rr_ttl buf ttl
+  | UNKNOWN (typ, _) -> 
+      set_rr_typ buf typ;
+      let _ = set_rr_cls buf (rr_class_to_int rr.cls) in 
+      let _ = set_rr_ttl buf rr.ttl in
+        ()
+    | _ -> 
+       set_rr_cls buf (rr_class_to_int rr.cls);
+       set_rr_ttl buf rr.ttl
+  in
+  names, base+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
 
 cenum qr {
   Query = 0;
@@ -862,12 +1272,13 @@ let to_string d =
     (d.additionals ||> rr_to_string |> String.concat ",")
 
 let parse names buf = 
-  let parsen f names base n buf = 
+  let parsen f names base n buf typ = 
     let rec aux acc n base buf = 
       match n with
         | 0 -> acc, (base,buf)
-        | _ -> let r, (base,buf) = f names base buf in 
-               aux (r :: acc) (n-1) base buf
+        | _ ->
+            let r, (base,buf) = f names base buf in 
+              aux (r :: acc) (n-1) base buf
     in
     aux [] n base buf
   in
@@ -881,10 +1292,10 @@ let parse names buf =
 
   let base = sizeof_h in
   let buf = Cstruct.shift buf base in
-  let questions, (base,buf) = parsen parse_question names base qdcount buf in
-  let answers, (base,buf) = parsen parse_rr names base ancount buf in
-  let authorities, (base,buf) = parsen parse_rr names base nscount buf in
-  let additionals, _ = parsen parse_rr names base arcount buf in
+  let questions, (base,buf) = parsen parse_question names base qdcount buf "question" in
+  let answers, (base,buf) = parsen parse_rr names base ancount buf "answer" in
+  let authorities, (base,buf) = parsen parse_rr names base nscount buf "auth" in
+  let additionals, _ = parsen parse_rr names base arcount buf "additional" in
   let dns = { id; detail; questions; answers; authorities; additionals } in
   (* eprintf "RX: %s\n%!" (to_string dns); *)
   dns

@@ -38,9 +38,11 @@ Library lwt
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt
-  Modules: Dns_server, Dns_resolver
+  CSources:   binding_crypto.c
+  CCLib:      -lcrypto
+  Modules: Dns_server, Dns_resolver, Sec, Dnssec_rsa
   BuildDepends: 
-    lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns
+    lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns, cryptokit
   FindlibParent: dns
 
 Document dns
@@ -85,7 +87,17 @@ Executable mldig
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, lwt.syntax, re, re.str, dns, dns.lwt, uri, cmdliner
+  BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, re, re.str, cstruct, uri, cmdliner
+
+Executable load_key
+  Path:               lib_test
+  MainIs:             load_key.ml
+  Build$:             flag(tests) && flag(lwt)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       dns.lwt, uri, cryptokit
+
 
 Test lwt_server
   Run$:               flag(tests) && flag(lwt)

@@ -18,6 +18,8 @@ open Dns.Name
 open Dns.Packet
 open Cstruct
 
+exception Dns_resolve_timeout
+
 module type RESOLVER = sig
   val servers : (string * int) list
   val search_domains : string list
@@ -54,4 +56,9 @@ val gethostbyaddr : t -> ?q_class:q_class -> ?q_type:q_type
 
     @return the full a {! dns } structure.
 *)
-val resolve : t -> q_class -> q_type -> domain_name -> Dns.Packet.t Lwt.t
+val resolve : t -> ?dnssec:bool -> q_class -> q_type -> 
+  domain_name -> Dns.Packet.t Lwt.t
+
+val send_pkt : t -> Dns.Packet.t -> Dns.Packet.t Lwt.t
+val build_query : ?dnssec:bool -> q_class -> q_type -> 
+  Name.domain_name -> Dns.Packet.t

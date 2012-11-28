@@ -68,7 +68,10 @@ val add_srv_rr :
 (* val add_unspec_rr : string -> int32 -> domain_name -> db -> unit *)
 val add_txt_rr : string list -> int32 -> domain_name -> db -> unit
 val add_dnskey_rr : int -> int -> string -> int32 -> domain_name -> db -> unit
-
+val add_ds_rr : int -> int -> int -> string -> int32 -> domain_name -> db ->
+  unit
+val add_rrsig_rr : string -> int -> int -> int32 -> int32 -> int32 -> int -> domain_name -> 
+  string -> int32 -> domain_name -> db -> unit
 
 (** Raised if we already had an RRSet for this name and type, but with a
     different TTL. Also possible: {! Trie.BadName}. 
