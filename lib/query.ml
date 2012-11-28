@@ -58,7 +58,7 @@ let answer_query ?(dnssec=false) qname qtype trie =
      does not have any RRSets of its own and matched a wildcard.*)
   let log_rrset owner rrtype =
     addqueue := List.filter 
-	  (fun (n, t) -> rrtype != t || 
+    (fun (n, t) -> rrtype != t || 
                      owner != n.owner.H.node) !addqueue;
     rrlog := (owner, rrtype) :: !rrlog
   in
@@ -98,8 +98,8 @@ let answer_query ?(dnssec=false) qname qtype trie =
             
       | RR.NS l -> 
           log_rrset owner Packet.RR_NS;
-	      List.iter (fun d -> 
-	        enqueue_additional d Packet.RR_A; 
+        List.iter (fun d -> 
+          enqueue_additional d Packet.RR_A; 
             enqueue_additional d Packet.RR_AAAA;
             addrr (Packet.NS d.owner.H.node)
           ) l 
@@ -108,66 +108,66 @@ let answer_query ?(dnssec=false) qname qtype trie =
           List.iter (fun d -> addrr (Packet.CNAME d.owner.H.node)) l
             
       | RR.SOA l -> log_rrset owner Packet.RR_SOA;
-	      List.iter (fun (prim,admin,serial,refresh,retry,expiry,minttl) ->
+        List.iter (fun (prim,admin,serial,refresh,retry,expiry,minttl) ->
             addrr (Packet.SOA (prim.owner.H.node,
-		                       admin.owner.H.node, 
+                           admin.owner.H.node, 
                                serial, refresh, retry, expiry, minttl))) l
             
       | RR.MB l -> 
-	      List.iter (fun d -> 
-	        enqueue_additional d Packet.RR_A; 
+        List.iter (fun d -> 
+          enqueue_additional d Packet.RR_A; 
             enqueue_additional d Packet.RR_AAAA;
-	        addrr (Packet.MB d.owner.H.node)) l
+          addrr (Packet.MB d.owner.H.node)) l
             
       | RR.MG l -> 
-	      List.iter (fun d -> addrr (Packet.MG d.owner.H.node)) l
+        List.iter (fun d -> addrr (Packet.MG d.owner.H.node)) l
             
       | RR.MR l -> 
-	      List.iter (fun d -> addrr (Packet.MR d.owner.H.node)) l
+        List.iter (fun d -> addrr (Packet.MR d.owner.H.node)) l
             
       | RR.WKS l -> 
-	      List.iter (fun (address, protocol, bitmap) -> 
-	        addrr (Packet.WKS (address, protocol, bitmap.H.node))) l
+        List.iter (fun (address, protocol, bitmap) -> 
+          addrr (Packet.WKS (address, protocol, bitmap.H.node))) l
 
       | RR.PTR l -> 
-	      List.iter (fun d -> addrr (Packet.PTR d.owner.H.node)) l
+        List.iter (fun d -> addrr (Packet.PTR d.owner.H.node)) l
             
       | RR.HINFO l -> 
-	      List.iter (fun (cpu, os) -> 
-	        addrr (Packet.HINFO (cpu.H.node, os.H.node))) l
+        List.iter (fun (cpu, os) -> 
+          addrr (Packet.HINFO (cpu.H.node, os.H.node))) l
             
       | RR.MINFO l -> 
-	      List.iter (fun (rm, em) -> 
-	        addrr (Packet.MINFO (rm.owner.H.node, em.owner.H.node))) l
+        List.iter (fun (rm, em) -> 
+          addrr (Packet.MINFO (rm.owner.H.node, em.owner.H.node))) l
             
       | RR.MX l -> 
-	      List.iter (fun (preference, d) -> 
-	        enqueue_additional d Packet.RR_A;
-	        enqueue_additional d Packet.RR_AAAA;
-	        addrr (Packet.MX (preference, d.owner.H.node))) l
+        List.iter (fun (preference, d) -> 
+          enqueue_additional d Packet.RR_A;
+          enqueue_additional d Packet.RR_AAAA;
+          addrr (Packet.MX (preference, d.owner.H.node))) l
             
       | RR.TXT l ->
-	      List.iter (fun sl -> (* XXX handle multiple TXT cstrings properly *)
-	        let data = List.map (fun x -> x.H.node) sl in 
+        List.iter (fun sl -> (* XXX handle multiple TXT cstrings properly *)
+          let data = List.map (fun x -> x.H.node) sl in 
             addrr (Packet.TXT data)) l
             
       | RR.RP l -> 
-	      List.iter (fun (mbox, txt) -> 
-	        addrr (Packet.RP (mbox.owner.H.node, txt.owner.H.node))) l
+        List.iter (fun (mbox, txt) -> 
+          addrr (Packet.RP (mbox.owner.H.node, txt.owner.H.node))) l
             
       | RR.AFSDB l ->
-	      List.iter (fun (t, d) -> 
-	        enqueue_additional d Packet.RR_A;
-	        enqueue_additional d Packet.RR_AAAA;
-	        addrr (Packet.AFSDB (t, d.owner.H.node))) l
+        List.iter (fun (t, d) -> 
+          enqueue_additional d Packet.RR_A;
+          enqueue_additional d Packet.RR_AAAA;
+          addrr (Packet.AFSDB (t, d.owner.H.node))) l
             
       | RR.X25 l -> 
           log_rrset owner Packet.RR_X25;
-	      List.iter (fun s -> addrr (Packet.X25 s.H.node)) l
+        List.iter (fun s -> addrr (Packet.X25 s.H.node)) l
             
       | RR.ISDN l -> 
           log_rrset owner Packet.RR_ISDN;
-	      List.iter (fun (a, sa) ->
+        List.iter (fun (a, sa) ->
             let sa = match sa with None -> None | Some sa -> Some sa.H.node in
             addrr (Packet.ISDN (a.H.node, sa))) l
 
@@ -180,22 +180,22 @@ let answer_query ?(dnssec=false) qname qtype trie =
       *)
             
       | RR.RT l -> 
-	      List.iter (fun (preference, d) -> 
-	        enqueue_additional d Packet.RR_A;
-	        enqueue_additional d Packet.RR_AAAA;
-	        enqueue_additional d Packet.RR_X25;
-	        enqueue_additional d Packet.RR_ISDN;
-	        addrr (Packet.RT (preference, d.owner.H.node))) l
+        List.iter (fun (preference, d) -> 
+          enqueue_additional d Packet.RR_A;
+          enqueue_additional d Packet.RR_AAAA;
+          enqueue_additional d Packet.RR_X25;
+          enqueue_additional d Packet.RR_ISDN;
+          addrr (Packet.RT (preference, d.owner.H.node))) l
             
       | RR.AAAA l -> 
           log_rrset owner Packet.RR_AAAA;
-	      List.iter (fun i -> addrr (Packet.AAAA i.H.node)) l 
+        List.iter (fun i -> addrr (Packet.AAAA i.H.node)) l 
             
       | RR.SRV l -> 
           List.iter (fun (priority, weight, port, d) -> 
-	        enqueue_additional d Packet.RR_A;
-	        enqueue_additional d Packet.RR_AAAA;
-	        addrr (Packet.SRV (priority, weight, port, d.owner.H.node))) l
+          enqueue_additional d Packet.RR_A;
+          enqueue_additional d Packet.RR_AAAA;
+          addrr (Packet.SRV (priority, weight, port, d.owner.H.node))) l
       | RR.DS l -> 
           List.iter (fun (tag, alg, digest, k) -> 
             addrr (Packet.DS (tag, alg, digest, k.H.node) )) l
@@ -299,8 +299,8 @@ let answer_query ?(dnssec=false) qname qtype trie =
        itself *)
     List.iter (fun s -> 
       match s.rdata with
-	      SOA ((_, _, _, _, _, _, ttl) :: _) -> 
-	        add_rrset node.owner.H.node (min s.ttl ttl) 
+        SOA ((_, _, _, _, _, _, ttl) :: _) -> 
+          add_rrset node.owner.H.node (min s.ttl ttl) 
            s.rdata (Some Packet.RR_SOA) `Authority
         | _ -> raise TrieCorrupt ) a
   in
@@ -310,12 +310,12 @@ let answer_query ?(dnssec=false) qname qtype trie =
     let Some(qt) = Packet.int_to_rr_type (Packet.q_type_to_int qtype) in
     let add_answer_rrset s = 
       match s with 
-	      { rdata = CNAME (d::_) } -> 
+        | { rdata = CNAME (d::_) } -> 
             (* Only follow the first CNAME in a set *)
-	        if not (lc < 1 || qtype = Packet.Q_CNAME ) then begin 
+          if not (lc < 1 || qtype = Packet.Q_CNAME ) then begin 
               add_answer_rrsets d.owner.H.node ~lc:(lc - 1) d.rrsets qtype 
             end;
-	        add_rrset owner s.ttl s.rdata 
+          add_rrset owner s.ttl s.rdata 
            (Some qt ) `Answer;
         | _ -> add_rrset owner s.ttl s.rdata 
            (Some qt ) `Answer
@@ -330,48 +330,48 @@ let answer_query ?(dnssec=false) qname qtype trie =
     match lookup key trie with
       | `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
           add_answer_rrsets node.owner.H.node node.rrsets qtype;
-	      add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
-	      Packet.NoError
-	        
+        add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
+        Packet.NoError
+          
       | `NoError (zonehead) ->          (* Name "exists", but has no RRs. *)
-	      add_negative_soa_rrset zonehead;
-	      Packet.NoError
+        add_negative_soa_rrset zonehead;
+        Packet.NoError
 
       | `NoErrorNSEC (zonehead, nsec) ->
-	      add_negative_soa_rrset zonehead;
-	      (* add_opt_rrset nsec `NSEC `Authority; *)
-	      Packet.NoError
-	        
+        add_negative_soa_rrset zonehead;
+        (* add_opt_rrset nsec `NSEC `Authority; *)
+        Packet.NoError
+          
       | `Delegated (sec, cutpoint) ->   (* Name is delegated. *)
-	      add_req_rrset cutpoint Packet.Q_NS Packet.RR_NS `Authority; 
-	      aa_flag := false; 
-	      (* DNSSEC child zone keys *)
-	      Packet.NoError
+        add_req_rrset cutpoint Packet.Q_NS Packet.RR_NS `Authority; 
+        aa_flag := false; 
+        (* DNSSEC child zone keys *)
+        Packet.NoError
 
       | `Wildcard (source, zonehead) -> (* Name is matched by a wildcard. *)
-	      add_answer_rrsets qname source.rrsets qtype; 
-	      add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
-	      Packet.NoError
+        add_answer_rrsets qname source.rrsets qtype; 
+        add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
+        Packet.NoError
 
       | `WildcardNSEC (source, zonehead, nsec) -> 
-	      add_answer_rrsets qname source.rrsets qtype; 
-	      add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
-	      (* add_opt_rrset nsec `NSEC `Authority; *)
-	      Packet.NoError
+        add_answer_rrsets qname source.rrsets qtype; 
+        add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
+        (* add_opt_rrset nsec `NSEC `Authority; *)
+        Packet.NoError
 
       | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
-	      add_negative_soa_rrset zonehead;
-	      Packet.NXDomain
+        add_negative_soa_rrset zonehead;
+        Packet.NXDomain
 
       | `NXDomainNSEC (zonehead, nsec1, nsec2) ->
-	      add_negative_soa_rrset zonehead;
-	      (* add_opt_rrset nsec1 `NSEC `Authority; *)
-	      (* add_opt_rrset nsec2 `NSEC `Authority; *)
-	      Packet.NXDomain
+        add_negative_soa_rrset zonehead;
+        (* add_opt_rrset nsec1 `NSEC `Authority; *)
+        (* add_opt_rrset nsec2 `NSEC `Authority; *)
+        Packet.NXDomain
   in
   
   try 
-    let rc = main_lookup qname qtype trie in	
+    let rc = main_lookup qname qtype trie in  
     List.iter (fun (o, t) -> 
       add_opt_rrset o Packet.Q_ANY_TYP t `Additional) !addqueue;
     let _ = 
@@ -385,6 +385,6 @@ let answer_query ?(dnssec=false) qname qtype trie =
       answer = !ans_rrs; authority = !auth_rrs; additional = !add_rrs }
   with 
       BadDomainName _ -> { rcode = Packet.FormErr; aa = false; 
-			               answer = []; authority = []; additional=[] }
+                    answer = []; authority = []; additional=[] }
     | TrieCorrupt ->  { rcode = Packet.ServFail; aa = false;
-		                answer = []; authority = []; additional=[] }
+                    answer = []; authority = []; additional=[] }
