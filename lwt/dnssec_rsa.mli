@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2012 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2011 Charalampos Rotsos <cr409@cl.cam.ac.uk>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -13,10 +13,19 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
+open Dns.Packet
 
-open Lwt
+type rsa_key
 
-let t = Dns_server.listen_with_zonefile
-  ~address:"0.0.0.0" ~port:5354 ~zonefile:"lib_test/test.zone" 
+val load_key: string -> (dnssec_alg * rsa_key)
+val new_rsa_key_from_param : Cryptokit.RSA.key -> rsa_key
+val free_rsa_key : rsa_key -> unit 
 
-let _ = Lwt_main.run t
+val sign_msg : dnssec_alg -> rsa_key -> string -> string
+val verify_msg : dnssec_alg -> rsa_key -> string -> 
+  string -> bool
+val rsa_key_to_dnskey : rsa_key -> string
+val dnskey_to_rsa_key : string -> rsa_key
+
+(* Just for debugging purposes *)
+val rsa_write_privkey : string -> rsa_key -> unit

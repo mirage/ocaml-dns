@@ -71,7 +71,7 @@ type key = string
 *)
 val canon2key : domain_name -> key
 
-
+val dnssec_compare : domain_name -> domain_name -> int
 
 
 

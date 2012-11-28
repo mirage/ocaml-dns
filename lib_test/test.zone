@@ -1,29 +1,29 @@
 ; <<>> DiG 9.2.5 <<>> phlegethon.org axfr +vc @bright.asuk.net
 ; (1 server found)
 ;; global options:  printcmd
-$ORIGIN example.com.
+$ORIGIN d1.signpo.st.
 $TTL 604800 
 
 ;; SOA, including parentheses and comments and an embedded dot
-example.com.		604800	IN	 SOA   ( 
-	ns0.example.com. john\.doe.example.com. 1136975101 ; hello!
+d1.signpo.st.		604800	IN	 SOA   ( 
+	ns0.d1.signpo.st. john\.doe.d1.signpo.st. 1136975101 ; hello!
 	3600 1800 3024000 1800  
 )
 
 ;; Various ways of expressing RRs
-example.com.		604800	IN	MX	10 mail.example.com.
+d1.signpo.st.		604800	IN	MX	10 mail.d1.signpo.st.
 @			604800	IN	MX	20 bright.isp.net.
 			604800	IN	MX	30 newton.isp.net.
-example.com.		IN  604800	NS	ns0
-exam\112le.com.			IN	NS	ns.isp.net.
-eXaMpLe.CoM.		604800 		NS	ns2.isp.net.
-example.com.				NS	ns3.isp.net.
+d1.signpo.st.		IN  604800	NS	ns0
+d1.sign\112o.st.			IN	NS	ns.isp.net.
+d1.SiGnPo.St.		604800 		NS	ns2.isp.net.
+d1.signpo.st.				NS	ns3.isp.net.
 					NS	ns4.isp.net.
 mail			172800	IN	A	127.0.0.94
-lists.example.com.	604800	IN	MX	10 mail.example.com.
-lists.example.com.  	172800	IN	A	127.0.0.94
-ns0.example.com.	172800	IN	A	127.0.0.94
-www.example.com.	172800	IN	A	127.0.0.94
+lists.d1.signpo.st.	604800	IN	MX	10 mail.d1.signpo.st.
+lists.d1.signpo.st.  	172800	IN	A	127.0.0.94
+ns0.d1.signpo.st.	172800	IN	A	127.0.0.94
+www.d1.signpo.st.	172800	IN	A	127.0.0.94
 uk.			1000	IN	NS	ns1.nic.uk.
 
 ;; Multi-label name: two.one and one will "exist" with no RRs
@@ -78,6 +78,9 @@ types	IN 	A	127.0.0.1
 	IN	AAAA	::
 	IN	AAAA	::13.1.68.3
 	IN	AAAA	0:0:0:0:0:FFFF:129.144.52.38
+        IN      AAAA    2001:7b8:206:1::1
 ;; Dig's UNSPEC output is a wierd checksummed thing :(
 ;;	IN	UNSPEC 	\# 7 55 6E73 706563 21
         IN      DNSKEY  256 3 7 "AwEAAcAVwjuzHUCfFs7/U1BynkB/kGS37d3bXf8rBdeJul1F9I6nRD4mGyNNZOmgUis1QHxIoA5/xnI5Otsd0B3OcToie4UjFynnuibEcreT+GeakxskTbSbPyW4jdxshHeQ562Y1o0DZKOhHpDoD2q3uCJieBWABG5z7hm/TxSPBYN7"
+        IN      RRSIG   A 8 4 7200 1351598296 1351698296 20331 types.d1.signpo.st. "aLpJmI5FeJcivzcpqzZZPfkGbcqO5I/MXTl0j8eJ3h9yTUnjwutwCj2tsE6E1sV6+Ppxuj5PDom2YFcSOFJ6hTQWF/2fF4jN20ivs4zWYN/ll8FMV92PHGRjJtNV99Sy+6qe94TeN47wbBKeNV3GploOR0/OR3qysK3vUVU2HcE="
+        IN      RRSIG   NS 8 4 7200 1351598296 1351698296 20331 types.d1.signpo.st. "aLpJmI5FeJcivzcpqzZZPfkGbcqO5I/MXTl0j8eJ3h9yTUnjwutwCj2tsE6E1sV6+Ppxuj5PDom2YFcSOFJ6hTQWF/2fF4jN20ivs4zWYN/ll8FMV92PHGRjJtNV99Sy+6qe94TeN47wbBKeNV3GploOR0/OR3qysK3vUVU2HcE="

@@ -26,7 +26,14 @@
 open Name
 open Cstruct
 
-type digest_alg
+cenum digest_alg {
+  SHA1 = 1;
+  SHA256 = 2
+} as uint8_t
+
+val digest_alg_to_int : digest_alg -> int
+val int_to_digest_alg : int -> digest_alg option 
+
 type gateway_tc
 type pubkey_alg
 type ipseckey_alg
@@ -36,78 +43,94 @@ type fp_type
 
 (** Represent a DNSSEC algorithm, with the usual conversion functions. *)
 
-type dnssec_alg
+cenum dnssec_alg {
+  RSAMD5     = 1; 
+  DH         = 2; 
+  DSA        = 3;
+  ECC        = 4;
+  RSASHA1    = 5;
+  RSANSEC3   = 7;
+  RSASHA256  = 8;
+  RSASHA512  = 10;
+  INDIRECT   = 252;
+  PRIVATEDNS = 253;
+  PRIVATEOID = 254
+} as uint8_t
 val int_to_dnssec_alg : int -> dnssec_alg option
+val dnssec_alg_to_int : dnssec_alg -> int
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
-cenum q_type {
-  Q_A          = 1;
-  Q_NS         = 2;
-  Q_MD         = 3;
-  Q_MF         = 4;
-  Q_CNAME      = 5;
-  Q_SOA        = 6;
-  Q_MB         = 7;
-  Q_MG         = 8;
-  Q_MR         = 9;
-  Q_NULL       = 10;
-  Q_WKS        = 11;
-  Q_PTR        = 12;
-  Q_HINFO      = 13;
-  Q_MINFO      = 14;
-  Q_MX         = 15;
-  Q_TXT        = 16;
-  Q_RP         = 17;
-  Q_AFSDB      = 18;
-  Q_X25        = 19;
-  Q_ISDN       = 20;
-  Q_RT         = 21;
-  Q_NSAP       = 22;
-  Q_NSAPPTR    = 23;
-  Q_SIG        = 24;
-  Q_KEY        = 25;
-  Q_PX         = 26;
-  Q_GPOS       = 27;
-  Q_AAAA       = 28;
-  Q_LOC        = 29;
-  Q_NXT        = 30;
-  Q_EID        = 31;
-  Q_NIMLOC     = 32;
-  Q_SRV        = 33;
-  Q_ATMA       = 34;
-  Q_NAPTR      = 35;
-  Q_KM         = 36;
-  Q_CERT       = 37;
-  Q_A6         = 38;
-  Q_DNAME      = 39;
-  Q_SINK       = 40;
-  Q_OPT        = 41;
-  Q_APL        = 42;
-  Q_DS         = 43;
-  Q_SSHFP      = 44;
-  Q_IPSECKEY   = 45;
-  Q_RRSIG      = 46;
-  Q_NSEC       = 47;
-  Q_DNSKEY     = 48;
-  Q_NSEC3      = 50;
-  Q_NSEC3PARAM = 51;
+type q_type =
+  |  Q_A       
+  |  Q_NS      
+  |  Q_MD      
+  |  Q_MF      
+  |  Q_CNAME   
+  |  Q_SOA     
+  |  Q_MB      
+  |  Q_MG      
+  |  Q_MR      
+  |  Q_NULL    
+  |  Q_WKS     
+  |  Q_PTR     
+  |  Q_HINFO   
+  |  Q_MINFO   
+  |  Q_MX      
+  |  Q_TXT     
+  |  Q_RP      
+  |  Q_AFSDB   
+  |  Q_X25     
+  |  Q_ISDN    
+  |  Q_RT      
+  |  Q_NSAP    
+  |  Q_NSAPPTR 
+  |  Q_SIG     
+  |  Q_KEY     
+  |  Q_PX      
+  |  Q_GPOS    
+  |  Q_AAAA    
+  |  Q_LOC     
+  |  Q_NXT     
+  |  Q_EID     
+  |  Q_NIMLOC  
+  |  Q_SRV     
+  |  Q_ATMA    
+  |  Q_NAPTR   
+  |  Q_KM      
+  |  Q_CERT    
+  |  Q_A6      
+  |  Q_DNAME   
+  |  Q_SINK    
+  |  Q_OPT     
+  |  Q_APL     
+  |  Q_DS      
+  |  Q_SSHFP   
+  |  Q_IPSECKEY
+  |  Q_RRSIG   
+  |  Q_NSEC    
+  |  Q_DNSKEY  
+  |  Q_NSEC3   
+  |  Q_NSEC3PARAM
 
-  Q_SPF        = 99;
-  Q_UINFO      = 100;
-  Q_UID        = 101;
-  Q_GID        = 102;
-  Q_UNSPEC     = 103;
-  
-  Q_AXFR    = 252;
-  Q_MAILB   = 253;
-  Q_MAILA   = 254;
-  Q_ANY_TYP = 255;
-  
-  Q_TA    = 32768;
-  Q_DLV   = 32769
-} as uint8_t
- 
+  |  Q_SPF     
+  |  Q_UINFO
+  |  Q_UID     
+  |  Q_GID     
+  |  Q_UNSPEC
+
+  |  Q_AXFR    
+  |  Q_MAILB   
+  |  Q_MAILA   
+  |  Q_ANY_TYP 
+    
+  |  Q_TA
+  |  Q_DLV   
+  |  Q_UNKNOWN of int
+
+val q_type_to_int : q_type -> int
+
 type rr_type =
+  | RR_UNUSED   (* required by sig(0)*)
   | RR_A
   | RR_NS
   | RR_MD
@@ -163,7 +186,10 @@ type rr_type =
   | RR_UID
   | RR_GID
   | RR_UNSPEC
-
+val string_to_rr_type : string -> rr_type option
+val rr_type_to_string : rr_type -> string
+val int_to_rr_type : int -> rr_type option 
+val rr_type_to_int : rr_type -> int 
 type type_bit_map
 type type_bit_maps
 
@@ -195,6 +221,7 @@ type rdata =
 | RP of domain_name * domain_name
 | RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
     domain_name (* uncompressed *) * string
+| SIG of dnssec_alg * int32 * int32 * uint16 * domain_name * string
 | RT of uint16 * domain_name
 | SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
 | SRV of uint16 * uint16 * uint16 * domain_name
@@ -202,17 +229,25 @@ type rdata =
 | TXT of string list
 | UNKNOWN of int * string
 | WKS of int32 * byte * string
-| X25 of string 
+| X25 of string
+           (* udp size, rcode, do bit, options *)
+| EDNS0 of (int * int * bool * ((int * string) list)) 
 
+val hex_of_string : string -> string 
 val rdata_to_string : rdata -> string
+val rdata_to_rr_type : rdata -> rr_type
+val marshal_rdata: (Name.domain_name, int) Hashtbl.t -> 
+  ?compress:bool -> int -> buf -> rdata ->
+  (rr_type *  (Name.domain_name, int) Hashtbl.t * int)
+val compare_rdata : rdata -> rdata -> int
 
 (** Parse an RDATA element from a packet, given the set of already encountered
     names, a starting index, and the type of the RDATA. *)
 val parse_rdata : 
-  (int, label) Hashtbl.t -> int -> rr_type -> buf -> rdata
+  (int, label) Hashtbl.t -> int -> rr_type -> int -> int32 -> buf -> rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
-type rr_class = RR_IN | RR_CS | RR_CH | RR_HS
+type rr_class = RR_IN | RR_CS | RR_CH | RR_HS | RR_ANY
 val rr_class_to_string : rr_class -> string
 
 (** A [resource record], with usual conversion and parsing functions. *)
@@ -223,6 +258,10 @@ type rr = {
   rdata : rdata;
 }
 val rr_to_string : rr -> string
+val marshal_rr : ?compress:bool -> 
+  ((Name.domain_name, int) Hashtbl.t * int * buf) -> rr -> 
+  ( (Name.domain_name, int) Hashtbl.t * int * buf)
+
 val parse_rr :
   (int, label) Hashtbl.t -> int -> buf -> rr * (int * buf)
 
