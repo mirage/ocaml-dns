@@ -82,7 +82,7 @@ let rec send_req ofd dst q = function
   | 0 -> raise Dns_resolve_timeout
   | count ->
       lwt _ = txbuf ofd dst q in
-      lwt _ = Lwt_unix.sleep 1.0 in
+      lwt _ = Lwt_unix.sleep 5.0 in
       printf "retrying query for %d times\n%!" (4-count); 
         send_req ofd dst q (count - 1)
 
@@ -104,7 +104,7 @@ let send_pkt (server:string) (dns_port:int) pkt =
       let ret = ref None in 
       lwt _ =
         pick [
-          (send_req ofd dst q 3);
+          (send_req ofd dst q 4);
           (lwt r = rcv_query ofd pkt in 
             return (ret := Some(r))) ]
       in
