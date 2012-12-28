@@ -71,11 +71,12 @@ let outfd addr port =
   fd
 
 let txbuf fd dst buf =
-  Lwt_bytes.sendto fd buf 0 (Cstruct.len buf) [] dst
+  Lwt_bytes.sendto fd buf.Cstruct.buffer buf.Cstruct.off buf.Cstruct.len [] dst
 
 let rxbuf fd len = 
-  let buf = Lwt_bytes.create len in
-  lwt (len, sa) = Lwt_bytes.recvfrom fd buf 0 len [] in
+  let buf = Cstruct.create len in
+  lwt (len, sa) = Lwt_bytes.recvfrom fd buf.Cstruct.buffer buf.Cstruct.off
+                    buf.Cstruct.len [] in
   return (buf, sa)
 
 let rec send_req ofd dst q = function
@@ -97,7 +98,7 @@ let rec rcv_query ofd q =
 
 let send_pkt (server:string) (dns_port:int) pkt =
  let ofd = outfd "0.0.0.0" 0 in
- let buf = Lwt_bytes.create 4096 in
+ let buf = Cstruct.create 4096 in
  let q = DP.marshal buf pkt in
   try_lwt
       let dst = sockaddr server dns_port in 

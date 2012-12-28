@@ -81,7 +81,7 @@ let new_rsa_key_from_param param =
 let rsa_key_to_dnskey key =
   let e = from_hex (rsa_get_e key) in 
   let n = from_hex (rsa_get_n key) in  
-  let ret = Lwt_bytes.create 4096 in
+  let ret = Cstruct.create 4096 in
   let len = 
     if (String.length e > 255) then
       let _ = Cstruct.set_uint8 ret 0 0 in
@@ -92,14 +92,14 @@ let rsa_key_to_dnskey key =
         1
   in
   let buf = Cstruct.shift ret len in 
-  let _ = Cstruct.set_buffer e 0 buf 0 (String.length e) in
+  let _ = Cstruct.blit_from_string e 0 buf 0 (String.length e) in
   let buf = Cstruct.shift buf (String.length e) in 
-  let _ = Cstruct.set_buffer n 0 buf 0 (String.length n) in 
+  let _ = Cstruct.blit_from_string n 0 buf 0 (String.length n) in 
   let len = len + (String.length e) + (String.length n) in 
     Cstruct.to_string (Cstruct.sub ret 0 len)
 
 let dnskey_to_rsa_key data =
-  let buf = Lwt_bytes.of_string data in 
+  let buf = Cstruct.of_bigarray (Lwt_bytes.of_string data) in 
   let ret = new_rsa_key () in
   let (e, n) = 
     match (Cstruct.get_uint8 buf 0) with
