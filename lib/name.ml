@@ -87,7 +87,7 @@ let marshal_name ?(compress=true) names base buf name =
     let base, buf = 
       List.fold_left (fun (base,buf) label ->
         let label,llen = charstr label in
-        Cstruct.set_buffer label 0 buf 0 llen;
+        Cstruct.blit_from_string label 0 buf 0 llen;
         base+llen, Cstruct.shift buf llen
       ) (base, buf) name
     in names, base+1, Cstruct.shift buf 1
@@ -111,7 +111,7 @@ let marshal_name ?(compress=true) names base buf name =
               | (hd :: tl) as ls -> 
                   Hashtbl.replace names ls (base+offset);
                   let label, llen = charstr hd in
-                  Cstruct.set_buffer label 0 buf offset llen;
+                  Cstruct.blit_from_string label 0 buf offset llen;
                   aux (offset+llen) tl
             )     
               

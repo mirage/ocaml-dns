@@ -38,17 +38,17 @@ val string_to_domain_name : string -> domain_name
 (** Construct name for reverse lookup given an {! ipv4} address. *)
 val for_reverse : ipv4 -> domain_name
 
-(** Parse a {! domain_name} out of a {! Cstruct.buf} given a set of already
+(** Parse a {! domain_name} out of a {! Cstruct.t} given a set of already
     observed names from the packet, and the offset we are into the packet.
     
     @return {! domain_name} and the remainder
 *)
 val parse_name : 
-  (int, label) Hashtbl.t -> int -> buf -> domain_name * (int * buf)
+  (int, label) Hashtbl.t -> int -> t -> domain_name * (int * t)
 
 val marshal_name : ?compress:bool ->
-  (domain_name, int) Hashtbl.t -> int -> buf -> domain_name
-  -> ((domain_name, int) Hashtbl.t * int * buf)
+  (domain_name, int) Hashtbl.t -> int -> t -> domain_name
+  -> ((domain_name, int) Hashtbl.t * int * t)
      
 (** Construct a {! Hashcons} character-string from a string. *)
 val hashcons_charstring : string -> string Hashcons.hash_consed

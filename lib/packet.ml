@@ -180,7 +180,7 @@ cenum rr_type {
    A zone MUST NOT include an NSEC RR for any domain name that only
    holds glue records.
 *)
-type type_bit_map = byte * byte * Cstruct.buf
+type type_bit_map = byte * byte * Cstruct.t
 let type_bit_map_to_string (tbm:type_bit_map) : string = 
   "TYPE_BIT_MAP"
 
@@ -916,7 +916,7 @@ let parse_rdata names base t cls ttl buf =
         RR_A, names, 4
     | AAAA s ->
         let s, slen = charstr s in
-        Cstruct.set_buffer s 0 rdbuf 0 slen;
+        Cstruct.blit_from_string s 0 rdbuf 0 slen;
         RR_AAAA, names, slen
     | AFSDB (x,name) ->
         BE.set_uint16 rdbuf 0 x;
@@ -932,14 +932,14 @@ let parse_rdata names base t cls ttl buf =
         set_uint8 rdbuf 2 3;
         set_uint8 rdbuf 3 (dnssec_alg_to_int alg);
         let slen = String.length key in
-        Cstruct.set_buffer key 0 rdbuf 4 slen;
+        Cstruct.blit_from_string key 0 rdbuf 4 slen;
         RR_DNSKEY, names, 4+slen
     | DS (tag, alg, digest, key) ->
         BE.set_uint16 rdbuf 0 tag;
         set_uint8 rdbuf 2 (dnssec_alg_to_int alg);
         set_uint8 rdbuf 3 (digest_alg_to_int digest);
         let slen = String.length key in
-        Cstruct.set_buffer key 0 rdbuf 4 slen;
+        Cstruct.blit_from_string key 0 rdbuf 4 slen;
         RR_DS, names, 4+slen
      | RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) ->
         let _ = Cstruct.BE.set_uint16 rdbuf 0 (rr_type_to_int typ) in 
@@ -951,7 +951,7 @@ let parse_rdata names base t cls ttl buf =
         let _ = Cstruct.BE.set_uint16 rdbuf 16 tag in
         let rdbuf = Cstruct.shift rdbuf 18 in
         let (names, len, rdbuf) = Name.marshal_name ~compress names 0 rdbuf name in 
-        let _ = Cstruct.set_buffer sign 0 rdbuf 0 (String.length sign) in
+        let _ = Cstruct.blit_from_string sign 0 rdbuf 0 (String.length sign) in
           RR_RRSIG, names, (18+len+(String.length sign))
      | SIG (alg, exp_ts, inc_ts, tag, name, sign) ->
         let _ = Cstruct.BE.set_uint16 rdbuf 0 0 in 
@@ -963,22 +963,22 @@ let parse_rdata names base t cls ttl buf =
         let _ = Cstruct.BE.set_uint16 rdbuf 16 tag in
         let rdbuf = Cstruct.shift rdbuf 18 in
         let (names, len, rdbuf) = Name.marshal_name ~compress names 0 rdbuf name in 
-        let _ = Cstruct.set_buffer sign 0 rdbuf 0 (String.length sign) in
+        let _ = Cstruct.blit_from_string sign 0 rdbuf 0 (String.length sign) in
           RR_SIG, names, (18+len+(String.length sign))
      | HINFO (cpu,os) ->
         let cpustr, cpulen = charstr cpu in
-        Cstruct.set_buffer cpustr 0 rdbuf 0 cpulen;
+        Cstruct.blit_from_string cpustr 0 rdbuf 0 cpulen;
         let osstr, oslen = charstr os in
-        Cstruct.set_buffer osstr 0 rdbuf cpulen oslen;
+        Cstruct.blit_from_string osstr 0 rdbuf cpulen oslen;
         RR_HINFO, names, cpulen+oslen
     | ISDN (a,sa) ->
         let astr, alen = charstr a in
-        Cstruct.set_buffer astr 0 rdbuf 0 alen;
+        Cstruct.blit_from_string astr 0 rdbuf 0 alen;
         let sastr, salen = match sa with
           | None -> "", 0
           | Some sa -> charstr sa
         in
-        Cstruct.set_buffer sastr 0 rdbuf alen salen;
+        Cstruct.blit_from_string sastr 0 rdbuf alen salen;
         RR_ISDN, names, alen+salen
     | MB name -> 
         let names, offset, _ = marshal_name ~compress names base rdbuf name in
@@ -1041,23 +1041,23 @@ let parse_rdata names base t cls ttl buf =
     | TXT strings -> 
         RR_TXT, names, List.fold_left (fun acc s ->
           let s, slen = charstr s in
-          Cstruct.set_buffer s 0 rdbuf acc slen;
+          Cstruct.blit_from_string s 0 rdbuf acc slen;
           acc+slen
         ) 0 strings
     | WKS (a,p, bm) ->
         BE.set_uint32 rdbuf 0 a;
         set_uint8 rdbuf 4 (byte_to_int p);
         let bmlen = String.length bm in
-        Cstruct.set_buffer bm 0 rdbuf 5 bmlen;
+        Cstruct.blit_from_string bm 0 rdbuf 5 bmlen;
         RR_WKS, names, 5+bmlen
     | X25 x25 ->
         let s,slen = charstr x25 in
-        Cstruct.set_buffer s 0 rdbuf 0 slen;
+        Cstruct.blit_from_string s 0 rdbuf 0 slen;
         RR_X25, names, slen
     | EDNS0 (len, rcode, do_bit, _) ->
        RR_OPT, names, 0
     | UNKNOWN (typ, data) -> 
-        Cstruct.set_buffer data 0 rdbuf 0 (String.length data);
+        Cstruct.blit_from_string data 0 rdbuf 0 (String.length data);
         RR_UNSPEC, names, (String.length data)
 
   let compare_rdata a_rdata b_rdata =

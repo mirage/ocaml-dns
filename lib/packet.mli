@@ -237,14 +237,14 @@ val hex_of_string : string -> string
 val rdata_to_string : rdata -> string
 val rdata_to_rr_type : rdata -> rr_type
 val marshal_rdata: (Name.domain_name, int) Hashtbl.t -> 
-  ?compress:bool -> int -> buf -> rdata ->
+  ?compress:bool -> int -> t -> rdata ->
   (rr_type *  (Name.domain_name, int) Hashtbl.t * int)
 val compare_rdata : rdata -> rdata -> int
 
 (** Parse an RDATA element from a packet, given the set of already encountered
     names, a starting index, and the type of the RDATA. *)
 val parse_rdata : 
-  (int, label) Hashtbl.t -> int -> rr_type -> int -> int32 -> buf -> rdata
+  (int, label) Hashtbl.t -> int -> rr_type -> int -> int32 -> t -> rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
 type rr_class = RR_IN | RR_CS | RR_CH | RR_HS | RR_ANY
@@ -259,11 +259,11 @@ type rr = {
 }
 val rr_to_string : rr -> string
 val marshal_rr : ?compress:bool -> 
-  ((Name.domain_name, int) Hashtbl.t * int * buf) -> rr -> 
-  ( (Name.domain_name, int) Hashtbl.t * int * buf)
+  ((Name.domain_name, int) Hashtbl.t * int * t) -> rr -> 
+  ( (Name.domain_name, int) Hashtbl.t * int * t)
 
 val parse_rr :
-  (int, label) Hashtbl.t -> int -> buf -> rr * (int * buf)
+  (int, label) Hashtbl.t -> int -> t -> rr * (int * t)
 
 (** A question type, with the usual conversion functions. *)
 val q_type_to_string : q_type -> string
@@ -282,7 +282,7 @@ type question = {
 }
 val question_to_string : question -> string
 val parse_question :
-  (int, label) Hashtbl.t -> int -> buf -> question * (int * buf)
+  (int, label) Hashtbl.t -> int -> t -> question * (int * t)
 
 (** The [qr] field from the DNS header {! detail}. *)
 type qr = Query | Response
@@ -324,10 +324,10 @@ type t = {
 }
 
 val to_string : t -> string
-val parse : (int, label) Hashtbl.t -> buf -> t
+val parse : (int, label) Hashtbl.t -> Cstruct.t -> t
 
 (** The marshalling entry point, given a {! dns} structure. 
 
     @return the marshalled packet
 *)
-val marshal : buf -> t -> buf
+val marshal : Cstruct.t -> t -> Cstruct.t
