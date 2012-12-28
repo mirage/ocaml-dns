@@ -843,6 +843,8 @@ let parse_rdata names base t cls ttl buf =
                  ISDN (a, sa)        
                    
     | RR_MB -> MB (buf |> parse_name names base |> stop)
+    | RR_MD -> MD (buf |> parse_name names base |> stop)
+    | RR_MF -> MF (buf |> parse_name names base |> stop)
         
     | RR_MG -> MG (buf |> parse_name names base |> stop)
         
