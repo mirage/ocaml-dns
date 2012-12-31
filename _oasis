@@ -1,7 +1,7 @@
 OASISFormat: 0.3
 OCamlVersion: >= 3.12
 Name:        dns
-Version:     0.5.2
+Version:     0.6.0
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos
 License:     LGPL-2.0 with OCaml linking exception
 Synopsis:    DNS protocol library
@@ -31,7 +31,7 @@ Library dns
   Modules: 
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
     Zone, Zone_lexer, Zone_parser, Resolvconf
-  BuildDepends:	cstruct (>= 0.5.1), cstruct.syntax, re, re.str
+  BuildDepends:	cstruct (>= 0.6.0), cstruct.syntax, re, re.str
 
 Library lwt
   Path: lwt

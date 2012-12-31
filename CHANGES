@@ -1,5 +1,6 @@
 0.6.0 (unreleased):
-* Experimental DNSSEC support.
+* (Very) experimental DNSSEC support.
+* Use cstruct-0.6.0 API.
 
 0.5.2 (2012-11-28):
 * Fix the server interface to be fully asynchronous.
