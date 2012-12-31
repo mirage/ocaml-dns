@@ -6,7 +6,7 @@ open Lwt
 (* replicate examples from rfc 5702 *)
 
 lwt _ = 
-  let (alg, key) = Sec.load_rsa_key "lib_test/rsa-sha256-test.private" in  
+(*  let (alg, key) = Sec.load_rsa_key "lib_test/rsa-sha256-test.private" in  
   let rr = {name=(string_to_domain_name "www.example.net.");
                     cls=RR_IN; ttl=3600l; 
                     rdata=(A (Uri_IP.string_to_ipv4 "192.0.2.91"));} in
@@ -64,10 +64,12 @@ lwt _ =
                    );{id = 3740 (zsk), size = 1024b}
  *)
 
+*)
 
   let _ = printf "\n\n---------------Test resolver---------------\n%!" in 
   lwt resolver = Dns_resolver.create () in 
   lwt st = Sec.init_dnssec ~resolver:(Some resolver) () in  
+  let (alg, key) = Sec.load_rsa_key "lib_test/rsa-sha256-test.private" in  
   
   lwt p = Dns_resolver.resolve resolver Q_IN Q_DNSKEY 
             (string_to_domain_name ".") in
@@ -78,8 +80,27 @@ lwt _ =
           add_root_dnskey tl 
   in 
   let _ = add_root_dnskey p.answers in 
-  lwt p = Sec.resolve st Q_IN Q_SOA
+  lwt p = Sec.resolve st 
+            ~sig0:(Some(alg,9030, key, 
+            (Dns.Name.string_to_domain_name "d1.signpo.st")))
+            Q_IN Q_A
             (string_to_domain_name "www.nlnetlabs.nl.") in
 
-  let _ = printf "verifying %s\n%!" (Sec.dnssec_result_to_string p) in
+  let _ = printf "verifying %s\n%!" (Sec.dnssec_result_to_string p) in 
+  
+  let rr = {name=(string_to_domain_name "www.example.net.");
+                    cls=RR_IN; ttl=3600l; 
+                    rdata=(A (Uri_IP.string_to_ipv4 "192.0.2.91"));} in
+  let pkt = Dns_resolver.build_query Q_IN Q_MX 
+              (Dns.Name.string_to_domain_name "d3.signpo.st") in
+  let pkt = Sec.sign_packet ~inception:(1352893409l)
+              ~expiration:(1352893709l) alg key 9030 
+              ["sp"] pkt in 
+  
+  let dnskey = Sec.get_dnskey_rr alg key in 
+  let _ = Sec.add_anchor st {name=["sp"];ttl=0l; cls=Dns.Packet.RR_IN;
+  rdata=dnskey;} in
+  let _ = printf "sending: %s\n%!" (Dns.Packet.to_string pkt) in 
+  lwt res = Sec.verify_packet st pkt in 
+  let _ = printf "verification res %s\n%!" (string_of_bool res) in
     return (printf "Key loaded successfully.\n%!")

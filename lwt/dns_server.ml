@@ -70,7 +70,7 @@ let process_query fd buf len src dst dnsfn names =
               additionals=answer.DQ.additional
             }) 
             in
-            Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00';
+            (* Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00'; *)
             let bits = 
               contain_exc "marshal" (fun () -> DP.marshal buf response) 
             in
@@ -78,18 +78,20 @@ let process_query fd buf len src dst dnsfn names =
               | None -> return ()
               | Some buf -> 
                   (* TODO transmit queue, rather than ignoring result here *)
-                  let _ = Lwt_bytes.(sendto fd buf 0 (length buf) [] dst) in
+                  let _ = Lwt_bytes.(sendto fd buf.Cstruct.buffer
+                  buf.Cstruct.off buf.Cstruct.len [] dst) in
                   return ()
         end
  
 
 let listen ~fd ~src ~(dnsfn:dnsfn) =
   let cont = ref true in
-  let bufs = Lwt_pool.create 64 (fun () -> return (Lwt_bytes.create 1024)) in
+  let bufs = Lwt_pool.create 64 (fun () -> return (Cstruct.create 1024)) in
   let _ =
     while_lwt !cont do
       Lwt_pool.use bufs (fun buf ->
-        lwt len, dst = Lwt_bytes.(recvfrom fd buf 0 (length buf) []) in
+        lwt len, dst = Lwt_bytes.(recvfrom fd buf.Cstruct.buffer buf.Cstruct.off
+        buf.Cstruct.len[]) in
           let names = Hashtbl.create 64 in
 	  return (Lwt.ignore_result (process_query fd buf len src dst dnsfn names) )
      )
