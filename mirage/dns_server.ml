@@ -60,8 +60,8 @@ let no_memo mgr src dst bits =
     Net.Datagram.UDPv4.send mgr ~src dst r
   )
 
-let listen ?(mode=`none) ~zb mgr src =
-  Dns.Zone.load_zone [] zb;
+let listen ?(mode=`none) ?(origin=[]) ~zb mgr src =
+  Dns.Zone.load_zone origin zb;
   Net.Datagram.UDPv4.(recv mgr src
     (match mode with
       |`none -> no_memo mgr src
