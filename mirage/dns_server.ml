@@ -50,7 +50,8 @@ let get_answer buf qname qtype id =
   in
   DP.marshal buf dp
 
-let no_memo mgr buf src dst bits =
+let no_memo mgr src dst bits =
+  let buf = OS.Io_page.(to_cstruct (get ())) in
   let names = Hashtbl.create 8 in
   DP.(
     let d = parse names bits in
@@ -61,9 +62,8 @@ let no_memo mgr buf src dst bits =
 
 let listen ?(mode=`none) ~zb mgr src =
   Dns.Zone.load_zone [] zb;
-  let buf = OS.Io_page.(to_cstruct (get ())) in
   Net.Datagram.UDPv4.(recv mgr src
     (match mode with
-      |`none -> no_memo mgr buf src
+      |`none -> no_memo mgr src
     )
   )
