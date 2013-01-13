@@ -1,3 +1,7 @@
+0.6.1 (trunk):
+
+* Add a Mirage `Dns_server` subpackage.
+
 0.6.0 (2012-12-31):
 * (Very) experimental DNSSEC support.
 * Use cstruct-0.6.0 API.

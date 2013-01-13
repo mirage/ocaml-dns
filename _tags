@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 42b808821b71febde49e500e9226c998)
+# DO NOT EDIT (digest: 6f036f561e5ac56ae0d3aa822056d1ed)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -49,6 +49,15 @@
 "lwt/binding_crypto.c": pkg_re.str
 "lwt/binding_crypto.c": pkg_cstruct
 "lwt/binding_crypto.c": pkg_cstruct.syntax
+# Library mirage
+"mirage/mirage.cmxs": use_mirage
+<mirage/*.ml{,i}>: use_dns
+<mirage/*.ml{,i}>: pkg_re
+<mirage/*.ml{,i}>: pkg_re.str
+<mirage/*.ml{,i}>: pkg_cstruct
+<mirage/*.ml{,i}>: pkg_mirage
+<mirage/*.ml{,i}>: pkg_mirage-net
+<mirage/*.ml{,i}>: pkg_cstruct.syntax
 # Executable lwt_server
 <lib_test/lwt_server.{native,byte}>: use_lwt
 <lib_test/lwt_server.{native,byte}>: use_dns
@@ -122,6 +131,7 @@
 true: annot
 <lib/*>: syntax_camlp4o, pkg_lwt.syntax
 <lwt/*>: syntax_camlp4o, pkg_lwt.syntax
+<mirage/*>: syntax_camlp4o, pkg_lwt.syntax
 <lib_test/*>: syntax_camlp4o
 <lib_test/*>: pkg_lwt.syntax
 <client/*>: syntax_camlp4o, pkg_lwt.syntax

@@ -45,6 +45,15 @@ Library lwt
     lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns, cryptokit
   FindlibParent: dns
 
+Library mirage
+  Path: mirage
+  Build$: flag(mirage)
+  Install$: flag(mirage)
+  Findlibname: mirage
+  Modules: Dns_server
+  BuildDepends: mirage, mirage-net, cstruct, cstruct.syntax, dns
+  FindlibParent: dns
+
 Document dns
   Title:                DNS docs
   Type:                 ocamlbuild (0.3)
@@ -97,7 +106,6 @@ Executable load_key
   CompiledObject:     best
   Install:            false
   BuildDepends:       dns.lwt, uri, cryptokit
-
 
 Test lwt_server
   Run$:               flag(tests) && flag(lwt)
