@@ -24,11 +24,10 @@ open Printf
 *)
 
 (** Pipe. *)
-let (|>) x f = f x
-(** Functor pipe. *)
-let (>>) f g x = g (f x) 
+external (|>) : 'a -> ('a -> 'b) -> 'b = "%revapply";;
+
 (** Element-wise pipe. *)
-let (||>) l f = List.map f l 
+let (||>) l f = List.map f l
 
 (** 32 and 64 bit arithmetic and logic operations. *)
 
@@ -52,7 +51,7 @@ let (>>>) x y = Int32.shift_right_logical x y
 let (>>>>) x y = Int64.shift_right_logical x y
 
 (** Encode string as label by prepending length. *)
-let charstr s = 
-  let s = sprintf "%c%s" (s |> String.length |> char_of_int) s in
-  s, String.length s
+let charstr s =
+  let n = String.length s in
+  String.make 1 (char_of_int n) ^ s, n
 
