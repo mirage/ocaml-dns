@@ -53,5 +53,5 @@ let (>>>>) x y = Int64.shift_right_logical x y
 (** Encode string as label by prepending length. *)
 let charstr s =
   let n = String.length s in
-  String.make 1 (char_of_int n) ^ s, n
+  String.make 1 (char_of_int n) ^ s, (n+1)
 
