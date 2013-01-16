@@ -24,8 +24,15 @@ open Cstruct
 type domain_name = string list
 module Map = Map.Make(struct
   type t = domain_name
-  let compare = compare
   let eq = (=)
+  let rec compare l1 l2 = match (l1, l2) with
+    | []    ,  []    -> 0
+    | _::_  , []     -> 1
+    | []    , _::_   -> -1
+    | h1::t1, h2::t2 ->
+      match String.compare h1 h2 with
+      | 0 -> compare t1 t2
+      | i -> i
 end)
 
 let domain_name_to_string dn = String.concat "." dn
