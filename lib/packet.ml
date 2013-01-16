@@ -1315,7 +1315,7 @@ let marshal txbuf dns =
   set_h_arcount txbuf (List.length dns.additionals);
 
   (** Map name (list of labels) to an offset. *)
-  let (names:(domain_name, int) Hashtbl.t) = Hashtbl.create 8 in
+  let names = Name.Map.empty in
   let base,buf = sizeof_h, Cstruct.shift txbuf sizeof_h in
   let names,base,buf = marshaln marshal_question names base buf dns.questions in
   let names,base,buf = marshaln marshal_rr names base buf dns.answers in

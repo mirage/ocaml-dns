@@ -22,6 +22,12 @@ open Operators
 open Cstruct
 
 type domain_name = string list
+module Map = Map.Make(struct
+  type t = domain_name
+  let compare = compare
+  let eq = (=)
+end)
+
 let domain_name_to_string dn = String.concat "." dn
 let string_to_domain_name (s:string) : domain_name = 
   Re_str.split (Re_str.regexp "\\.") s
@@ -96,30 +102,31 @@ let marshal_name ?(compress=true) names base buf name =
   let compressed names base buf name = 
     let pointer o = ((0b11_l <<< 14) +++ (Int32.of_int o)) |> Int32.to_int in
     
-    let lookup n = 
-      Hashtbl.(if mem names n then Some (find names n) else None)
+    let lookup names n = 
+      try Some (Map.find n names)
+      with Not_found -> None
     in
     
-    let rec aux offset labels = 
-      match lookup labels with
+    let rec aux names offset labels = 
+      match lookup names labels with
         | None -> 
             (match labels with
               | [] -> 
                   set_uint8 buf offset 0; 
-                  offset+1
+                  names, offset+1
                     
               | (hd :: tl) as ls -> 
-                  Hashtbl.replace names ls (base+offset);
+                  let names = Map.add ls (base+offset) names in
                   let label, llen = charstr hd in
                   Cstruct.blit_from_string label 0 buf offset llen;
-                  aux (offset+llen) tl
+                  aux names (offset+llen) tl
             )     
               
         | Some o -> 
             BE.set_uint16 buf offset (pointer o);
-            offset+2
+            names, offset+2
     in
-    let offset = aux 0 name in
+    let names, offset = aux names 0 name in
     names, (base+offset), Cstruct.shift buf offset
   in
   if compress then compressed names base buf name
