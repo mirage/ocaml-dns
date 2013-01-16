@@ -179,17 +179,16 @@ exception BadDomainName of string
 type key = string
 
 let canon2key domain_name = 
-  let labelize s = 
+  let check s = 
     if String.contains s '\000' then 
       raise (BadDomainName "contains null character");
     if String.length s = 0 then 
       raise (BadDomainName "zero-length label");
     if String.length s > 63 then 
-      raise (BadDomainName ("label too long: " ^ s));
-    s 
+      raise (BadDomainName ("label too long: " ^ s))
   in
-  let labels = List.fold_left (fun acc l -> labelize l :: acc) [] domain_name in
-  String.concat "\000" labels
+  List.iter check domain_name;
+  String.concat "\000" (List.rev domain_name)
 
 let rec dnssec_compare a b =
   match (a, b) with
