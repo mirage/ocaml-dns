@@ -180,7 +180,9 @@ let canon2key domain_name =
     if String.length s > 63 then 
       raise (BadDomainName ("label too long: " ^ s));
     s 
-  in List.fold_left (fun s l -> (labelize l) ^ "\000" ^ s) "" domain_name
+  in
+  let labels = List.fold_left (fun acc l -> labelize l :: acc) [] domain_name in
+  String.concat "\000" labels
 
 let rec dnssec_compare a b =
   match (a, b) with
