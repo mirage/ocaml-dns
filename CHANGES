@@ -1,4 +1,4 @@
-0.6.1 (trunk):
+0.6.1 (2012-02-12):
 
 * Improve performance of packet marshalling.
 * Add a Mirage `Dns_server` subpackage.
