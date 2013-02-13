@@ -57,11 +57,10 @@ let get_dnskey_tag rdata =
   | DNSKEY(_, RSASHA1, key)
   | DNSKEY(_, RSASHA256, key)
   | DNSKEY(_,RSASHA512, key) ->
-      let names = Hashtbl.create 0 in 
       let buf = Lwt_bytes.create 1024 in 
       let _ = Lwt_bytes.fill buf 0 1024 (char_of_int 0) in 
       let buf = Cstruct.of_bigarray buf in 
-      let (_, _, len) = marshal_rdata names 0 buf rdata in
+      let (_, _, len) = marshal_rdata Map.empty 0 buf rdata in
       let buf = Cstruct.sub buf 0 len in 
       let res = ref 0l in
       let ix = ref 0 in 
@@ -199,14 +198,12 @@ let get_dnskey_rr ?(ksk=true) ?(zsk=false) alg key =
 let get_ds_rr owner digest rdata =
   match (rdata) with
   | DNSKEY(_, alg, key) -> 
-     let names = Hashtbl.create 0 in 
       let buf = Lwt_bytes.create 1024 in
       let _ = Lwt_bytes.fill (Lwt_bytes.create 1024) 0 1024 (char_of_int 0) in
       let buf = Cstruct.of_bigarray buf in 
 
-      let (_, name_len, _) = marshal_name names 0 buf owner in  
-      let (_, _, len) = marshal_rdata names 0 
-                          (Cstruct.shift buf name_len) rdata in
+      let (_, name_len, _) = marshal_name Map.empty 0 buf owner in  
+      let (_, _, len) = marshal_rdata Map.empty 0 (Cstruct.shift buf name_len) rdata in
       let buf = Cstruct.sub buf 0 (name_len + len) in
       let value = ssl_hash_msg  (digest_alg_to_int digest) 
           (Cstruct.to_string buf) in 
@@ -253,9 +250,7 @@ let marshal_rrsig_data ttl rrsig rrset =
   let _ = Lwt_bytes.fill buf 0 4096 (char_of_int 0) in
   let buf = Cstruct.of_bigarray buf in 
   (* Firstly marshal the rrsig field *)
-  let names = Hashtbl.create 0 in
-  let (_, names, rdbuf) = marshal_rdata names
-                            0 buf rrsig in
+  let (_, names, rdbuf) = marshal_rdata Map.empty 0 buf rrsig in
   let rrset =
     List.sort (
       fun a b ->
@@ -264,10 +259,9 @@ let marshal_rrsig_data ttl rrsig rrset =
   let rec marshall_rrset off buf = function
     | [] -> off
     | rr :: rrset -> 
-        let names = Hashtbl.create 0 in 
         let buf = Cstruct.shift buf off in 
         let _, rdlen, _ = 
-          marshal_rr ~compress:false (names, 0, buf) 
+          marshal_rr ~compress:false (Map.empty, 0, buf) 
           ({name=rr.name; ttl=ttl; cls=rr.cls;
                    rdata=rr.rdata;}) in
         off + (marshall_rrset rdlen buf rrset)
@@ -422,9 +416,7 @@ let sign_packet
   let _ = Lwt_bytes.fill data 0 4096 (char_of_int 0) in
   let data = Cstruct.of_bigarray data in 
   let rdata = SIG(alg, expiration, inception, tag, owner, "") in
-  let names = Hashtbl.create 0 in 
-  let (_, _, rdlen) = 
-    marshal_rdata names ~compress:false 0 data rdata in
+  let (_, _, rdlen) = marshal_rdata Map.empty ~compress:false 0 data rdata in
   let buf = Cstruct.shift data rdlen in 
   let datalen = Cstruct.len (marshal buf pkt) in
   let buf = Cstruct.to_string (Cstruct.sub data 0 (rdlen + datalen)) in
@@ -469,9 +461,7 @@ let verify_packet st pkt =
    let _ = Lwt_bytes.fill data 0 4096 (char_of_int 0) in
    let data = Cstruct.of_bigarray data in 
    let rdata = SIG(alg, expiration, inception, tag, owner, "") in
-   let names = Hashtbl.create 0 in 
-   let (_, _, rdlen) = 
-     marshal_rdata names ~compress:false 0 data rdata in
+   let (_, _, rdlen) = marshal_rdata Map.empty ~compress:false 0 data rdata in
    let buf = Cstruct.shift data rdlen in 
    let datalen = Cstruct.len (marshal buf pkt) in
    let buf = Cstruct.to_string (Cstruct.sub data 0 (rdlen + datalen)) in

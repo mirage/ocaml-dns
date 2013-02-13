@@ -1,5 +1,8 @@
-0.6.1 (2012-02-12):
+0.6.2 (2012-02-13):
+* Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.
+* Fix Lwt Makefile detection (`Lwt.unix` instead of `Lwt.ssl`)
 
+0.6.1 (2012-02-12):
 * Improve performance of packet marshalling.
 * Add a Mirage `Dns_server` subpackage.
 
