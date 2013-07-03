@@ -11,7 +11,7 @@ Description: This is a pure OCaml implementation of the DNS protocol.
   but clarity is preferred rather than low-level performance hacks.
 Homepage:    https://github.com/mirage/ocaml-dns
 Plugins:     META (0.3)
-BuildTools:  ocamlbuild
+BuildTools:  ocamlbuild, camlp4o
 
 Flag lwt
   Description: build the Lwt library
@@ -127,3 +127,14 @@ Test lwt_server
   Run$:               flag(tests) && flag(lwt)
   Command:            $lwt_server
   WorkingDirectory:   lib_test
+
+Executable testty
+  Path:               async
+  MainIs:             get_nameserver.ml
+  Build$:             flag(tests) && flag(lwt)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       dns, uri, cryptokit, lwt, lwt.unix, lwt.syntax, dns.lwt, threads, async, core, async_unix
+
+
