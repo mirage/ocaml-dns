@@ -128,7 +128,7 @@ Test lwt_server
   Command:            $lwt_server
   WorkingDirectory:   lib_test
 
-Executable testty
+Executable get_nameserver
   Path:               async
   MainIs:             get_nameserver.ml
   Build$:             flag(tests) && flag(lwt)
