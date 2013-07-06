@@ -30,8 +30,11 @@ open Dns.Resolvconf
  let run ()  =  
   upon (get_resolvers())  (fun (res:KeywordValue.t list) -> 
 	let servers = all_servers res in
-         match servers with  | (server,_)::_ -> Printf.printf "Your nameserver is %S" server
-			    | _ -> Printf.printf "o no :(" ) 
+         match servers with
+           | (server,_)::_ ->
+               (printf "Your nameserver is %S" server; Caml.exit 0)
+	   | [] -> (printf "o no :("; Caml.exit 1)
+  )
 
  let _ =
   let _ = run (); in
