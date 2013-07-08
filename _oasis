@@ -87,6 +87,14 @@ Document dns_lwt
   XOCamlbuildPath:      lwt
   XOCamlbuildModules:   Dns_resolver, Dns_server
 
+Document dns_async
+  Title:                DNS Async docs
+  Type:                 ocamlbuild (0.3)
+  BuildTools+:          ocamldoc
+  Build$:               flag(async)
+  XOCamlbuildPath:      async
+  XOCamlbuildModules:   Dns_resolver, Dns_server
+
 Executable lwt_server
   Path:               lib_test
   MainIs:             lwt_server.ml
