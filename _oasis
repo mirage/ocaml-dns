@@ -64,7 +64,7 @@ Library async
   Build$: flag(async)
   Install$: flag(async)
   Findlibname: async
-  Modules: Dns_server, Dns_resolver, Sec, Dnssec_rsa
+  Modules: Dns_resolver
   BuildDepends:
     async_core, async_extra, async_unix, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns, cryptokit
   FindlibParent: dns
