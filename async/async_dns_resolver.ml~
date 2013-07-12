@@ -105,4 +105,5 @@ let get_resolvers ?(file=default_configuration_file) () =
 let resolve (res_config: KeywordValue.t List.t)  q_class q_type q_name =
   let servers = (choose_server res_config) in
   match servers with
-  |Some (server,dns_port) -> (resolve server dns_port q_class q_type q_name)
+  |None -> None
+  |Some (server,dns_port) -> Some (resolve server dns_port q_class q_type q_name)

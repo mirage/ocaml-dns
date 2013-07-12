@@ -16,4 +16,4 @@ val get_resolvers :
 
 val resolve :
   Dns.Resolvconf.KeywordValue.t list ->
-  Dns.Packet.q_class -> Dns.Packet.q_type -> Dns.Name.domain_name -> [ `Result of Dns.Packet.t | `Timeout ] Deferred.t 
+  Dns.Packet.q_class -> Dns.Packet.q_type -> Dns.Name.domain_name -> [ `Result of Dns.Packet.t | `Timeout ] Deferred.t la
