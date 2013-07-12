@@ -16,11 +16,14 @@
 
 open Core.Std
 open Async.Std
+open Async_unix
 open Printf
 open Dns.Name
 open Dns.Operators
+open Dns.Resolvconf
 
 module DP = Dns.Packet
+module DN = Dns.Name
 
 let buflen = 4096
 let ns = "8.8.8.8"
@@ -37,10 +40,6 @@ let log_info s = eprintf "INFO: %s\n%!" s
 let log_debug s = eprintf "DEBUG: %s\n%!" s
 let log_warn s = eprintf "WARN: %s\n%!" s
 
-type resolver_config = {
- servers : (string * int) list;
- search_domains : string list;
-}
 
 let build_query  q_class q_type q_name = 
 DP.(
@@ -54,30 +53,29 @@ DP.(
   )
 
 
-let rec rcv_query reader q =
+let rec rcv_query reader q :DP.t Deferred.t =
   let names = Caml.Hashtbl.create 8 in
   let buf = String.create (16 * 1024) in
   (Reader.read reader ~len:(16 * 1024) buf )
-  >>| (fun x -> 
+  >>= (fun x -> 
     let r = DP.parse names (Cstruct.of_string buf) in 
-    if (r.DP.id = q.DP.id) then r
+    if (r.DP.id = q.DP.id) then return r
     else
       rcv_query reader q )
 			    
 
 let send_pkt (server:string) (dns_port:int) pkt =
- let ofd = outfd "0.0.0.0" 0 in
  let buf = Cstruct.create 4096 in
- let q = DP.marshal buf pkt in
-      let (socket,reader,writer) = Tcp.connect (Tcp.to_host_and_port addr port) in 
-      Writer.write writer q.to_string; 
-      with_timeout (Time.Span.create ~sec:5) (rcv_query reader pkt) 
+ let pkt_cstruct = DP.marshal buf pkt in
+ let pkt_string = String.create (16 * 1024) in
+      Cstruct.blit_to_string pkt_cstruct 0 pkt_string 0 (Cstruct.len pkt_cstruct);
+      Tcp.connect (Tcp.to_host_and_port server dns_port)
+      >>=  (fun (socket,reader,writer) -> Writer.write writer pkt_string; 
+      with_timeout (Time.Span.create ~sec:5 () ) (rcv_query reader pkt) )
 
 
-let resolve
-    (server:string) (dns_port:int) 
-    (q_class:DP.q_class) (q_type:DP.q_type) 
-    (q_name:domain_name) =
+let resolve (server:string) (dns_port:int)  (q_class:DP.q_class)
+  (q_type:DP.q_type) (q_name:DN.domain_name) =
       let query = build_query q_class q_type q_name in
       log_info (sprintf "query: %s\n%!" (DP.to_string query));
       send_pkt server dns_port query 
@@ -102,15 +100,10 @@ let get_resolvers ?(file=default_configuration_file) () =
         | OptionsValue.Unknown x -> warn ("unknown option: " ^ x); None
         | LookupValue.Unknown x  -> warn ("unknown lookup option: " ^ x); None
       ))
+    
 
-
-let get_config () : resolver_config Deferred.t = 
-  let t = get_resolvers () in
-  let servers = (t >>| all_servers) in 
-  let search_domains = (t >>| search_domains t) in
-  { servers; search_domain } 
-
-let resolve (t: resolver_config)  q_class q_type q_name =
-  match t.servers with
-  |[] -> fail (Failure "No resolvers available")
-  |(server,dns_port)::_ -> resolve server dns_port q_class q_type q_name
+let resolve (res_config: KeywordValue.t List.t)  q_class q_type q_name =
+  let servers = (choose_server res_config) in
+  match servers with
+  |None -> None
+  |Some (server,dns_port) -> Some (resolve server dns_port q_class q_type q_name)

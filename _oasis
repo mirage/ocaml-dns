@@ -64,7 +64,7 @@ Library async
   Build$: flag(async)
   Install$: flag(async)
   Findlibname: async
-  Modules: Dns_resolver
+  Modules: Async_dns_resolver
   BuildDepends:
     async_core, async_extra, async_unix, lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns, cryptokit
   FindlibParent: dns
@@ -93,7 +93,7 @@ Document dns_async
   BuildTools+:          ocamldoc
   Build$:               flag(async)
   XOCamlbuildPath:      async
-  XOCamlbuildModules:   Dns_resolver, Dns_server
+  XOCamlbuildModules:   Async_dns_resolver
 
 Executable lwt_server
   Path:               lib_test
@@ -145,4 +145,11 @@ Executable get_nameserver
   Install:            false
   BuildDepends:       dns, uri, cryptokit, lwt, lwt.unix, lwt.syntax, dns.lwt, threads, async, core, async_unix
 
-
+Executable async_mldig
+  Path:               async
+  MainIs:             mldig.ml
+  Build$:             flag(tests) && flag(lwt)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       dns, re, re.str, cstruct, uri, cmdliner, threads, async, async_unix, core

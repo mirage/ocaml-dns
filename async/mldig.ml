@@ -15,9 +15,13 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Core.Std
+open Async.Std
+open Async_dns_resolver
 open Printf
 open Dns.Name
 open Dns.Packet
+open Uri
 
 let debug_active = ref false
 let debug x = if !debug_active then prerr_endline (sprintf "[debug] %s" x)
@@ -28,7 +32,6 @@ let print_timeout () =
   printf ";; connection timed out; no servers could be reached\n%!";
   exit 1
 
-let print_error e = printf ";; read error: %s\n" (Unix.error_message e)
 let print_section s = printf ";; %s SECTION:\n" (String.uppercase s)
 
 let print_answers p =
@@ -42,8 +45,8 @@ let print_answers p =
       (if_flag detail.rd "rd");
       (if_flag detail.ra "ra");
     ] in
-    let flags = String.concat " " (List.fold_left (fun a ->
-      function |None -> a |Some x -> x :: a) [] flags) in
+    let flags = String.concat ~sep:" " (List.fold_left ~f:(fun a ->
+      function |None -> a |Some x -> x :: a) ~init:[] flags) in
     printf ";; ->>HEADER<<- opcode: %s, status: %s, id: %u\n" 
       (String.uppercase (opcode_to_string detail.opcode))
       (String.uppercase (rcode_to_string detail.rcode)) id;
@@ -52,40 +55,39 @@ let print_answers p =
       flags (al questions) (al answers) (al authorities) (al additionals);
     if al questions > 0 then begin
       print_section "question";
-      List.iter (fun q -> printf ";%-23s %-8s %-8s %s\n"
-        (String.concat "." q.q_name) ""
+      List.iter ~f:(fun q -> printf ";%-23s %-8s %-8s %s\n"
+        (String.concat ~sep:"." q.q_name) ""
         (q_class_to_string q.q_class)
         (q_type_to_string q.q_type)
       ) questions;
       print_newline ();
     end;
     let print_rr rr = printf "%-24s %-8lu %-8s %-8s %s\n" 
-        (String.concat "." rr.name) rr.ttl (rr_class_to_string rr.cls) in
-    List.iter (fun (nm,ob) ->
+        (String.concat ~sep:"." rr.name) rr.ttl (rr_class_to_string rr.cls) in
+    List.iter ~f:(fun (nm,ob) ->
       if al ob > 0 then print_section nm;
-      List.iter (fun rr ->
+      List.iter ~f:(fun rr ->
         match rr.rdata with
         |A ip-> print_rr rr "A" (Uri_IP.ipv4_to_string ip);
         |SOA (n1,n2,a1,a2,a3,a4,a5) ->
           print_rr rr "SOA"
-            (sprintf "%s %s %lu %lu %lu %lu %lu" (String.concat "." n1)
-              (String.concat "." n2) a1 a2 a3 a4 a5);
+            (sprintf "%s %s %lu %lu %lu %lu %lu" (String.concat ~sep:"." n1)
+              (String.concat ~sep:"." n2) a1 a2 a3 a4 a5);
         |MX (pref,host) -> 
-          print_rr rr "MX" (sprintf "%d %s" pref (String.concat "." host));
-        |CNAME a -> print_rr rr "CNAME" (String.concat "." a)
-        |NS a -> print_rr rr "NS" (String.concat "." a)
+          print_rr rr "MX" (sprintf "%d %s" pref (String.concat ~sep:"." host));
+        |CNAME a -> print_rr rr "CNAME" (String.concat ~sep:"." a)
+        |NS a -> print_rr rr "NS" (String.concat ~sep:"." a)
         |_ -> printf "unknown\n"
       ) ob;
       if al ob > 0 then print_newline ()
     ) ["answer",answers; "authority",authorities; "additional",additionals]
   
-open Lwt
 open Cmdliner
 
 let dig server source_ip dest_port q_class q_type args =
   let timeout = 5 (* matches dig *) in
   (* Fold over args to determine overrides for q_class/type *)
-  let (server, q_class, q_type, domains) = List.fold_left (
+  let (server, q_class, q_type, domains) = List.fold_left ~f:(
     fun (server, q_class, q_type, domains) arg ->
       (* Args beginning with @ decide the server *)
       if String.length arg > 1 && (arg.[0] = '@') then begin
@@ -103,16 +105,19 @@ let dig server source_ip dest_port q_class q_type args =
         |None, Some q_class -> (server, q_class, q_type, domains)
         |Some q_type, Some q_class -> (server, q_class, q_type, domains)
       end
-  ) (server, q_class, q_type, []) args in
+  ) ~init:(server, q_class, q_type, []) args in
   let domains = match domains with |[] -> ["."] |_ -> domains in
   printf ";; <<>> MLDiG 1.0 <<>>\n"; (* TODO put query domains from Sys.argv here *)
  match server with
   |None -> error "dig" "Must specify a DNS resolver (with @<hostname>)"
   |Some x -> 
     debug (sprintf "Querying DNS server %s" x);
-    let domain = string_to_domain_name (List.hd domains) in
-    let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
-    Dns_resolver.resolve res q_class q_type domain >|= print_answers
+    let domain = (match (List.hd domains) with Some x -> x | None -> "www.google.co.uk") in
+    let domain = string_to_domain_name domain in
+    Async_dns_resolver.get_resolvers ()
+    >>= (match (fun resolvers -> Async_dns_resolver.resolve resolvers q_class q_type domain)
+      with | None ->  printf ":(" 
+           | Some pkt -> (pkt >>> print_answers))
  
 let t =
   let (default_server, default_dest_port) =
