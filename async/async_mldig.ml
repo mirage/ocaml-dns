@@ -85,8 +85,8 @@ let print_answers p =
 open Cmdliner
 
 let run domain :unit =
-    let q_type = string_to_q_type "A" in
-    let q_class = string_to_q_class "IN" in
+    let q_type =  Q_A in
+    let q_class =  Q_IN in
     let domain = string_to_domain_name domain in
     Async_dns_resolver.get_resolvers ()
     >>= (fun resolvers -> Async_dns_resolver.resolve resolvers q_class q_type domain)
@@ -102,6 +102,6 @@ let () =
       +> flag "-domain" (optional_with_default "www.bbc.co.uk" string)
         ~doc:" Domain to query (default www.bbc.co.uk)"
     )
-    (fun uppercase port () -> run ~domain)
+    (fun uppercase domain () -> run ~domain)
   |> Command.run
 
