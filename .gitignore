@@ -7,3 +7,4 @@ setup.log
 *.native
 *.byte
 *.docdir
+*~
