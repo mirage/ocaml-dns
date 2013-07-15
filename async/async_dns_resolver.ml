@@ -25,6 +25,10 @@ open Dns.Resolvconf
 module DP = Dns.Packet
 module DN = Dns.Name
 
+let debug_active = ref true
+let debug x = if !debug_active then (printf "[debug] %s \n" x)
+
+
 let buflen = 4096
 let ns = "8.8.8.8"
 let port = 53
@@ -35,11 +39,6 @@ let get_id () =
     let i = !id in
     incr id;
     i
-
-let log_info s = eprintf "INFO: %s\n%!" s
-let log_debug s = eprintf "DEBUG: %s\n%!" s
-let log_warn s = eprintf "WARN: %s\n%!" s
-
 
 let build_query  q_class q_type q_name = 
 DP.(
@@ -59,30 +58,37 @@ let rec rcv_query reader q :DP.t Deferred.t =
   (Reader.read reader ~len:(16 * 1024) buf )
   >>= (fun x -> 
     let r = DP.parse names (Cstruct.of_string buf) in 
-    if (r.DP.id = q.DP.id) then return r
+  (*  debug (DP.to_string r); *)
+   if (r.DP.id = q.DP.id) then return r
     else
       rcv_query reader q )
 			    
 
 let send_pkt (server:string) (dns_port:int) pkt =
+ debug ("sending DNS query to "^server^" port: "^(Caml.string_of_int dns_port));
  let buf = Cstruct.create 4096 in
  let pkt_cstruct = DP.marshal buf pkt in
  let pkt_string = String.create (16 * 1024) in
       Cstruct.blit_to_string pkt_cstruct 0 pkt_string 0 (Cstruct.len pkt_cstruct);
-      Tcp.connect (Tcp.to_host_and_port server dns_port)
-      >>=  (fun (socket,reader,writer) -> Writer.write writer pkt_string; 
-      with_timeout (Time.Span.create ~sec:5 () ) (rcv_query reader pkt) )
+      Tcp.with_connection (Tcp.to_host_and_port server dns_port)
+      (fun s r w -> 
+	let peername = Socket.getpeername s in
+	let sockname = Socket.getsockname s in
+	debug ("socket establisted between "^(Unix_syscalls.Socket.Address.to_string peername)^" to "^(Unix_syscalls.Socket.Address.to_string sockname));
+      Writer.write w pkt_string;
+      Writer.flushed w 
+      >>= (fun _ ->  with_timeout (Time.Span.create ~sec:5 () ) (rcv_query r pkt) ))
 
 
 let resolve (server:string) (dns_port:int)  (q_class:DP.q_class)
   (q_type:DP.q_type) (q_name:DN.domain_name) =
       let query = build_query q_class q_type q_name in
-      log_info (sprintf "query: %s\n%!" (DP.to_string query));
       send_pkt server dns_port query 
 
 let default_configuration_file = "/etc/resolv.conf"
 
 let get_resolvers ?(file=default_configuration_file) () =
+  debug ("reading nameservers from "^file);
     Unix_syscalls.with_file ~mode:[`Rdonly]  file ~f:(fun fd ->
       let warn x = prerr_endline (Printf.sprintf "resolvconf in file %s: %s" file x) in
       let reader = Reader.create fd in

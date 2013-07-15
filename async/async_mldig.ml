@@ -23,7 +23,7 @@ open Dns.Name
 open Dns.Packet
 open Uri
 
-let debug_active = ref false
+let debug_active = ref true
 let debug x = if !debug_active then (printf "[debug] %s \n" x)
 let warn x y = (printf "%s warning: %s\n" x y)
 let error x y = (printf "%s error: %s \n" x y)
@@ -84,14 +84,15 @@ let print_answers p =
   
 open Cmdliner
 
-let run domain :unit =
+let run ~domain  =
+    debug ("starting resolution for " ^domain) ;
     let q_type =  Q_A in
     let q_class =  Q_IN in
     let domain = string_to_domain_name domain in
     Async_dns_resolver.get_resolvers ()
     >>= (fun resolvers -> Async_dns_resolver.resolve resolvers q_class q_type domain)
-    >>> (function | `Result p -> (print_answers p ; Caml.exit 0) 
-		  | `Timeout -> printf ":("; Caml.exit 1  )
+    >>= (function | `Result p -> (print_answers p); Deferred.unit 
+		  | `Timeout -> printf ":("; Deferred.unit  )
 
 
 let () =
@@ -102,6 +103,6 @@ let () =
       +> flag "-domain" (optional_with_default "www.bbc.co.uk" string)
         ~doc:" Domain to query (default www.bbc.co.uk)"
     )
-    (fun uppercase domain () -> run ~domain)
+    (fun domain () -> run ~domain)
   |> Command.run
 
