@@ -159,16 +159,16 @@ module type RESOLVER = sig
 end
 
 type config = [
-  | `Resolv_conf
+  | `Resolv_conf of string
   | `Static of (string * int) list * string list
 ]
 
 type t = (module RESOLVER)
 
 module Resolv_conf = struct
-  let default_configuration_file = "/etc/resolv.conf"
+  let default_file = "/etc/resolv.conf"
 
-  let get_resolvers ?(file=default_configuration_file) () =
+  let get_resolvers ?(file=default_file) () =
     Lwt_io.with_file ~mode:Lwt_io.input file (fun ic ->
       (* Read lines and filter out whitespace/blanks *)
       let lines = Lwt_stream.filter_map map_line (Lwt_io.read_lines ic) in
@@ -183,8 +183,8 @@ module Resolv_conf = struct
       ) lines))
     )
 
-  let create () =
-    lwt t = get_resolvers () in
+  let create ?(file=default_file) () =
+    lwt t = get_resolvers ~file () in
     return
     (module (struct
       let servers = all_servers t
@@ -200,11 +200,11 @@ module Static = struct
      end) : RESOLVER)
 end
 
-let create ?(config=`Resolv_conf) () =
+let create ?(config=`Resolv_conf Resolv_conf.default_file) () =
   match config with
   |`Static (servers, search_domains) ->
      return (Static.create ~servers ~search_domains ())
-  |`Resolv_conf -> Resolv_conf.create ()
+  |`Resolv_conf file -> Resolv_conf.create ~file ()
 
 
 let gethostbyname t ?q_class ?q_type q_name =

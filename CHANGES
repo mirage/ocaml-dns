@@ -1,3 +1,6 @@
+0.7.0 (trunk):
+* Add path argument to `Resolv_conf in Dns_resolver.config
+
 0.6.2 (2012-02-13):
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.
 * Fix Lwt Makefile detection (`Lwt.unix` instead of `Lwt.ssl`)

@@ -26,7 +26,7 @@ module type RESOLVER = sig
 end
 
 type config = [
-  | `Resolv_conf
+  | `Resolv_conf of string
   | `Static of (string * int) list * string list
 ]
 
