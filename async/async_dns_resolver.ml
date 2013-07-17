@@ -28,11 +28,9 @@ module DN = Dns.Name
 let debug_active = ref true
 let debug x = if !debug_active then (printf "[debug] %s \n" x)
 
-let buflen = 4096
-let ns = "8.8.8.8"
-let port = 53
+let buflen =  (16 * 1064)
 
-let id = ref 0xDEAD
+let id = ref 0xDEAD 
 
 let get_id () =
   let i = !id in
@@ -53,8 +51,8 @@ let build_query  q_class q_type q_name =
 
 let rec rcv_query reader q :DP.t Deferred.t =
   let names = Caml.Hashtbl.create 8 in
-  let buf = String.create (16 * 1024) in
-  (Reader.read reader ~len:(16 * 1024) buf )
+  let buf = String.create buflen in
+  (Reader.read reader ~len:buflen buf )
   >>= (fun x -> 
       let r = DP.parse names (Cstruct.of_string buf) in 
       (*  debug (DP.to_string r); *)
@@ -73,7 +71,7 @@ let send_pkt (server:string) (dns_port:int) pkt =
     (fun s r w -> 
        let peername = Socket.getpeername s in
        let sockname = Socket.getsockname s in
-       debug ("socket establisted between "^(Unix_syscalls.Socket.Address.to_string peername)^" to "^(Unix_syscalls.Socket.Address.to_string sockname));
+       debug ("socket establisted between "^(Socket.Address.to_string peername)^" to "^(Socket.Address.to_string sockname));
        Writer.write w pkt_string;
        Writer.flushed w 
        >>= (fun _ ->  with_timeout (Time.Span.create ~sec:5 () ) (rcv_query r pkt) ))

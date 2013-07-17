@@ -147,7 +147,7 @@ Executable get_nameserver
 
 Executable async_mldig
   Path:               async
-  MainIs:             mldig.ml
+  MainIs:             async_mldig.ml
   Build$:             flag(tests) && flag(lwt)
   Custom:             true
   CompiledObject:     best
