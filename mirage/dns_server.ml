@@ -14,12 +14,12 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Lwt 
+open Lwt
 open Printf
 
 let port = 53
 
-let read_file dev filename = 
+let read_file dev filename =
   OS.Devices.with_kv_ro dev (fun kv_ro ->
     match_lwt kv_ro#read filename with
       | None -> fail (Failure "File not found")
@@ -33,16 +33,16 @@ module DP = Dns.Packet
 let get_answer dnstrie buf qname qtype id =
   let qname = List.map String.lowercase qname in
   let ans = DQ.answer_query qname qtype dnstrie in
-  let detail = 
-    DP.({ qr=Response; opcode=Standard; 
-          aa=ans.DQ.aa; tc=false; rd=false; ra=false; 
-          rcode=ans.DQ.rcode })      
+  let detail =
+    DP.({ qr=Response; opcode=Standard;
+          aa=ans.DQ.aa; tc=false; rd=false; ra=false;
+          rcode=ans.DQ.rcode })
   in
   let questions = [ DP.({ q_name=qname; q_type=qtype; q_class=Q_IN }) ] in
   let dp = DP.({ id; detail; questions;
-        answers=ans.DQ.answer; 
-        authorities=ans.DQ.authority; 
-        additionals=ans.DQ.additional; 
+        answers=ans.DQ.answer;
+        authorities=ans.DQ.authority;
+        additionals=ans.DQ.additional;
       })
   in
   DP.marshal buf dp

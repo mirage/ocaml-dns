@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Lwt 
+open Lwt
 open Printf
 
 module DQ = Dns.Query
@@ -24,12 +24,12 @@ module DP = Dns.Packet
 type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr ->
   Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
 
-let contain_exc l v = 
+let contain_exc l v =
   try
     Some (v ())
   with exn ->
-    eprintf "dns %s exn: %s\n%!" l (Printexc.to_string exn); 
-    None 
+    eprintf "dns %s exn: %s\n%!" l (Printexc.to_string exn);
+    None
 
 let bind_fd ~address ~port =
   lwt src = try_lwt
@@ -43,7 +43,7 @@ let bind_fd ~address ~port =
   let () = Lwt_unix.bind fd src in
   return (fd,src)
 
-let process_query fd buf len src dst dnsfn names = 
+let process_query fd buf len src dst dnsfn names =
         let query = contain_exc "parse" (fun () -> DP.parse names buf) in
         match query with
         |None -> return ()
@@ -52,36 +52,36 @@ let process_query fd buf len src dst dnsfn names =
           match answer with
           |None -> return ()
           |Some answer ->
-(*            let edns_rec = 
-              try 
-                List.find (fun rr -> ) query.additionals 
+(*            let edns_rec =
+              try
+                List.find (fun rr -> ) query.additionals
               with Not_found -> []
             in *)
-            let detail = DP.({ 
+            let detail = DP.({
               qr=Response; opcode=Standard; aa=answer.DQ.aa;
-              tc=false; rd=false; ra=false; rcode=answer.DQ.rcode 
+              tc=false; rd=false; ra=false; rcode=answer.DQ.rcode
             })
             in
-            let response = DP.({ 
-              id=query.id; detail; questions=query.questions; 
+            let response = DP.({
+              id=query.id; detail; questions=query.questions;
               answers=answer.DQ.answer;
               authorities=answer.DQ.authority;
               additionals=answer.DQ.additional
-            }) 
+            })
             in
             (* Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00'; *)
-            let bits = 
-              contain_exc "marshal" (fun () -> DP.marshal buf response) 
+            let bits =
+              contain_exc "marshal" (fun () -> DP.marshal buf response)
             in
             match bits with
               | None -> return ()
-              | Some buf -> 
+              | Some buf ->
                   (* TODO transmit queue, rather than ignoring result here *)
                   let _ = Lwt_bytes.(sendto fd buf.Cstruct.buffer
                   buf.Cstruct.off buf.Cstruct.len [] dst) in
                   return ()
         end
- 
+
 
 let listen ~fd ~src ~(dnsfn:dnsfn) =
   let cont = ref true in
@@ -107,7 +107,7 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
   lwt fd, src = bind_fd ~address ~port in
   let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =
-    let qname = List.map String.lowercase qname in  
+    let qname = List.map String.lowercase qname in
     DQ.answer_query ~dnssec:true qname qtype dnstrie
   in
   let (dnsfn:dnsfn) =
@@ -116,8 +116,8 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
       (fun ~src ~dst d ->
          let open DP in
          let q = List.hd d.questions in
-         let r = 
-           contain_exc "answer" (fun () -> get_answer q.q_name q.q_type d.id) 
+         let r =
+           contain_exc "answer" (fun () -> get_answer q.q_name q.q_type d.id)
          in
          return r
       )
@@ -128,8 +128,8 @@ let listen_with_zonefile ~address ~port ~zonefile =
   lwt zonebuf =
      let lines = Lwt_io.lines_of_file zonefile in
      let buf = Buffer.create 1024 in
-     lwt () = Lwt_stream.iter (fun l -> 
-       Buffer.add_string buf l; Buffer.add_char buf '\n') lines 
+     lwt () = Lwt_stream.iter (fun l ->
+       Buffer.add_string buf l; Buffer.add_char buf '\n') lines
      in
      return (Buffer.contents buf)
   in
