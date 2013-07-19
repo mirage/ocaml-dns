@@ -103,7 +103,7 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
   t
 
 let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
-  let db = Dns.Zone.load_zone [] zonebuf in
+  let db = Dns.Zone.load [] zonebuf in
   lwt fd, src = bind_fd ~address ~port in
   let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =

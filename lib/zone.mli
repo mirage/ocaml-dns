@@ -21,8 +21,8 @@
     @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
-(** Raised when load_zone fails to parse. Argument indicates line number. *)
+(** Raised when load fails to parse the zone. Argument indicates line number. *)
 exception Zone_parse_error of int
 
 (** Load a domain's zone from a string buffer, into [db]. *)
-val load_zone : ?db:Loader.db -> string list -> string -> Loader.db
+val load : ?db:Loader.db -> string list -> string -> Loader.db

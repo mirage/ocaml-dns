@@ -58,7 +58,7 @@ let no_memo db mgr src dst bits =
   )
 
 let listen ?(mode=`none) ?(origin=[]) ~zb mgr src =
-  let db = Dns.Zone.load_zone origin zb in
+  let db = Dns.Zone.load origin zb in
   Net.Datagram.UDPv4.(recv mgr src
     (match mode with
       |`none -> no_memo db mgr src

@@ -22,7 +22,7 @@ open Loader
 exception Zone_parse_error of int
 
 (** Can raise {! ZoneParseError } *)
-let load_zone ?(db=new_db ()) origin buf =
+let load ?(db=new_db ()) origin buf =
   try
     let lexbuf = Lexing.from_string buf in
     state.db <- db;
