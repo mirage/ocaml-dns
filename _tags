@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 3277b4b028b85ec5aa8a848f0cf72490)
+# DO NOT EDIT (digest: f3169bab5e047ce0e42320894b5b6ea9)
 # Ignore VCS directories, you can use the same kind of rule outside 
 # OASIS_START/STOP if you want to exclude directories that contains 
 # useless stuff for the build process
@@ -152,17 +152,17 @@
 <async/*.ml{,i}>: pkg_lwt.syntax
 <async/get_nameserver.{native,byte}>: custom
 # Executable async_mldig
-<async/mldig.{native,byte}>: use_dns
-<async/mldig.{native,byte}>: pkg_re
-<async/mldig.{native,byte}>: pkg_re.str
-<async/mldig.{native,byte}>: pkg_cstruct
-<async/mldig.{native,byte}>: pkg_uri
-<async/mldig.{native,byte}>: pkg_cmdliner
-<async/mldig.{native,byte}>: pkg_threads
-<async/mldig.{native,byte}>: pkg_async
-<async/mldig.{native,byte}>: pkg_async_unix
-<async/mldig.{native,byte}>: pkg_core
-<async/mldig.{native,byte}>: pkg_cstruct.syntax
+<async/async_mldig.{native,byte}>: use_dns
+<async/async_mldig.{native,byte}>: pkg_re
+<async/async_mldig.{native,byte}>: pkg_re.str
+<async/async_mldig.{native,byte}>: pkg_cstruct
+<async/async_mldig.{native,byte}>: pkg_uri
+<async/async_mldig.{native,byte}>: pkg_cmdliner
+<async/async_mldig.{native,byte}>: pkg_threads
+<async/async_mldig.{native,byte}>: pkg_async
+<async/async_mldig.{native,byte}>: pkg_async_unix
+<async/async_mldig.{native,byte}>: pkg_core
+<async/async_mldig.{native,byte}>: pkg_cstruct.syntax
 <async/*.ml{,i}>: use_dns
 <async/*.ml{,i}>: pkg_re
 <async/*.ml{,i}>: pkg_re.str
@@ -174,7 +174,7 @@
 <async/*.ml{,i}>: pkg_async_unix
 <async/*.ml{,i}>: pkg_core
 <async/*.ml{,i}>: pkg_cstruct.syntax
-<async/mldig.{native,byte}>: custom
+<async/async_mldig.{native,byte}>: custom
 # OASIS_STOP
 true: annot
 <lib/*>: syntax_camlp4o, pkg_lwt.syntax
