@@ -80,8 +80,7 @@ val add_rrsig_rr : string -> int -> int -> int32 -> int32 -> int32 -> int -> dom
     RRSet now has the new ttl. *)
 exception TTLMismatch
 
-(** State variables for the parser & lexer. *)
-
+(**/**)
 type parserstate = {
     mutable db: db;
     mutable paren: int;

@@ -17,7 +17,6 @@
 open Lwt 
 open Printf
 
-module DL = Dns.Loader
 module DQ = Dns.Query
 module DR = Dns.RR
 module DP = Dns.Packet
@@ -104,9 +103,9 @@ let listen ~fd ~src ~(dnsfn:dnsfn) =
   t
 
 let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
-  Dns.Zone.load_zone [] zonebuf;
+  let db = Dns.Zone.load_zone [] zonebuf in
   lwt fd, src = bind_fd ~address ~port in
-  let dnstrie = DL.(state.db.trie) in
+  let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =
     let qname = List.map String.lowercase qname in  
     DQ.answer_query ~dnssec:true qname qtype dnstrie

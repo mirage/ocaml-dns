@@ -373,7 +373,4 @@ let new_state () = {
   owner = [];
 }
 
-(* TODO: turn this into a reference so we can load multiple zone files
-   and only use this temporarily in the lexer *)
 let state = new_state ()
-

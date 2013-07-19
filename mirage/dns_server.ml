@@ -26,15 +26,12 @@ let read_file dev filename =
       | Some s -> Lwt_stream.to_list s >|= Cstruct.copyv
   )
 
-module DL = Dns.Loader
 module DQ = Dns.Query
 module DR = Dns.RR
 module DP = Dns.Packet
 
-let dnstrie = DL.(state.db.trie)
-
-let get_answer buf qname qtype id =
-  let qname = List.map String.lowercase qname in  
+let get_answer dnstrie buf qname qtype id =
+  let qname = List.map String.lowercase qname in
   let ans = DQ.answer_query qname qtype dnstrie in
   let detail = 
     DP.({ qr=Response; opcode=Standard; 
@@ -50,20 +47,20 @@ let get_answer buf qname qtype id =
   in
   DP.marshal buf dp
 
-let no_memo mgr src dst bits =
+let no_memo db mgr src dst bits =
   let buf = OS.Io_page.(to_cstruct (get ())) in
   let names = Hashtbl.create 8 in
   DP.(
     let d = parse names bits in
     let q = List.hd d.questions in
-    let r = get_answer buf q.q_name q.q_type d.id in
+    let r = get_answer db.Dns.Loader.trie buf q.q_name q.q_type d.id in
     Net.Datagram.UDPv4.send mgr ~src dst r
   )
 
 let listen ?(mode=`none) ?(origin=[]) ~zb mgr src =
-  Dns.Zone.load_zone origin zb;
+  let db = Dns.Zone.load_zone origin zb in
   Net.Datagram.UDPv4.(recv mgr src
     (match mode with
-      |`none -> no_memo mgr src
+      |`none -> no_memo db mgr src
     )
   )
