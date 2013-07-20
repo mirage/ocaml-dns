@@ -16,7 +16,7 @@
  *)
 
 (** How to build up a DNS trie from separate RRs.
-    
+
     @author Tim Deegan <tjd\@phlegethon.org>
     @author Richard Mortier <mort\@cantab.net>
 *)
@@ -25,9 +25,9 @@ open Name
 open Cstruct
 
 (** Loader database: the DNS trie plus a hash table of other names in use. *)
-type db = { trie : Trie.dnstrie; 
-	        mutable names : (Name.key, RR.dnsnode) Hashtbl.t; 
-          } 
+type db = { trie : Trie.dnstrie;
+	        mutable names : (Name.key, RR.dnsnode) Hashtbl.t;
+          }
 
 (** Make a new, empty database. *)
 val new_db : unit -> db
@@ -41,17 +41,17 @@ val add_generic_rr : int -> string -> int32 -> domain_name -> db -> unit
 val add_a_rr : ipv4 -> int32 -> domain_name -> db -> unit
 val add_ns_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_cname_rr : domain_name -> int32 -> domain_name -> db -> unit
-val add_soa_rr : 
-  domain_name -> domain_name -> RR.serial -> int32 -> int32 -> int32 -> int32 
+val add_soa_rr :
+  domain_name -> domain_name -> RR.serial -> int32 -> int32 -> int32 -> int32
   -> int32 -> domain_name -> db -> unit
 val add_mb_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_mg_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_mr_rr : domain_name -> int32 -> domain_name -> db -> unit
-val add_wks_rr : 
+val add_wks_rr :
   int32 -> byte -> string -> int32 -> domain_name -> db -> unit
 val add_ptr_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_hinfo_rr : string -> string -> int32 -> domain_name -> db -> unit
-val add_minfo_rr : 
+val add_minfo_rr :
   domain_name -> domain_name -> int32 -> domain_name -> db -> unit
 val add_mx_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
 val add_txt_rr : string list -> int32 -> domain_name -> db -> unit
@@ -59,7 +59,7 @@ val add_rp_rr :
   domain_name -> domain_name -> int32 -> domain_name -> db -> unit
 val add_afsdb_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
 val add_x25_rr : string -> int32 -> domain_name -> db -> unit
-val add_isdn_rr : 
+val add_isdn_rr :
   string -> string option -> int32 -> domain_name -> db -> unit
 val add_rt_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
 val add_aaaa_rr : string -> int32 -> domain_name -> db -> unit
@@ -70,18 +70,17 @@ val add_txt_rr : string list -> int32 -> domain_name -> db -> unit
 val add_dnskey_rr : int -> int -> string -> int32 -> domain_name -> db -> unit
 val add_ds_rr : int -> int -> int -> string -> int32 -> domain_name -> db ->
   unit
-val add_rrsig_rr : string -> int -> int -> int32 -> int32 -> int32 -> int -> domain_name -> 
+val add_rrsig_rr : string -> int -> int -> int32 -> int32 -> int32 -> int -> domain_name ->
   string -> int32 -> domain_name -> db -> unit
 
 (** Raised if we already had an RRSet for this name and type, but with a
-    different TTL. Also possible: {! Trie.BadName}. 
+    different TTL. Also possible: {! Trie.BadName}.
 
     N.B. If TTLMismatch is raised, the RR was successfully added, and the
     RRSet now has the new ttl. *)
 exception TTLMismatch
 
-(** State variables for the parser & lexer. *)
-
+(**/**)
 type parserstate = {
     mutable db: db;
     mutable paren: int;
