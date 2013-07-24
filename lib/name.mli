@@ -29,6 +29,9 @@ type label
 (** Domain name, as a list of strings. *)
 type domain_name = string list
 
+(** Domain name map *)
+module Map: Map.S with type key = domain_name
+
 (** Render a {! domain_name} to a simple string. *)
 val domain_name_to_string : domain_name -> string
 
@@ -47,8 +50,7 @@ val parse_name :
   (int, label) Hashtbl.t -> int -> t -> domain_name * (int * t)
 
 val marshal_name : ?compress:bool ->
-  (domain_name, int) Hashtbl.t -> int -> t -> domain_name
-  -> ((domain_name, int) Hashtbl.t * int * t)
+  int Map.t -> int -> t -> domain_name -> int Map.t * int * t
      
 (** Construct a {! Hashcons} character-string from a string. *)
 val hashcons_charstring : string -> string Hashcons.hash_consed

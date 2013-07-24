@@ -236,9 +236,8 @@ type rdata =
 val hex_of_string : string -> string 
 val rdata_to_string : rdata -> string
 val rdata_to_rr_type : rdata -> rr_type
-val marshal_rdata: (Name.domain_name, int) Hashtbl.t -> 
-  ?compress:bool -> int -> t -> rdata ->
-  (rr_type *  (Name.domain_name, int) Hashtbl.t * int)
+val marshal_rdata: int Name.Map.t -> 
+  ?compress:bool -> int -> t -> rdata -> rr_type *  int Name.Map.t * int
 val compare_rdata : rdata -> rdata -> int
 
 (** Parse an RDATA element from a packet, given the set of already encountered
@@ -259,8 +258,8 @@ type rr = {
 }
 val rr_to_string : rr -> string
 val marshal_rr : ?compress:bool -> 
-  ((Name.domain_name, int) Hashtbl.t * int * t) -> rr -> 
-  ( (Name.domain_name, int) Hashtbl.t * int * t)
+  int Name.Map.t * int * t -> rr -> 
+  int Name.Map.t * int * t
 
 val parse_rr :
   (int, label) Hashtbl.t -> int -> t -> rr * (int * t)

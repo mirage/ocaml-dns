@@ -1,22 +1,44 @@
 # OASIS_START
-# DO NOT EDIT (digest: 762d6322b4f17692c22ee6095ea3103f)
-version = "0.6.1"
-description = "DNS protocol library"
+# DO NOT EDIT (digest: 3fe2ee21686eec291a13d59461c96598)
+version = "0.6.2"
+description = "DNS client and server implementation"
 requires = "cstruct cstruct.syntax re re.str"
 archive(byte) = "dns.cma"
 archive(byte, plugin) = "dns.cma"
 archive(native) = "dns.cmxa"
 archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
+package "mirage" (
+ version = "0.6.2"
+ description = "DNS client and server implementation"
+ requires = "mirage mirage-net cstruct cstruct.syntax dns"
+ archive(byte) = "mirage.cma"
+ archive(byte, plugin) = "mirage.cma"
+ archive(native) = "mirage.cmxa"
+ archive(native, plugin) = "mirage.cmxs"
+ exists_if = "mirage.cma"
+)
+
 package "lwt" (
- version = "0.6.1"
- description = "DNS protocol library"
+ version = "0.6.2"
+ description = "DNS client and server implementation"
  requires = "lwt.unix lwt.syntax cstruct cstruct.syntax dns cryptokit"
  archive(byte) = "lwt.cma"
  archive(byte, plugin) = "lwt.cma"
  archive(native) = "lwt.cmxa"
  archive(native, plugin) = "lwt.cmxs"
  exists_if = "lwt.cma"
+)
+
+package "async" (
+ version = "0.6.2"
+ description = "DNS client and server implementation"
+ requires = "async lwt.unix lwt.syntax cstruct cstruct.syntax dns cryptokit"
+ archive(byte) = "async.cma"
+ archive(byte, plugin) = "async.cma"
+ archive(native) = "async.cmxa"
+ archive(native, plugin) = "async.cmxs"
+ exists_if = "async.cma"
 )
 # OASIS_STOP
 

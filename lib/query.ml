@@ -57,15 +57,16 @@ let answer_query ?(dnssec=false) qname qtype trie =
      trie, or they are the qname, which only happens if it 
      does not have any RRSets of its own and matched a wildcard.*)
   let log_rrset owner rrtype =
-    addqueue := List.filter 
-    (fun (n, t) -> rrtype != t || 
-                     owner != n.owner.H.node) !addqueue;
+    addqueue :=
+      List.filter 
+      (fun (n, t) -> rrtype != t || owner != n.owner.H.node)
+      !addqueue;
     rrlog := (owner, rrtype) :: !rrlog
   in
   
-  let in_log owner rrtype = 
-    List.exists (fun (o, t) -> o == owner && t == rrtype)
-      !rrlog
+  let in_log owner rrtype =
+    try List.assq owner !rrlog == rrtype
+    with Not_found -> false
   in
   
   let enqueue_additional dnsnode rrtype = 

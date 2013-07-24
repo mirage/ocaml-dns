@@ -22,6 +22,19 @@ open Operators
 open Cstruct
 
 type domain_name = string list
+module Map = Map.Make(struct
+  type t = domain_name
+  let eq = (=)
+  let rec compare l1 l2 = match (l1, l2) with
+    | []    ,  []    -> 0
+    | _::_  , []     -> 1
+    | []    , _::_   -> -1
+    | h1::t1, h2::t2 ->
+      match String.compare h1 h2 with
+      | 0 -> compare t1 t2
+      | i -> i
+end)
+
 let domain_name_to_string dn = String.concat "." dn
 let string_to_domain_name (s:string) : domain_name = 
   Re_str.split (Re_str.regexp "\\.") s
@@ -96,30 +109,31 @@ let marshal_name ?(compress=true) names base buf name =
   let compressed names base buf name = 
     let pointer o = ((0b11_l <<< 14) +++ (Int32.of_int o)) |> Int32.to_int in
     
-    let lookup n = 
-      Hashtbl.(if mem names n then Some (find names n) else None)
+    let lookup names n = 
+      try Some (Map.find n names)
+      with Not_found -> None
     in
     
-    let rec aux offset labels = 
-      match lookup labels with
+    let rec aux names offset labels = 
+      match lookup names labels with
         | None -> 
             (match labels with
               | [] -> 
                   set_uint8 buf offset 0; 
-                  offset+1
+                  names, offset+1
                     
               | (hd :: tl) as ls -> 
-                  Hashtbl.replace names ls (base+offset);
+                  let names = Map.add ls (base+offset) names in
                   let label, llen = charstr hd in
                   Cstruct.blit_from_string label 0 buf offset llen;
-                  aux (offset+llen) tl
+                  aux names (offset+llen) tl
             )     
               
         | Some o -> 
             BE.set_uint16 buf offset (pointer o);
-            offset+2
+            names, offset+2
     in
-    let offset = aux 0 name in
+    let names, offset = aux names 0 name in
     names, (base+offset), Cstruct.shift buf offset
   in
   if compress then compressed names base buf name
@@ -165,15 +179,16 @@ exception BadDomainName of string
 type key = string
 
 let canon2key domain_name = 
-  let labelize s = 
+  let check s = 
     if String.contains s '\000' then 
       raise (BadDomainName "contains null character");
     if String.length s = 0 then 
       raise (BadDomainName "zero-length label");
     if String.length s > 63 then 
-      raise (BadDomainName ("label too long: " ^ s));
-    s 
-  in List.fold_left (fun s l -> (labelize l) ^ "\000" ^ s) "" domain_name
+      raise (BadDomainName ("label too long: " ^ s))
+  in
+  List.iter check domain_name;
+  String.concat "\000" (List.rev domain_name)
 
 let rec dnssec_compare a b =
   match (a, b) with
