@@ -48,33 +48,20 @@ let build_query  q_class q_type q_name =
     }
   )
 
-
-let rec rcv_query reader q :DP.t Deferred.t =
-  let names = Caml.Hashtbl.create 8 in
-  let buf = String.create buflen in
-  (Reader.read reader ~len:buflen buf )
-  >>= (fun x -> 
-      let r = DP.parse names (Cstruct.of_string buf) in 
-      (*  debug (DP.to_string r); *)
-      if (r.DP.id = q.DP.id) then return r
-      else
-        rcv_query reader q )
-
-
 let send_pkt (server:string) (dns_port:int) pkt =
   debug ("sending DNS query to "^server^" port: "^(Caml.string_of_int dns_port));
   let buf = Cstruct.create 4096 in
   let pkt_cstruct = DP.marshal buf pkt in
   let pkt_string = String.create (16 * 1024) in
+  let addr = `Inet (Unix.Inet_addr.of_string server, dns_port) in
   Cstruct.blit_to_string pkt_cstruct 0 pkt_string 0 (Cstruct.len pkt_cstruct);
-  Tcp.with_connection (Tcp.to_host_and_port server dns_port)
-    (fun s r w -> 
-       let peername = Socket.getpeername s in
-       let sockname = Socket.getsockname s in
-       debug ("socket establisted between "^(Socket.Address.to_string peername)^" to "^(Socket.Address.to_string sockname));
-       Writer.write w pkt_string;
-       Writer.flushed w 
-       >>= (fun _ ->  with_timeout (Time.Span.create ~sec:5 () ) (rcv_query r pkt) ))
+  Udp.bind_any ()
+  >>| (fun sock -> Udp.sendto_sync ()
+		   |> Or_error.map ~f:(fun sendto_sync ->
+       (fun fd buf addr ->
+          match sendto_sync fd buf addr with
+          | `Not_ready -> assert false
+          | `Ok -> Deferred.unit)))
 
 
 let resolve (server:string) (dns_port:int)  (q_class:DP.q_class)
