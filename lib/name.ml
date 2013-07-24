@@ -39,8 +39,8 @@ let domain_name_to_string dn = String.concat "." dn
 let string_to_domain_name (s:string) : domain_name = 
   Re_str.split (Re_str.regexp "\\.") s
 
-let for_reverse ip = 
-  (".arpa.in-addr." ^ ipv4_to_string ip) |> string_to_domain_name |> List.rev 
+let for_reverse ip =
+  (".arpa.in-addr."^Ipaddr.V4.to_string ip) |> string_to_domain_name |> List.rev
 
 type label =              
   | L of string * int (* string *)

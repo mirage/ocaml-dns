@@ -34,11 +34,11 @@ cenum gateway_tc {
 } as uint8_t
 
 type gateway =
-  | IPv4 of ipv4
+  | IPv4 of Ipaddr.V4.t
   | IPv6 of ipv6
   | NAME of domain_name
 let gateway_to_string = function
-  | IPv4 i -> ipv4_to_string i
+  | IPv4 i -> Ipaddr.V4.to_string i
   | IPv6 i -> ipv6_to_string i
   | NAME n -> domain_name_to_string n
 
@@ -189,7 +189,7 @@ let type_bit_maps_to_string (tbms:type_bit_maps) : string =
   tbms ||> type_bit_map_to_string |> String.concat "; "
 
 type rdata =
-  | A of ipv4
+  | A of Ipaddr.V4.t
   | AAAA of string
   | AFSDB of uint16 * domain_name
   | CNAME of domain_name
@@ -222,8 +222,8 @@ type rdata =
   | TXT of string list
   | UNKNOWN of int * string
   (*  | UNSPEC of string -- wikipedia says deprecated in the 90s *)
-  | WKS of int32 * byte * string
-  | X25 of string 
+  | WKS of Ipaddr.V4.t * byte * string
+  | X25 of string
   | EDNS0 of (int * int * bool * ((int * string) list))
 
 let hex_of_string in_str = 
@@ -235,7 +235,7 @@ let hex_of_string in_str =
     !out_str
 
 let rdata_to_string = function
-  | A ip -> sprintf "A (%s)" (ipv4_to_string ip)
+  | A ip -> sprintf "A (%s)" (Ipaddr.V4.to_string ip)
   | AAAA bs -> sprintf "AAAA (%s)" bs
   | AFSDB (x, n)
     -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
@@ -277,7 +277,8 @@ let rdata_to_string = function
   | TXT sl -> sprintf "TXT (%s)" (String.concat "" sl)
   | UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (Base64.encode bs)
   (* | UNSPEC bs -> sprintf "UNSPEC (%s)" bs*)
-  | WKS (x, y, s) -> sprintf "WKS (%ld,%d, %s)" x (byte_to_int y) s
+  | WKS (a, y, s) ->
+    sprintf "WKS (%s, %d, %s)" (Ipaddr.V4.to_string a) (byte_to_int y) s
   | X25 s -> sprintf "X25 (%s)" s
   | EDNS0 (len, rcode, do_bit, opts) -> 
       sprintf "EDNS0 (version:0, UDP: %d, flags: %s)"
@@ -790,13 +791,13 @@ let parse_rdata names base t cls ttl buf =
         let exp_ts = Cstruct.BE.get_uint32 buf 8 in
         let inc_ts = Cstruct.BE.get_uint32 buf 12 in 
         let tag = Cstruct.BE.get_uint16 buf 16 in
-        let buf = Cstruct.shift buf 18 in 
-        let (name, (len, buf)) = Name.parse_name names 0 buf in 
-        let sign = Cstruct.to_string buf in 
-          SIG (alg, exp_ts, inc_ts, tag, name, sign) 
-     
-    | RR_A -> A (BE.get_uint32 buf 0)
-        
+        let buf = Cstruct.shift buf 18 in
+        let (name, (len, buf)) = Name.parse_name names 0 buf in
+        let sign = Cstruct.to_string buf in
+          SIG (alg, exp_ts, inc_ts, tag, name, sign)
+
+    | RR_A -> A (Ipaddr.V4.of_int32 (BE.get_uint32 buf 0))
+
     | RR_AAAA -> AAAA (Cstruct.to_string buf)
     | RR_AFSDB -> AFSDB (BE.get_uint16 buf 0,
                          buf |> parse_name names (base+2) |> stop)
@@ -899,9 +900,9 @@ let parse_rdata names base t cls ttl buf =
           aux [] buf
         in
         TXT strings
-              
-    | RR_WKS -> 
-        let addr = BE.get_uint32 buf 0 in
+
+    | RR_WKS ->
+        let addr = Ipaddr.V4.of_int32 (BE.get_uint32 buf 0) in
         let proto = get_uint8 buf 4 in
         let bitmap = Cstruct.shift buf 5 |> to_string in
         WKS (addr, byte proto, bitmap)
@@ -911,8 +912,8 @@ let parse_rdata names base t cls ttl buf =
         X25 x25
 
   let marshal_rdata names ?(compress=true) base rdbuf = function
-    | A ip -> 
-        BE.set_uint32 rdbuf 0 ip;
+    | A ip ->
+        BE.set_uint32 rdbuf 0 (Ipaddr.V4.to_int32 ip);
         RR_A, names, 4
     | AAAA s ->
         let s, slen = charstr s in
@@ -1045,7 +1046,7 @@ let parse_rdata names base t cls ttl buf =
           acc+slen
         ) 0 strings
     | WKS (a,p, bm) ->
-        BE.set_uint32 rdbuf 0 a;
+        BE.set_uint32 rdbuf 0 (Ipaddr.V4.to_int32 a);
         set_uint8 rdbuf 4 (byte_to_int p);
         let bmlen = String.length bm in
         Cstruct.blit_from_string bm 0 rdbuf 5 bmlen;
@@ -1061,8 +1062,8 @@ let parse_rdata names base t cls ttl buf =
         RR_UNSPEC, names, (String.length data)
 
   let compare_rdata a_rdata b_rdata =
-    match (a_rdata, b_rdata) with 
-    | A a_ip, A b_ip -> Int32.compare a_ip b_ip
+    match (a_rdata, b_rdata) with
+    | A a_ip, A b_ip -> Ipaddr.V4.compare a_ip b_ip
     | X25 a, X25 b
     | AAAA a, AAAA b -> String.compare a b
     | AFSDB (a_x,a_name), AFSDB (b_x, b_name) ->

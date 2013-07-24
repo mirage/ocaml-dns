@@ -89,9 +89,9 @@ lwt _ =
   let _ = printf "verifying %s\n%!" (Sec.dnssec_result_to_string p) in 
   
   let rr = {name=(string_to_domain_name "www.example.net.");
-                    cls=RR_IN; ttl=3600l; 
-                    rdata=(A (Uri_IP.string_to_ipv4 "192.0.2.91"));} in
-  let pkt = Dns_resolver.build_query Q_IN Q_MX 
+                    cls=RR_IN; ttl=3600l;
+                    rdata=(A (Ipaddr.V4.of_string_exn "192.0.2.91"));} in
+  let pkt = Dns_resolver.build_query Q_IN Q_MX
               (Dns.Name.string_to_domain_name "d3.signpo.st") in
   let pkt = Sec.sign_packet ~inception:(1352893409l)
               ~expiration:(1352893709l) alg key 9030 

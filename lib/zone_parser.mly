@@ -314,11 +314,11 @@ rr:
 
 ipv4: NUMBER DOT NUMBER DOT NUMBER DOT NUMBER 
      { try
-	 let a = Int32.shift_left (Int32.of_int (parse_uint8 $1)) 24 in 
-	 let b = Int32.shift_left (Int32.of_int (parse_uint8 $3)) 16 in 
-	 let c = Int32.shift_left (Int32.of_int (parse_uint8 $5)) 8 in 
-	 let d = Int32.of_int (parse_uint8 $7) in 
-	 Int32.logor (Int32.logor a b) (Int32.logor c d)
+	 let a = Int32.of_int (parse_uint8 $1) in
+	 let b = Int32.of_int (parse_uint8 $3) in
+	 let c = Int32.of_int (parse_uint8 $5) in
+	 let d = Int32.of_int (parse_uint8 $7) in
+         Ipaddr.V4.make a b c d
        with Failure _ | Parsing.Parse_error ->
 	 parse_error ("invalid IPv4 address " ^
 		      $1 ^ "." ^ $3 ^ "." ^ $5 ^ "." ^ $7);

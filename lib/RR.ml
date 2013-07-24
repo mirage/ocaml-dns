@@ -33,12 +33,11 @@ and dnsnode = {
 (* RRSet: TTL, type, and some number of rdata *)
 and rrset = {
   ttl: int32;
-  rdata: rdata; 
+  rdata: rdata;
 }
 
-
-and rdata = 
-  | A of ipv4 list (* always length = 1 *)
+and rdata =
+  | A of Ipaddr.V4.t list (* always length = 1 *)
   | AAAA of cstr list
   | AFSDB of (Cstruct.uint16 * dnsnode) list
   | CNAME of dnsnode list
@@ -59,7 +58,7 @@ and rdata =
   | TXT of (cstr list) list
   (* | UNSPEC of cstr list*)
   | Unknown of int * cstr list
-  | WKS of (int32 * byte * cstr) list 
+  | WKS of (Ipaddr.V4.t * byte * cstr) list
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
   | DS of (int * Packet.dnssec_alg * Packet.digest_alg * cstr) list

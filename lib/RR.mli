@@ -50,7 +50,7 @@ and rrset = { ttl : int32; rdata : rdata; }
     {! Packet} represents each RR as a variant type with the same name.
 *)
 and rdata =
-  | A of ipv4 list
+  | A of Ipaddr.V4.t list
   | AAAA of cstr list
   | AFSDB of (uint16 * dnsnode) list
   | CNAME of dnsnode list
@@ -70,7 +70,7 @@ and rdata =
   | TXT of cstr list list
   (* | UNSPEC of cstr list *)
   | Unknown of int * cstr list
-  | WKS of (int32 * byte * cstr) list
+  | WKS of (Ipaddr.V4.t * byte * cstr) list
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
   | DS of (int * Packet.dnssec_alg * Packet.digest_alg * cstr) list

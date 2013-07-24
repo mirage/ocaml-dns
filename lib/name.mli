@@ -38,8 +38,8 @@ val domain_name_to_string : domain_name -> string
 (** Convert a standard domain {! string} to a {! domain_name}. *)
 val string_to_domain_name : string -> domain_name
 
-(** Construct name for reverse lookup given an {! ipv4} address. *)
-val for_reverse : ipv4 -> domain_name
+(** Construct name for reverse lookup given an IPv4 address. *)
+val for_reverse : Ipaddr.V4.t -> domain_name
 
 (** Parse a {! domain_name} out of a {! Cstruct.t} given a set of already
     observed names from the packet, and the offset we are into the packet.

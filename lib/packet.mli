@@ -196,8 +196,8 @@ type type_bit_maps
 (** Represent RDATA elements; a variant type to avoid collision with the
     compact {! Trie} representation from {! RR}. *)
 
-type rdata = 
-| A of ipv4
+type rdata =
+| A of Ipaddr.V4.t
 | AAAA of string
 | AFSDB of uint16 * domain_name
 | CNAME of domain_name
@@ -228,7 +228,7 @@ type rdata =
 | SSHFP of pubkey_alg * fp_type * string
 | TXT of string list
 | UNKNOWN of int * string
-| WKS of int32 * byte * string
+| WKS of Ipaddr.V4.t * byte * string
 | X25 of string
            (* udp size, rcode, do bit, options *)
 | EDNS0 of (int * int * bool * ((int * string) list)) 

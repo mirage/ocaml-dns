@@ -65,7 +65,7 @@ let print_answers p =
       if al ob > 0 then print_section nm;
       List.iter (fun rr ->
         match rr.rdata with
-        |A ip-> print_rr rr "A" (Uri_IP.ipv4_to_string ip);
+        |A ip-> print_rr rr "A" (Ipaddr.V4.to_string ip);
         |SOA (n1,n2,a1,a2,a3,a4,a5) ->
           print_rr rr "SOA"
             (sprintf "%s %s %lu %lu %lu %lu %lu" (String.concat "." n1)

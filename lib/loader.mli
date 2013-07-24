@@ -38,7 +38,7 @@ val no_more_updates : db -> unit
 (** Insert RRs in the database: args are rdata, ttl, owner, db. *)
 
 val add_generic_rr : int -> string -> int32 -> domain_name -> db -> unit
-val add_a_rr : ipv4 -> int32 -> domain_name -> db -> unit
+val add_a_rr : Ipaddr.V4.t -> int32 -> domain_name -> db -> unit
 val add_ns_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_cname_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_soa_rr :
@@ -48,7 +48,7 @@ val add_mb_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_mg_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_mr_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_wks_rr :
-  int32 -> byte -> string -> int32 -> domain_name -> db -> unit
+  Ipaddr.V4.t -> byte -> string -> int32 -> domain_name -> db -> unit
 val add_ptr_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_hinfo_rr : string -> string -> int32 -> domain_name -> db -> unit
 val add_minfo_rr :
