@@ -36,48 +36,48 @@ module Map = Map.Make(struct
 end)
 
 let domain_name_to_string dn = String.concat "." dn
-let string_to_domain_name (s:string) : domain_name = 
+let string_to_domain_name (s:string) : domain_name =
   Re_str.split (Re_str.regexp "\\.") s
 
 let for_reverse ip =
   (".arpa.in-addr."^Ipaddr.V4.to_string ip) |> string_to_domain_name |> List.rev
 
-type label =              
+type label =
   | L of string * int (* string *)
   | P of int * int (* pointer *)
   | Z of int (* zero; terminator *)
 
-let parse_label base buf = 
+let parse_label base buf =
   (* NB. we're shifting buf for each call; offset is for the names Hashtbl *)
-  match Cstruct.get_uint8 buf 0 with 
-    | 0 -> 
+  match Cstruct.get_uint8 buf 0 with
+    | 0 ->
         Z base, 1
-          
-    | v when ((v land 0b0_11000000) != 0) -> 
-        let ptr = ((v land 0b0_00111111) lsl 8) + Cstruct.get_uint8 buf 1 in 
+
+    | v when ((v land 0b0_11000000) != 0) ->
+        let ptr = ((v land 0b0_00111111) lsl 8) + Cstruct.get_uint8 buf 1 in
         P (ptr, base), 2
-          
+
     | v ->
         if ((0 < v) && (v < 64)) then (
           let name = Cstruct.(sub buf 1 v |> to_string) in
           L (name, base), 1+v
         )
-        else 
+        else
           failwith (sprintf "parse_label: invalid length %d" v)
-                                          
+
 let parse_name names base buf = (* what. a. mess. *)
-  let rec aux offsets name base buf = 
+  let rec aux offsets name base buf =
     match parse_label base buf with
-      | (Z o as zero, offset) -> 
-          Hashtbl.add names o zero; 
+      | (Z o as zero, offset) ->
+          Hashtbl.add names o zero;
           name, base+offset, Cstruct.shift buf offset
-      
-      | (L (n, o) as label, offset) -> 
+
+      | (L (n, o) as label, offset) ->
           Hashtbl.add names o label;
           offsets |> List.iter (fun off -> (Hashtbl.add names off label));
           aux (o :: offsets) (n :: name) (base+offset) (Cstruct.shift buf offset)
 
-      | (P (p, _), offset) -> 
+      | (P (p, _), offset) ->
           let ns = (Hashtbl.find_all names p
                        |> List.filter (function L _ -> true | _ -> false))
           in
@@ -91,13 +91,13 @@ let parse_name names base buf = (* what. a. mess. *)
             | _ -> failwith "parse_name")
           ) @ name, base+offset, Cstruct.shift buf offset
 
-  in 
+  in
   let name, base, buf = aux [] [] base buf in
   List.rev name, (base,buf)
 
-let marshal_name ?(compress=true) names base buf name = 
-  let not_compressed names base buf name = 
-    let base, buf = 
+let marshal_name ?(compress=true) names base buf name =
+  let not_compressed names base buf name =
+    let base, buf =
       List.fold_left (fun (base,buf) label ->
         let label,llen = charstr label in
         Cstruct.blit_from_string label 0 buf 0 llen;
@@ -105,31 +105,31 @@ let marshal_name ?(compress=true) names base buf name =
       ) (base, buf) name
     in names, base+1, Cstruct.shift buf 1
   in
-  
-  let compressed names base buf name = 
+
+  let compressed names base buf name =
     let pointer o = ((0b11_l <<< 14) +++ (Int32.of_int o)) |> Int32.to_int in
-    
-    let lookup names n = 
+
+    let lookup names n =
       try Some (Map.find n names)
       with Not_found -> None
     in
-    
-    let rec aux names offset labels = 
+
+    let rec aux names offset labels =
       match lookup names labels with
-        | None -> 
+        | None ->
             (match labels with
-              | [] -> 
-                  set_uint8 buf offset 0; 
+              | [] ->
+                  set_uint8 buf offset 0;
                   names, offset+1
-                    
-              | (hd :: tl) as ls -> 
+
+              | (hd :: tl) as ls ->
                   let names = Map.add ls (base+offset) names in
                   let label, llen = charstr hd in
                   Cstruct.blit_from_string label 0 buf offset llen;
                   aux names (offset+llen) tl
-            )     
-              
-        | Some o -> 
+            )
+
+        | Some o ->
             BE.set_uint16 buf offset (pointer o);
             names, offset+2
     in
@@ -140,7 +140,7 @@ let marshal_name ?(compress=true) names base buf name =
   else not_compressed names base buf name
 
 (* Hash-consing: character strings *)
-module CSH = Hashcons.Make (struct 
+module CSH = Hashcons.Make (struct
   type t = string
   let equal a b = (a = b)
   let hash s = Hashtbl.hash s
@@ -148,13 +148,13 @@ end)
 let cstr_hash = ref (CSH.create 101)
 let hashcons_charstring s = CSH.hashcons !cstr_hash s
 
-(* 
+(*
    Hash-consing: domain names (string lists).  This requires a little
-   more subtlety than the Hashcons module gives us directly: we want to 
-   merge common suffixes, and we're downcasing everything. 
+   more subtlety than the Hashcons module gives us directly: we want to
+   merge common suffixes, and we're downcasing everything.
    N.B. RFC 4343 says we shouldn't do this downcasing.
 *)
-module DNH = Hashcons.Make (struct 
+module DNH = Hashcons.Make (struct
   type t = domain_name
   let equal a b = (a = b)
   let hash s = Hashtbl.hash s
@@ -162,13 +162,13 @@ end)
 let dn_hash = ref (DNH.create 101)
 let rec hashcons_domainname (x:domain_name) = match x with
   | [] -> DNH.hashcons !dn_hash []
-  | h :: t -> 
-      let th = hashcons_domainname t in 
-      DNH.hashcons !dn_hash 
-	    (((hashcons_charstring (String.lowercase h)).Hashcons.node) 
+  | h :: t ->
+      let th = hashcons_domainname t in
+      DNH.hashcons !dn_hash
+	    (((hashcons_charstring (String.lowercase h)).Hashcons.node)
 	     :: (th.Hashcons.node))
 
-let clear_cons_tables () = 
+let clear_cons_tables () =
   DNH.clear !dn_hash;
   CSH.clear !cstr_hash;
   dn_hash := DNH.create 1;
@@ -178,13 +178,13 @@ exception BadDomainName of string
 
 type key = string
 
-let canon2key domain_name = 
-  let check s = 
-    if String.contains s '\000' then 
+let canon2key domain_name =
+  let check s =
+    if String.contains s '\000' then
       raise (BadDomainName "contains null character");
-    if String.length s = 0 then 
+    if String.length s = 0 then
       raise (BadDomainName "zero-length label");
-    if String.length s > 63 then 
+    if String.length s > 63 then
       raise (BadDomainName ("label too long: " ^ s))
   in
   List.iter check domain_name;
@@ -199,8 +199,8 @@ let rec dnssec_compare a b =
       if (String.compare a b = 0) then
         compare a_tl b_tl
       else
-        ( if (String.length a) = (String.length b) then 
+        ( if (String.length a) = (String.length b) then
             String.compare a b
-          else 
+          else
             compare (String.length a) (String.length b)
         )

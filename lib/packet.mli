@@ -32,7 +32,7 @@ cenum digest_alg {
 } as uint8_t
 
 val digest_alg_to_int : digest_alg -> int
-val int_to_digest_alg : int -> digest_alg option 
+val int_to_digest_alg : int -> digest_alg option
 
 type gateway_tc
 type pubkey_alg
@@ -44,8 +44,8 @@ type fp_type
 (** Represent a DNSSEC algorithm, with the usual conversion functions. *)
 
 cenum dnssec_alg {
-  RSAMD5     = 1; 
-  DH         = 2; 
+  RSAMD5     = 1;
+  DH         = 2;
   DSA        = 3;
   ECC        = 4;
   RSASHA1    = 5;
@@ -61,70 +61,70 @@ val dnssec_alg_to_int : dnssec_alg -> int
 
 (** Represent the {! rr} type, with the usual conversion functions. *)
 type q_type =
-  |  Q_A       
-  |  Q_NS      
-  |  Q_MD      
-  |  Q_MF      
-  |  Q_CNAME   
-  |  Q_SOA     
-  |  Q_MB      
-  |  Q_MG      
-  |  Q_MR      
-  |  Q_NULL    
-  |  Q_WKS     
-  |  Q_PTR     
-  |  Q_HINFO   
-  |  Q_MINFO   
-  |  Q_MX      
-  |  Q_TXT     
-  |  Q_RP      
-  |  Q_AFSDB   
-  |  Q_X25     
-  |  Q_ISDN    
-  |  Q_RT      
-  |  Q_NSAP    
-  |  Q_NSAPPTR 
-  |  Q_SIG     
-  |  Q_KEY     
-  |  Q_PX      
-  |  Q_GPOS    
-  |  Q_AAAA    
-  |  Q_LOC     
-  |  Q_NXT     
-  |  Q_EID     
-  |  Q_NIMLOC  
-  |  Q_SRV     
-  |  Q_ATMA    
-  |  Q_NAPTR   
-  |  Q_KM      
-  |  Q_CERT    
-  |  Q_A6      
-  |  Q_DNAME   
-  |  Q_SINK    
-  |  Q_OPT     
-  |  Q_APL     
-  |  Q_DS      
-  |  Q_SSHFP   
+  |  Q_A
+  |  Q_NS
+  |  Q_MD
+  |  Q_MF
+  |  Q_CNAME
+  |  Q_SOA
+  |  Q_MB
+  |  Q_MG
+  |  Q_MR
+  |  Q_NULL
+  |  Q_WKS
+  |  Q_PTR
+  |  Q_HINFO
+  |  Q_MINFO
+  |  Q_MX
+  |  Q_TXT
+  |  Q_RP
+  |  Q_AFSDB
+  |  Q_X25
+  |  Q_ISDN
+  |  Q_RT
+  |  Q_NSAP
+  |  Q_NSAPPTR
+  |  Q_SIG
+  |  Q_KEY
+  |  Q_PX
+  |  Q_GPOS
+  |  Q_AAAA
+  |  Q_LOC
+  |  Q_NXT
+  |  Q_EID
+  |  Q_NIMLOC
+  |  Q_SRV
+  |  Q_ATMA
+  |  Q_NAPTR
+  |  Q_KM
+  |  Q_CERT
+  |  Q_A6
+  |  Q_DNAME
+  |  Q_SINK
+  |  Q_OPT
+  |  Q_APL
+  |  Q_DS
+  |  Q_SSHFP
   |  Q_IPSECKEY
-  |  Q_RRSIG   
-  |  Q_NSEC    
-  |  Q_DNSKEY  
-  |  Q_NSEC3   
+  |  Q_RRSIG
+  |  Q_NSEC
+  |  Q_DNSKEY
+  |  Q_NSEC3
   |  Q_NSEC3PARAM
 
-  |  Q_SPF     
+  |  Q_SPF
   |  Q_UINFO
-  |  Q_UID     
-  |  Q_GID     
+  |  Q_UID
+  |  Q_GID
   |  Q_UNSPEC
 
-  |  Q_AXFR    
-  |  Q_MAILB   
-  |  Q_MAILA   
-  |  Q_ANY_TYP 
-    
+  |  Q_AXFR
+  |  Q_MAILB
+  |  Q_MAILA
+  |  Q_ANY_TYP
+
   |  Q_TA
-  |  Q_DLV   
+  |  Q_DLV
   |  Q_UNKNOWN of int
 
 val q_type_to_int : q_type -> int
@@ -188,8 +188,8 @@ type rr_type =
   | RR_UNSPEC
 val string_to_rr_type : string -> rr_type option
 val rr_type_to_string : rr_type -> string
-val int_to_rr_type : int -> rr_type option 
-val rr_type_to_int : rr_type -> int 
+val int_to_rr_type : int -> rr_type option
+val rr_type_to_int : rr_type -> int
 type type_bit_map
 type type_bit_maps
 
@@ -219,7 +219,7 @@ type rdata =
 | NSEC3PARAM of hash_alg * byte * uint16 * byte * string
 | PTR of domain_name
 | RP of domain_name * domain_name
-| RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 * 
+| RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 *
     domain_name (* uncompressed *) * string
 | SIG of dnssec_alg * int32 * int32 * uint16 * domain_name * string
 | RT of uint16 * domain_name
@@ -231,18 +231,18 @@ type rdata =
 | WKS of Ipaddr.V4.t * byte * string
 | X25 of string
            (* udp size, rcode, do bit, options *)
-| EDNS0 of (int * int * bool * ((int * string) list)) 
+| EDNS0 of (int * int * bool * ((int * string) list))
 
-val hex_of_string : string -> string 
+val hex_of_string : string -> string
 val rdata_to_string : rdata -> string
 val rdata_to_rr_type : rdata -> rr_type
-val marshal_rdata: int Name.Map.t -> 
+val marshal_rdata: int Name.Map.t ->
   ?compress:bool -> int -> t -> rdata -> rr_type *  int Name.Map.t * int
 val compare_rdata : rdata -> rdata -> int
 
 (** Parse an RDATA element from a packet, given the set of already encountered
     names, a starting index, and the type of the RDATA. *)
-val parse_rdata : 
+val parse_rdata :
   (int, label) Hashtbl.t -> int -> rr_type -> int -> int32 -> t -> rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
@@ -257,8 +257,8 @@ type rr = {
   rdata : rdata;
 }
 val rr_to_string : rr -> string
-val marshal_rr : ?compress:bool -> 
-  int Name.Map.t * int * t -> rr -> 
+val marshal_rr : ?compress:bool ->
+  int Name.Map.t * int * t -> rr ->
   int Name.Map.t * int * t
 
 val parse_rr :
@@ -296,18 +296,18 @@ type rcode =
   | ServFail | NXDomain | NotImp  | Refused
   | YXDomain | YXRRSet  | NXRRSet | NotAuth
   | NotZone  | BadVers  | BadKey  | BadTime
-  | BadMode  | BadName  | BadAlg 
+  | BadMode  | BadName  | BadAlg
 val rcode_to_string : rcode -> string
 
 (** The [detail] field from the DNS header, with the usual conversion
     functions. *)
-                
+
 type detail = {
   qr: qr;
   opcode: opcode;
-  aa: bool; 
-  tc: bool; 
-  rd: bool; 
+  aa: bool;
+  tc: bool;
+  rd: bool;
   ra: bool;
   rcode: rcode;
 }
@@ -325,7 +325,7 @@ type t = {
 val to_string : t -> string
 val parse : (int, label) Hashtbl.t -> Cstruct.t -> t
 
-(** The marshalling entry point, given a {! dns} structure. 
+(** The marshalling entry point, given a {! dns} structure.
 
     @return the marshalled packet
 *)

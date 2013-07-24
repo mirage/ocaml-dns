@@ -44,7 +44,7 @@ let print_answers p =
     ] in
     let flags = String.concat " " (List.fold_left (fun a ->
       function |None -> a |Some x -> x :: a) [] flags) in
-    printf ";; ->>HEADER<<- opcode: %s, status: %s, id: %u\n" 
+    printf ";; ->>HEADER<<- opcode: %s, status: %s, id: %u\n"
       (String.uppercase (opcode_to_string detail.opcode))
       (String.uppercase (rcode_to_string detail.rcode)) id;
     let al = List.length in
@@ -59,7 +59,7 @@ let print_answers p =
       ) questions;
       print_newline ();
     end;
-    let print_rr rr = printf "%-24s %-8lu %-8s %-8s %s\n" 
+    let print_rr rr = printf "%-24s %-8lu %-8s %-8s %s\n"
         (String.concat "." rr.name) rr.ttl (rr_class_to_string rr.cls) in
     List.iter (fun (nm,ob) ->
       if al ob > 0 then print_section nm;
@@ -70,7 +70,7 @@ let print_answers p =
           print_rr rr "SOA"
             (sprintf "%s %s %lu %lu %lu %lu %lu" (String.concat "." n1)
               (String.concat "." n2) a1 a2 a3 a4 a5);
-        |MX (pref,host) -> 
+        |MX (pref,host) ->
           print_rr rr "MX" (sprintf "%d %s" pref (String.concat "." host));
         |CNAME a -> print_rr rr "CNAME" (String.concat "." a)
         |NS a -> print_rr rr "NS" (String.concat "." a)
@@ -78,7 +78,7 @@ let print_answers p =
       ) ob;
       if al ob > 0 then print_newline ()
     ) ["answer",answers; "authority",authorities; "additional",additionals]
-  
+
 open Lwt
 open Cmdliner
 
@@ -108,18 +108,18 @@ let dig res server source_ip dest_port q_class q_type args =
   printf ";; <<>> MLDiG 1.0 <<>>\n"; (* TODO put query domains from Sys.argv here *)
  match server with
   |None -> error "dig" "Must specify a DNS resolver (with @<hostname>)"
-  |Some x -> 
+  |Some x ->
     debug (sprintf "Querying DNS server %s" x);
     let domain = string_to_domain_name (List.hd domains) in
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
     Dns_resolver.resolve res q_class q_type domain >|= print_answers
- 
+
 let t =
   lwt res = Dns_resolver.create () in
   let module Res = (val res :Dns_resolver.RESOLVER ) in
   let (default_server, default_dest_port) =
-    match Res.servers with 
-    |[] -> None,53 
+    match Res.servers with
+    |[] -> None,53
     |(s,p)::_ -> (Some s),p in
   let source_ip =
     Arg.(value & opt string "0.0.0.0" & info ["b"] ~docv:"SOURCE_IP"
@@ -141,13 +141,12 @@ let t =
     let man = [ `S "BUGS"; `P "Email bug reports to <cl-mirage@lists.cl.cam.ac.uk>."] in
     Term.info "mldig" ~version:"1.0.0" ~doc ~man
   in
-  let cmd_t = Term.(pure 
-    (dig res default_server) $ 
-    source_ip $ 
-    dest_port $ 
-    q_class $ 
+  let cmd_t = Term.(pure
+    (dig res default_server) $
+    source_ip $
+    dest_port $
+    q_class $
     q_type $ args) in
   match Term.eval (cmd_t, info) with `Ok x -> x |_ -> exit 1
 
 let _ = Lwt_main.run t
-

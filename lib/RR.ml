@@ -16,7 +16,7 @@
  * dnsrr.ml --- datatypes and handling for DNS RRs and RRSets
  *
  *)
-  
+
 open Name
 open Cstruct
 
@@ -48,7 +48,7 @@ and rdata =
   | MG of dnsnode list
   | MINFO of (dnsnode * dnsnode) list
   | MR of dnsnode list
-  | MX of (Cstruct.uint16 * dnsnode) list 
+  | MX of (Cstruct.uint16 * dnsnode) list
   | NS of dnsnode list
   | PTR of dnsnode list
   | RP of (dnsnode * dnsnode) list
@@ -62,7 +62,7 @@ and rdata =
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
   | DS of (int * Packet.dnssec_alg * Packet.digest_alg * cstr) list
-  | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 * 
+  | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 *
                int32 * int32 * int * Name.domain_name * string) list
 
 (* XXX add other RR types *)
