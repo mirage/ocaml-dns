@@ -1,5 +1,6 @@
 0.7.0 (trunk):
 * Change Zone.load_zone to Zone.load and make it functional over Loader.db
+* Use Ipaddr.V4.t addresses in favor to Cstruct or Uri_IP representations
 
 0.6.2 (2012-02-13):
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.

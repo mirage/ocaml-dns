@@ -15,7 +15,7 @@
  *
  *)
 
-(** Datatypes and handling for DNS Resource Records and RRSets. 
+(** Datatypes and handling for DNS Resource Records and RRSets.
 
     @author Tim Deegan
     @author Richard Mortier <mort\@cantab.net> (documentation)
@@ -25,23 +25,23 @@ open Name
 open Cstruct
 
 (** DNS serial number -- 32 bits. *)
-type serial = int32 
+type serial = int32
 
 (** DNS {! Hashcons}d character string. *)
 type cstr = string Hashcons.hash_consed
 
 (** A node in the trie. *)
-and dnsnode = { 
+and dnsnode = {
   owner : Name.domain_name Hashcons.hash_consed;
   (** The name for which the node contains memoised attributes. *)
-  mutable rrsets : rrset list; 
+  mutable rrsets : rrset list;
 (** The set of attributes as  resource records. *)
-} 
+}
 
 (** An RRset, comprising a 32 bit TTL and an {!type: rdata} record. *)
 and rrset = { ttl : int32; rdata : rdata; }
 
-(** A resource record. 
+(** A resource record.
 
     NB. These are as stored in the DNS trie, which associates lists of
     payloads with each type in an attempt at a compact representation. As only
@@ -50,7 +50,7 @@ and rrset = { ttl : int32; rdata : rdata; }
     {! Packet} represents each RR as a variant type with the same name.
 *)
 and rdata =
-  | A of ipv4 list
+  | A of Ipaddr.V4.t list
   | AAAA of cstr list
   | AFSDB of (uint16 * dnsnode) list
   | CNAME of dnsnode list
@@ -70,17 +70,17 @@ and rdata =
   | TXT of cstr list list
   (* | UNSPEC of cstr list *)
   | Unknown of int * cstr list
-  | WKS of (int32 * byte * cstr) list
+  | WKS of (Ipaddr.V4.t * byte * cstr) list
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
   | DS of (int * Packet.dnssec_alg * Packet.digest_alg * cstr) list
-  | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 * 
+  | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 *
                int32 * int32 * int * Name.domain_name * string) list
 
 val rdata_to_string : rdata -> string
 (*
 (** Extract relevant RRSets given a query type, a list of RRSets and a flag to
-    say whether to return CNAMEs too. 
+    say whether to return CNAMEs too.
 
     @return the list of extracted {! rrset}s *)
 val get_rrsets : Packet.q_type -> rrset list -> bool -> rrset list

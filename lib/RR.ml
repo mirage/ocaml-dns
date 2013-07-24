@@ -16,7 +16,7 @@
  * dnsrr.ml --- datatypes and handling for DNS RRs and RRSets
  *
  *)
-  
+
 open Name
 open Cstruct
 
@@ -33,12 +33,11 @@ and dnsnode = {
 (* RRSet: TTL, type, and some number of rdata *)
 and rrset = {
   ttl: int32;
-  rdata: rdata; 
+  rdata: rdata;
 }
 
-
-and rdata = 
-  | A of ipv4 list (* always length = 1 *)
+and rdata =
+  | A of Ipaddr.V4.t list (* always length = 1 *)
   | AAAA of cstr list
   | AFSDB of (Cstruct.uint16 * dnsnode) list
   | CNAME of dnsnode list
@@ -49,7 +48,7 @@ and rdata =
   | MG of dnsnode list
   | MINFO of (dnsnode * dnsnode) list
   | MR of dnsnode list
-  | MX of (Cstruct.uint16 * dnsnode) list 
+  | MX of (Cstruct.uint16 * dnsnode) list
   | NS of dnsnode list
   | PTR of dnsnode list
   | RP of (dnsnode * dnsnode) list
@@ -59,11 +58,11 @@ and rdata =
   | TXT of (cstr list) list
   (* | UNSPEC of cstr list*)
   | Unknown of int * cstr list
-  | WKS of (int32 * byte * cstr) list 
+  | WKS of (Ipaddr.V4.t * byte * cstr) list
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
   | DS of (int * Packet.dnssec_alg * Packet.digest_alg * cstr) list
-  | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 * 
+  | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 *
                int32 * int32 * int * Name.domain_name * string) list
 
 (* XXX add other RR types *)
