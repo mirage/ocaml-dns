@@ -348,8 +348,17 @@ let add_rrsig_rr typ alg lbl orig_ttl exp_ts inc_ts tag name sign ttl owner db =
   in
     (* TODO: Check if sign is in the future or if the sign has expired *)
   let sign = Base64.decode sign in
-  let rr = RRSIG [ (typ, alg, (char_of_int lbl), orig_ttl, exp_ts,
-                  inc_ts, tag, name, sign)] in
+  let rr = RRSIG [{
+    rrsig_type   = typ;
+    rrsig_alg    = alg;
+    rrsig_labels = char_of_int lbl;
+    rrsig_ttl    = orig_ttl;
+    rrsig_expiry = exp_ts;
+    rrsig_incept = inc_ts;
+    rrsig_keytag = tag;
+    rrsig_name   = name;
+    rrsig_sig    = sign;
+  }] in
   add_rrset { ttl; rdata = rr; } owner db
 
   (* State variables for the parser & lexer *)

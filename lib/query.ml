@@ -74,8 +74,8 @@ let answer_query ?(dnssec=false) qname qtype trie =
     then addqueue := (dnsnode, rrtype) :: !addqueue 
   in
 
-  let add_rrset owner ttl rdata subrrtype section = 
-    let addrr ?(rrclass = Some Packet.RR_IN) rr = 
+  let add_rrset owner ttl rdata section =
+    let addrr ?(rrclass = Some Packet.RR_IN) rr =
       let rrclass = match rrclass with
         | Some x -> x
         | None   -> failwith "unknown rrclass"
@@ -212,17 +212,20 @@ let answer_query ?(dnssec=false) qname qtype trie =
               | Some tt -> addrr (Packet.DNSKEY (fl, tt, k.H.node))
           ) l
       | RR.RRSIG l -> begin
-          if (dnssec) then
-            match subrrtype with
-              | None -> ()
-              | Some t -> 
-                  List.iter 
-                    (fun (typ, alg, lbl, ttl, exp_ts, inc_ts, tag,
-                          name, sign) ->
-                       if (typ = t) then
-                       addrr (Packet.RRSIG (typ, alg, lbl, ttl, 
-                                            exp_ts, inc_ts, tag, 
-                                            name, sign)) ) l
+        List.iter
+          (fun { rrsig_type = typ;
+                 rrsig_alg = alg;
+                 rrsig_labels = lbl;
+                 rrsig_ttl = ttl;
+                 rrsig_expiry = exp_ts;
+                 rrsig_incept = inc_ts;
+                 rrsig_keytag = tag;
+                 rrsig_name = name;
+                 rrsig_sig = sign;
+               } ->
+            addrr (Packet.RRSIG (typ, alg, lbl, ttl,
+                                 exp_ts, inc_ts, tag,
+                                 name, sign)) ) l
         end
 
       | RR.Unknown (t,l) -> 
@@ -232,43 +235,52 @@ let answer_query ?(dnssec=false) qname qtype trie =
   
   (* Extract relevant RRSets given a query type, a list of RRSets and a flag to
      say whether to return Cnames too *)
-  let get_rrsets qtype sets cnames_ok = 
-    let match_rrset qtype set =
+  let get_rrsets qtype sets cnames_ok =
+    let some_rrset set =
       (* eprintf "MATCH q:%s r:%s\n%!"  *)
       (*   (Packet.q_type_to_string qtype) (RR.rdata_to_string set.rdata); *)
-      match (qtype, set.rdata) with 
-        | (Packet.Q_A, A _) -> true
-        | (Packet.Q_NS, NS _) -> true
-        | (Packet.Q_CNAME, CNAME _) -> true
-        | (Packet.Q_SOA, SOA _) -> true
-        | (Packet.Q_MB, MB _) -> true
-        | (Packet.Q_MG, MG _) -> true
-        | (Packet.Q_MR, MR _) -> true
-        | (Packet.Q_WKS, WKS _) -> true
-        | (Packet.Q_PTR, PTR _) -> true
-        | (Packet.Q_HINFO, HINFO _) -> true
-        | (Packet.Q_MINFO, MINFO _) -> true
-        | (Packet.Q_MX, MX _) -> true
-        | (Packet.Q_TXT, TXT _) -> true
-        | (Packet.Q_RP, RP _) -> true
-        | (Packet.Q_AFSDB, AFSDB _) -> true
-        | (Packet.Q_X25, X25 _) -> true
-        | (Packet.Q_ISDN, ISDN _) -> true
-        | (Packet.Q_RT, RT _) -> true
-        | (Packet.Q_SRV, SRV _) -> true
-        | (Packet.Q_AAAA, AAAA _) -> true
-        | (Packet.Q_DS, DS _) -> true
-        | (Packet.Q_DNSKEY, DNSKEY _) -> true
-        | (Packet.Q_RRSIG, RRSIG _) -> true
+      (* TODO: where does this map belong? *)
+      match (qtype, set.rdata) with
+        | (Packet.Q_A,      A _)
+        | (Packet.Q_NS,     NS _)
+        | (Packet.Q_CNAME,  CNAME _)
+        | (Packet.Q_SOA,    SOA _)
+        | (Packet.Q_MB,     MB _)
+        | (Packet.Q_MG,     MG _)
+        | (Packet.Q_MR,     MR _)
+        | (Packet.Q_WKS,    WKS _)
+        | (Packet.Q_PTR,    PTR _)
+        | (Packet.Q_HINFO,  HINFO _)
+        | (Packet.Q_MINFO,  MINFO _)
+        | (Packet.Q_MX,     MX _)
+        | (Packet.Q_TXT,    TXT _)
+        | (Packet.Q_RP,     RP _)
+        | (Packet.Q_AFSDB,  AFSDB _)
+        | (Packet.Q_X25,    X25 _)
+        | (Packet.Q_ISDN,   ISDN _)
+        | (Packet.Q_RT,     RT _)
+        | (Packet.Q_SRV,    SRV _)
+        | (Packet.Q_AAAA,   AAAA _)
+        | (Packet.Q_DS,     DS _)
+        | (Packet.Q_DNSKEY, DNSKEY _)
+        | (Packet.Q_RRSIG,  RRSIG _)
         (* | (Packet.Q_UNSPEC, UNSPEC _) -> true *)
-        | (Packet.Q_MAILB, MB _) -> true
-        | (Packet.Q_MAILB, MG _) -> true
-        | (Packet.Q_MAILB, MR _) -> true
-        | (Packet.Q_ANY_TYP, _) -> true
-        | (_, RRSIG _ ) -> dnssec 
-        | (_, CNAME _) -> cnames_ok
-        | (_, _) -> false 
-    in List.filter (match_rrset qtype) sets
+        | (Packet.Q_MAILB,  MB _)
+        | (Packet.Q_MAILB,  MG _)
+        | (Packet.Q_MAILB,  MR _)
+        | (Packet.Q_ANY_TYP,_) -> Some set
+        | (_, CNAME _) when cnames_ok -> Some set
+        | (_, RRSIG rrsigl) when dnssec ->
+          Some ({ set with rdata =
+              RRSIG (List.filter
+                       (fun {rrsig_type} ->
+                         Packet.q_type_matches_rr_type qtype rrsig_type)
+                       rrsigl)
+                })
+        | (_, _) -> None
+    in List.fold_right (fun set sets ->
+      match some_rrset set with Some set -> set::sets | None -> sets
+    ) sets []
   in
 
   (* Get an RRSet, which may not exist *)
@@ -276,8 +288,8 @@ let answer_query ?(dnssec=false) qname qtype trie =
     if not (in_log node.owner.H.node rrtype )
     then
       let a = get_rrsets qtype node.rrsets false in
-      List.iter (fun s -> 
-        add_rrset node.owner.H.node s.ttl s.rdata  (Some rrtype) section) a 
+      List.iter (fun s ->
+        add_rrset node.owner.H.node s.ttl s.rdata section) a
   in
 
   (* Get an RRSet, which must exist *)
@@ -285,9 +297,9 @@ let answer_query ?(dnssec=false) qname qtype trie =
     if not (in_log node.owner.H.node rrtype)
     then
       let a = get_rrsets qtype node.rrsets false in
-      if a = [] then raise TrieCorrupt; 
-      List.iter (fun s -> 
-        add_rrset node.owner.H.node s.ttl s.rdata (Some rrtype) section) a
+      if a = [] then raise TrieCorrupt;
+      List.iter (fun s ->
+        add_rrset node.owner.H.node s.ttl s.rdata section) a
   in
 
   (* Get the SOA RRSet for a negative response *)
@@ -300,26 +312,23 @@ let answer_query ?(dnssec=false) qname qtype trie =
        itself *)
     List.iter (fun s -> 
       match s.rdata with
-        SOA ((_, _, _, _, _, _, ttl) :: _) -> 
-          add_rrset node.owner.H.node (min s.ttl ttl) 
-           s.rdata (Some Packet.RR_SOA) `Authority
+        SOA ((_, _, _, _, _, _, ttl) :: _) ->
+          add_rrset node.owner.H.node (min s.ttl ttl)
+           s.rdata `Authority
         | _ -> raise TrieCorrupt ) a
   in
 
   (* Fill in the ANSWER section *)
   let rec add_answer_rrsets owner ?(lc = 5) rrsets qtype =
-    let Some(qt) = Packet.int_to_rr_type (Packet.q_type_to_int qtype) in
-    let add_answer_rrset s = 
-      match s with 
-        | { rdata = CNAME (d::_) } -> 
+    let add_answer_rrset s =
+      match s with
+        | { rdata = CNAME (d::_) } ->
             (* Only follow the first CNAME in a set *)
           if not (lc < 1 || qtype = Packet.Q_CNAME ) then begin 
               add_answer_rrsets d.owner.H.node ~lc:(lc - 1) d.rrsets qtype 
             end;
-          add_rrset owner s.ttl s.rdata 
-           (Some qt ) `Answer;
-        | _ -> add_rrset owner s.ttl s.rdata 
-           (Some qt ) `Answer
+          add_rrset owner s.ttl s.rdata `Answer
+        | _ -> add_rrset owner s.ttl s.rdata `Answer
     in
     let a = get_rrsets qtype rrsets true in
     List.iter add_answer_rrset a

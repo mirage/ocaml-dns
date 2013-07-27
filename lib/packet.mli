@@ -264,6 +264,9 @@ val marshal_rr : ?compress:bool ->
 val parse_rr :
   (int, label) Hashtbl.t -> int -> t -> rr * (int * t)
 
+(** A predicate to test if a {! q_type } applies to an {! rr_type }. *)
+val q_type_matches_rr_type : q_type -> rr_type -> bool
+
 (** A question type, with the usual conversion functions. *)
 val q_type_to_string : q_type -> string
 val string_to_q_type : string -> q_type option
