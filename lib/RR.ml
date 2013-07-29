@@ -36,6 +36,18 @@ and rrset = {
   rdata: rdata;
 }
 
+and rrsig = {
+  rrsig_type   : Packet.rr_type;
+  rrsig_alg    : Packet.dnssec_alg;
+  rrsig_labels : char;
+  rrsig_ttl    : int32;
+  rrsig_expiry : int32;
+  rrsig_incept : int32;
+  rrsig_keytag : int;
+  rrsig_name   : Name.domain_name;
+  rrsig_sig    : string;
+}
+
 and rdata =
   | A of Ipaddr.V4.t list (* always length = 1 *)
   | AAAA of cstr list
@@ -62,8 +74,7 @@ and rdata =
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
   | DS of (int * Packet.dnssec_alg * Packet.digest_alg * cstr) list
-  | RRSIG of ( Packet.rr_type * Packet.dnssec_alg * char * int32 *
-               int32 * int32 * int * Name.domain_name * string) list
+  | RRSIG of rrsig list
 
 (* XXX add other RR types *)
 (* wire-domain type for non-rfc1035 rdata? *)
