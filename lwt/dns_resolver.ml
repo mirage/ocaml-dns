@@ -29,36 +29,35 @@ let port = 53
 
 (* TODO: pseudorandomize *)
 let id = ref 0xDEAD
-
 let get_id () =
-    let i = !id in
-    incr id;
-    i
+  let i = !id in
+  incr id;
+  i
 
 let log_info s = eprintf "INFO: %s\n%!" s
 let log_debug s = eprintf "DEBUG: %s\n%!" s
 let log_warn s = eprintf "WARN: %s\n%!" s
 
-let build_query ?(dnssec=false) q_class q_type q_name = 
+let build_query ?(dnssec=false) q_class q_type q_name =
   DP.(
     let detail = { qr=Query; opcode=Standard;
                    aa=true; tc=false; rd=true; ra=false; rcode=NoError; }
     in
-    let additionals = 
-      if dnssec then 
+    let additionals =
+      if dnssec then
         [ ( {
           name=[]; cls=RR_IN; ttl=0l;
           rdata=(EDNS0(1500, 0, true, []));} ) ]
       else
         []
     in
-    let question = { q_name; q_type; q_class } in 
-    { id=get_id (); detail; questions=[question]; 
-      answers=[]; authorities=[]; additionals; 
+    let question = { q_name; q_type; q_class } in
+    { id=get_id (); detail; questions=[question];
+      answers=[]; authorities=[]; additionals;
     }
   )
 
-let sockaddr addr port = 
+let sockaddr addr port =
   Lwt_unix.(ADDR_INET (Unix.inet_addr_of_string addr, port))
 
 let sockaddr_to_string = Lwt_unix.(function
@@ -66,15 +65,15 @@ let sockaddr_to_string = Lwt_unix.(function
   | ADDR_UNIX s -> s ^ "/UNIX"
   )
 
-let outfd addr port = 
-  let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in 
+let outfd addr port =
+  let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in
   Lwt_unix.(bind fd (sockaddr addr port));
   fd
 
 let txbuf fd dst buf =
   Lwt_bytes.sendto fd buf.Cstruct.buffer buf.Cstruct.off buf.Cstruct.len [] dst
 
-let rxbuf fd len = 
+let rxbuf fd len =
   let buf = Cstruct.create len in
   lwt (len, sa) = Lwt_bytes.recvfrom fd buf.Cstruct.buffer buf.Cstruct.off
                     buf.Cstruct.len [] in
@@ -85,53 +84,53 @@ let rec send_req ofd dst q = function
   | count ->
       lwt _ = txbuf ofd dst q in
       lwt _ = Lwt_unix.sleep 5.0 in
-      printf "retrying query for %d times\n%!" (4-count); 
+      printf "retrying query for %d times\n%!" (4-count);
         send_req ofd dst q (count - 1)
 
 let rec rcv_query ofd q =
   lwt (buf,sa) = rxbuf ofd buflen in
   let names = Hashtbl.create 8 in
-  let r = DP.parse names buf in 
+  let r = DP.parse names buf in
     if (r.DP.id = q.DP.id) then
       return r
     else
-      rcv_query ofd q 
+      rcv_query ofd q
 
 let send_pkt (server:string) (dns_port:int) pkt =
  let ofd = outfd "0.0.0.0" 0 in
  let buf = Cstruct.create 4096 in
  let q = DP.marshal buf pkt in
   try_lwt
-      let dst = sockaddr server dns_port in 
-      let ret = ref None in 
+      let dst = sockaddr server dns_port in
+      let ret = ref None in
       lwt _ =
         pick [
           (send_req ofd dst q 4);
-          (lwt r = rcv_query ofd pkt in 
+          (lwt r = rcv_query ofd pkt in
             return (ret := Some(r))) ]
       in
         match !ret with
         | None -> raise Dns_resolve_timeout
-        | Some r -> return r 
-    with exn -> 
+        | Some r -> return r
+    with exn ->
       log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
       fail exn
 
 let resolve
     ?(dnssec=false)
-    (server:string) (dns_port:int) 
-    (q_class:DP.q_class) (q_type:DP.q_type) 
+    (server:string) (dns_port:int)
+    (q_class:DP.q_class) (q_type:DP.q_type)
     (q_name:domain_name) =
     try_lwt
       let q = build_query ~dnssec q_class q_type q_name in
       log_info (sprintf "query: %s\n%!" (DP.to_string q));
-      send_pkt server dns_port q 
-   with exn -> 
+      send_pkt server dns_port q
+   with exn ->
       log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
-      fail exn 
+      fail exn
 
 let gethostbyname
-    ?(server:string = ns) ?(dns_port:int = port) 
+    ?(server:string = ns) ?(dns_port:int = port)
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
     name =
   let open DP in
@@ -140,11 +139,11 @@ let gethostbyname
   List.fold_left (fun a x -> match x.rdata with |A ip -> ip::a |_ -> a) [] r.answers |>
   List.rev
 
-let gethostbyaddr 
-    ?(server:string = ns) ?(dns_port:int = port) 
+let gethostbyaddr
+    ?(server:string = ns) ?(dns_port:int = port)
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
-    addr 
-    = 
+    addr
+    =
   let addr = for_reverse addr in
   log_info (sprintf "gethostbyaddr: %s" (domain_name_to_string addr));
   let open DP in

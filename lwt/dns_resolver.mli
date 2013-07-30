@@ -42,7 +42,7 @@ val create : ?config:config -> unit -> t Lwt.t
 val gethostbyname : t -> ?q_class:q_class -> ?q_type:q_type
   -> string -> ipv4 list Lwt.t
 
-(** Reverse lookup an {! ipv4 } address. 
+(** Reverse lookup an {! ipv4 } address.
 
     @return the corresponding {! domain_name }s.
 *)
@@ -54,9 +54,9 @@ val gethostbyaddr : t -> ?q_class:q_class -> ?q_type:q_type
 
     @return the full a {! dns } structure.
 *)
-val resolve : t -> ?dnssec:bool -> q_class -> q_type -> 
+val resolve : t -> ?dnssec:bool -> q_class -> q_type ->
   domain_name -> Dns.Packet.t Lwt.t
 
 val send_pkt : t -> Dns.Packet.t -> Dns.Packet.t Lwt.t
-val build_query : ?dnssec:bool -> q_class -> q_type -> 
+val build_query : ?dnssec:bool -> q_class -> q_type ->
   Name.domain_name -> Dns.Packet.t
