@@ -97,9 +97,9 @@ let dig source_ip opt_dest_port q_class q_type args =
         (Some (server, opt_dest_port), q_class, q_type, domains)
       end else begin
         (* See if the argument is a query class or type *)
-        let arg = String.uppercase arg in
-        let q_type' = string_to_q_type arg in
-        let q_class' = string_to_q_class arg in
+        let arg' = String.uppercase arg in
+        let q_type' = string_to_q_type arg' in
+        let q_class' = string_to_q_class arg' in
         match q_type', q_class' with
         |None, None -> (server, q_class, q_type, arg::domains)
         |Some q_type, None -> (server, q_class, q_type, domains)
