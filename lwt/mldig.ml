@@ -65,7 +65,7 @@ let print_answers p =
       if al ob > 0 then print_section nm;
       List.iter (fun rr ->
         match rr.rdata with
-        |A ip-> print_rr rr "A" (Uri_IP.ipv4_to_string ip);
+        |A ip-> print_rr rr "A" (Ipaddr.V4.to_string ip);
         |SOA (n1,n2,a1,a2,a3,a4,a5) ->
           print_rr rr "SOA"
             (sprintf "%s %s %lu %lu %lu %lu %lu" (String.concat "." n1)
@@ -117,12 +117,12 @@ let dig source_ip opt_dest_port q_class q_type args =
     debug (sprintf "Querying DNS server %s" x);
     let domain = string_to_domain_name (List.hd domains) in
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
-    lwt addr = try return Unix.(string_of_inet_addr (inet_addr_of_string x))
-      with Failure _ ->
+    lwt addr = try return Ipaddr.V4.(to_string (of_string_exn x))
+      with Ipaddr.Parse_error _ ->
         lwt addrs = Dns_resolver.gethostbyname res x in
         match addrs with
         | [] -> error "dig" ("Could not resolve nameserver '"^x^"'")
-        | addr::_ -> return (Cstruct.ipv4_to_string addr)
+        | addr::_ -> return (Ipaddr.V4.to_string addr)
     in
     let port = match opt_port with None -> dns_port | Some p -> p in
     Dns_resolver.(resolve

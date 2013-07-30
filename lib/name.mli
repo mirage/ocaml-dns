@@ -38,20 +38,20 @@ val domain_name_to_string : domain_name -> string
 (** Convert a standard domain {! string} to a {! domain_name}. *)
 val string_to_domain_name : string -> domain_name
 
-(** Construct name for reverse lookup given an {! ipv4} address. *)
-val for_reverse : ipv4 -> domain_name
+(** Construct name for reverse lookup given an IPv4 address. *)
+val for_reverse : Ipaddr.V4.t -> domain_name
 
 (** Parse a {! domain_name} out of a {! Cstruct.t} given a set of already
     observed names from the packet, and the offset we are into the packet.
-    
+
     @return {! domain_name} and the remainder
 *)
-val parse_name : 
+val parse_name :
   (int, label) Hashtbl.t -> int -> t -> domain_name * (int * t)
 
 val marshal_name : ?compress:bool ->
   int Map.t -> int -> t -> domain_name -> int Map.t * int * t
-     
+
 (** Construct a {! Hashcons} character-string from a string. *)
 val hashcons_charstring : string -> string Hashcons.hash_consed
 
@@ -69,14 +69,8 @@ exception BadDomainName of string
 type key = string
 
 (** Convert a canonical [[ "www"; "example"; "com" ]] domain name into a key.
-    N.B. Requires that the input is already lower-case!  
+    N.B. Requires that the input is already lower-case!
 *)
 val canon2key : domain_name -> key
 
 val dnssec_compare : domain_name -> domain_name -> int
-
-
-
-
-
-

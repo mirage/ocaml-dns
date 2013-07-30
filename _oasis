@@ -36,7 +36,7 @@ Library dns
   Modules: 
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
     Zone, Zone_lexer, Zone_parser, Resolvconf
-  BuildDepends:	cstruct (>= 0.6.0), cstruct.syntax, re, re.str
+  BuildDepends:	cstruct (>= 0.6.0), cstruct.syntax, re, re.str, ipaddr
 
 Library lwt
   Path: lwt
@@ -47,7 +47,7 @@ Library lwt
   CCLib:      -lcrypto
   Modules: Dns_server, Dns_resolver, Sec, Dnssec_rsa
   BuildDepends: 
-    lwt.unix, lwt.syntax, cstruct, cstruct.syntax, dns, cryptokit
+    lwt.unix, lwt.syntax, dns, cryptokit
   FindlibParent: dns
 
 Library mirage
@@ -101,7 +101,7 @@ Executable mldig
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, re, re.str, cstruct, uri, cmdliner
+  BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, re, re.str, ipaddr, cmdliner
 
 Executable load_key
   Path:               lib_test
@@ -110,7 +110,7 @@ Executable load_key
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       dns.lwt, uri, cryptokit
+  BuildDepends:       dns.lwt, ipaddr, cryptokit
 
 Test lwt_server
   Run$:               flag(tests) && flag(lwt)

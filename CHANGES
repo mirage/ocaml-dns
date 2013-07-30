@@ -2,6 +2,10 @@
 * Add path argument to `Resolv_conf in Dns_resolver.config
 * `Dns_resolver.t` is now a record type rather than a first-class module
 * Fix mldig server and port options
+* Change Zone.load_zone to Zone.load and make it functional over Loader.db
+* Use Ipaddr.V4.t addresses in favor to Cstruct or Uri_IP representations
+* Fix RRSIG signed type to be of the answer rather than the question
+* Fix ANY queries
 
 0.6.2 (2012-02-13):
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.

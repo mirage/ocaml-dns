@@ -1,8 +1,8 @@
 # OASIS_START
-# DO NOT EDIT (digest: 8655a1bda2d3f22ea13aaf4776d277d6)
+# DO NOT EDIT (digest: d586d069bbe964599d0c2becc3d7d007)
 version = "0.6.2"
-description = "DNS protocol library"
-requires = "cstruct cstruct.syntax re re.str"
+description = "DNS client and server implementation"
+requires = "cstruct cstruct.syntax re re.str ipaddr"
 archive(byte) = "dns.cma"
 archive(byte, plugin) = "dns.cma"
 archive(native) = "dns.cmxa"
@@ -10,7 +10,7 @@ archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
 package "mirage" (
  version = "0.6.2"
- description = "DNS protocol library"
+ description = "DNS client and server implementation"
  requires = "mirage mirage-net cstruct cstruct.syntax dns"
  archive(byte) = "mirage.cma"
  archive(byte, plugin) = "mirage.cma"
@@ -21,8 +21,8 @@ package "mirage" (
 
 package "lwt" (
  version = "0.6.2"
- description = "DNS protocol library"
- requires = "lwt.unix lwt.syntax cstruct cstruct.syntax dns cryptokit"
+ description = "DNS client and server implementation"
+ requires = "lwt.unix lwt.syntax dns cryptokit"
  archive(byte) = "lwt.cma"
  archive(byte, plugin) = "lwt.cma"
  archive(native) = "lwt.cmxa"

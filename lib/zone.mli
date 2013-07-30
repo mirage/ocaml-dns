@@ -21,5 +21,8 @@
     @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
-(** Load a domain's zone from a string buffer, into static [state]. *)
-val load_zone : string list -> string -> unit
+(** Raised when load fails to parse the zone. Argument indicates line number. *)
+exception Zone_parse_error of int
+
+(** Load a domain's zone from a string buffer, into [db]. *)
+val load : ?db:Loader.db -> string list -> string -> Loader.db
