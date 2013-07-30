@@ -116,10 +116,9 @@ let dig res server source_ip dest_port q_class q_type args =
  
 let t =
   lwt res = Dns_resolver.create () in
-  let module Res = (val res :Dns_resolver.RESOLVER ) in
   let (default_server, default_dest_port) =
-    match Res.servers with 
-    |[] -> None,53 
+    match res.Dns_resolver.servers with
+    |[] -> None,53
     |(s,p)::_ -> (Some s),p in
   let source_ip =
     Arg.(value & opt string "0.0.0.0" & info ["b"] ~docv:"SOURCE_IP"

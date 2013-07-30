@@ -27,6 +27,7 @@ let buflen = 4096
 let ns = "8.8.8.8"
 let port = 53
 
+(* TODO: pseudorandomize *)
 let id = ref 0xDEAD
 
 let get_id () =
@@ -153,17 +154,15 @@ let gethostbyaddr
 
 open Dns.Resolvconf
 
-module type RESOLVER = sig
-  val servers : (string * int) list
-  val search_domains : string list
-end
+type t = {
+  servers : (string * int) list;
+  search_domains : string list;
+}
 
 type config = [
   | `Resolv_conf of string
   | `Static of (string * int) list * string list
 ]
-
-type t = (module RESOLVER)
 
 module Resolv_conf = struct
   let default_file = "/etc/resolv.conf"
@@ -185,19 +184,15 @@ module Resolv_conf = struct
 
   let create ?(file=default_file) () =
     lwt t = get_resolvers ~file () in
-    return
-    (module (struct
-      let servers = all_servers t
-      let search_domains = search_domains t
-     end) : RESOLVER)
+    return {
+      servers = all_servers t;
+      search_domains = search_domains t;
+    }
 end
 
 module Static = struct
   let create ?(servers=["8.8.8.8",53]) ?(search_domains=[]) () =
-    (module (struct
-      let servers = servers
-      let search_domains = search_domains
-     end) : RESOLVER)
+    { servers; search_domains }
 end
 
 let create ?(config=`Resolv_conf Resolv_conf.default_file) () =
@@ -208,25 +203,21 @@ let create ?(config=`Resolv_conf Resolv_conf.default_file) () =
 
 
 let gethostbyname t ?q_class ?q_type q_name =
-  let module R = (val t :RESOLVER ) in
-  match R.servers with
+  match t.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ -> gethostbyname ~server ~dns_port ?q_class ?q_type q_name
 
 let gethostbyaddr t ?q_class ?q_type q_name =
-  let module R = (val t :RESOLVER ) in
-  match R.servers with
+  match t.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ -> gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
 
 let send_pkt t pkt =
-  let module R = (val t :RESOLVER ) in
-  match R.servers with
+  match t.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ -> send_pkt server dns_port pkt
 
 let resolve t ?(dnssec=false) q_class q_type q_name =
-  let module R = (val t :RESOLVER ) in
-  match R.servers with
+  match t.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ -> resolve ~dnssec server dns_port q_class q_type q_name

@@ -20,17 +20,15 @@ open Cstruct
 
 exception Dns_resolve_timeout
 
-module type RESOLVER = sig
-  val servers : (string * int) list
-  val search_domains : string list
-end
+type t = {
+  servers : (string * int) list;
+  search_domains : string list;
+}
 
 type config = [
   | `Resolv_conf of string
   | `Static of (string * int) list * string list
 ]
-
-type t = (module RESOLVER)
 
 (** Create a resolver instance that either uses the system
     /etc/resolv.conf, or a statically specified preference
