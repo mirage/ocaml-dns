@@ -82,7 +82,10 @@ let print_answers p =
 open Lwt
 open Cmdliner
 
-let dig res server source_ip dest_port q_class q_type args =
+let dns_port = 53
+
+let dig source_ip opt_dest_port q_class q_type args =
+  lwt res = Dns_resolver.create () in
   let timeout = 5 (* matches dig *) in
   (* Fold over args to determine overrides for q_class/type *)
   let (server, q_class, q_type, domains) = List.fold_left (
@@ -91,7 +94,7 @@ let dig res server source_ip dest_port q_class q_type args =
       if String.length arg > 1 && (arg.[0] = '@') then begin
         (* TODO: check for port? *)
         let server = String.sub arg 1 (String.length arg -1) in
-        (Some server, q_class, q_type, domains)
+        (Some (server, opt_dest_port), q_class, q_type, domains)
       end else begin
         (* See if the argument is a query class or type *)
         let arg = String.uppercase arg in
@@ -103,28 +106,35 @@ let dig res server source_ip dest_port q_class q_type args =
         |None, Some q_class -> (server, q_class, q_type, domains)
         |Some q_type, Some q_class -> (server, q_class, q_type, domains)
       end
-  ) (server, q_class, q_type, []) args in
+  ) (begin match res.Dns_resolver.servers with
+    [] -> None | (s,p)::_ -> Some (s,Some p) end,
+    q_class, q_type, []) args in
   let domains = match domains with |[] -> ["."] |_ -> domains in
   printf ";; <<>> MLDiG 1.0 <<>>\n"; (* TODO put query domains from Sys.argv here *)
  match server with
   |None -> error "dig" "Must specify a DNS resolver (with @<hostname>)"
-  |Some x ->
+  |Some (x, opt_port) ->
     debug (sprintf "Querying DNS server %s" x);
     let domain = string_to_domain_name (List.hd domains) in
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
-    Dns_resolver.resolve res q_class q_type domain >|= print_answers
+    lwt addr = try return Unix.(string_of_inet_addr (inet_addr_of_string x))
+      with Failure _ ->
+        lwt addrs = Dns_resolver.gethostbyname res x in
+        match addrs with
+        | [] -> error "dig" ("Could not resolve nameserver '"^x^"'")
+        | addr::_ -> return (Cstruct.ipv4_to_string addr)
+    in
+    let port = match opt_port with None -> dns_port | Some p -> p in
+    Dns_resolver.(resolve
+                    {res with servers = [addr,port]}
+                    q_class q_type domain >|= print_answers)
 
 let t =
-  lwt res = Dns_resolver.create () in
-  let (default_server, default_dest_port) =
-    match res.Dns_resolver.servers with
-    |[] -> None,53
-    |(s,p)::_ -> (Some s),p in
   let source_ip =
     Arg.(value & opt string "0.0.0.0" & info ["b"] ~docv:"SOURCE_IP"
       ~doc:"set source IP of query") in
   let dest_port =
-    Arg.(value & opt int default_dest_port & info ["p";"port"] ~docv:"DEST_PORT"
+    Arg.(value & opt (some int) None & info ["p";"port"] ~docv:"DEST_PORT"
       ~doc:"set destination port number") in
   let q_class =
     (fun x -> match string_to_q_class x with |None -> `Error "" |Some x -> `Ok x),
@@ -141,11 +151,11 @@ let t =
     Term.info "mldig" ~version:"1.0.0" ~doc ~man
   in
   let cmd_t = Term.(pure
-    (dig res default_server) $
-    source_ip $
-    dest_port $
-    q_class $
-    q_type $ args) in
+                      dig $
+                      source_ip $
+                      dest_port $
+                      q_class $
+                      q_type $ args) in
   match Term.eval (cmd_t, info) with `Ok x -> x |_ -> exit 1
 
 let _ = Lwt_main.run t
