@@ -1,5 +1,7 @@
 0.7.0 (trunk):
 * Add path argument to `Resolv_conf in Dns_resolver.config
+* `Dns_resolver.t` is now a record type rather than a first-class module
+* Fix mldig server and port options
 
 0.6.2 (2012-02-13):
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.
