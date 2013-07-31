@@ -188,7 +188,7 @@ let canon2key domain_name =
       raise (BadDomainName ("label too long: " ^ s))
   in
   List.iter check domain_name;
-  String.concat "\000" (List.rev domain_name)
+  String.concat "\000" (List.rev_map String.lowercase domain_name)
 
 let rec dnssec_compare a b =
   match (a, b) with
