@@ -107,7 +107,7 @@ let marshal_name ?(compress=true) names base buf name =
   in
 
   let compressed names base buf name =
-    let pointer o = ((0b11_l <<< 14) +++ (Int32.of_int o)) |> Int32.to_int in
+    let pointer o = ((0b11_l <|< 14) +++ (Int32.of_int o)) |> Int32.to_int in
 
     let lookup names n =
       try Some (Map.find n names)
