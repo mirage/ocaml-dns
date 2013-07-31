@@ -83,7 +83,7 @@ let parse_name names base buf = (* what. a. mess. *)
           in
           (* update the list of offsets-so-far to include current label *)
           offsets |> List.iter (fun o ->
-            ns |> List.iter (fun n -> Hashtbl.add names o n)
+            (List.rev ns) |> List.iter (fun n -> Hashtbl.add names o n)
           );
           (* convert label list into string list *)
           (ns ||> (function
