@@ -31,6 +31,9 @@ let print_timeout () =
 let print_error e = printf ";; read error: %s\n" (Unix.error_message e)
 let print_section s = printf ";; %s SECTION:\n" (String.uppercase s)
 
+(* TODO: Should Name do this? *)
+let string_of_name n = (domain_name_to_string n)^"."
+
 let print_answers p =
     printf ";; global options: \n";
     let { detail; id; questions; answers; authorities; additionals } = p in
@@ -53,14 +56,14 @@ let print_answers p =
     if al questions > 0 then begin
       print_section "question";
       List.iter (fun q -> printf ";%-23s %-8s %-8s %s\n"
-        (String.concat "." q.q_name) ""
+        (string_of_name q.q_name) ""
         (q_class_to_string q.q_class)
         (q_type_to_string q.q_type)
       ) questions;
       print_newline ();
     end;
     let print_rr rr = printf "%-24s %-8lu %-8s %-8s %s\n"
-        (String.concat "." rr.name) rr.ttl (rr_class_to_string rr.cls) in
+        (string_of_name rr.name) rr.ttl (rr_class_to_string rr.cls) in
     List.iter (fun (nm,ob) ->
       if al ob > 0 then print_section nm;
       List.iter (fun rr ->
@@ -68,12 +71,12 @@ let print_answers p =
         |A ip-> print_rr rr "A" (Ipaddr.V4.to_string ip);
         |SOA (n1,n2,a1,a2,a3,a4,a5) ->
           print_rr rr "SOA"
-            (sprintf "%s %s %lu %lu %lu %lu %lu" (String.concat "." n1)
-              (String.concat "." n2) a1 a2 a3 a4 a5);
+            (sprintf "%s %s %lu %lu %lu %lu %lu" (string_of_name n1)
+              (string_of_name n2) a1 a2 a3 a4 a5);
         |MX (pref,host) ->
-          print_rr rr "MX" (sprintf "%d %s" pref (String.concat "." host));
-        |CNAME a -> print_rr rr "CNAME" (String.concat "." a)
-        |NS a -> print_rr rr "NS" (String.concat "." a)
+          print_rr rr "MX" (sprintf "%d %s" pref (string_of_name host));
+        |CNAME a -> print_rr rr "CNAME" (string_of_name a)
+        |NS a -> print_rr rr "NS" (string_of_name a)
         |_ -> printf "unknown\n"
       ) ob;
       if al ob > 0 then print_newline ()
