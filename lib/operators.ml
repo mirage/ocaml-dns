@@ -44,14 +44,13 @@ let (||||) x y = Int64.logor x y
 let (^^^) x y = Int32.logxor x y
 let (^^^^) x y = Int64.logxor x y
 (** Logical shift-left. *)
-let (<<<) x y = Int32.shift_left x y
-let (<<<<) x y = Int64.shift_left x y
+let (<|<) x y = Int32.shift_left x y
+let (<||<) x y = Int64.shift_left x y
 (** Logical shift-right. *)
-let (>>>) x y = Int32.shift_right_logical x y
-let (>>>>) x y = Int64.shift_right_logical x y
+let (>|>) x y = Int32.shift_right_logical x y
+let (>||>) x y = Int64.shift_right_logical x y
 
 (** Encode string as label by prepending length. *)
 let charstr s =
   let n = String.length s in
   String.make 1 (char_of_int n) ^ s, (n+1)
-

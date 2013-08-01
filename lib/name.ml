@@ -83,7 +83,7 @@ let parse_name names base buf = (* what. a. mess. *)
           in
           (* update the list of offsets-so-far to include current label *)
           offsets |> List.iter (fun o ->
-            ns |> List.iter (fun n -> Hashtbl.add names o n)
+            (List.rev ns) |> List.iter (fun n -> Hashtbl.add names o n)
           );
           (* convert label list into string list *)
           (ns ||> (function
@@ -107,7 +107,7 @@ let marshal_name ?(compress=true) names base buf name =
   in
 
   let compressed names base buf name =
-    let pointer o = ((0b11_l <<< 14) +++ (Int32.of_int o)) |> Int32.to_int in
+    let pointer o = ((0b11_l <|< 14) +++ (Int32.of_int o)) |> Int32.to_int in
 
     let lookup names n =
       try Some (Map.find n names)
@@ -188,7 +188,7 @@ let canon2key domain_name =
       raise (BadDomainName ("label too long: " ^ s))
   in
   List.iter check domain_name;
-  String.concat "\000" (List.rev domain_name)
+  String.concat "\000" (List.rev_map String.lowercase domain_name)
 
 let rec dnssec_compare a b =
   match (a, b) with

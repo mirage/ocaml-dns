@@ -674,11 +674,13 @@ let string_to_q_type = function
   |"ANY_TYP"    -> Some(Q_ANY_TYP)
   |"TA"         -> Some(Q_TA)
   |"DLV"        -> Some(Q_DLV)
-  | value when (String.sub value 0 4) = "TYPE" ->
-      Some(Q_UNKNOWN
-      (int_of_string (String.sub value 4
-      ((String.length value) - 4))))
-  | _           -> None
+  | value       ->
+    let len = String.length value in
+    if len < 5 || String.sub value 0 4 <> "TYPE"
+    then None
+    else try let i = int_of_string (String.sub value 4 (len - 4)) in
+             Some (Q_UNKNOWN i)
+      with Failure _ -> None
 
 let q_type_matches_rr_type qt rrt = match qt, rrt with
   | Q_A,  RR_A

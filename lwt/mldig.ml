@@ -31,6 +31,9 @@ let print_timeout () =
 let print_error e = printf ";; read error: %s\n" (Unix.error_message e)
 let print_section s = printf ";; %s SECTION:\n" (String.uppercase s)
 
+(* TODO: Should Name do this? *)
+let string_of_name n = (domain_name_to_string n)^"."
+
 let print_answers p =
     printf ";; global options: \n";
     let { detail; id; questions; answers; authorities; additionals } = p in
@@ -53,14 +56,14 @@ let print_answers p =
     if al questions > 0 then begin
       print_section "question";
       List.iter (fun q -> printf ";%-23s %-8s %-8s %s\n"
-        (String.concat "." q.q_name) ""
+        (string_of_name q.q_name) ""
         (q_class_to_string q.q_class)
         (q_type_to_string q.q_type)
       ) questions;
       print_newline ();
     end;
     let print_rr rr = printf "%-24s %-8lu %-8s %-8s %s\n"
-        (String.concat "." rr.name) rr.ttl (rr_class_to_string rr.cls) in
+        (string_of_name rr.name) rr.ttl (rr_class_to_string rr.cls) in
     List.iter (fun (nm,ob) ->
       if al ob > 0 then print_section nm;
       List.iter (fun rr ->
@@ -68,12 +71,12 @@ let print_answers p =
         |A ip-> print_rr rr "A" (Ipaddr.V4.to_string ip);
         |SOA (n1,n2,a1,a2,a3,a4,a5) ->
           print_rr rr "SOA"
-            (sprintf "%s %s %lu %lu %lu %lu %lu" (String.concat "." n1)
-              (String.concat "." n2) a1 a2 a3 a4 a5);
+            (sprintf "%s %s %lu %lu %lu %lu %lu" (string_of_name n1)
+              (string_of_name n2) a1 a2 a3 a4 a5);
         |MX (pref,host) ->
-          print_rr rr "MX" (sprintf "%d %s" pref (String.concat "." host));
-        |CNAME a -> print_rr rr "CNAME" (String.concat "." a)
-        |NS a -> print_rr rr "NS" (String.concat "." a)
+          print_rr rr "MX" (sprintf "%d %s" pref (string_of_name host));
+        |CNAME a -> print_rr rr "CNAME" (string_of_name a)
+        |NS a -> print_rr rr "NS" (string_of_name a)
         |_ -> printf "unknown\n"
       ) ob;
       if al ob > 0 then print_newline ()
@@ -82,7 +85,10 @@ let print_answers p =
 open Lwt
 open Cmdliner
 
-let dig res server source_ip dest_port q_class q_type args =
+let dns_port = 53
+
+let dig source_ip opt_dest_port q_class q_type args =
+  lwt res = Dns_resolver.create () in
   let timeout = 5 (* matches dig *) in
   (* Fold over args to determine overrides for q_class/type *)
   let (server, q_class, q_type, domains) = List.fold_left (
@@ -91,41 +97,47 @@ let dig res server source_ip dest_port q_class q_type args =
       if String.length arg > 1 && (arg.[0] = '@') then begin
         (* TODO: check for port? *)
         let server = String.sub arg 1 (String.length arg -1) in
-        (Some server, q_class, q_type, domains)
+        (Some (server, opt_dest_port), q_class, q_type, domains)
       end else begin
         (* See if the argument is a query class or type *)
-        let arg = String.uppercase arg in
-        let q_type' = string_to_q_type arg in
-        let q_class' = string_to_q_class arg in
+        let arg' = String.uppercase arg in
+        let q_type' = string_to_q_type arg' in
+        let q_class' = string_to_q_class arg' in
         match q_type', q_class' with
         |None, None -> (server, q_class, q_type, arg::domains)
         |Some q_type, None -> (server, q_class, q_type, domains)
         |None, Some q_class -> (server, q_class, q_type, domains)
         |Some q_type, Some q_class -> (server, q_class, q_type, domains)
       end
-  ) (server, q_class, q_type, []) args in
+  ) (begin match res.Dns_resolver.servers with
+    [] -> None | (s,p)::_ -> Some (s,Some p) end,
+    q_class, q_type, []) args in
   let domains = match domains with |[] -> ["."] |_ -> domains in
   printf ";; <<>> MLDiG 1.0 <<>>\n"; (* TODO put query domains from Sys.argv here *)
  match server with
   |None -> error "dig" "Must specify a DNS resolver (with @<hostname>)"
-  |Some x ->
+  |Some (x, opt_port) ->
     debug (sprintf "Querying DNS server %s" x);
     let domain = string_to_domain_name (List.hd domains) in
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
-    Dns_resolver.resolve res q_class q_type domain >|= print_answers
+    lwt addr = try return Ipaddr.V4.(to_string (of_string_exn x))
+      with Ipaddr.Parse_error _ ->
+        lwt addrs = Dns_resolver.gethostbyname res x in
+        match addrs with
+        | [] -> error "dig" ("Could not resolve nameserver '"^x^"'")
+        | addr::_ -> return (Ipaddr.V4.to_string addr)
+    in
+    let port = match opt_port with None -> dns_port | Some p -> p in
+    Dns_resolver.(resolve
+                    {res with servers = [addr,port]}
+                    q_class q_type domain >|= print_answers)
 
 let t =
-  lwt res = Dns_resolver.create () in
-  let module Res = (val res :Dns_resolver.RESOLVER ) in
-  let (default_server, default_dest_port) =
-    match Res.servers with
-    |[] -> None,53
-    |(s,p)::_ -> (Some s),p in
   let source_ip =
     Arg.(value & opt string "0.0.0.0" & info ["b"] ~docv:"SOURCE_IP"
       ~doc:"set source IP of query") in
   let dest_port =
-    Arg.(value & opt int default_dest_port & info ["p";"port"] ~docv:"DEST_PORT"
+    Arg.(value & opt (some int) None & info ["p";"port"] ~docv:"DEST_PORT"
       ~doc:"set destination port number") in
   let q_class =
     (fun x -> match string_to_q_class x with |None -> `Error "" |Some x -> `Ok x),
@@ -142,11 +154,11 @@ let t =
     Term.info "mldig" ~version:"1.0.0" ~doc ~man
   in
   let cmd_t = Term.(pure
-    (dig res default_server) $
-    source_ip $
-    dest_port $
-    q_class $
-    q_type $ args) in
+                      dig $
+                      source_ip $
+                      dest_port $
+                      q_class $
+                      q_type $ args) in
   match Term.eval (cmd_t, info) with `Ok x -> x |_ -> exit 1
 
 let _ = Lwt_main.run t
