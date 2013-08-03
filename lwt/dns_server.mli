@@ -16,17 +16,17 @@
 
 (** Given a source address and a port, return a bound file descriptor and
     source sockaddr suitable for passing to the [listen] functions *)
-val bind_fd : 
+val bind_fd :
   address:string -> port:int -> (Lwt_unix.file_descr * Lwt_unix.sockaddr) Lwt.t
 
 (** DNS responder function.
     @param src Server sockaddr
-    @param dst Client sockaddr 
+    @param dst Client sockaddr
     @param Query packet
     @return Answer packet
 *)
-type dnsfn = 
-    src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr 
+type dnsfn =
+    src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr
     -> Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
 
 (** General listening function for dynamic DNS servers. Pass in the [fd] and
@@ -40,9 +40,8 @@ val listen :
   -> ?marshal:(Buf.t -> Dns.Packet.t -> Buf.t option)
   -> unit -> unit Lwt.t
 
-val listen_with_zonebuf : 
+val listen_with_zonebuf :
   address:string -> port:int -> zonebuf:string -> mode:[ `none ] -> unit Lwt.t
 
-val listen_with_zonefile : 
+val listen_with_zonefile :
   address:string -> port:int -> zonefile:string -> unit Lwt.t
-

@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Lwt 
+open Lwt
 open Printf
 
 let time_rsrc_record () =
@@ -31,10 +31,10 @@ let dnsfn ~src ~dst query =
   let open Dns.Packet in
       match query.questions with
         | q::_ -> (* Just take the first question *)
-            return (Some 
-              Dns.Query.({ 
-                rcode=NoError; aa=true; 
-                answer=[ time_rsrc_record () ]; authority=[]; additional=[]; 
+            return (Some
+              Dns.Query.({
+                rcode=NoError; aa=true;
+                answer=[ time_rsrc_record () ]; authority=[]; additional=[];
               })
             )
         | _ -> return None (* No questions in packet *)
