@@ -21,12 +21,15 @@ module DQ = Dns.Query
 module DR = Dns.RR
 module DP = Dns.Packet
 
+type 'a process =
+  src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a ->
+  Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+
 module type PROCESSOR = sig
   type context
 
   val parse   : Buf.t -> (context * Dns.Packet.t) option
-  val process : src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> context ->
-    Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+  val process : context process
   val marshal : Buf.t -> context -> Dns.Packet.t -> Buf.t option
 end
 
@@ -84,16 +87,43 @@ let process_query fd buf len src dst processor =
         return ()
  end
 
-let default_processor_of_process process =
-  let module Default = struct
-    type context = unit
+module DNSProtocol = struct
+  type context = unit
+  let parse buf = contain_exc "parse" (fun () -> (), DP.parse buf)
+  let marshal buf () response =
+    contain_exc "marshal" (fun () -> DP.marshal buf response)
+end
 
-    let parse buf = contain_exc "parse" (fun () -> (), DP.parse buf)
-    let process ~src ~dst () pkt = process ~src ~dst pkt
-    let marshal buf () response =
-      contain_exc "marshal" (fun () -> DP.marshal buf response)
+let processor_of_process process =
+  let module P = struct
+    include DNSProtocol
+
+    let process = process
   end in
-  (module Default : PROCESSOR)
+  (module P : PROCESSOR)
+
+let process_of_zonebuf zonebuf =
+  let db = Dns.Zone.load [] zonebuf in
+  let dnstrie = db.Dns.Loader.trie in
+  let get_answer qname qtype id =
+    let qname = List.map String.lowercase qname in
+    DQ.answer_query ~dnssec:true qname qtype dnstrie
+  in
+  fun ~src ~dst () d ->
+    let open DP in
+    (* TODO: FIXME so that 0 question queries don't crash the server *)
+    let q = List.hd d.questions in
+    let r =
+      contain_exc "answer" (fun () -> get_answer q.q_name q.q_type d.id)
+    in
+    return r
+
+let eventual_process_of_zonefile zonefile =
+  let lines = Lwt_io.lines_of_file zonefile in
+  let buf = Buffer.create 1024 in
+  Lwt_stream.iter (fun l ->
+    Buffer.add_string buf l; Buffer.add_char buf '\n') lines
+  >>= fun () -> return (process_of_zonebuf (Buffer.contents buf))
 
 let bufsz = 4096
 let listen ~fd ~src ~processor =
@@ -114,34 +144,15 @@ let listen ~fd ~src ~processor =
   Printf.eprintf "listen: done\n%!";
   t
 
-let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
-  let db = Dns.Zone.load [] zonebuf in
-  lwt fd, src = bind_fd ~address ~port in
-  let dnstrie = db.Dns.Loader.trie in
-  let get_answer qname qtype id =
-    let qname = List.map String.lowercase qname in
-    DQ.answer_query ~dnssec:true qname qtype dnstrie
-  in
-  let dnsfn = match mode with
-    |`none ->
-      (fun ~src ~dst d ->
-         let open DP in
-         let q = List.hd d.questions in
-         let r =
-           contain_exc "answer" (fun () -> get_answer q.q_name q.q_type d.id)
-         in
-         return r
-      )
-  in
-  listen ~fd ~src ~processor:(default_processor_of_process dnsfn)
+let serve_with_processor ~address ~port ~processor =
+  bind_fd ~address ~port
+  >>= fun (fd, src) -> listen ~fd ~src ~processor
 
-let listen_with_zonefile ~address ~port ~zonefile =
-  lwt zonebuf =
-     let lines = Lwt_io.lines_of_file zonefile in
-     let buf = Buffer.create 1024 in
-     lwt () = Lwt_stream.iter (fun l ->
-       Buffer.add_string buf l; Buffer.add_char buf '\n') lines
-     in
-     return (Buffer.contents buf)
-  in
-  listen_with_zonebuf ~address ~port ~zonebuf ~mode:`none
+let serve_with_zonebuf ~address ~port ~zonebuf =
+  serve_with_processor ~address ~port
+    ~processor:(processor_of_process (process_of_zonebuf zonebuf))
+
+let serve_with_zonefile ~address ~port ~zonefile =
+  eventual_process_of_zonefile zonefile
+  >>= fun process ->
+  serve_with_processor ~address ~port ~processor:(processor_of_process process)

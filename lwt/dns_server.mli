@@ -19,6 +19,10 @@
 val bind_fd :
   address:string -> port:int -> (Lwt_unix.file_descr * Lwt_unix.sockaddr) Lwt.t
 
+type 'a process =
+  src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a ->
+  Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+
 module type PROCESSOR = sig
   type context
 
@@ -34,8 +38,7 @@ module type PROCESSOR = sig
       @param Query packet
       @return Answer packet
   *)
-  val process : src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> context ->
-    Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+  val process : context process
 
   (** DNS wire format marshal function.
       @param output resource
@@ -46,20 +49,26 @@ module type PROCESSOR = sig
   val marshal : Buf.t -> context -> Dns.Packet.t -> Buf.t option
 end
 
-val default_processor_of_process :
-  (src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> Dns.Packet.t
-   -> Dns.Query.query_answer option Lwt.t) -> (module PROCESSOR)
+val processor_of_process : unit process -> (module PROCESSOR)
 
-(** General listening function for dynamic DNS servers. Pass in the [fd] and
-    [src] from calling [bind_fd] and supply a [dnsfn] which responds with a
-    response DNS packet
+val process_of_zonebuf : string -> unit process
+
+val eventual_process_of_zonefile : string -> unit process Lwt.t
+
+(** General listening function for DNS servers. Pass in the [fd] and
+    [src] from calling [bind_fd] and supply a [processor] which
+    deserializes the wire format, generates a DNS response packet,
+    and serializes it into the wire format
 *)
 val listen :
   fd:Lwt_unix.file_descr -> src:Lwt_unix.sockaddr
   -> processor:(module PROCESSOR) -> unit Lwt.t
 
-val listen_with_zonebuf :
-  address:string -> port:int -> zonebuf:string -> mode:[ `none ] -> unit Lwt.t
+val serve_with_processor :
+  address:string -> port:int -> processor:(module PROCESSOR) -> unit Lwt.t
 
-val listen_with_zonefile :
+val serve_with_zonebuf :
+  address:string -> port:int -> zonebuf:string -> unit Lwt.t
+
+val serve_with_zonefile :
   address:string -> port:int -> zonefile:string -> unit Lwt.t

@@ -10,6 +10,8 @@
 * Change `Packet.{parse,marshal}` to use Buf.t rather than exposing Cstruct.t
 * Change `Packet.parse` to remove name map parameter
 * Change `Dns_server.listen` to accept custom `parse` and `marshal` arrows
+* Add first-class `PROCESSOR` modules to `Dns_server` for contextual
+  protocol extensions
 
 0.6.2 (2012-02-13):
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.

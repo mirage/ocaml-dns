@@ -27,7 +27,7 @@ let time_rsrc_record () =
     { name; cls; ttl; rdata }
   )
 
-let dnsfn ~src ~dst query =
+let dnsfn ~src ~dst () query =
   let open Dns.Packet in
       match query.questions with
         | q::_ -> (* Just take the first question *)
@@ -39,11 +39,11 @@ let dnsfn ~src ~dst query =
             )
         | _ -> return None (* No questions in packet *)
 
-let listen ~address ~port =
-  lwt fd, src = Dns_server.bind_fd ~address ~port in
-  Dns_server.(listen ~fd ~src ~processor:(default_processor_of_process dnsfn))
-
 let _ =
   let address = "0.0.0.0" in
   let port = 5354 in
-  Lwt_main.run (listen ~address ~port)
+  Lwt_main.run
+    Dns_server.(serve_with_processor
+                  ~address ~port
+                  ~processor:(processor_of_process dnsfn)
+    )
