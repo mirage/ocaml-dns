@@ -35,7 +35,7 @@ Library dns
   Pack: true
   Modules: 
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
-    Zone, Zone_lexer, Zone_parser, Resolvconf
+    Zone, Zone_lexer, Zone_parser, Resolvconf, Buf
   BuildDepends:	cstruct (>= 0.6.0), cstruct.syntax, re, re.str, ipaddr
 
 Library lwt
