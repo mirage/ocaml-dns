@@ -19,15 +19,36 @@
 val bind_fd :
   address:string -> port:int -> (Lwt_unix.file_descr * Lwt_unix.sockaddr) Lwt.t
 
-(** DNS responder function.
-    @param src Server sockaddr
-    @param dst Client sockaddr
-    @param Query packet
-    @return Answer packet
-*)
-type dnsfn =
-    src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr
-    -> Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+module type PROCESSOR = sig
+  type context
+
+  (** DNS wire format parser function.
+      @param message buffer
+      @return parsed packet and context
+  *)
+  val parse   : Buf.t -> (context * Dns.Packet.t) option
+
+  (** DNS responder function.
+      @param src Server sockaddr
+      @param dst Client sockaddr
+      @param Query packet
+      @return Answer packet
+  *)
+  val process : src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> context ->
+    Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+
+  (** DNS wire format marshal function.
+      @param output resource
+      @param context
+      @param answer packet
+      @return buffer to write
+  *)
+  val marshal : Buf.t -> context -> Dns.Packet.t -> Buf.t option
+end
+
+val default_processor_of_process :
+  (src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> Dns.Packet.t
+   -> Dns.Query.query_answer option Lwt.t) -> (module PROCESSOR)
 
 (** General listening function for dynamic DNS servers. Pass in the [fd] and
     [src] from calling [bind_fd] and supply a [dnsfn] which responds with a
@@ -35,10 +56,7 @@ type dnsfn =
 *)
 val listen :
   fd:Lwt_unix.file_descr -> src:Lwt_unix.sockaddr
-  -> ?parse:(Buf.t -> Dns.Packet.t option)
-  -> dnsfn:dnsfn
-  -> ?marshal:(Buf.t -> Dns.Packet.t -> Buf.t option)
-  -> unit -> unit Lwt.t
+  -> processor:(module PROCESSOR) -> unit Lwt.t
 
 val listen_with_zonebuf :
   address:string -> port:int -> zonebuf:string -> mode:[ `none ] -> unit Lwt.t

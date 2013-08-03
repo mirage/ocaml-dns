@@ -21,8 +21,14 @@ module DQ = Dns.Query
 module DR = Dns.RR
 module DP = Dns.Packet
 
-type dnsfn = src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr ->
-  Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+module type PROCESSOR = sig
+  type context
+
+  val parse   : Buf.t -> (context * Dns.Packet.t) option
+  val process : src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> context ->
+    Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+  val marshal : Buf.t -> context -> Dns.Packet.t -> Buf.t option
+end
 
 let contain_exc l v =
   try
@@ -43,11 +49,12 @@ let bind_fd ~address ~port =
   let () = Lwt_unix.bind fd src in
   return (fd,src)
 
-let process_query fd buf len src dst parse dnsfn marshal =
-  match parse buf with
+let process_query fd buf len src dst processor =
+  let module Processor = (val processor : PROCESSOR) in
+  match Processor.parse buf with
   |None -> return ()
-  |Some query -> begin
-    lwt answer = dnsfn ~src ~dst query in
+  |Some (ctxt, query) -> begin
+    lwt answer = Processor.process ~src ~dst ctxt query in
     match answer with
     |None -> return ()
     |Some answer ->
@@ -69,7 +76,7 @@ let process_query fd buf len src dst parse dnsfn marshal =
       })
       in
       (* Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00'; *)
-      match marshal buf response with
+      match Processor.marshal buf ctxt response with
       | None -> return ()
       | Some buf ->
         (* TODO transmit queue, rather than ignoring result here *)
@@ -77,12 +84,19 @@ let process_query fd buf len src dst parse dnsfn marshal =
         return ()
  end
 
-let parse buf = contain_exc "parse" (fun () -> DP.parse buf)
-let marshal buf response =
-  contain_exc "marshal" (fun () -> DP.marshal buf response)
+let default_processor_of_process process =
+  let module Default = struct
+    type context = unit
+
+    let parse buf = contain_exc "parse" (fun () -> (), DP.parse buf)
+    let process ~src ~dst () pkt = process ~src ~dst pkt
+    let marshal buf () response =
+      contain_exc "marshal" (fun () -> DP.marshal buf response)
+  end in
+  (module Default : PROCESSOR)
 
 let bufsz = 4096
-let listen ~fd ~src ?(parse=parse) ~(dnsfn:dnsfn) ?(marshal=marshal) () =
+let listen ~fd ~src ~processor =
   let cont = ref true in
   let bufs = Lwt_pool.create 64 (fun () -> return (Dns.Buf.create bufsz)) in
   let _ =
@@ -90,7 +104,7 @@ let listen ~fd ~src ?(parse=parse) ~(dnsfn:dnsfn) ?(marshal=marshal) () =
       Lwt_pool.use bufs (fun buf ->
         lwt len, dst = Lwt_bytes.(recvfrom fd buf 0 bufsz []) in
 	  return (Lwt.ignore_result
-                    (process_query fd buf len src dst parse dnsfn marshal))
+                    (process_query fd buf len src dst processor))
      )
     done
   in
@@ -108,8 +122,7 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
     let qname = List.map String.lowercase qname in
     DQ.answer_query ~dnssec:true qname qtype dnstrie
   in
-  let (dnsfn:dnsfn) =
-    match mode with
+  let dnsfn = match mode with
     |`none ->
       (fun ~src ~dst d ->
          let open DP in
@@ -120,7 +133,7 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
          return r
       )
   in
-  listen ~fd ~src ~dnsfn ()
+  listen ~fd ~src ~processor:(default_processor_of_process dnsfn)
 
 let listen_with_zonefile ~address ~port ~zonefile =
   lwt zonebuf =
