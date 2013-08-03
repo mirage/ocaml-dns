@@ -43,56 +43,54 @@ let bind_fd ~address ~port =
   let () = Lwt_unix.bind fd src in
   return (fd,src)
 
-let process_query fd buf len src dst dnsfn names =
-        let query = contain_exc "parse" (fun () -> DP.parse names buf) in
-        match query with
-        |None -> return ()
-        |Some query -> begin
-          lwt answer = dnsfn ~src ~dst query in
-          match answer with
-          |None -> return ()
-          |Some answer ->
+let process_query fd buf len src dst parse dnsfn marshal =
+  match parse buf with
+  |None -> return ()
+  |Some query -> begin
+    lwt answer = dnsfn ~src ~dst query in
+    match answer with
+    |None -> return ()
+    |Some answer ->
 (*            let edns_rec =
               try
                 List.find (fun rr -> ) query.additionals
               with Not_found -> []
             in *)
-            let detail = DP.({
-              qr=Response; opcode=Standard; aa=answer.DQ.aa;
-              tc=false; rd=false; ra=false; rcode=answer.DQ.rcode
-            })
-            in
-            let response = DP.({
-              id=query.id; detail; questions=query.questions;
-              answers=answer.DQ.answer;
-              authorities=answer.DQ.authority;
-              additionals=answer.DQ.additional
-            })
-            in
-            (* Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00'; *)
-            let bits =
-              contain_exc "marshal" (fun () -> DP.marshal buf response)
-            in
-            match bits with
-              | None -> return ()
-              | Some buf ->
-                  (* TODO transmit queue, rather than ignoring result here *)
-                  let _ = Lwt_bytes.(sendto fd buf.Cstruct.buffer
-                  buf.Cstruct.off buf.Cstruct.len [] dst) in
-                  return ()
-        end
+      let detail = DP.({
+        qr=Response; opcode=Standard; aa=answer.DQ.aa;
+        tc=false; rd=false; ra=false; rcode=answer.DQ.rcode
+      })
+      in
+      let response = DP.({
+        id=query.id; detail; questions=query.questions;
+        answers=answer.DQ.answer;
+        authorities=answer.DQ.authority;
+        additionals=answer.DQ.additional;
+      })
+      in
+      (* Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00'; *)
+      match marshal buf response with
+      | None -> return ()
+      | Some buf ->
+        (* TODO transmit queue, rather than ignoring result here *)
+        let _ = Lwt_bytes.(sendto fd buf 0 (Dns.Buf.length buf) [] dst) in
+        return ()
+ end
 
+let parse buf = contain_exc "parse" (fun () -> DP.parse buf)
+let marshal buf response =
+  contain_exc "marshal" (fun () -> DP.marshal buf response)
 
-let listen ~fd ~src ~(dnsfn:dnsfn) =
+let bufsz = 4096
+let listen ~fd ~src ?(parse=parse) ~(dnsfn:dnsfn) ?(marshal=marshal) () =
   let cont = ref true in
-  let bufs = Lwt_pool.create 64 (fun () -> return (Cstruct.create 1024)) in
+  let bufs = Lwt_pool.create 64 (fun () -> return (Dns.Buf.create bufsz)) in
   let _ =
     while_lwt !cont do
       Lwt_pool.use bufs (fun buf ->
-        lwt len, dst = Lwt_bytes.(recvfrom fd buf.Cstruct.buffer buf.Cstruct.off
-        buf.Cstruct.len[]) in
-          let names = Hashtbl.create 64 in
-	  return (Lwt.ignore_result (process_query fd buf len src dst dnsfn names) )
+        lwt len, dst = Lwt_bytes.(recvfrom fd buf 0 bufsz []) in
+	  return (Lwt.ignore_result
+                    (process_query fd buf len src dst parse dnsfn marshal))
      )
     done
   in
@@ -122,7 +120,7 @@ let listen_with_zonebuf ~address ~port ~zonebuf ~mode =
          return r
       )
   in
-  listen ~fd ~src ~dnsfn
+  listen ~fd ~src ~dnsfn ()
 
 let listen_with_zonefile ~address ~port ~zonefile =
   lwt zonebuf =

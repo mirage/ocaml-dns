@@ -71,12 +71,11 @@ let outfd addr port =
   fd
 
 let txbuf fd dst buf =
-  Lwt_bytes.sendto fd buf.Cstruct.buffer buf.Cstruct.off buf.Cstruct.len [] dst
+  Lwt_bytes.sendto fd buf 0 (Dns.Buf.length buf) [] dst
 
 let rxbuf fd len =
-  let buf = Cstruct.create len in
-  lwt (len, sa) = Lwt_bytes.recvfrom fd buf.Cstruct.buffer buf.Cstruct.off
-                    buf.Cstruct.len [] in
+  let buf = Dns.Buf.create len in
+  lwt (len, sa) = Lwt_bytes.recvfrom fd buf 0 len [] in
   return (buf, sa)
 
 let rec send_req ofd dst q = function
@@ -89,8 +88,7 @@ let rec send_req ofd dst q = function
 
 let rec rcv_query ofd q =
   lwt (buf,sa) = rxbuf ofd buflen in
-  let names = Hashtbl.create 8 in
-  let r = DP.parse names buf in
+  let r = DP.parse buf in
     if (r.DP.id = q.DP.id) then
       return r
     else
@@ -98,7 +96,7 @@ let rec rcv_query ofd q =
 
 let send_pkt (server:string) (dns_port:int) pkt =
  let ofd = outfd "0.0.0.0" 0 in
- let buf = Cstruct.create 4096 in
+ let buf = Dns.Buf.create 4096 in
  let q = DP.marshal buf pkt in
   try_lwt
       let dst = sockaddr server dns_port in

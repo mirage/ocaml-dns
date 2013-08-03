@@ -417,8 +417,8 @@ let sign_packet
   let data = Cstruct.of_bigarray data in 
   let rdata = SIG(alg, expiration, inception, tag, owner, "") in
   let (_, _, rdlen) = marshal_rdata Map.empty ~compress:false 0 data rdata in
-  let buf = Cstruct.shift data rdlen in 
-  let datalen = Cstruct.len (marshal buf pkt) in
+  let buf = Dns.Buf.(shift (of_cstruct data) rdlen) in
+  let datalen = Dns.Buf.length (marshal buf pkt) in
   let buf = Cstruct.to_string (Cstruct.sub data 0 (rdlen + datalen)) in
   let sign = 
     match key with
@@ -462,8 +462,8 @@ let verify_packet st pkt =
    let data = Cstruct.of_bigarray data in 
    let rdata = SIG(alg, expiration, inception, tag, owner, "") in
    let (_, _, rdlen) = marshal_rdata Map.empty ~compress:false 0 data rdata in
-   let buf = Cstruct.shift data rdlen in 
-   let datalen = Cstruct.len (marshal buf pkt) in
+   let buf = Dns.Buf.(shift (of_cstruct data) rdlen) in
+   let datalen = Dns.Buf.length (marshal buf pkt) in
    let buf = Cstruct.to_string (Cstruct.sub data 0 (rdlen + datalen)) in
    lwt key = get_dnssec_key_of_owner st tag owner in
      match key with

@@ -1394,8 +1394,10 @@ let to_string d =
     (d.authorities ||> rr_to_string |> String.concat ",")
     (d.additionals ||> rr_to_string |> String.concat ",")
 
-let parse names buf =
-  let parsen f names base n buf typ =
+let parse buf =
+  let buf = Cstruct.of_bigarray buf in
+  let names = Hashtbl.create 32 in
+  let parsen f base n buf typ =
     let rec aux acc n base buf =
       match n with
         | 0 -> acc, (base,buf)
@@ -1415,10 +1417,10 @@ let parse names buf =
 
   let base = sizeof_h in
   let buf = Cstruct.shift buf base in
-  let questions, (base,buf) = parsen parse_question names base qdcount buf "question" in
-  let answers, (base,buf) = parsen parse_rr names base ancount buf "answer" in
-  let authorities, (base,buf) = parsen parse_rr names base nscount buf "auth" in
-  let additionals, _ = parsen parse_rr names base arcount buf "additional" in
+  let questions, (base,buf) = parsen parse_question base qdcount buf "question" in
+  let answers, (base,buf) = parsen parse_rr base ancount buf "answer" in
+  let authorities, (base,buf) = parsen parse_rr base nscount buf "auth" in
+  let additionals, _ = parsen parse_rr base arcount buf "additional" in
   let dns = { id; detail; questions; answers; authorities; additionals } in
   (* eprintf "RX: %s\n%!" (to_string dns); *)
   dns
@@ -1428,6 +1430,7 @@ let marshal txbuf dns =
     List.fold_left f (names, base, buf) values
   in
 
+  let txbuf = Cstruct.of_bigarray txbuf in
   set_h_id txbuf dns.id;
   set_h_detail txbuf (marshal_detail dns.detail);
   set_h_qdcount txbuf (List.length dns.questions);
@@ -1443,7 +1446,7 @@ let marshal txbuf dns =
   let names,base,buf = marshaln marshal_rr names base buf dns.authorities in
   let _,_,buf = marshaln marshal_rr names base buf dns.additionals in
 
-  let txbuf = Cstruct.(sub txbuf 0 (len txbuf - len buf)) in
+  let txbuf = Buf.sub txbuf.buffer 0 Cstruct.(len txbuf - len buf) in
   (* Cstruct.hexdump txbuf;   *)
   (* eprintf "TX: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string); *)
   txbuf

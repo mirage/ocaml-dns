@@ -41,7 +41,7 @@ let dnsfn ~src ~dst query =
 
 let listen ~address ~port =
   lwt fd, src = Dns_server.bind_fd ~address ~port in
-  Dns_server.listen ~fd ~src ~dnsfn
+  Dns_server.listen ~fd ~src ~dnsfn ()
 
 let _ =
   let address = "0.0.0.0" in

@@ -33,8 +33,12 @@ type dnsfn =
     [src] from calling [bind_fd] and supply a [dnsfn] which responds with a
     response DNS packet
 *)
-val listen : 
-  fd:Lwt_unix.file_descr -> src:Lwt_unix.sockaddr -> dnsfn:dnsfn -> unit Lwt.t
+val listen :
+  fd:Lwt_unix.file_descr -> src:Lwt_unix.sockaddr
+  -> ?parse:(Buf.t -> Dns.Packet.t option)
+  -> dnsfn:dnsfn
+  -> ?marshal:(Buf.t -> Dns.Packet.t -> Buf.t option)
+  -> unit -> unit Lwt.t
 
 val listen_with_zonebuf : 
   address:string -> port:int -> zonebuf:string -> mode:[ `none ] -> unit Lwt.t
