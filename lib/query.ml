@@ -62,7 +62,26 @@ let answer_of_response ?(preserve_aa=false) ({
        additional=additionals;
      }
 
-let answer_query ?(dnssec=false) qname qtype trie =
+let create ?(dnssec=false) ~id q_class q_type q_name =
+  let open Packet in
+  let detail = {
+    qr=Query; opcode=Standard;
+    aa=true; tc=false; rd=true; ra=false; rcode=NoError;
+  } in
+  let additionals =
+    if dnssec then
+      [ ( {
+        name=[]; cls=RR_IN; ttl=0l;
+        rdata=(EDNS0(1500, 0, true, []));} ) ]
+    else
+      []
+  in
+  let question = { q_name; q_type; q_class } in
+  { id; detail; questions=[question];
+    answers=[]; authorities=[]; additionals;
+  }
+
+let answer ?(dnssec=false) qname qtype trie =
 
   let aa_flag = ref true in
   let ans_rrs = ref [] in

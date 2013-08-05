@@ -38,25 +38,6 @@ let log_info s = eprintf "INFO: %s\n%!" s
 let log_debug s = eprintf "DEBUG: %s\n%!" s
 let log_warn s = eprintf "WARN: %s\n%!" s
 
-let build_query ?(dnssec=false) q_class q_type q_name =
-  DP.(
-    let detail = { qr=Query; opcode=Standard;
-                   aa=true; tc=false; rd=true; ra=false; rcode=NoError; }
-    in
-    let additionals =
-      if dnssec then
-        [ ( {
-          name=[]; cls=RR_IN; ttl=0l;
-          rdata=(EDNS0(1500, 0, true, []));} ) ]
-      else
-        []
-    in
-    let question = { q_name; q_type; q_class } in
-    { id=get_id (); detail; questions=[question];
-      answers=[]; authorities=[]; additionals;
-    }
-  )
-
 let sockaddr addr port =
   Lwt_unix.(ADDR_INET (Unix.inet_addr_of_string addr, port))
 
@@ -120,7 +101,8 @@ let resolve
     (q_class:DP.q_class) (q_type:DP.q_type)
     (q_name:domain_name) =
     try_lwt
-      let q = build_query ~dnssec q_class q_type q_name in
+      let id = get_id () in
+      let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
       log_info (sprintf "query: %s\n%!" (DP.to_string q));
       send_pkt server dns_port q
    with exn ->

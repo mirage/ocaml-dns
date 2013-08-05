@@ -97,7 +97,7 @@ let process_of_zonebuf zonebuf =
   let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =
     let qname = List.map String.lowercase qname in
-    Dns.Query.answer_query ~dnssec:true qname qtype dnstrie
+    Dns.Query.answer ~dnssec:true qname qtype dnstrie
   in
   fun ~src ~dst d ->
     let open DP in

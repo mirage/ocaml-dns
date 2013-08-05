@@ -58,5 +58,4 @@ val resolve : t -> ?dnssec:bool -> q_class -> q_type ->
   domain_name -> Dns.Packet.t Lwt.t
 
 val send_pkt : t -> Dns.Packet.t -> Dns.Packet.t Lwt.t
-val build_query : ?dnssec:bool -> q_class -> q_type ->
-  Name.domain_name -> Dns.Packet.t
+val get_id : unit -> int

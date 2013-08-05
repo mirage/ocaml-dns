@@ -477,7 +477,8 @@ let verify_packet st pkt =
 
 let resolve st ?(sig0=None) q typ name =
 (*  lwt p = Dns_resolver.resolve st.resolver ~dnssec:true q typ name in *)
-  let pkt = Dns_resolver.build_query ~dnssec:true q typ name in
+  let id = Dns_resolver.get_id () in
+  let pkt = Dns.Query.create ~id ~dnssec:true q typ name in
   let pkt =
     match sig0 with
     | None -> pkt

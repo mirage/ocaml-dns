@@ -48,5 +48,11 @@ val answer_of_response : ?preserve_aa:bool -> Packet.t -> answer
 
     @return the {! answer}
 *)
-val answer_query : ?dnssec:bool ->
+val answer : ?dnssec:bool ->
   Name.domain_name -> Packet.q_type -> Trie.dnstrie -> answer
+
+(** [create ~id q_class q_type q_name] creates a query for [q_name] with the
+    supplied [id], [q_class], and [q_type].
+*)
+val create : ?dnssec:bool -> id:int ->
+  Packet.q_class -> Packet.q_type -> Name.domain_name -> Packet.t
