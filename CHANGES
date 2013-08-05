@@ -12,6 +12,8 @@
 * Change `Dns_server.listen` to accept custom `parse` and `marshal` arrows
 * Add first-class `PROCESSOR` modules to `Dns_server` for contextual
   protocol extensions
+* Rename `Query.query_answer` to `Query.answer`
+* Add `Query.response_of_answer` and `Query.answer_of_response`
 
 0.6.2 (2012-02-13):
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.

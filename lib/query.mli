@@ -25,7 +25,7 @@
     the compact {! Trie} representation, but not yet rendered into a {!
     Cstruct.buf }.
 *)
-type query_answer = {
+type answer = {
   rcode : Packet.rcode;
   aa: bool;
   answer: Packet.rr list;
@@ -33,10 +33,20 @@ type query_answer = {
   additional: Packet.rr list;
 }
 
+(** [response_of_answer query answer] is the { Packet.t } constructed
+    from the [answer] to the [query]
+*)
+val response_of_answer : Packet.t -> answer -> Packet.t
+
+(** [answer_of_response response] is the { answer } corresponding
+    to the upstream [response] for proxied or forwarded response.
+*)
+val answer_of_response : ?preserve_aa:bool -> Packet.t -> answer
+
 (** Answer a query about {! domain_name}, given a query type {! q_type} and a
     {! Trie} of DNS data.
 
-    @return the {! query_answer}
+    @return the {! answer}
 *)
-val answer_query : ?dnssec:bool -> 
-  Name.domain_name -> Packet.q_type -> Trie.dnstrie -> query_answer
+val answer_query : ?dnssec:bool ->
+  Name.domain_name -> Packet.q_type -> Trie.dnstrie -> answer

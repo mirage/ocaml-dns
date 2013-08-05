@@ -28,13 +28,39 @@ module H = Hashcons
 
 (* We answer a query with RCODE, AA, ANSWERS, AUTHORITY and ADDITIONAL *)
 
-type query_answer = {
+type answer = {
   rcode : Packet.rcode;
   aa: bool;
   answer: Packet.rr list;
   authority: Packet.rr list;
   additional: Packet.rr list;
 }
+
+let response_of_answer query answer =
+  (*let edns_rec =
+    try
+    List.find (fun rr -> ) query.additionals
+    with Not_found -> []
+    in *)
+  let detail = {
+    Packet.qr=Packet.Response; opcode=Packet.Standard; aa=answer.aa;
+    tc=false; rd=Packet.(query.detail.rd); ra=false; rcode=answer.rcode
+  } in
+  Packet.({
+    id=query.id; detail; questions=query.questions;
+    answers=answer.answer;
+    authorities=answer.authority;
+    additionals=answer.additional;
+  })
+
+let answer_of_response ?(preserve_aa=false) ({
+  Packet.detail={ Packet.rcode; aa };
+  answers; authorities; additionals;
+}) = { rcode; aa = if preserve_aa then aa else false;
+       answer=answers;
+       authority=authorities;
+       additional=additionals;
+     }
 
 let answer_query ?(dnssec=false) qname qtype trie =
 
