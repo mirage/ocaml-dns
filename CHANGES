@@ -9,9 +9,13 @@
 * Add `Buf` to provide an nickname for char Bigarrays
 * Change `Packet.{parse,marshal}` to use Buf.t rather than exposing Cstruct.t
 * Change `Packet.parse` to remove name map parameter
-* Change `Dns_server.listen` to accept custom `parse` and `marshal` arrows
 * Add first-class `PROCESSOR` modules to `Dns_server` for contextual
   protocol extensions
+* Change `Dns_server.listen` to accept processor
+* Rename `Dns_server.listen_with_zonebuf` and `Dns_server.listen_with_zonefile`
+  to `Dns_server.serve_with_zonebuf` and `Dns_server.serve_with_zonefile` resp.
+* Add `processor_of_process`, `process_of_zonebuf`,
+  `eventual_process_of_zonefile`, and `serve_with_processor` to `Dns_server`
 * Rename `Query.query_answer` to `Query.answer`
 * Add `Query.response_of_answer` and `Query.answer_of_response`
 
