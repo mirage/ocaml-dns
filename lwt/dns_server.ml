@@ -1,5 +1,6 @@
 (*
  * Copyright (c) 2005-2012 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2013 David Sheets <sheets@alum.mit.edu>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,18 +18,19 @@
 open Lwt
 open Printf
 
-module DQ = Dns.Query
 module DR = Dns.RR
 module DP = Dns.Packet
 
 type 'a process =
-  src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a ->
-  Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+  src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a
+  -> Dns.Query.answer option Lwt.t
 
 module type PROCESSOR = sig
   type context
 
-  val parse   : Buf.t -> (context * Dns.Packet.t) option
+  val query_of_context : context -> Dns.Packet.t
+
+  val parse   : Buf.t -> context option
   val process : context process
   val marshal : Buf.t -> context -> Dns.Packet.t -> Buf.t option
 end
@@ -54,30 +56,15 @@ let bind_fd ~address ~port =
 
 let process_query fd buf len src dst processor =
   let module Processor = (val processor : PROCESSOR) in
-  match Processor.parse buf with
+  match Processor.parse (Dns.Buf.sub buf 0 len) with
   |None -> return ()
-  |Some (ctxt, query) -> begin
-    lwt answer = Processor.process ~src ~dst ctxt query in
+  |Some ctxt -> begin
+    lwt answer = Processor.process ~src ~dst ctxt in
     match answer with
     |None -> return ()
     |Some answer ->
-(*            let edns_rec =
-              try
-                List.find (fun rr -> ) query.additionals
-              with Not_found -> []
-            in *)
-      let detail = DP.({
-        qr=Response; opcode=Standard; aa=answer.DQ.aa;
-        tc=false; rd=false; ra=false; rcode=answer.DQ.rcode
-      })
-      in
-      let response = DP.({
-        id=query.id; detail; questions=query.questions;
-        answers=answer.DQ.answer;
-        authorities=answer.DQ.authority;
-        additionals=answer.DQ.additional;
-      })
-      in
+      let query = Processor.query_of_context ctxt in
+      let response = Dns.Query.response_of_answer query answer in
       (* Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00'; *)
       match Processor.marshal buf ctxt response with
       | None -> return ()
@@ -88,9 +75,12 @@ let process_query fd buf len src dst processor =
  end
 
 module DNSProtocol = struct
-  type context = unit
-  let parse buf = contain_exc "parse" (fun () -> (), DP.parse buf)
-  let marshal buf () response =
+  type context = Dns.Packet.t
+
+  let query_of_context x = x
+
+  let parse buf = contain_exc "parse" (fun () -> DP.parse buf)
+  let marshal buf _q response =
     contain_exc "marshal" (fun () -> DP.marshal buf response)
 end
 
@@ -107,9 +97,9 @@ let process_of_zonebuf zonebuf =
   let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =
     let qname = List.map String.lowercase qname in
-    DQ.answer_query ~dnssec:true qname qtype dnstrie
+    Dns.Query.answer_query ~dnssec:true qname qtype dnstrie
   in
-  fun ~src ~dst () d ->
+  fun ~src ~dst d ->
     let open DP in
     (* TODO: FIXME so that 0 question queries don't crash the server *)
     let q = List.hd d.questions in

@@ -1,5 +1,6 @@
 (*
  * Copyright (c) 2011 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2013 David Sheets <sheets@alum.mit.edu>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,16 +22,19 @@ val bind_fd :
 
 type 'a process =
   src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a ->
-  Dns.Packet.t -> Dns.Query.query_answer option Lwt.t
+  Dns.Query.answer option Lwt.t
 
 module type PROCESSOR = sig
   type context
+
+  (** Projects a context into its associated query *)
+  val query_of_context : context -> Dns.Packet.t
 
   (** DNS wire format parser function.
       @param message buffer
       @return parsed packet and context
   *)
-  val parse   : Buf.t -> (context * Dns.Packet.t) option
+  val parse   : Dns.Buf.t -> context option
 
   (** DNS responder function.
       @param src Server sockaddr
@@ -46,14 +50,14 @@ module type PROCESSOR = sig
       @param answer packet
       @return buffer to write
   *)
-  val marshal : Buf.t -> context -> Dns.Packet.t -> Buf.t option
+  val marshal : Dns.Buf.t -> context -> Dns.Packet.t -> Dns.Buf.t option
 end
 
-val processor_of_process : unit process -> (module PROCESSOR)
+val processor_of_process : Dns.Packet.t process -> (module PROCESSOR)
 
-val process_of_zonebuf : string -> unit process
+val process_of_zonebuf : string -> Dns.Packet.t process
 
-val eventual_process_of_zonefile : string -> unit process Lwt.t
+val eventual_process_of_zonefile : string -> Dns.Packet.t process Lwt.t
 
 (** General listening function for DNS servers. Pass in the [fd] and
     [src] from calling [bind_fd] and supply a [processor] which

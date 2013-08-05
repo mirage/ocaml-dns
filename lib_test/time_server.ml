@@ -27,7 +27,7 @@ let time_rsrc_record () =
     { name; cls; ttl; rdata }
   )
 
-let dnsfn ~src ~dst () query =
+let dnsfn ~src ~dst query =
   let open Dns.Packet in
       match query.questions with
         | q::_ -> (* Just take the first question *)
