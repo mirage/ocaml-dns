@@ -1,5 +1,6 @@
 (*
  * Copyright (c) 2012 Richard Mortier <mort@cantab.net>
+ * Copyright (c) 2013 David Sheets <sheets@alum.mit.edu>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,6 +23,9 @@ open Dns.Operators
 module DP = Dns.Packet
 
 exception Dns_resolve_timeout
+exception Dns_resolve_error of exn list
+
+type result = Answer of DP.t | Error of exn
 
 let buflen = 4096
 let ns = "8.8.8.8"
@@ -32,8 +36,10 @@ module type RESOLVER = sig
 
   val get_id : unit -> int
 
-  val marshal : Dns.Buf.t -> DP.t -> context * Dns.Buf.t
+  val marshal : DP.t -> (context * Dns.Buf.t) list
   val parse : context -> Dns.Buf.t -> DP.t option
+
+  val timeout : context -> exn
 end
 
 module DNSProtocol : RESOLVER = struct
@@ -44,10 +50,12 @@ module DNSProtocol : RESOLVER = struct
     Random.self_init ();
     Random.int (1 lsl 16)
 
-  let marshal buf q = q.DP.id, DP.marshal buf q
+  let marshal q = [q.DP.id, DP.marshal (Dns.Buf.create 4096) q]
   let parse id buf =
     let pkt = DP.parse buf in
     if pkt.DP.id = id then Some pkt else None
+
+  let timeout _id = Dns_resolve_timeout
 end
 
 let log_info s = eprintf "INFO: %s\n%!" s
@@ -76,12 +84,12 @@ let rxbuf fd len =
   return (buf, sa)
 
 let rec send_req ofd dst q = function
-  | 0 -> raise Dns_resolve_timeout
+  | 0 -> return ()
   | count ->
       lwt _ = txbuf ofd dst q in
       lwt _ = Lwt_unix.sleep 5.0 in
       printf "retrying query for %d times\n%!" (4-count);
-        send_req ofd dst q (count - 1)
+      send_req ofd dst q (count - 1)
 
 let rec rcv_query ofd f =
   lwt (buf,sa) = rxbuf ofd buflen in
@@ -89,23 +97,39 @@ let rec rcv_query ofd f =
 
 let send_pkt resolver server dns_port pkt =
   let module R = (val resolver : RESOLVER) in
-  let ofd = outfd "0.0.0.0" 0 in
-  let buf = Dns.Buf.create 4096 in
-  let (ctxt,q) = R.marshal buf pkt in
-  try_lwt
-    let dst = sockaddr server dns_port in
-    let ret = ref None in
-    lwt _ = pick [
-      (send_req ofd dst q 4);
-      (lwt r = rcv_query ofd (R.parse ctxt) in
-      return (ret := Some(r)))
-    ] in
-    match !ret with
-    | None -> raise Dns_resolve_timeout
-    | Some r -> return r
-  with exn ->
-    log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
-    fail exn
+  let dst = sockaddr server dns_port in
+  let cqpl = R.marshal pkt in
+  let resl = List.map (fun (ctxt,q) ->
+    (* make a new socket for each request flavor *)
+    let ofd = outfd "0.0.0.0" 0 in
+    (* start the requests in parallel and run them until success or timeout*)
+    let t, w = Lwt.wait () in
+    async (fun () -> pick [
+      (send_req ofd dst q 4
+       >>= fun () -> return (wakeup w (Error (R.timeout ctxt))));
+      (catch
+         (fun () ->
+           rcv_query ofd (R.parse ctxt)
+           >>= fun r -> return (wakeup w (Answer r))
+         )
+         (fun exn -> return (wakeup w (Error exn)))
+      )
+    ]);
+    t
+  ) cqpl in
+  (* return an answer or all the errors if no request succeeded *)
+  let rec select errors = function
+    | [] -> fail (Dns_resolve_error errors)
+    | ts ->
+      nchoose_split ts
+      >>= fun (rs, ts) ->
+      let rec find_answer errors = function
+        | [] -> select errors ts
+        | (Answer a)::_ -> return a
+        | (Error e)::r -> find_answer (e::errors) r
+      in
+      find_answer errors rs
+  in select [] resl
 
 let resolve resolver
     ?(dnssec=false)
