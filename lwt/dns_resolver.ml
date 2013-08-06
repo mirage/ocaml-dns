@@ -44,7 +44,9 @@ module DNSProtocol : RESOLVER = struct
   let query_of_context x = x
 
   (* TODO: XXX FIXME SECURITY EXPLOIT HELP: random enough? *)
-  let get_id () = Random.int (1 lsl 16)
+  let get_id () =
+    Random.self_init ();
+    Random.int (1 lsl 16)
 
   let marshal buf q = q, DP.marshal buf q
   let parse q buf =
