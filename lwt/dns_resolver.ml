@@ -32,6 +32,8 @@ module type RESOLVER = sig
 
   val query_of_context : context -> DP.t
 
+  val get_id : unit -> int
+
   val marshal : Dns.Buf.t -> DP.t -> context * Dns.Buf.t
   val parse : context -> Dns.Buf.t -> DP.t option
 end
@@ -41,18 +43,14 @@ module DNSProtocol : RESOLVER = struct
 
   let query_of_context x = x
 
+  (* TODO: XXX FIXME SECURITY EXPLOIT HELP: random enough? *)
+  let get_id () = Random.int (1 lsl 16)
+
   let marshal buf q = q, DP.marshal buf q
   let parse q buf =
     let pkt = DP.parse buf in
     if pkt.DP.id = q.DP.id then Some pkt else None
 end
-
-(* TODO: pseudorandomize *)
-let id = ref 0xDEAD
-let get_id () =
-  let i = !id in
-  incr id;
-  i
 
 let log_info s = eprintf "INFO: %s\n%!" s
 let log_debug s = eprintf "DEBUG: %s\n%!" s
@@ -117,7 +115,7 @@ let resolve resolver
     (q_class:DP.q_class) (q_type:DP.q_type)
     (q_name:domain_name) =
     try_lwt
-      let id = get_id () in
+      let id = (let module R = (val resolver : RESOLVER) in R.get_id ()) in
       let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
       log_info (sprintf "query: %s\n%!" (DP.to_string q));
       send_pkt resolver server dns_port q

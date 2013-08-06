@@ -25,9 +25,13 @@ module type RESOLVER = sig
 
   val query_of_context : context -> Dns.Packet.t
 
+  val get_id : unit -> int
+
   val marshal : Dns.Buf.t -> Dns.Packet.t -> context * Dns.Buf.t
   val parse : context -> Dns.Buf.t -> Dns.Packet.t option
 end
+
+module DNSProtocol : RESOLVER
 
 type t = {
   resolver : (module RESOLVER);
@@ -68,4 +72,3 @@ val resolve : t -> ?dnssec:bool -> q_class -> q_type ->
   domain_name -> Dns.Packet.t Lwt.t
 
 val send_pkt : t -> Dns.Packet.t -> Dns.Packet.t Lwt.t
-val get_id : unit -> int
