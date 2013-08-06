@@ -23,8 +23,6 @@ exception Dns_resolve_timeout
 module type RESOLVER = sig
   type context
 
-  val query_of_context : context -> Dns.Packet.t
-
   val get_id : unit -> int
 
   val marshal : Dns.Buf.t -> Dns.Packet.t -> context * Dns.Buf.t

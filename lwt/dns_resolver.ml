@@ -30,8 +30,6 @@ let port = 53
 module type RESOLVER = sig
   type context
 
-  val query_of_context : context -> DP.t
-
   val get_id : unit -> int
 
   val marshal : Dns.Buf.t -> DP.t -> context * Dns.Buf.t
@@ -39,19 +37,17 @@ module type RESOLVER = sig
 end
 
 module DNSProtocol : RESOLVER = struct
-  type context = DP.t
-
-  let query_of_context x = x
+  type context = int
 
   (* TODO: XXX FIXME SECURITY EXPLOIT HELP: random enough? *)
   let get_id () =
     Random.self_init ();
     Random.int (1 lsl 16)
 
-  let marshal buf q = q, DP.marshal buf q
-  let parse q buf =
+  let marshal buf q = q.DP.id, DP.marshal buf q
+  let parse id buf =
     let pkt = DP.parse buf in
-    if pkt.DP.id = q.DP.id then Some pkt else None
+    if pkt.DP.id = id then Some pkt else None
 end
 
 let log_info s = eprintf "INFO: %s\n%!" s
