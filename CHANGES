@@ -21,6 +21,8 @@
 * Move `Dns_resolver.build_query` to `Query.create`
 * Rename `Query.answer_query` to `Query.answer`
 * Expose `Dns_resolver.get_id` for generated IDs to pass to `Query.create`
+* Add first-class `RESOLVER` modules to `Dns_resolver` for contextual
+  protocol extensions
 
 0.6.2 (2012-02-13):
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.

@@ -20,7 +20,17 @@ open Cstruct
 
 exception Dns_resolve_timeout
 
+module type RESOLVER = sig
+  type context
+
+  val query_of_context : context -> Dns.Packet.t
+
+  val marshal : Dns.Buf.t -> Dns.Packet.t -> context * Dns.Buf.t
+  val parse : context -> Dns.Buf.t -> Dns.Packet.t option
+end
+
 type t = {
+  resolver : (module RESOLVER);
   servers : (string * int) list;
   search_domains : string list;
 }
@@ -33,7 +43,7 @@ type config = [
 (** Create a resolver instance that either uses the system
     /etc/resolv.conf, or a statically specified preference
   *)
-val create : ?config:config -> unit -> t Lwt.t
+val create : ?resolver:(module RESOLVER) -> ?config:config -> unit -> t Lwt.t
 
 (** Lookup a {! domain_name }.
 

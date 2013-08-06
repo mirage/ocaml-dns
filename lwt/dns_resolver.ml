@@ -27,6 +27,26 @@ let buflen = 4096
 let ns = "8.8.8.8"
 let port = 53
 
+module type RESOLVER = sig
+  type context
+
+  val query_of_context : context -> DP.t
+
+  val marshal : Dns.Buf.t -> DP.t -> context * Dns.Buf.t
+  val parse : context -> Dns.Buf.t -> DP.t option
+end
+
+module DNSProtocol : RESOLVER = struct
+  type context = DP.t
+
+  let query_of_context x = x
+
+  let marshal buf q = q, DP.marshal buf q
+  let parse q buf =
+    let pkt = DP.parse buf in
+    if pkt.DP.id = q.DP.id then Some pkt else None
+end
+
 (* TODO: pseudorandomize *)
 let id = ref 0xDEAD
 let get_id () =
@@ -67,35 +87,31 @@ let rec send_req ofd dst q = function
       printf "retrying query for %d times\n%!" (4-count);
         send_req ofd dst q (count - 1)
 
-let rec rcv_query ofd q =
+let rec rcv_query ofd f =
   lwt (buf,sa) = rxbuf ofd buflen in
-  let r = DP.parse buf in
-    if (r.DP.id = q.DP.id) then
-      return r
-    else
-      rcv_query ofd q
+  match f buf with Some r -> return r | None -> rcv_query ofd f
 
-let send_pkt (server:string) (dns_port:int) pkt =
- let ofd = outfd "0.0.0.0" 0 in
- let buf = Dns.Buf.create 4096 in
- let q = DP.marshal buf pkt in
+let send_pkt resolver server dns_port pkt =
+  let module R = (val resolver : RESOLVER) in
+  let ofd = outfd "0.0.0.0" 0 in
+  let buf = Dns.Buf.create 4096 in
+  let (ctxt,q) = R.marshal buf pkt in
   try_lwt
-      let dst = sockaddr server dns_port in
-      let ret = ref None in
-      lwt _ =
-        pick [
-          (send_req ofd dst q 4);
-          (lwt r = rcv_query ofd pkt in
-            return (ret := Some(r))) ]
-      in
-        match !ret with
-        | None -> raise Dns_resolve_timeout
-        | Some r -> return r
-    with exn ->
-      log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
-      fail exn
+    let dst = sockaddr server dns_port in
+    let ret = ref None in
+    lwt _ = pick [
+      (send_req ofd dst q 4);
+      (lwt r = rcv_query ofd (R.parse ctxt) in
+      return (ret := Some(r)))
+    ] in
+    match !ret with
+    | None -> raise Dns_resolve_timeout
+    | Some r -> return r
+  with exn ->
+    log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
+    fail exn
 
-let resolve
+let resolve resolver
     ?(dnssec=false)
     (server:string) (dns_port:int)
     (q_class:DP.q_class) (q_type:DP.q_type)
@@ -104,7 +120,7 @@ let resolve
       let id = get_id () in
       let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
       log_info (sprintf "query: %s\n%!" (DP.to_string q));
-      send_pkt server dns_port q
+      send_pkt resolver server dns_port q
    with exn ->
       log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
       fail exn
@@ -115,9 +131,12 @@ let gethostbyname
     name =
   let open DP in
   let domain = string_to_domain_name name in
-  resolve server dns_port q_class q_type domain >|= fun r ->
-  List.fold_left (fun a x -> match x.rdata with |A ip -> ip::a |_ -> a) [] r.answers |>
-  List.rev
+  resolve (module DNSProtocol) server dns_port q_class q_type domain
+  >|= fun r ->
+    List.fold_left (fun a x ->
+      match x.rdata with |A ip -> ip::a |_ -> a
+    ) [] r.answers
+   |> List.rev
 
 let gethostbyaddr
     ?(server:string = ns) ?(dns_port:int = port)
@@ -127,13 +146,17 @@ let gethostbyaddr
   let addr = for_reverse addr in
   log_info (sprintf "gethostbyaddr: %s" (domain_name_to_string addr));
   let open DP in
-  resolve server dns_port q_class q_type addr >|= fun r ->
-  List.fold_left (fun a x -> match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a) [] r.answers |>
-  List.rev
+  resolve (module DNSProtocol) server dns_port q_class q_type addr
+  >|= fun r ->
+    List.fold_left (fun a x ->
+      match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a
+    ) [] r.answers
+   |> List.rev
 
 open Dns.Resolvconf
 
 type t = {
+  resolver : (module RESOLVER);
   servers : (string * int) list;
   search_domains : string list;
 }
@@ -161,42 +184,48 @@ module Resolv_conf = struct
       ) lines))
     )
 
-  let create ?(file=default_file) () =
+  let create resolver ?(file=default_file) () =
     lwt t = get_resolvers ~file () in
     return {
+      resolver;
       servers = all_servers t;
       search_domains = search_domains t;
     }
 end
 
 module Static = struct
-  let create ?(servers=["8.8.8.8",53]) ?(search_domains=[]) () =
-    { servers; search_domains }
+  let create resolver ?(servers=["8.8.8.8",53]) ?(search_domains=[]) () =
+    { resolver; servers; search_domains }
 end
 
-let create ?(config=`Resolv_conf Resolv_conf.default_file) () =
+let create
+    ?(resolver=(module DNSProtocol : RESOLVER))
+    ?(config=`Resolv_conf Resolv_conf.default_file) () =
   match config with
   |`Static (servers, search_domains) ->
-     return (Static.create ~servers ~search_domains ())
-  |`Resolv_conf file -> Resolv_conf.create ~file ()
-
+     return (Static.create resolver ~servers ~search_domains ())
+  |`Resolv_conf file -> Resolv_conf.create resolver ~file ()
 
 let gethostbyname t ?q_class ?q_type q_name =
   match t.servers with
   |[] -> fail (Failure "No resolvers available")
-  |(server,dns_port)::_ -> gethostbyname ~server ~dns_port ?q_class ?q_type q_name
+  |(server,dns_port)::_ ->
+    gethostbyname ~server ~dns_port ?q_class ?q_type q_name
 
 let gethostbyaddr t ?q_class ?q_type q_name =
   match t.servers with
   |[] -> fail (Failure "No resolvers available")
-  |(server,dns_port)::_ -> gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
+  |(server,dns_port)::_ ->
+    gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
 
 let send_pkt t pkt =
   match t.servers with
   |[] -> fail (Failure "No resolvers available")
-  |(server,dns_port)::_ -> send_pkt server dns_port pkt
+  |(server,dns_port)::_ ->
+    send_pkt t.resolver server dns_port pkt
 
 let resolve t ?(dnssec=false) q_class q_type q_name =
   match t.servers with
   |[] -> fail (Failure "No resolvers available")
-  |(server,dns_port)::_ -> resolve ~dnssec server dns_port q_class q_type q_name
+  |(server,dns_port)::_ ->
+    resolve t.resolver ~dnssec server dns_port q_class q_type q_name
