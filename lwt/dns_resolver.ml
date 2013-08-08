@@ -42,7 +42,7 @@ module type RESOLVER = sig
   val timeout : context -> exn
 end
 
-module DNSProtocol : RESOLVER = struct
+module Dns_protocol : RESOLVER = struct
   type context = int
 
   (* TODO: XXX FIXME SECURITY EXPLOIT HELP: random enough? *)
@@ -81,7 +81,7 @@ let txbuf fd dst buf =
 let rxbuf fd len =
   let buf = Dns.Buf.create len in
   lwt (len, sa) = Lwt_bytes.recvfrom fd buf 0 len [] in
-  return (buf, sa)
+  return (Dns.Buf.sub buf 0 len, sa)
 
 let rec send_req ofd dst q = function
   | 0 -> return ()
@@ -151,7 +151,7 @@ let gethostbyname
     name =
   let open DP in
   let domain = string_to_domain_name name in
-  resolve (module DNSProtocol) server dns_port q_class q_type domain
+  resolve (module Dns_protocol) server dns_port q_class q_type domain
   >|= fun r ->
     List.fold_left (fun a x ->
       match x.rdata with |A ip -> ip::a |_ -> a
@@ -166,7 +166,7 @@ let gethostbyaddr
   let addr = for_reverse addr in
   log_info (sprintf "gethostbyaddr: %s" (domain_name_to_string addr));
   let open DP in
-  resolve (module DNSProtocol) server dns_port q_class q_type addr
+  resolve (module Dns_protocol) server dns_port q_class q_type addr
   >|= fun r ->
     List.fold_left (fun a x ->
       match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a
@@ -219,7 +219,7 @@ module Static = struct
 end
 
 let create
-    ?(resolver=(module DNSProtocol : RESOLVER))
+    ?(resolver=(module Dns_protocol : RESOLVER))
     ?(config=`Resolv_conf Resolv_conf.default_file) () =
   match config with
   |`Static (servers, search_domains) ->

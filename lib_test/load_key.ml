@@ -91,7 +91,7 @@ lwt _ =
   let rr = {name=(string_to_domain_name "www.example.net.");
                     cls=RR_IN; ttl=3600l;
                     rdata=(A (Ipaddr.V4.of_string_exn "192.0.2.91"));} in
-  let id = Dns_resolver.DNSProtocol.get_id () in
+  let id = Dns_resolver.Dns_protocol.get_id () in
   let pkt = Dns.Query.create ~id Q_IN Q_MX
               (Dns.Name.string_to_domain_name "d3.signpo.st") in
   let pkt = Sec.sign_packet ~inception:(1352893409l)

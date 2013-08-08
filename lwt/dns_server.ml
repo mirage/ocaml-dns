@@ -21,24 +21,29 @@ open Printf
 module DR = Dns.RR
 module DP = Dns.Packet
 
-type 'a process =
-  src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a
-  -> Dns.Query.answer option Lwt.t
-
-module type PROCESSOR = sig
+module type PROTOCOL = sig
   type context
 
   val query_of_context : context -> Dns.Packet.t
 
   val parse   : Buf.t -> context option
-  val process : context process
   val marshal : Buf.t -> context -> Dns.Packet.t -> Buf.t option
+end
+
+type 'a process =
+  src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a
+  -> Dns.Query.answer option Lwt.t
+
+module type PROCESSOR = sig
+  include PROTOCOL
+  val process : context process
 end
 
 let contain_exc l v =
   try
     Some (v ())
   with exn ->
+    Printexc.print_backtrace stderr;
     eprintf "dns %s exn: %s\n%!" l (Printexc.to_string exn);
     None
 
@@ -74,7 +79,7 @@ let process_query fd buf len src dst processor =
         return ()
  end
 
-module DNSProtocol = struct
+module Dns_protocol : PROTOCOL with type context = Dns.Packet.t = struct
   type context = Dns.Packet.t
 
   let query_of_context x = x
@@ -86,7 +91,7 @@ end
 
 let processor_of_process process =
   let module P = struct
-    include DNSProtocol
+    include Dns_protocol
 
     let process = process
   end in

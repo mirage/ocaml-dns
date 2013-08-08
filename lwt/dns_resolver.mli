@@ -50,7 +50,7 @@ module type RESOLVER = sig
 end
 
 (** The default DNS resolver using the standard DNS protocol *)
-module DNSProtocol : RESOLVER
+module Dns_protocol : RESOLVER
 
 type t = {
   resolver : (module RESOLVER);

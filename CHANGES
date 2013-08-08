@@ -6,11 +6,12 @@
 * Use Ipaddr.V4.t addresses in favor to Cstruct or Uri_IP representations
 * Fix RRSIG signed type to be of the answer rather than the question
 * Fix ANY queries
-* Add `Buf` to provide an nickname for char Bigarrays
+* Add `Buf` to provide a nickname for char Bigarrays
 * Change `Packet.{parse,marshal}` to use Buf.t rather than exposing Cstruct.t
 * Change `Packet.parse` to remove name map parameter
-* Add first-class `PROCESSOR` modules to `Dns_server` for contextual
-  protocol extensions
+* Add first-class `PROCESSOR` and `PROTOCOL` modules to `Dns_server` for
+  contextual protocol extensions
+* Expose the normal DNS protocol as `Dns_server.Dns_protocol : PROTOCOL`
 * Change `Dns_server.listen` to accept processor
 * Rename `Dns_server.listen_with_zonebuf` and `Dns_server.listen_with_zonefile`
   to `Dns_server.serve_with_zonebuf` and `Dns_server.serve_with_zonefile` resp.
@@ -19,10 +20,9 @@
 * Rename `Query.query_answer` to `Query.answer`
 * Add `Query.response_of_answer` and `Query.answer_of_response`
 * Move `Dns_resolver.build_query` to `Query.create`
-* Rename `Query.answer_query` to `Query.answer`
 * Add first-class `RESOLVER` modules to `Dns_resolver` for contextual
   protocol extensions
-* Expose `Dns_resolver.DNSProtocol : RESOLVER` with `get_id` for generated IDs
+* Expose `Dns_resolver.Dns_protocol : RESOLVER` with `get_id` for generated IDs
   to pass to `Query.create`
 * By default, DNS packet IDs are randomly generated with Random
 * `Dns_resolver` now supports simultaneous resolver protocol requests
