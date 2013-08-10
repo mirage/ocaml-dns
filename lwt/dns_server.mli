@@ -20,33 +20,12 @@
 val bind_fd :
   address:string -> port:int -> (Lwt_unix.file_descr * Lwt_unix.sockaddr) Lwt.t
 
-module type PROTOCOL = sig
-  type context
-
-  (** Projects a context into its associated query *)
-  val query_of_context : context -> Dns.Packet.t
-
-  (** DNS wire format parser function.
-      @param message buffer
-      @return parsed packet and context
-  *)
-  val parse   : Dns.Buf.t -> context option
-
-  (** DNS wire format marshal function.
-      @param output resource
-      @param context
-      @param answer packet
-      @return buffer to write
-  *)
-  val marshal : Dns.Buf.t -> context -> Dns.Packet.t -> Dns.Buf.t option
-end
-
 type 'a process =
   src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a ->
   Dns.Query.answer option Lwt.t
 
 module type PROCESSOR = sig
-  include PROTOCOL
+  include Dns.Protocol.SERVER
 
   (** DNS responder function.
       @param src Server sockaddr
@@ -56,8 +35,6 @@ module type PROCESSOR = sig
   *)
   val process : context process
 end
-
-module Dns_protocol : PROTOCOL
 
 val processor_of_process : Dns.Packet.t process -> (module PROCESSOR)
 

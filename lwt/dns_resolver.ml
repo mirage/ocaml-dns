@@ -19,44 +19,15 @@ open Lwt
 open Printf
 open Dns.Name
 open Dns.Operators
+open Dns.Protocol
 
 module DP = Dns.Packet
-
-exception Dns_resolve_timeout
-exception Dns_resolve_error of exn list
 
 type result = Answer of DP.t | Error of exn
 
 let buflen = 4096
 let ns = "8.8.8.8"
 let port = 53
-
-module type RESOLVER = sig
-  type context
-
-  val get_id : unit -> int
-
-  val marshal : DP.t -> (context * Dns.Buf.t) list
-  val parse : context -> Dns.Buf.t -> DP.t option
-
-  val timeout : context -> exn
-end
-
-module Dns_protocol : RESOLVER = struct
-  type context = int
-
-  (* TODO: XXX FIXME SECURITY EXPLOIT HELP: random enough? *)
-  let get_id () =
-    Random.self_init ();
-    Random.int (1 lsl 16)
-
-  let marshal q = [q.DP.id, DP.marshal (Dns.Buf.create 4096) q]
-  let parse id buf =
-    let pkt = DP.parse buf in
-    if pkt.DP.id = id then Some pkt else None
-
-  let timeout _id = Dns_resolve_timeout
-end
 
 let log_info s = eprintf "INFO: %s\n%!" s
 let log_debug s = eprintf "DEBUG: %s\n%!" s
@@ -95,8 +66,8 @@ let rec rcv_query ofd f =
   lwt (buf,sa) = rxbuf ofd buflen in
   match f buf with Some r -> return r | None -> rcv_query ofd f
 
-let send_pkt resolver server dns_port pkt =
-  let module R = (val resolver : RESOLVER) in
+let send_pkt client server dns_port pkt =
+  let module R = (val client : CLIENT) in
   let dst = sockaddr server dns_port in
   let cqpl = R.marshal pkt in
   let resl = List.map (fun (ctxt,q) ->
@@ -131,16 +102,16 @@ let send_pkt resolver server dns_port pkt =
       find_answer errors rs
   in select [] resl
 
-let resolve resolver
+let resolve client
     ?(dnssec=false)
     (server:string) (dns_port:int)
     (q_class:DP.q_class) (q_type:DP.q_type)
     (q_name:domain_name) =
     try_lwt
-      let id = (let module R = (val resolver : RESOLVER) in R.get_id ()) in
+      let id = (let module R = (val client : CLIENT) in R.get_id ()) in
       let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
       log_info (sprintf "query: %s\n%!" (DP.to_string q));
-      send_pkt resolver server dns_port q
+      send_pkt client server dns_port q
    with exn ->
       log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
       fail exn
@@ -151,7 +122,7 @@ let gethostbyname
     name =
   let open DP in
   let domain = string_to_domain_name name in
-  resolve (module Dns_protocol) server dns_port q_class q_type domain
+  resolve (module Dns.Protocol.Client) server dns_port q_class q_type domain
   >|= fun r ->
     List.fold_left (fun a x ->
       match x.rdata with |A ip -> ip::a |_ -> a
@@ -166,7 +137,7 @@ let gethostbyaddr
   let addr = for_reverse addr in
   log_info (sprintf "gethostbyaddr: %s" (domain_name_to_string addr));
   let open DP in
-  resolve (module Dns_protocol) server dns_port q_class q_type addr
+  resolve (module Dns.Protocol.Client) server dns_port q_class q_type addr
   >|= fun r ->
     List.fold_left (fun a x ->
       match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a
@@ -176,7 +147,7 @@ let gethostbyaddr
 open Dns.Resolvconf
 
 type t = {
-  resolver : (module RESOLVER);
+  client : (module CLIENT);
   servers : (string * int) list;
   search_domains : string list;
 }
@@ -204,27 +175,27 @@ module Resolv_conf = struct
       ) lines))
     )
 
-  let create resolver ?(file=default_file) () =
+  let create client ?(file=default_file) () =
     lwt t = get_resolvers ~file () in
     return {
-      resolver;
+      client;
       servers = all_servers t;
       search_domains = search_domains t;
     }
 end
 
 module Static = struct
-  let create resolver ?(servers=["8.8.8.8",53]) ?(search_domains=[]) () =
-    { resolver; servers; search_domains }
+  let create client ?(servers=["8.8.8.8",53]) ?(search_domains=[]) () =
+    { client; servers; search_domains }
 end
 
 let create
-    ?(resolver=(module Dns_protocol : RESOLVER))
+    ?(client=(module Dns.Protocol.Client : CLIENT))
     ?(config=`Resolv_conf Resolv_conf.default_file) () =
   match config with
   |`Static (servers, search_domains) ->
-     return (Static.create resolver ~servers ~search_domains ())
-  |`Resolv_conf file -> Resolv_conf.create resolver ~file ()
+     return (Static.create client ~servers ~search_domains ())
+  |`Resolv_conf file -> Resolv_conf.create client ~file ()
 
 let gethostbyname t ?q_class ?q_type q_name =
   match t.servers with
@@ -242,10 +213,10 @@ let send_pkt t pkt =
   match t.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ ->
-    send_pkt t.resolver server dns_port pkt
+    send_pkt t.client server dns_port pkt
 
 let resolve t ?(dnssec=false) q_class q_type q_name =
   match t.servers with
   |[] -> fail (Failure "No resolvers available")
   |(server,dns_port)::_ ->
-    resolve t.resolver ~dnssec server dns_port q_class q_type q_name
+    resolve t.client ~dnssec server dns_port q_class q_type q_name

@@ -21,31 +21,14 @@ open Printf
 module DR = Dns.RR
 module DP = Dns.Packet
 
-module type PROTOCOL = sig
-  type context
-
-  val query_of_context : context -> Dns.Packet.t
-
-  val parse   : Buf.t -> context option
-  val marshal : Buf.t -> context -> Dns.Packet.t -> Buf.t option
-end
-
 type 'a process =
   src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a
   -> Dns.Query.answer option Lwt.t
 
 module type PROCESSOR = sig
-  include PROTOCOL
+  include Dns.Protocol.SERVER
   val process : context process
 end
-
-let contain_exc l v =
-  try
-    Some (v ())
-  with exn ->
-    Printexc.print_backtrace stderr;
-    eprintf "dns %s exn: %s\n%!" l (Printexc.to_string exn);
-    None
 
 let bind_fd ~address ~port =
   lwt src = try_lwt
@@ -79,19 +62,9 @@ let process_query fd buf len src dst processor =
         return ()
  end
 
-module Dns_protocol : PROTOCOL with type context = Dns.Packet.t = struct
-  type context = Dns.Packet.t
-
-  let query_of_context x = x
-
-  let parse buf = contain_exc "parse" (fun () -> DP.parse buf)
-  let marshal buf _q response =
-    contain_exc "marshal" (fun () -> DP.marshal buf response)
-end
-
 let processor_of_process process =
   let module P = struct
-    include Dns_protocol
+    include Dns.Protocol.Server
 
     let process = process
   end in
@@ -109,7 +82,8 @@ let process_of_zonebuf zonebuf =
     (* TODO: FIXME so that 0 question queries don't crash the server *)
     let q = List.hd d.questions in
     let r =
-      contain_exc "answer" (fun () -> get_answer q.q_name q.q_type d.id)
+      Dns.Protocol.contain_exc "answer"
+        (fun () -> get_answer q.q_name q.q_type d.id)
     in
     return r
 
