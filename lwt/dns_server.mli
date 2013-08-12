@@ -36,7 +36,9 @@ module type PROCESSOR = sig
   val process : context process
 end
 
-val processor_of_process : Dns.Packet.t process -> (module PROCESSOR)
+type 'a processor = (module PROCESSOR with type context = 'a)
+
+val processor_of_process : Dns.Packet.t process -> Dns.Packet.t processor
 
 val process_of_zonebuf : string -> Dns.Packet.t process
 

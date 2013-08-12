@@ -30,6 +30,8 @@ module type PROCESSOR = sig
   val process : context process
 end
 
+type 'a processor = (module PROCESSOR with type context = 'a)
+
 let bind_fd ~address ~port =
   lwt src = try_lwt
     (* should this be lwt hent = Lwt_lib.gethostbyname addr ? *)
@@ -62,13 +64,13 @@ let process_query fd buf len src dst processor =
         return ()
  end
 
-let processor_of_process process =
+let processor_of_process process : Dns.Packet.t processor =
   let module P = struct
     include Dns.Protocol.Server
 
     let process = process
   end in
-  (module P : PROCESSOR)
+  (module P)
 
 let process_of_zonebuf zonebuf =
   let db = Dns.Zone.load [] zonebuf in
@@ -118,10 +120,12 @@ let serve_with_processor ~address ~port ~processor =
   >>= fun (fd, src) -> listen ~fd ~src ~processor
 
 let serve_with_zonebuf ~address ~port ~zonebuf =
-  serve_with_processor ~address ~port
-    ~processor:(processor_of_process (process_of_zonebuf zonebuf))
+  let process = process_of_zonebuf zonebuf in
+  let processor = (processor_of_process process :> (module PROCESSOR)) in
+  serve_with_processor ~address ~port ~processor
 
 let serve_with_zonefile ~address ~port ~zonefile =
   eventual_process_of_zonefile zonefile
   >>= fun process ->
-  serve_with_processor ~address ~port ~processor:(processor_of_process process)
+  let processor = (processor_of_process process :> (module PROCESSOR)) in
+  serve_with_processor ~address ~port ~processor
