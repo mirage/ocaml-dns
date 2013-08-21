@@ -22,6 +22,7 @@
 * Move `Dns_resolver.build_query` to `Query.create`
 * By default, DNS packet IDs are randomly generated with Random
 * `Dns_resolver` now supports simultaneous resolver protocol requests
+* Fix reversed multiple TXT parse bug
 
 0.6.2 (2012-02-13):
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.

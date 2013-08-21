@@ -1012,7 +1012,7 @@ let parse_rdata names base t cls ttl buf =
         let strings =
           let rec aux strings buf =
             match Cstruct.len buf with
-              | 0 -> strings
+              | 0 -> List.rev strings
               | len ->
                   let s, buf = parse_charstr buf in
                   aux (s :: strings) buf
