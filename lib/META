@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: d586d069bbe964599d0c2becc3d7d007)
+# DO NOT EDIT (digest: cd4116a795ae149d17667f820f87ac15)
 version = "0.6.2"
 description = "DNS client and server implementation"
 requires = "cstruct cstruct.syntax re re.str ipaddr"
@@ -22,7 +22,7 @@ package "mirage" (
 package "lwt" (
  version = "0.6.2"
  description = "DNS client and server implementation"
- requires = "lwt.unix lwt.syntax dns cryptokit"
+ requires = "lwt.unix lwt.syntax dns"
  archive(byte) = "lwt.cma"
  archive(byte, plugin) = "lwt.cma"
  archive(native) = "lwt.cmxa"
