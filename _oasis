@@ -30,11 +30,11 @@ Flag nettests
   Default: false
 
 Library dns
-  Path: lib 
+  Path: lib
   Findlibname: dns
   Pack: true
-  Modules: 
-    Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
+  Modules:
+    Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
   BuildDepends:	cstruct (>= 0.6.0), cstruct.syntax, re, re.str, ipaddr
 
@@ -44,7 +44,7 @@ Library lwt
   Install$: flag(lwt)
   Findlibname: lwt
   Modules: Dns_server, Dns_resolver
-  BuildDepends: 
+  BuildDepends:
     lwt.unix, lwt.syntax, dns
   FindlibParent: dns
 
@@ -61,9 +61,9 @@ Document dns
   Title:                DNS docs
   Type:                 ocamlbuild (0.3)
   BuildTools+:          ocamldoc
-  XOCamlbuildPath:      lib  
-  XOCamlbuildModules:     
-    Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie, 
+  XOCamlbuildPath:      lib
+  XOCamlbuildModules:
+    Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser
 
 Document dns_lwt
