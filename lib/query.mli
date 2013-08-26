@@ -33,12 +33,12 @@ type answer = {
   additional: Packet.rr list;
 }
 
-(** [response_of_answer query answer] is the { Packet.t } constructed
+(** [response_of_answer query answer] is the {! Packet.t } constructed
     from the [answer] to the [query]
 *)
 val response_of_answer : Packet.t -> answer -> Packet.t
 
-(** [answer_of_response response] is the { answer } corresponding
+(** [answer_of_response response] is the {! answer } corresponding
     to the upstream [response] for proxied or forwarded response.
 *)
 val answer_of_response : ?preserve_aa:bool -> Packet.t -> answer
