@@ -1,12 +1,12 @@
-0.7.0 (trunk):
-* Add path argument to `Resolv_conf in Dns_resolver.config
-* `Dns_resolver.t` is now a record type rather than a first-class module
-* Fix mldig server and port options
-* Change Zone.load_zone to Zone.load and make it functional over Loader.db
-* Use Ipaddr.V4.t addresses in favor to Cstruct or Uri_IP representations
-* Fix RRSIG signed type to be of the answer rather than the question
-* Fix ANY queries
-* Add `Buf` to provide a nickname for char Bigarrays
+0.7.0 (2013-08-26):
+* Add path argument to `Resolv_conf in Dns_resolver.config.
+* `Dns_resolver.t` is now a record type rather than a first-class module.
+* Fix `mldig` server and port options.
+* Change `Zone.load_zone` to `Zone.load` and make it functional over `Loader.db`.
+* Use `Ipaddr.V4.t` addresses in favor of Cstruct or Uri_IP representations.
+* Fix `RRSIG` signed type to be of the answer rather than the question.
+* Fix `ANY` queries.
+* Add `Buf` to provide a nickname for `char Bigarray`s.
 * Change `Packet.{parse,marshal}` to use Buf.t rather than exposing Cstruct.t
 * Change `Packet.parse` to remove name map parameter
 * Factor protocol modules into `Protocol` with default DNS implementations
@@ -25,11 +25,11 @@
 * Fix reversed multiple TXT parse bug
 * Move DNSSEC implementation to <//github.com/dsheets/ocaml-dnssec>
 
-0.6.2 (2012-02-13):
+0.6.2 (2013-02-13):
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.
 * Fix Lwt Makefile detection (`Lwt.unix` instead of `Lwt.ssl`)
 
-0.6.1 (2012-02-12):
+0.6.1 (2013-02-12):
 * Improve performance of packet marshalling.
 * Add a Mirage `Dns_server` subpackage.
 
