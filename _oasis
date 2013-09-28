@@ -1,7 +1,7 @@
 OASISFormat: 0.3
 OCamlVersion: >= 4.00.0
 Name:        dns
-Version:     0.7.0
+Version:     0.7.1
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     LGPL-2.0 with OCaml linking exception
