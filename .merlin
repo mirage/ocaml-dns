@@ -1,0 +1,7 @@
+PKG lwt cstruct mirage-net mirage
+S lib
+S lib_test
+S lwt
+B _build/lib
+B _build/lib_test
+B _build/lwt
