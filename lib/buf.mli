@@ -15,10 +15,12 @@
  *
  *)
 
-type t = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+(* An alias module to make it easier to abstract Cstruct if necessary *)
+type t = Cstruct.t
 
 val create : int -> t
 val length : t -> int
 val of_cstruct : Cstruct.t -> t
+val to_cstruct : t -> Cstruct.t
 val shift : t -> int -> t
 val sub : t -> int -> int -> t

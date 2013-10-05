@@ -18,10 +18,11 @@
 module B = Bigarray
 module B1 = B.Array1
 
-type t = (char, B.int8_unsigned_elt, B.c_layout) B1.t
+type t = Cstruct.t
 
-let create = B1.create B.char B.c_layout
-let length = B1.dim
-let of_cstruct c = Cstruct.(B1.sub c.buffer c.off c.len)
-let shift b k = B1.sub b k (length b - k)
-let sub = B1.sub
+let create len = Cstruct.create len
+let length t = t.Cstruct.len
+let of_cstruct c = c
+let to_cstruct c = c
+let shift b k = Cstruct.shift b k
+let sub t off len = Cstruct.sub t off len
