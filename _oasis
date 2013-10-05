@@ -1,7 +1,7 @@
 OASISFormat: 0.3
 OCamlVersion: >= 4.00.0
 Name:        dns
-Version:     0.7.0
+Version:     0.7.1
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     LGPL-2.0 with OCaml linking exception
@@ -44,8 +44,7 @@ Library lwt
   Install$: flag(lwt)
   Findlibname: lwt
   Modules: Dns_server, Dns_resolver
-  BuildDepends:
-    lwt.unix, lwt.syntax, dns
+  BuildDepends: lwt.unix, cstruct.lwt, lwt.syntax, dns
   FindlibParent: dns
 
 Library mirage
@@ -99,7 +98,7 @@ Executable mldig
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, re, re.str, ipaddr, cmdliner
+  BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, dns.lwt, re, re.str, ipaddr, cmdliner
 
 Test lwt_server
   Run$:               flag(tests) && flag(lwt)
