@@ -17,50 +17,75 @@
 open Lwt
 open Printf
 
-let port = 53
-
-let read_file dev filename =
-  OS.Devices.with_kv_ro dev (fun kv_ro ->
-    match_lwt kv_ro#read filename with
-      | None -> fail (Failure "File not found")
-      | Some s -> Lwt_stream.to_list s >|= Cstruct.copyv
-  )
-
 module DQ = Dns.Query
 module DR = Dns.RR
 module DP = Dns.Packet
 
-let get_answer dnstrie buf qname qtype id =
-  let qname = List.map String.lowercase qname in
-  let ans = DQ.answer_query qname qtype dnstrie in
-  let detail =
-    DP.({ qr=Response; opcode=Standard;
-          aa=ans.DQ.aa; tc=false; rd=false; ra=false;
-          rcode=ans.DQ.rcode })
-  in
-  let questions = [ DP.({ q_name=qname; q_type=qtype; q_class=Q_IN }) ] in
-  let dp = DP.({ id; detail; questions;
-        answers=ans.DQ.answer;
-        authorities=ans.DQ.authority;
-        additionals=ans.DQ.additional;
-      })
-  in
-  DP.marshal buf dp
+let port = 53
 
-let no_memo db mgr src dst bits =
-  let buf = OS.Io_page.(to_cstruct (get ())) in
-  let names = Hashtbl.create 8 in
-  DP.(
-    let d = parse names bits in
+type 'a process =
+  src:Net.Datagram.UDPv4.src -> dst:Net.Datagram.UDPv4.dst -> 'a
+  -> Dns.Query.answer option Lwt.t
+
+module type PROCESSOR = sig
+  include Dns.Protocol.SERVER
+  val process : context process
+end
+
+type 'a processor = (module PROCESSOR with type context = 'a)
+
+let process_query mgr processor src dst buf =
+  let module Processor = (val processor : PROCESSOR) in
+  match Processor.parse buf with
+  |None -> return ()
+  |Some ctxt -> begin
+    lwt answer = Processor.process ~src ~dst ctxt in
+    match answer with
+    |None -> return ()
+    |Some answer ->
+      let query = Processor.query_of_context ctxt in
+      let response = Dns.Query.response_of_answer query answer in
+      match Processor.marshal buf ctxt response with
+      | None -> return ()
+      | Some buf -> Net.Datagram.UDPv4.send mgr ~src dst buf
+ end
+
+let processor_of_process process : Dns.Packet.t processor =
+  let module P = struct
+    include Dns.Protocol.Server
+
+    let process = process
+  end in
+  (module P)
+
+let process_of_zonebuf zonebuf =
+  let db = Dns.Zone.load [] zonebuf in
+  let dnstrie = db.Dns.Loader.trie in
+  let get_answer qname qtype id =
+    let qname = List.map String.lowercase qname in
+    Dns.Query.answer ~dnssec:true qname qtype dnstrie
+  in
+  fun ~src ~dst d ->
+    let open DP in
+    (* TODO: FIXME so that 0 question queries don't crash the server *)
     let q = List.hd d.questions in
-    let r = get_answer db.Dns.Loader.trie buf q.q_name q.q_type d.id in
-    Net.Datagram.UDPv4.send mgr ~src dst r
-  )
+    let r =
+      Dns.Protocol.contain_exc "answer"
+        (fun () -> get_answer q.q_name q.q_type d.id)
+    in
+    return r
 
-let listen ?(mode=`none) ?(origin=[]) ~zb mgr src =
-  let db = Dns.Zone.load origin zb in
+let bufsz = 4096
+let listen ?(mode=`none) ?(origin=[]) ~zb mgr src ~processor =
   Net.Datagram.UDPv4.(recv mgr src
     (match mode with
-      |`none -> no_memo db mgr src
+      |`none -> process_query mgr processor src
     )
   )
+
+  (*
+let serve_with_zonebuf ~mgr ~address ~port ~zonebuf =
+  let process = process_of_zonebuf zonebuf in
+  let processor = (processor_of_process process :> (module PROCESSOR)) in
+  serve_with_processor ~address ~port ~processor
+*)
