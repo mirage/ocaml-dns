@@ -60,7 +60,7 @@ let process_query fd buf len src dst processor =
       | None -> return ()
       | Some buf ->
         (* TODO transmit queue, rather than ignoring result here *)
-        let _ = Lwt_bytes.(sendto fd buf 0 (Dns.Buf.length buf) [] dst) in
+        let _ = Lwt_cstruct.sendto fd buf [] dst in
         return ()
  end
 
@@ -103,7 +103,7 @@ let listen ~fd ~src ~processor =
   let _ =
     while_lwt !cont do
       Lwt_pool.use bufs (fun buf ->
-        lwt len, dst = Lwt_bytes.(recvfrom fd buf 0 bufsz []) in
+        lwt len, dst = Lwt_cstruct.recvfrom fd buf [] in
 	  return (Lwt.ignore_result
                     (process_query fd buf len src dst processor))
      )
@@ -129,3 +129,4 @@ let serve_with_zonefile ~address ~port ~zonefile =
   >>= fun process ->
   let processor = (processor_of_process process :> (module PROCESSOR)) in
   serve_with_processor ~address ~port ~processor
+
