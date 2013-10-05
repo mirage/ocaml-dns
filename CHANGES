@@ -1,4 +1,4 @@
-0.7.1 (trunk):
+0.8.0 (trunk):
 * `Dns.Buf.t` is now a Cstruct again instead of a direct Bigarray.
 * Add Travis scripts.
 
