@@ -4,7 +4,7 @@ Name:        dns
 Version:     0.7.0
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
-License:     LGPL-2.0 with OCaml linking exception
+License:     ISC
 Synopsis:    DNS client and server implementation
 Description: This is a pure OCaml implementation of the DNS protocol.
   It is intended to be a reasonably high-performance implementation,
@@ -36,7 +36,8 @@ Library dns
   Modules:
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
-  BuildDepends:	cstruct (>= 0.6.0), cstruct.syntax, re, re.str, ipaddr
+  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str,
+     ipaddr (>= 0.2.2)
 
 Library lwt
   Path: lwt
@@ -45,7 +46,7 @@ Library lwt
   Findlibname: lwt
   Modules: Dns_server, Dns_resolver
   BuildDepends:
-    lwt.unix, lwt.syntax, dns
+    lwt.unix (>= 2.4.1), lwt.syntax, dns
   FindlibParent: dns
 
 Library mirage
@@ -54,7 +55,7 @@ Library mirage
   Install$: flag(mirage)
   Findlibname: mirage
   Modules: Dns_server
-  BuildDepends: mirage, mirage-net, cstruct, cstruct.syntax, dns
+  BuildDepends: mirage, mirage-net (>= 0.9.4), cstruct, cstruct.syntax, dns
   FindlibParent: dns
 
 Document dns
