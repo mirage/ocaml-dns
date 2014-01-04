@@ -1,6 +1,6 @@
 0.8.0 (trunk):
 * `Dns.Buf.t` is now a Cstruct again instead of a direct Bigarray.
-* Add Travis scripts.
+* Add Travis continuous integration scripts.
 
 0.7.0 (2013-08-26):
 * Add path argument to `Resolv_conf in Dns_resolver.config.

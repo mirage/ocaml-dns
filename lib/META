@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 932e1d4c71869f94ad5f042dc4a8df6b)
+# DO NOT EDIT (digest: bba98f391c6c996e9cdd26500ceecc0f)
 version = "0.8.0"
 description = "DNS client and server implementation"
 requires = "cstruct cstruct.syntax re re.str ipaddr"
@@ -8,17 +8,6 @@ archive(byte, plugin) = "dns.cma"
 archive(native) = "dns.cmxa"
 archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
-package "mirage" (
- version = "0.8.0"
- description = "DNS client and server implementation"
- requires = "mirage mirage-net cstruct cstruct.syntax dns"
- archive(byte) = "mirage.cma"
- archive(byte, plugin) = "mirage.cma"
- archive(native) = "mirage.cmxa"
- archive(native, plugin) = "mirage.cmxs"
- exists_if = "mirage.cma"
-)
-
 package "lwt" (
  version = "0.8.0"
  description = "DNS client and server implementation"

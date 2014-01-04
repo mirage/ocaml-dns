@@ -21,6 +21,35 @@ open Operators
 open Name
 open Cstruct
 
+let bytes_to_ipv4 bs =
+  let (|||) x y = Int32.logor x y in
+  let (<<<) x y = Int32.shift_left x y in
+  let a = Int32.of_int (byte_to_int bs.[0]) in
+  let b = Int32.of_int (byte_to_int bs.[1]) in
+  let c = Int32.of_int (byte_to_int bs.[2]) in
+  let d = Int32.of_int (byte_to_int bs.[3]) in
+  (a <<< 24) ||| (b <<< 16) ||| (c <<< 8) ||| d
+
+type ipv6 = int64 * int64
+let ipv6_to_string (hi, lo) =
+  let (&&&&) x y = Int64.logand x y in
+  let (>>>>) x y = Int64.shift_right_logical x y in
+  sprintf "%Lx:%Lx:%Lx:%Lx:%Lx:%Lx:%Lx:%Lx"
+    ((hi >>>> 48) &&&& 0xffff_L) ((hi >>>> 32) &&&& 0xffff_L)
+    ((hi >>>> 16) &&&& 0xffff_L) ( hi          &&&& 0xffff_L)
+    ((lo >>>> 48) &&&& 0xffff_L) ((lo >>>> 32) &&&& 0xffff_L)
+    ((lo >>>> 16) &&&& 0xffff_L) ( lo          &&&& 0xffff_L)
+
+let bytes_to_ipv6 bs =
+  let (++++) x y = Int64.add x y in
+  let (<<<<) x y = Int64.shift_left x y in
+  let hihi = bytes_to_ipv4 (String.sub bs 0 4) in
+  let hilo = bytes_to_ipv4 (String.sub bs 4 4) in
+  let lohi = bytes_to_ipv4 (String.sub bs 8 4) in
+  let lolo = bytes_to_ipv4 (String.sub bs 12 4) in
+  ((Int64.of_int32 hihi) <<<< 48) ++++ (Int64.of_int32 hilo),
+  ((Int64.of_int32 lohi) <<<< 48) ++++ (Int64.of_int32 lolo)
+
 cenum digest_alg {
   SHA1 = 1;
   SHA256 = 2
