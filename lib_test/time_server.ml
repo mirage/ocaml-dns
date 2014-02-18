@@ -42,6 +42,7 @@ let dnsfn ~src ~dst query =
 let _ =
   let address = "0.0.0.0" in
   let port = 5354 in
+  let open Dns_server_core in
   let open Dns_server in
   let processor = (processor_of_process dnsfn :> (module PROCESSOR)) in
   Lwt_main.run (serve_with_processor ~address ~port ~processor)

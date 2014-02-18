@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2011 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2011-2014 Anil Madhavapeddy <anil@recoil.org>
  * Copyright (c) 2013 David Sheets <sheets@alum.mit.edu>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -15,32 +15,12 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Dns_server_core
+
 (** Given a source address and a port, return a bound file descriptor and
     source sockaddr suitable for passing to the [listen] functions *)
 val bind_fd :
   address:string -> port:int -> (Lwt_unix.file_descr * Lwt_unix.sockaddr) Lwt.t
-
-type 'a process =
-  src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a ->
-  Dns.Query.answer option Lwt.t
-
-module type PROCESSOR = sig
-  include Dns.Protocol.SERVER
-
-  (** DNS responder function.
-      @param src Server sockaddr
-      @param dst Client sockaddr
-      @param Query packet
-      @return Answer packet
-  *)
-  val process : context process
-end
-
-type 'a processor = (module PROCESSOR with type context = 'a)
-
-val processor_of_process : Dns.Packet.t process -> Dns.Packet.t processor
-
-val process_of_zonebuf : string -> Dns.Packet.t process
 
 val eventual_process_of_zonefile : string -> Dns.Packet.t process Lwt.t
 
@@ -61,3 +41,4 @@ val serve_with_zonebuf :
 
 val serve_with_zonefile :
   address:string -> port:int -> zonefile:string -> unit Lwt.t
+

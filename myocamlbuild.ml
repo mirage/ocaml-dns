@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: f0ee8d2bb5920ec4e695d53982d7d1a6) *)
+(* DO NOT EDIT (digest: e7435ee7ed69997095d4e8e5d5a41bb6) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -555,7 +555,9 @@ end
 open Ocamlbuild_plugin;;
 let package_default =
   {
-     MyOCamlbuildBase.lib_ocaml = [("dns", ["lib"], []); ("lwt", ["lwt"], [])];
+     MyOCamlbuildBase.lib_ocaml =
+       [("dns", ["lib"], []); ("lwt-core", ["lwt"], []); ("lwt", ["lwt"], [])
+       ];
      lib_c = [];
      flags = [];
      includes = [("lwt", ["lib"]); ("lib_test", ["lib"; "lwt"])]
@@ -564,6 +566,6 @@ let package_default =
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default package_default;;
 
-# 568 "myocamlbuild.ml"
+# 570 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch dispatch_default;;

@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: df2d157e716ec6142b46cd19e57366e6)
+# DO NOT EDIT (digest: b46ef21097bddd75899af6867db104a7)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -35,10 +35,13 @@
 <lib/*.ml{,i}>: package(ipaddr)
 <lib/*.ml{,i}>: package(cstruct)
 <lib/*.ml{,i}>: package(cstruct.syntax)
+# Library lwt-core
+"lwt/lwt-core.cmxs": use_lwt-core
 # Library lwt
 "lwt/lwt.cmxs": use_lwt
 # Executable lwt_server
 <lib_test/lwt_server.{native,byte}>: use_lwt
+<lib_test/lwt_server.{native,byte}>: use_lwt-core
 <lib_test/lwt_server.{native,byte}>: use_dns
 <lib_test/lwt_server.{native,byte}>: package(lwt)
 <lib_test/lwt_server.{native,byte}>: package(lwt.unix)
@@ -47,11 +50,13 @@
 <lib_test/lwt_server.{native,byte}>: package(re.str)
 <lib_test/lwt_server.{native,byte}>: package(ipaddr)
 <lib_test/lwt_server.{native,byte}>: package(cstruct.lwt)
+<lib_test/lwt_server.{native,byte}>: package(ipaddr.unix)
 <lib_test/lwt_server.{native,byte}>: package(cstruct)
 <lib_test/lwt_server.{native,byte}>: package(cstruct.syntax)
 <lib_test/lwt_server.{native,byte}>: custom
 # Executable time_server
 <lib_test/time_server.{native,byte}>: use_lwt
+<lib_test/time_server.{native,byte}>: use_lwt-core
 <lib_test/time_server.{native,byte}>: use_dns
 <lib_test/time_server.{native,byte}>: package(lwt)
 <lib_test/time_server.{native,byte}>: package(lwt.unix)
@@ -60,9 +65,11 @@
 <lib_test/time_server.{native,byte}>: package(re.str)
 <lib_test/time_server.{native,byte}>: package(ipaddr)
 <lib_test/time_server.{native,byte}>: package(cstruct.lwt)
+<lib_test/time_server.{native,byte}>: package(ipaddr.unix)
 <lib_test/time_server.{native,byte}>: package(cstruct)
 <lib_test/time_server.{native,byte}>: package(cstruct.syntax)
 <lib_test/*.ml{,i}>: use_lwt
+<lib_test/*.ml{,i}>: use_lwt-core
 <lib_test/*.ml{,i}>: use_dns
 <lib_test/*.ml{,i}>: package(lwt)
 <lib_test/*.ml{,i}>: package(lwt.unix)
@@ -71,11 +78,13 @@
 <lib_test/*.ml{,i}>: package(re.str)
 <lib_test/*.ml{,i}>: package(ipaddr)
 <lib_test/*.ml{,i}>: package(cstruct.lwt)
+<lib_test/*.ml{,i}>: package(ipaddr.unix)
 <lib_test/*.ml{,i}>: package(cstruct)
 <lib_test/*.ml{,i}>: package(cstruct.syntax)
 <lib_test/time_server.{native,byte}>: custom
 # Executable mldig
 <lwt/mldig.{native,byte}>: use_lwt
+<lwt/mldig.{native,byte}>: use_lwt-core
 <lwt/mldig.{native,byte}>: use_dns
 <lwt/mldig.{native,byte}>: package(lwt)
 <lwt/mldig.{native,byte}>: package(lwt.unix)
@@ -85,9 +94,11 @@
 <lwt/mldig.{native,byte}>: package(ipaddr)
 <lwt/mldig.{native,byte}>: package(cmdliner)
 <lwt/mldig.{native,byte}>: package(cstruct.lwt)
+<lwt/mldig.{native,byte}>: package(ipaddr.unix)
 <lwt/mldig.{native,byte}>: package(cstruct)
 <lwt/mldig.{native,byte}>: package(cstruct.syntax)
 <lwt/*.ml{,i}>: use_lwt
+<lwt/*.ml{,i}>: use_lwt-core
 <lwt/*.ml{,i}>: use_dns
 <lwt/*.ml{,i}>: package(lwt)
 <lwt/*.ml{,i}>: package(lwt.unix)
@@ -97,6 +108,7 @@
 <lwt/*.ml{,i}>: package(ipaddr)
 <lwt/*.ml{,i}>: package(cmdliner)
 <lwt/*.ml{,i}>: package(cstruct.lwt)
+<lwt/*.ml{,i}>: package(ipaddr.unix)
 <lwt/*.ml{,i}>: package(cstruct)
 <lwt/*.ml{,i}>: package(cstruct.syntax)
 <lwt/mldig.{native,byte}>: custom

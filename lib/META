@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: bba98f391c6c996e9cdd26500ceecc0f)
+# DO NOT EDIT (digest: 85565c0ecd22b743afa123d3a0ed14d4)
 version = "0.8.0"
 description = "DNS client and server implementation"
 requires = "cstruct cstruct.syntax re re.str ipaddr"
@@ -8,10 +8,21 @@ archive(byte, plugin) = "dns.cma"
 archive(native) = "dns.cmxa"
 archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
+package "lwt-core" (
+ version = "0.8.0"
+ description = "DNS client and server implementation"
+ requires = "lwt cstruct lwt.syntax dns"
+ archive(byte) = "lwt-core.cma"
+ archive(byte, plugin) = "lwt-core.cma"
+ archive(native) = "lwt-core.cmxa"
+ archive(native, plugin) = "lwt-core.cmxs"
+ exists_if = "lwt-core.cma"
+)
+
 package "lwt" (
  version = "0.8.0"
  description = "DNS client and server implementation"
- requires = "lwt.unix cstruct.lwt lwt.syntax dns"
+ requires = "lwt.unix cstruct.lwt lwt.syntax dns dns.lwt-core ipaddr.unix"
  archive(byte) = "lwt.cma"
  archive(byte, plugin) = "lwt.cma"
  archive(native) = "lwt.cmxa"

@@ -1,6 +1,11 @@
 0.8.0 (trunk):
 * `Dns.Buf.t` is now a Cstruct again instead of a direct Bigarray.
 * Add Travis continuous integration scripts.
+* Regenerate with OASIS 0.4.1
+* Split the `dns.lwt` into a portable `dns.lwt-core` that doesn't
+  require Unix (from which a Mirage version can be built).  The only
+  change to existing applications is that `module type PROCESSOR` now
+  comes from `Dns_server_core` rather than `Dns_server`.
 
 0.7.0 (2013-08-26):
 * Add path argument to `Resolv_conf in Dns_resolver.config.
