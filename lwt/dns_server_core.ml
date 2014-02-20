@@ -32,7 +32,7 @@ end
 
 type 'a processor = (module PROCESSOR with type context = 'a)
 
-let process_query buf len src dst processor =
+let process_query buf len obuf src dst processor =
   let module Processor = (val processor : PROCESSOR) in
   match Processor.parse (Dns.Buf.sub buf 0 len) with
   |None -> return None
@@ -43,7 +43,7 @@ let process_query buf len src dst processor =
     |Some answer ->
       let query = Processor.query_of_context ctxt in
       let response = Dns.Query.response_of_answer query answer in
-      return (Processor.marshal buf ctxt response)
+      return (Processor.marshal obuf ctxt response)
  end
 
 let processor_of_process process : Dns.Packet.t processor =

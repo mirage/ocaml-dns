@@ -1,4 +1,6 @@
 0.8.0 (trunk):
+* `process_query` now takes an output buffer so it doesn't have to
+  overwrite the input buffer it just parsed.
 * Add Travis continuous integration scripts.
 * Regenerate with OASIS 0.4.1
 * Split the `dns.lwt` into a portable `dns.lwt-core` that doesn't

@@ -33,7 +33,9 @@ end
 
 type 'a processor = (module PROCESSOR with type context = 'a)
 
-val process_query: Dns.Buf.t -> int -> addr -> addr -> 
+
+(** [process_query ibuf ibuflen obuf src dst processor] *)
+val process_query: Dns.Buf.t -> int -> Dns.Buf.t -> addr -> addr -> 
   (module PROCESSOR) -> Dns.Buf.t option Lwt.t
 
 val processor_of_process : Dns.Packet.t process -> Dns.Packet.t processor

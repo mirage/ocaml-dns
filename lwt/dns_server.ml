@@ -1,4 +1,5 @@
 open Lwt
+
 open Dns_server_core
 
 let bind_fd ~address ~port =
@@ -43,7 +44,7 @@ let listen ~fd ~src ~processor =
            (* TODO Process in a background thread; should be a bounded queue *)
            let _ = ignore_result (
                lwt dst' = ipaddr_of_sockaddr dst in
-               process_query buf len src dst' processor
+               process_query buf len buf src dst' processor
                >>= function
                | None -> return ()
                | Some buf -> 
