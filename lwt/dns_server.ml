@@ -39,7 +39,7 @@ let listen ~fd ~src ~processor =
     while_lwt !cont do
       Lwt_pool.use bufs
         (fun buf ->
-           lwt len, dst = Lwt_cstruct.recvfrom fd buf [] in
+           lwt len, dst = Lwt_bytes.recvfrom fd buf 0 bufsz [] in
            (* TODO Process in a background thread; should be a bounded queue *)
            let _ = ignore_result (
                lwt dst' = ipaddr_of_sockaddr dst in
@@ -47,7 +47,7 @@ let listen ~fd ~src ~processor =
                >>= function
                | None -> return ()
                | Some buf -> 
-                   Lwt_cstruct.sendto fd buf [] dst
+                   Lwt_bytes.sendto fd buf 0 (Dns.Buf.length buf) [] dst
                    >>= fun _ -> return ()
              ) in
            return ()

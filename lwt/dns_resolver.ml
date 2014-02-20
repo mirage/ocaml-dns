@@ -47,11 +47,11 @@ let outfd addr port =
   fd
 
 let txbuf fd dst buf =
-  Lwt_cstruct.sendto fd buf [] dst
+  Lwt_bytes.sendto fd buf 0 (Dns.Buf.length buf) [] dst
 
 let rxbuf fd len =
   let buf = Dns.Buf.create len in
-  lwt (len, sa) = Lwt_cstruct.recvfrom fd buf [] in
+  lwt (len, sa) = Lwt_bytes.recvfrom fd buf 0 len [] in
   return (Dns.Buf.sub buf 0 len, sa)
 
 let rec send_req ofd dst q = function
