@@ -17,10 +17,6 @@ Flag lwt
   Description: build the Lwt library
   Default: false
 
-Flag async
-  Description: build the Core/Async library
-  Default: false
-
 Flag nettests
   Description: run the internet-using tests
   Default: false
