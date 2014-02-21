@@ -88,7 +88,7 @@ open Cmdliner
 let dns_port = 53
 
 let dig source_ip opt_dest_port q_class q_type args =
-  lwt res = Dns_resolver.create () in
+  lwt res = Dns_resolver_unix.create () in
   let timeout = 5 (* matches dig *) in
   (* Fold over args to determine overrides for q_class/type *)
   let (server, q_class, q_type, domains) = List.fold_left (
@@ -109,7 +109,7 @@ let dig source_ip opt_dest_port q_class q_type args =
         |None, Some q_class -> (server, q_class, q_type, domains)
         |Some q_type, Some q_class -> (server, q_class, q_type, domains)
       end
-  ) (begin match res.Dns_resolver.servers with
+  ) (begin match res.Dns_resolver_unix.servers with
     [] -> None | (s,p)::_ -> Some (s,Some p) end,
     q_class, q_type, []) args in
   let domains = match domains with |[] -> ["."] |_ -> domains in
@@ -122,13 +122,13 @@ let dig source_ip opt_dest_port q_class q_type args =
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
     lwt addr = try return Ipaddr.V4.(to_string (of_string_exn x))
       with Ipaddr.Parse_error _ ->
-        lwt addrs = Dns_resolver.gethostbyname res x in
+        lwt addrs = Dns_resolver_unix.gethostbyname res x in
         match addrs with
         | [] -> error "dig" ("Could not resolve nameserver '"^x^"'")
         | addr::_ -> return (Ipaddr.V4.to_string addr)
     in
     let port = match opt_port with None -> dns_port | Some p -> p in
-    Dns_resolver.(resolve
+    Dns_resolver_unix.(resolve
                     {res with servers = [addr,port]}
                     q_class q_type domain >|= print_answers)
 

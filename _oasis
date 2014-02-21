@@ -1,7 +1,7 @@
 OASISFormat: 0.3
 OCamlVersion: >= 4.00.0
 Name:        dns
-Version:     0.7.1
+Version:     0.8.0
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC
@@ -17,14 +17,6 @@ Flag lwt
   Description: build the Lwt library
   Default: false
 
-Flag async
-  Description: build the Core/Async library
-  Default: false
-
-Flag mirage
-  Description: build the Mirage library
-  Default: false
-
 Flag nettests
   Description: run the internet-using tests
   Default: false
@@ -36,26 +28,24 @@ Library dns
   Modules:
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
-  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str,
-     ipaddr (>= 0.2.2)
+  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0)
 
 Library lwt
   Path: lwt
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt
-  Modules: Dns_server, Dns_resolver
-  BuildDepends:
-    lwt.unix (>= 2.4.1), lwt.syntax, dns
+  Modules: Dns_server_unix, Dns_resolver_unix
+  BuildDepends: lwt.unix (>= 2.4.1), cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix
   FindlibParent: dns
 
-Library mirage
-  Path: mirage
-  Build$: flag(mirage)
-  Install$: flag(mirage)
-  Findlibname: mirage
-  Modules: Dns_server
-  BuildDepends: mirage, mirage-net (>= 0.9.4), cstruct, cstruct.syntax, dns
+Library "lwt-core"
+  Path: lwt
+  Build$: flag(lwt)
+  Install$: flag(lwt)
+  Findlibname: lwt-core
+  Modules: Dns_server, Dns_resolver
+  BuildDepends: lwt, cstruct, lwt.syntax, dns
   FindlibParent: dns
 
 Document dns
@@ -100,7 +90,7 @@ Executable mldig
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, re, re.str, ipaddr, cmdliner
+  BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, dns.lwt, re, re.str, ipaddr, cmdliner
 
 Test lwt_server
   Run$:               flag(tests) && flag(lwt)

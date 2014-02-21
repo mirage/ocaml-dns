@@ -4,7 +4,7 @@ than low-level performance hacks.
 
 To build it, the following packages are required:
 
-* OCaml 3.12.0 or higher.
+* OCaml 4.00.1 or higher.
 * Lwt 2.3.2 or higher: http://ocsigen.org/lwt/
 * Cstruct: http://github.com/mirage/ocaml-cstruct
 * Re: http://github.com/mirage/ocaml-re

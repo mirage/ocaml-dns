@@ -21,9 +21,9 @@ open Printf
 module DR = Dns.RR
 module DP = Dns.Packet
 
-type 'a process =
-  src:Lwt_unix.sockaddr -> dst:Lwt_unix.sockaddr -> 'a
-  -> Dns.Query.answer option Lwt.t
+type ip_endpoint = Ipaddr.t * int
+
+type 'a process = src:ip_endpoint -> dst:ip_endpoint -> 'a -> Dns.Query.answer option Lwt.t
 
 module type PROCESSOR = sig
   include Dns.Protocol.SERVER
@@ -32,36 +32,18 @@ end
 
 type 'a processor = (module PROCESSOR with type context = 'a)
 
-let bind_fd ~address ~port =
-  lwt src = try_lwt
-    (* should this be lwt hent = Lwt_lib.gethostbyname addr ? *)
-    let hent = Unix.gethostbyname address in
-    return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), port))
-  with _ ->
-    raise_lwt (Failure ("cannot resolve " ^ address))
-  in
-  let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
-  let () = Lwt_unix.bind fd src in
-  return (fd,src)
-
-let process_query fd buf len src dst processor =
+let process_query buf len obuf src dst processor =
   let module Processor = (val processor : PROCESSOR) in
   match Processor.parse (Dns.Buf.sub buf 0 len) with
-  |None -> return ()
+  |None -> return None
   |Some ctxt -> begin
     lwt answer = Processor.process ~src ~dst ctxt in
     match answer with
-    |None -> return ()
+    |None -> return None
     |Some answer ->
       let query = Processor.query_of_context ctxt in
       let response = Dns.Query.response_of_answer query answer in
-      (* Lwt_bytes.unsafe_fill buf 0 (Lwt_bytes.length buf) '\x00'; *)
-      match Processor.marshal buf ctxt response with
-      | None -> return ()
-      | Some buf ->
-        (* TODO transmit queue, rather than ignoring result here *)
-        let _ = Lwt_bytes.(sendto fd buf 0 (Dns.Buf.length buf) [] dst) in
-        return ()
+      return (Processor.marshal obuf ctxt response)
  end
 
 let processor_of_process process : Dns.Packet.t processor =
@@ -88,44 +70,3 @@ let process_of_zonebuf zonebuf =
         (fun () -> get_answer q.q_name q.q_type d.id)
     in
     return r
-
-let eventual_process_of_zonefile zonefile =
-  let lines = Lwt_io.lines_of_file zonefile in
-  let buf = Buffer.create 1024 in
-  Lwt_stream.iter (fun l ->
-    Buffer.add_string buf l; Buffer.add_char buf '\n') lines
-  >>= fun () -> return (process_of_zonebuf (Buffer.contents buf))
-
-let bufsz = 4096
-let listen ~fd ~src ~processor =
-  let cont = ref true in
-  let bufs = Lwt_pool.create 64 (fun () -> return (Dns.Buf.create bufsz)) in
-  let _ =
-    while_lwt !cont do
-      Lwt_pool.use bufs (fun buf ->
-        lwt len, dst = Lwt_bytes.(recvfrom fd buf 0 bufsz []) in
-	  return (Lwt.ignore_result
-                    (process_query fd buf len src dst processor))
-     )
-    done
-  in
-  let t,u = Lwt.task () in
-  Lwt.on_cancel t
-    (fun () -> Printf.eprintf "listen: cancelled\n%!"; cont := false);
-  Printf.eprintf "listen: done\n%!";
-  t
-
-let serve_with_processor ~address ~port ~processor =
-  bind_fd ~address ~port
-  >>= fun (fd, src) -> listen ~fd ~src ~processor
-
-let serve_with_zonebuf ~address ~port ~zonebuf =
-  let process = process_of_zonebuf zonebuf in
-  let processor = (processor_of_process process :> (module PROCESSOR)) in
-  serve_with_processor ~address ~port ~processor
-
-let serve_with_zonefile ~address ~port ~zonefile =
-  eventual_process_of_zonefile zonefile
-  >>= fun process ->
-  let processor = (processor_of_process process :> (module PROCESSOR)) in
-  serve_with_processor ~address ~port ~processor

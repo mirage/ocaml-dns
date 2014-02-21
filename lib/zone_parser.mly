@@ -103,61 +103,7 @@ let parse_wks proto services =
 
 (* Parse an IPv6 address.  (RFC 3513 section 2.2) *)
 let parse_ipv6 s =
-  failwith "notyet"
-  (* XXX TODO use the parsing regexps from ocaml-uri here?
-  let singledot = Regexp.Re.from_string "\\." in
-  let singlecolon = Regexp.Re.from_string ":" in
-  let doublecolon = Regexp.Re.from_string "::" in
-  (* Parse an IPv4 dotted-quad into big-endian bytes *)
-  let ipv4_chunk s =
-    match (Regexp.Re.split_delim singledot s) with
-      a :: b :: c :: d :: [] ->
-	let abyte = String.make 1 (char_of_int (parse_uint8 a)) in
-	let bbyte = String.make 1 (char_of_int (parse_uint8 b)) in
-	let cbyte = String.make 1 (char_of_int (parse_uint8 c)) in
-	let dbyte = String.make 1 (char_of_int (parse_uint8 d)) in
-	abyte ^ bbyte ^ cbyte ^ dbyte
-    | _ -> raise Parsing.Parse_error
-  in
-  (* Parse a 16-bit hex number into big-endian bytes *)
-  let ipv6_chunk s =
-    let n = int_of_string ("0x" ^ s) in
-    if n > 0xffff then raise Parsing.Parse_error;
-    let nl = char_of_int (n land 0xff) in
-    let nh = char_of_int ((n lsr 8) land 0xff) in
-    String.make 1 nh ^ (String.make 1 nl)
-  in
-  (* Before the "::" -- 16bit hex chunks *)
-  let rec ipv6_lhs = function
-      [] -> ""
-    | chunk :: rest -> ipv6_chunk chunk ^ (ipv6_lhs rest)
-  in
-  (* After the "::" -- 16bit hex chunks, but might end with ipv4 *)
-  let rec ipv6_rhs = function
-      [] -> ""
-    | chunk :: [] ->
-	begin
-	  try ipv6_chunk chunk
-	  with Failure _ | Parsing.Parse_error -> ipv4_chunk chunk
-	end
-    | chunk :: rest -> ipv6_chunk chunk ^ (ipv6_rhs rest)
-  in
-  let halves = Regexp.Re.split_delim doublecolon s in
-  match halves with
-    [] -> String.make 16 '\000'
-  | [ a ] ->
-      let r = ipv6_rhs (Regexp.Re.split_delim singlecolon a) in
-      let len = String.length r in
-      if not (len = 16) then raise Parsing.Parse_error;
-      r
-  | [ a ; b ] ->
-      let l = ipv6_lhs (Regexp.Re.split_delim singlecolon a) in
-      let r = ipv6_rhs (Regexp.Re.split_delim singlecolon b) in
-      let len = String.length r + (String.length l) in
-      if len > 16 then raise Parsing.Parse_error;
-      l ^ (String.make (16 - len) '\000') ^ r
-  | _ -> raise Parsing.Parse_error
-  *)
+  Ipaddr.V6.of_string_exn s
 
 %}
 
@@ -314,10 +260,10 @@ rr:
 
 ipv4: NUMBER DOT NUMBER DOT NUMBER DOT NUMBER
      { try
-	 let a = Int32.of_int (parse_uint8 $1) in
-	 let b = Int32.of_int (parse_uint8 $3) in
-	 let c = Int32.of_int (parse_uint8 $5) in
-	 let d = Int32.of_int (parse_uint8 $7) in
+	 let a = parse_uint8 $1 in
+	 let b = parse_uint8 $3 in
+	 let c = parse_uint8 $5 in
+	 let d = parse_uint8 $7 in
          Ipaddr.V4.make a b c d
        with Failure _ | Parsing.Parse_error ->
 	 parse_error ("invalid IPv4 address " ^

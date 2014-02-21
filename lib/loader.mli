@@ -39,6 +39,7 @@ val no_more_updates : db -> unit
 
 val add_generic_rr : int -> string -> int32 -> domain_name -> db -> unit
 val add_a_rr : Ipaddr.V4.t -> int32 -> domain_name -> db -> unit
+val add_aaaa_rr : Ipaddr.V6.t -> int32 -> domain_name -> db -> unit
 val add_ns_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_cname_rr : domain_name -> int32 -> domain_name -> db -> unit
 val add_soa_rr :
@@ -62,7 +63,6 @@ val add_x25_rr : string -> int32 -> domain_name -> db -> unit
 val add_isdn_rr :
   string -> string option -> int32 -> domain_name -> db -> unit
 val add_rt_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
-val add_aaaa_rr : string -> int32 -> domain_name -> db -> unit
 val add_srv_rr :
   int -> int -> int -> domain_name -> int32 -> domain_name -> db -> unit
 (* val add_unspec_rr : string -> int32 -> domain_name -> db -> unit *)

@@ -1,5 +1,14 @@
-0.7.1 (trunk):
+0.8.0 (trunk):
+* Use `Ipaddr.V6` to restore IPv6/AAAA RR support.
+* `process_query` now takes an output buffer so it doesn't have to
+  overwrite the input buffer it just parsed.
 * Add Travis continuous integration scripts.
+* Regenerate with OASIS 0.4.1
+* Split the `dns.lwt` into a portable `dns.lwt-core` that doesn't
+  require Unix (from which a Mirage version can be built).  The only
+  change to existing applications is that Unix-specific functions
+  have shifted into `Dns_resolver_unix` or `Dns_server_unix`, with
+  the module types for `PROCESSOR` and `CLIENT` unchanged.
 
 0.7.0 (2013-08-26):
 * Add path argument to `Resolv_conf in Dns_resolver.config.

@@ -50,7 +50,7 @@ and rrsig = {
 
 and rdata =
   | A of Ipaddr.V4.t list (* always length = 1 *)
-  | AAAA of cstr list
+  | AAAA of Ipaddr.V6.t list (* always length = 1 *)
   | AFSDB of (Cstruct.uint16 * dnsnode) list
   | CNAME of dnsnode list
   | HINFO of (cstr * cstr) list

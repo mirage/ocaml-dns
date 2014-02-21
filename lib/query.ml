@@ -142,6 +142,10 @@ let answer ?(dnssec=false) qname qtype trie =
           log_rrset owner Packet.RR_A;
           List.iter (fun ip -> addrr (Packet.A ip)) l
 
+      | RR.AAAA l ->
+          log_rrset owner Packet.RR_AAAA;
+          List.iter (fun ip -> addrr (Packet.AAAA ip)) l
+
       | RR.NS l ->
           log_rrset owner Packet.RR_NS;
         List.iter (fun d ->
@@ -232,10 +236,6 @@ let answer ?(dnssec=false) qname qtype trie =
           enqueue_additional d Packet.RR_X25;
           enqueue_additional d Packet.RR_ISDN;
           addrr (Packet.RT (preference, d.owner.H.node))) l
-
-      | RR.AAAA l ->
-          log_rrset owner Packet.RR_AAAA;
-        List.iter (fun i -> addrr (Packet.AAAA i.H.node)) l
 
       | RR.SRV l ->
           List.iter (fun (priority, weight, port, d) ->
