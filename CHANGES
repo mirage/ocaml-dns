@@ -1,4 +1,4 @@
-0.8.0 (trunk):
+0.8.0 (2014-02-21):
 * Use `Ipaddr.V6` to restore IPv6/AAAA RR support.
 * `process_query` now takes an output buffer so it doesn't have to
   overwrite the input buffer it just parsed.
