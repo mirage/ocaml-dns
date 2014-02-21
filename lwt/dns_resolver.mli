@@ -1,4 +1,5 @@
 (*
+ * Copyright (c) 2014 Anil Madhavapeddy <anil@recoil.org>
  * Copyright (c) 2012 Richard Mortier <mort@cantab.net>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -14,45 +15,24 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Dns.Name
-open Dns.Packet
-open Dns.Protocol
-open Cstruct
+type commfn =
+  (Dns.Buf.t -> unit Lwt.t) *
+  ((Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Lwt.t)
 
-type t = {
-  client : (module CLIENT);
-  servers : (string * int) list;
-  search_domains : string list;
-}
+val resolve : 
+  (module Dns.Protocol.CLIENT) ->
+  ?dnssec:bool ->
+  commfn -> Dns.Packet.q_class -> 
+  Dns.Packet.q_type -> 
+  Dns.Name.domain_name -> 
+  Dns.Packet.t Lwt.t
 
-type config = [
-  | `Resolv_conf of string
-  | `Static of (string * int) list * string list
-]
+val gethostbyname :
+  ?q_class:Dns.Packet.q_class ->
+  ?q_type:Dns.Packet.q_type -> commfn ->
+  string -> Ipaddr.V4.t list Lwt.t
 
-(** Create a resolver instance that either uses the system
-    /etc/resolv.conf, or a statically specified preference
-  *)
-val create : ?client:(module CLIENT) -> ?config:config -> unit -> t Lwt.t
-
-(** Lookup a {! domain_name }.
-
-    @return the corresponding IPv4 addresses.
-*)
-val gethostbyname : t -> ?q_class:q_class -> ?q_type:q_type
-  -> string -> Ipaddr.V4.t list Lwt.t
-
-(** Reverse lookup an IPv4 address.
-
-    @return the corresponding {! domain_name }s.
-*)
-val gethostbyaddr : t -> ?q_class:q_class -> ?q_type:q_type
-  -> Ipaddr.V4.t -> string list Lwt.t
-
-(** Resolve a fully specified query, {! q_class }, {! q_type } and {!
-    domain_name }.
-
-    @return the full a {! dns } structure.
-*)
-val resolve : t -> ?dnssec:bool -> q_class -> q_type ->
-  domain_name -> Dns.Packet.t Lwt.t
+val gethostbyaddr :
+  ?q_class:Dns.Packet.q_class ->
+  ?q_type:Dns.Packet.q_type -> commfn ->
+  Ipaddr.V4.t -> string list Lwt.t

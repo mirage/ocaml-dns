@@ -35,7 +35,7 @@ Library lwt
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt
-  Modules: Dns_server, Dns_resolver
+  Modules: Dns_server_unix, Dns_resolver_unix
   BuildDepends: lwt.unix (>= 2.4.1), cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix
   FindlibParent: dns
 
@@ -44,7 +44,7 @@ Library "lwt-core"
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt-core
-  Modules: Dns_server_core, Dns_resolver_core
+  Modules: Dns_server, Dns_resolver
   BuildDepends: lwt, cstruct, lwt.syntax, dns
   FindlibParent: dns
 
