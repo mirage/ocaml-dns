@@ -21,9 +21,9 @@ open Printf
 module DR = Dns.RR
 module DP = Dns.Packet
 
-type addr = Ipaddr.t * int
+type ip_endpoint = Ipaddr.t * int
 
-type 'a process = src:addr -> dst:addr -> 'a -> Dns.Query.answer option Lwt.t
+type 'a process = src:ip_endpoint -> dst:ip_endpoint -> 'a -> Dns.Query.answer option Lwt.t
 
 module type PROCESSOR = sig
   include Dns.Protocol.SERVER
