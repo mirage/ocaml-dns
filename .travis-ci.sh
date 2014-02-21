@@ -1,4 +1,4 @@
-OPAM_DEPENDS="lwt cstruct ipaddr re ounit mirage-net cmdliner"
+OPAM_DEPENDS="lwt cstruct ipaddr re ounit cmdliner"
 
 case "$OCAML_VERSION,$OPAM_VERSION" in
 3.12.1,1.0.0) ppa=avsm/ocaml312+opam10 ;;
