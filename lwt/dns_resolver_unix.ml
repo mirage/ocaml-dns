@@ -123,7 +123,7 @@ module Resolv_conf = struct
 end
 
 module Static = struct
-  let create client ?(servers=["8.8.8.8",53]) ?(search_domains=[]) () =
+  let create client ?(servers=[ns,port]) ?(search_domains=[]) () =
     { client; servers; search_domains }
 end
 
