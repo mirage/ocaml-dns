@@ -28,7 +28,7 @@ Library dns
   Modules:
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
-  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 0.2.2)
+  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0)
 
 Library lwt
   Path: lwt
