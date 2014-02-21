@@ -1,4 +1,5 @@
 0.8.0 (trunk):
+* Add a `Dns_resolver_core` that is a portable Lwt resolver.
 * `process_query` now takes an output buffer so it doesn't have to
   overwrite the input buffer it just parsed.
 * Add Travis continuous integration scripts.
