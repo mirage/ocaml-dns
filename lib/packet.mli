@@ -198,7 +198,7 @@ type type_bit_maps
 
 type rdata =
 | A of Ipaddr.V4.t
-| AAAA of string
+| AAAA of Ipaddr.V6.t
 | AFSDB of uint16 * domain_name
 | CNAME of domain_name
 | DNSKEY of uint16 * dnssec_alg * string

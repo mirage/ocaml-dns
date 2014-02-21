@@ -21,35 +21,6 @@ open Operators
 open Name
 open Cstruct
 
-let bytes_to_ipv4 bs =
-  let (|||) x y = Int32.logor x y in
-  let (<<<) x y = Int32.shift_left x y in
-  let a = Int32.of_int (byte_to_int bs.[0]) in
-  let b = Int32.of_int (byte_to_int bs.[1]) in
-  let c = Int32.of_int (byte_to_int bs.[2]) in
-  let d = Int32.of_int (byte_to_int bs.[3]) in
-  (a <<< 24) ||| (b <<< 16) ||| (c <<< 8) ||| d
-
-type ipv6 = int64 * int64
-let ipv6_to_string (hi, lo) =
-  let (&&&&) x y = Int64.logand x y in
-  let (>>>>) x y = Int64.shift_right_logical x y in
-  sprintf "%Lx:%Lx:%Lx:%Lx:%Lx:%Lx:%Lx:%Lx"
-    ((hi >>>> 48) &&&& 0xffff_L) ((hi >>>> 32) &&&& 0xffff_L)
-    ((hi >>>> 16) &&&& 0xffff_L) ( hi          &&&& 0xffff_L)
-    ((lo >>>> 48) &&&& 0xffff_L) ((lo >>>> 32) &&&& 0xffff_L)
-    ((lo >>>> 16) &&&& 0xffff_L) ( lo          &&&& 0xffff_L)
-
-let bytes_to_ipv6 bs =
-  let (++++) x y = Int64.add x y in
-  let (<<<<) x y = Int64.shift_left x y in
-  let hihi = bytes_to_ipv4 (String.sub bs 0 4) in
-  let hilo = bytes_to_ipv4 (String.sub bs 4 4) in
-  let lohi = bytes_to_ipv4 (String.sub bs 8 4) in
-  let lolo = bytes_to_ipv4 (String.sub bs 12 4) in
-  ((Int64.of_int32 hihi) <<<< 48) ++++ (Int64.of_int32 hilo),
-  ((Int64.of_int32 lohi) <<<< 48) ++++ (Int64.of_int32 lolo)
-
 cenum digest_alg {
   SHA1 = 1;
   SHA256 = 2
@@ -64,11 +35,11 @@ cenum gateway_tc {
 
 type gateway =
   | IPv4 of Ipaddr.V4.t
-  | IPv6 of ipv6
+  | IPv6 of Ipaddr.V6.t
   | NAME of domain_name
 let gateway_to_string = function
   | IPv4 i -> Ipaddr.V4.to_string i
-  | IPv6 i -> ipv6_to_string i
+  | IPv6 i -> Ipaddr.V6.to_string i
   | NAME n -> domain_name_to_string n
 
 cenum pubkey_alg {
@@ -219,7 +190,7 @@ let type_bit_maps_to_string (tbms:type_bit_maps) : string =
 
 type rdata =
   | A of Ipaddr.V4.t
-  | AAAA of string
+  | AAAA of Ipaddr.V6.t
   | AFSDB of uint16 * domain_name
   | CNAME of domain_name
   | DNSKEY of uint16 * dnssec_alg * string
@@ -265,7 +236,7 @@ let hex_of_string in_str =
 
 let rdata_to_string = function
   | A ip -> sprintf "A (%s)" (Ipaddr.V4.to_string ip)
-  | AAAA bs -> sprintf "AAAA (%s)" bs
+  | AAAA ip -> sprintf "AAAA (%s)" (Ipaddr.V6.to_string ip)
   | AFSDB (x, n)
     -> sprintf "AFSDB (%d, %s)" x (domain_name_to_string n)
   | CNAME n -> sprintf "CNAME (%s)" (domain_name_to_string n)
@@ -947,7 +918,8 @@ let parse_rdata names base t cls ttl buf =
 
     | RR_A -> A (Ipaddr.V4.of_int32 (BE.get_uint32 buf 0))
 
-    | RR_AAAA -> AAAA (Cstruct.to_string buf)
+    | RR_AAAA -> AAAA (Ipaddr.V6.of_int64 ((BE.get_uint64 buf 0),(BE.get_uint64 buf 8)))
+
     | RR_AFSDB -> AFSDB (BE.get_uint16 buf 0,
                          buf |> parse_name names (base+2) |> stop)
 
@@ -1064,10 +1036,11 @@ let parse_rdata names base t cls ttl buf =
     | A ip ->
         BE.set_uint32 rdbuf 0 (Ipaddr.V4.to_int32 ip);
         RR_A, names, 4
-    | AAAA s ->
-        let s, slen = charstr s in
-        Cstruct.blit_from_string s 0 rdbuf 0 slen;
-        RR_AAAA, names, slen
+    | AAAA ip ->
+        let s1,s2 = Ipaddr.V6.to_int64 ip in
+        BE.set_uint64 rdbuf 0 s1;
+        BE.set_uint64 rdbuf 8 s2;
+        RR_AAAA, names, 16
     | AFSDB (x,name) ->
         BE.set_uint16 rdbuf 0 x;
         let names, offset, _ =
@@ -1213,8 +1186,8 @@ let parse_rdata names base t cls ttl buf =
   let compare_rdata a_rdata b_rdata =
     match (a_rdata, b_rdata) with
     | A a_ip, A b_ip -> Ipaddr.V4.compare a_ip b_ip
-    | X25 a, X25 b
-    | AAAA a, AAAA b -> String.compare a b
+    | AAAA a_ip, AAAA b_ip -> Ipaddr.V6.compare a_ip b_ip
+    | X25 a, X25 b -> String.compare a b
     | AFSDB (a_x,a_name), AFSDB (b_x, b_name) ->
         if (a_x = b_x) then
           Name.dnssec_compare a_name b_name

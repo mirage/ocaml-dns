@@ -171,6 +171,9 @@ let add_generic_rr tcode str ttl owner db =
 let add_a_rr ip ttl owner db =
   add_rrset { ttl; rdata = A [ ip ] } owner db
 
+let add_aaaa_rr ip ttl owner db =
+  add_rrset { ttl; rdata = AAAA [ ip ] } owner db
+
 let add_ns_rr target ttl owner db =
   try
     let targetnode = get_target_dnsnode target db in
@@ -257,10 +260,6 @@ let add_rt_rr pref target ttl owner db =
   let pref = pref in
   let targetnode = get_target_dnsnode target db in
   add_rrset { ttl; rdata = RT [ (pref, targetnode) ] } owner db
-
-let add_aaaa_rr str ttl owner db =
-  let s = hashcons_charstring str in
-  add_rrset { ttl; rdata = AAAA [ s ] } owner db
 
 let add_srv_rr pri weight port target ttl owner db =
   let pri = pri in
