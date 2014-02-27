@@ -1,0 +1,16 @@
+$ORIGIN example.com.
+$TTL 604800 
+
+;; SOA, including parentheses and comments and an embedded dot
+example.com.		604800	IN	 SOA   ( 
+	ns0.example.com. john\.doe.example.com. 1136975101 ; hello!
+	3600 1800 3024000 1800  
+)
+
+;; Various ways of expressing RRs
+example.com.		604800	IN	MX	10 mail.example.com.
+@			604800	IN	MX	20 bright.isp.net.
+example.com.            IN  604800      NS      ns0
+example.com.                            NS      ns3.isp.net.
+                                        NS      ns4.isp.net.
+

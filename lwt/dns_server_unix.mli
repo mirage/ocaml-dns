@@ -22,7 +22,7 @@ open Dns_server
 val bind_fd :
   address:string -> port:int -> (Lwt_unix.file_descr * Lwt_unix.sockaddr) Lwt.t
 
-val eventual_process_of_zonefile : string -> Dns.Packet.t process Lwt.t
+val eventual_process_of_zonefiles : string list -> Dns.Packet.t process Lwt.t
 
 (** General listening function for DNS servers. Pass in the [fd] and
     [src] from calling [bind_fd] and supply a [processor] which
@@ -39,6 +39,12 @@ val serve_with_processor :
 val serve_with_zonebuf :
   address:string -> port:int -> zonebuf:string -> unit Lwt.t
 
+val serve_with_zonebufs :
+  address:string -> port:int -> zonebufs:string list -> unit Lwt.t
+
 val serve_with_zonefile :
   address:string -> port:int -> zonefile:string -> unit Lwt.t
+
+val serve_with_zonefiles :
+  address:string -> port:int -> zonefiles:string list -> unit Lwt.t
 

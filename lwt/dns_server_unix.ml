@@ -15,14 +15,18 @@ let bind_fd ~address ~port =
   let () = Lwt_unix.bind fd src in
   return (fd,src)
 
-let eventual_process_of_zonefile zonefile =
-  let lines = Lwt_io.lines_of_file zonefile in
-  let buf = Buffer.create 1024 in
-  Lwt_stream.iter (fun l ->
+let eventual_process_of_zonefiles zonefiles =
+  Lwt_list.map_s (fun zonefile ->
+    let lines = Lwt_io.lines_of_file zonefile in
+    let buf = Buffer.create 1024 in
+    Lwt_stream.iter (fun l ->
       Buffer.add_string buf l;
       Buffer.add_char buf '\n') lines
-  >>= fun () ->
-  return (process_of_zonebuf (Buffer.contents buf))
+    >>= fun () ->
+    return (Buffer.contents buf)
+  ) zonefiles
+  >>= fun zonebufs ->
+  return (process_of_zonebufs zonebufs)
 
 let bufsz = 4096
 
@@ -65,14 +69,19 @@ let serve_with_processor ~address ~port ~processor =
   bind_fd ~address ~port
   >>= fun (fd, src) -> listen ~fd ~src ~processor
 
-let serve_with_zonebuf ~address ~port ~zonebuf =
-  let process = process_of_zonebuf zonebuf in
+let serve_with_zonebufs ~address ~port ~zonebufs =
+  let process = process_of_zonebufs zonebufs in
   let processor = (processor_of_process process :> (module PROCESSOR)) in
   serve_with_processor ~address ~port ~processor
 
-let serve_with_zonefile ~address ~port ~zonefile =
-  eventual_process_of_zonefile zonefile
+let serve_with_zonefiles ~address ~port ~zonefiles =
+  eventual_process_of_zonefiles zonefiles
   >>= fun process ->
   let processor = (processor_of_process process :> (module PROCESSOR)) in
   serve_with_processor ~address ~port ~processor
 
+let serve_with_zonebuf ~address ~port ~zonebuf =
+  serve_with_zonebufs ~address ~port ~zonebufs:[zonebuf]
+
+let serve_with_zonefile ~address ~port ~zonefile =
+  serve_with_zonefiles ~address ~port ~zonefiles:[zonefile]
