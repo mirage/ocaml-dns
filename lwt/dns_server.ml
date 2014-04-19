@@ -54,8 +54,9 @@ let processor_of_process process : Dns.Packet.t processor =
   end in
   (module P)
 
-let process_of_zonebuf zonebuf =
-  let db = Dns.Zone.load [] zonebuf in
+let process_of_zonebufs zonebufs =
+  let db = List.fold_left (fun db -> Dns.Zone.load ~db []) 
+    (Dns.Loader.new_db ()) zonebufs in
   let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =
     let qname = List.map String.lowercase qname in
@@ -70,3 +71,6 @@ let process_of_zonebuf zonebuf =
         (fun () -> get_answer q.q_name q.q_type d.id)
     in
     return r
+
+let process_of_zonebuf zonebuf =
+  process_of_zonebufs [zonebuf] 

@@ -1,4 +1,6 @@
 0.8.1 (trunk):
+* Add `process_of_zonebufs` to handle multiple zone files.
+* Adapt `Dns_server_unix` to expose multiple zonebuf functions.
 
 0.8.0 (2014-02-21):
 * Use `Ipaddr.V6` to restore IPv6/AAAA RR support.

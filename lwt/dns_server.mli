@@ -40,6 +40,6 @@ val process_query: Dns.Buf.t -> int -> Dns.Buf.t -> ip_endpoint -> ip_endpoint -
 
 val processor_of_process : Dns.Packet.t process -> Dns.Packet.t processor
 
+val process_of_zonebufs : string list -> Dns.Packet.t process
+
 val process_of_zonebuf : string -> Dns.Packet.t process
-
-
