@@ -1,4 +1,4 @@
-0.8.1 (trunk):
+0.8.1 (2014-04-19):
 * Add `process_of_zonebufs` to handle multiple zone files.
 * Adapt `Dns_server_unix` to expose multiple zonebuf functions.
 
