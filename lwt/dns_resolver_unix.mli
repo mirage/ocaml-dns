@@ -25,9 +25,11 @@ type t = {
   search_domains : string list;
 }
 
+(** Defines the location of the stub resolvers to use for
+    client resolution. *)
 type config = [
-  | `Resolv_conf of string
-  | `Static of (string * int) list * string list
+  | `Resolv_conf of string  (** A [resolv.conf] filename *)
+  | `Static of (string * int) list * string list (** A list of [hostname,port] of stub resolvers, and a search domain list *)
 ]
 
 (** Create a resolver instance that either uses the system
