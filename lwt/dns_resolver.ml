@@ -27,21 +27,23 @@ module DP = Dns.Packet
 type result = Answer of DP.t | Error of exn
 
 type commfn =
-  (Dns.Buf.t -> unit Lwt.t) * ((Dns.Buf.t -> Dns.Packet.t option) -> DP.t Lwt.t)
+  (Dns.Buf.t -> unit Lwt.t) *
+  ((Dns.Buf.t -> Dns.Packet.t option) -> DP.t Lwt.t) * 
+  (unit -> unit Lwt.t)
 
 let log_info s = eprintf "INFO: %s\n%!" s
 let log_debug s = eprintf "DEBUG: %s\n%!" s
 let log_warn s = eprintf "WARN: %s\n%!" s
 
-let rec send_req txfn q = function
+let rec send_req txfn timerfn q = function
   | 0 -> return ()
   | count ->
-      lwt _ = txfn q in
-      lwt _ = Lwt_unix.sleep 5.0 in
+      txfn q >>= fun _ ->
+      timerfn () >>= fun () ->
       printf "retrying query for %d times\n%!" (4-count);
-      send_req txfn q (count - 1)
+      send_req txfn timerfn q (count - 1)
 
-let send_pkt client (txfn,rxfn) pkt =
+let send_pkt client (txfn,rxfn,timerfn) pkt =
   let module R = (val client : CLIENT) in
   let cqpl = R.marshal pkt in
   let resl = List.map (fun (ctxt,q) ->
@@ -49,7 +51,7 @@ let send_pkt client (txfn,rxfn) pkt =
     (* start the requests in parallel and run them until success or timeout*)
     let t, w = Lwt.wait () in
     async (fun () -> pick [
-      (send_req txfn q 4
+      (send_req txfn timerfn q 4
        >>= fun () -> return (wakeup w (Error (R.timeout ctxt))));
       (catch
          (fun () ->
@@ -77,7 +79,7 @@ let send_pkt client (txfn,rxfn) pkt =
 
 let resolve client
     ?(dnssec=false)
-    commfn
+    (commfn:commfn)
     (q_class:DP.q_class) (q_type:DP.q_type)
     (q_name:domain_name) =
     try_lwt
