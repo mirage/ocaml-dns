@@ -1,6 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: d3cbf6ebdc6f9751873f39d04006b018)
-version = "0.8.1"
+# DO NOT EDIT (digest: 9a8ba33d69799f769637d03f187dd557)
+version = "0.9.0"
 description = "DNS client and server implementation"
 requires = "cstruct cstruct.syntax re re.str ipaddr"
 archive(byte) = "dns.cma"
@@ -9,25 +9,25 @@ archive(native) = "dns.cmxa"
 archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
 package "lwt-core" (
- version = "0.8.1"
+ version = "0.9.0"
  description = "DNS client and server implementation"
  requires = "lwt cstruct lwt.syntax dns"
- archive(byte) = "lwt-core.cma"
- archive(byte, plugin) = "lwt-core.cma"
- archive(native) = "lwt-core.cmxa"
- archive(native, plugin) = "lwt-core.cmxs"
- exists_if = "lwt-core.cma"
+ archive(byte) = "dns-lwt-core.cma"
+ archive(byte, plugin) = "dns-lwt-core.cma"
+ archive(native) = "dns-lwt-core.cmxa"
+ archive(native, plugin) = "dns-lwt-core.cmxs"
+ exists_if = "dns-lwt-core.cma"
 )
 
 package "lwt" (
- version = "0.8.1"
+ version = "0.9.0"
  description = "DNS client and server implementation"
  requires = "lwt.unix cstruct.lwt lwt.syntax dns dns.lwt-core ipaddr.unix"
- archive(byte) = "lwt.cma"
- archive(byte, plugin) = "lwt.cma"
- archive(native) = "lwt.cmxa"
- archive(native, plugin) = "lwt.cmxs"
- exists_if = "lwt.cma"
+ archive(byte) = "dns-lwt.cma"
+ archive(byte, plugin) = "dns-lwt.cma"
+ archive(native) = "dns-lwt.cmxa"
+ archive(native, plugin) = "dns-lwt.cmxs"
+ exists_if = "dns-lwt.cma"
 )
 # OASIS_STOP
 
