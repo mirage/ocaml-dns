@@ -29,6 +29,7 @@ Library dns
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
   BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0)
+  XMetaRequires: cstruct, re, re.str, ipaddr
 
 Library "dns-lwt"
   Path: lwt
@@ -37,6 +38,7 @@ Library "dns-lwt"
   Findlibname: lwt
   Modules: Dns_server_unix, Dns_resolver_unix
   BuildDepends: lwt.unix (>= 2.4.1), cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix
+  XMetaRequires: lwt.unix, cstruct.lwt, dns, dns.lwt-core, ipaddr.unix
   FindlibParent: dns
 
 Library "dns-lwt-core"

@@ -1,7 +1,7 @@
 0.9.0 (2014-06-16):
 * Remove a Unix dependency that snuck into the `Dns_resolver` portable
   core, by adding a timeout argument to the `commfn` type.
-* Improve ocamldoc in Lwt.
+* Improve ocamldoc in `Dns_resolver_unix`.
 
 0.8.1 (2014-04-19):
 * Add `process_of_zonebufs` to handle multiple zone files.
