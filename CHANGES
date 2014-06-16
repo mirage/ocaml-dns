@@ -1,4 +1,5 @@
 0.9.0 (2014-06-16):
+* Ensure that all `Dns.Buf.t` buffers are page-aligned, via `Io_page`.
 * Remove a Unix dependency that snuck into the `Dns_resolver` portable
   core, by adding a timeout argument to the `commfn` type.
 * Improve ocamldoc in `Dns_resolver_unix`.
