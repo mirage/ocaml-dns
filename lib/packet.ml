@@ -1226,7 +1226,10 @@ let parse_rr names base buf =
     | None ->
         let ttl = get_rr_ttl buf in
         let rdlen = get_rr_rdlen buf in
-        let Some(cls) = int_to_rr_class (get_rr_cls buf) in
+        let cls =
+          match int_to_rr_class (get_rr_cls buf) with
+          | None -> failwith "invalid RR class"
+          | Some cls -> cls in
         let data = Cstruct.to_string
         (Cstruct.sub buf sizeof_rr rdlen) in
         ({name; cls; ttl; rdata=UNKNOWN(t, data) },

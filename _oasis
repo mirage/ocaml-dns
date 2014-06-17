@@ -1,7 +1,7 @@
 OASISFormat: 0.3
 OCamlVersion: >= 4.00.0
 Name:        dns
-Version:     0.8.1
+Version:     0.9.0
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC
@@ -28,18 +28,20 @@ Library dns
   Modules:
     Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
-  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0)
+  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0), io-page
+  XMetaRequires: cstruct, re, re.str, ipaddr, io-page
 
-Library lwt
+Library "dns-lwt"
   Path: lwt
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt
   Modules: Dns_server_unix, Dns_resolver_unix
-  BuildDepends: lwt.unix (>= 2.4.1), cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix
+  BuildDepends: lwt.unix (>= 2.4.1), cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix, io-page.unix
+  XMetaRequires: lwt.unix, cstruct.lwt, dns, dns.lwt-core, ipaddr.unix, io-page.unix
   FindlibParent: dns
 
-Library "lwt-core"
+Library "dns-lwt-core"
   Path: lwt
   Build$: flag(lwt)
   Install$: flag(lwt)

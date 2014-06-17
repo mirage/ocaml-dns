@@ -103,3 +103,4 @@ let rdata_to_string = function
   | X25 _ -> "X25"
   | DNSKEY _ -> "DNSKEY"
   | RRSIG _ -> "RRSIG"
+  | DS _ -> "DS"

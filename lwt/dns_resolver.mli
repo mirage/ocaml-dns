@@ -17,7 +17,8 @@
 
 type commfn =
   (Dns.Buf.t -> unit Lwt.t) *
-  ((Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Lwt.t)
+  ((Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Lwt.t) *
+  (unit -> unit Lwt.t)
 
 val resolve : 
   (module Dns.Protocol.CLIENT) ->
