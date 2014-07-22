@@ -15,10 +15,12 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-type commfn =
-  (Dns.Buf.t -> unit Lwt.t) *
-  ((Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Lwt.t) *
-  (unit -> unit Lwt.t)
+type commfn = {
+  txfn    : Dns.Buf.t -> unit Lwt.t;
+  rxfn    : (Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Lwt.t;
+  timerfn : unit -> unit Lwt.t;
+  cleanfn : unit -> unit Lwt.t;
+}
 
 val resolve : 
   (module Dns.Protocol.CLIENT) ->

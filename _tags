@@ -130,4 +130,5 @@ true: annot, bin_annot
 <mirage/*>: syntax_camlp4o, pkg_lwt.syntax
 <lib_test/*>: syntax_camlp4o
 <lib_test/*>: pkg_lwt.syntax
+<lib_test/*>: not_hygienic
 <client/*>: syntax_camlp4o, pkg_lwt.syntax

@@ -7,3 +7,7 @@ setup.log
 *.native
 *.byte
 *.docdir
+*.cmi
+*.cmo
+*.cmx
+*.o
