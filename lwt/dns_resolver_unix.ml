@@ -25,6 +25,8 @@ open Dns_resolver
 
 module DP = Dns.Packet
 
+let log_warn s = eprintf "WARN: %s\n%!" s
+
 let buflen = 4096
 let ns = "8.8.8.8"
 let port = 53
