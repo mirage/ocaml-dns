@@ -26,10 +26,12 @@ module DP = Dns.Packet
 
 type result = Answer of DP.t | Error of exn
 
-type commfn =
-  (Dns.Buf.t -> unit Lwt.t) *
-  ((Dns.Buf.t -> Dns.Packet.t option) -> DP.t Lwt.t) * 
-  (unit -> unit Lwt.t)
+type commfn = {
+  txfn    : Dns.Buf.t -> unit Lwt.t;
+  rxfn    : (Dns.Buf.t -> Dns.Packet.t option) -> DP.t Lwt.t;
+  timerfn : unit -> unit Lwt.t;
+  cleanfn : unit -> unit Lwt.t;
+}
 
 let log_info s = eprintf "INFO: %s\n%!" s
 let log_debug s = eprintf "DEBUG: %s\n%!" s
@@ -43,7 +45,7 @@ let rec send_req txfn timerfn q = function
       printf "retrying query for %d times\n%!" (4-count);
       send_req txfn timerfn q (count - 1)
 
-let send_pkt client (txfn,rxfn,timerfn) pkt =
+let send_pkt client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
   let module R = (val client : CLIENT) in
   let cqpl = R.marshal pkt in
   let resl = List.map (fun (ctxt,q) ->
@@ -82,14 +84,20 @@ let resolve client
     (commfn:commfn)
     (q_class:DP.q_class) (q_type:DP.q_type)
     (q_name:domain_name) =
-    try_lwt
-      let id = (let module R = (val client : CLIENT) in R.get_id ()) in
-      let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
-      log_info (sprintf "query: %s\n%!" (DP.to_string q));
-      send_pkt client commfn q
-   with exn ->
-      log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
-      fail exn
+  try_lwt
+    let id = (let module R = (val client : CLIENT) in R.get_id ()) in
+    let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
+    log_info (sprintf "query: %s\n%!" (DP.to_string q));
+    send_pkt client commfn q
+    >>= fun r ->
+    commfn.cleanfn ()
+    >>= fun () ->
+    return r
+  with exn ->
+    commfn.cleanfn ()
+    >>= fun () ->
+    log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
+    fail exn
 
 let gethostbyname
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)

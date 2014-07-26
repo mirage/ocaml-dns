@@ -25,6 +25,8 @@ open Dns_resolver
 
 module DP = Dns.Packet
 
+let log_warn s = eprintf "WARN: %s\n%!" s
+
 let buflen = 4096
 let ns = "8.8.8.8"
 let port = 53
@@ -45,6 +47,12 @@ let outfd addr port =
 let connect_to_resolver server port =
   let dst = sockaddr server port in
   let ofd = outfd "0.0.0.0" 0 in
+  let cleanfn () = catch (fun () ->
+    Lwt_unix.close ofd
+  ) (fun e ->
+    log_warn (sprintf "%s\n%!" (Printexc.to_string e));
+    return ()
+  ) in
   let timerfn () = Lwt_unix.sleep 5.0 in
   let txfn buf =
     Lwt_bytes.sendto ofd buf 0 (Dns.Buf.length buf) [] dst 
@@ -58,7 +66,7 @@ let connect_to_resolver server port =
     | None -> rxfn f
     | Some r -> return r
   in
-  txfn, rxfn, timerfn
+  { txfn; rxfn; timerfn; cleanfn }
 
 let resolve client
     ?(dnssec=false)
