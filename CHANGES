@@ -1,4 +1,4 @@
-0.9.1 (2014-07-26):
+0.9.1 (2014-07-29):
 * Fix file descriptor leak in resolver (#15, #16) by expanding `commfn`
   with a cleanup function.
 
