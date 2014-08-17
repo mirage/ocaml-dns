@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2012 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2012-2014 Anil Madhavapeddy <anil@recoil.org>
  * Copyright (c) 2005 Fraser Research Inc. <djs@fraserresearch.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -41,7 +41,7 @@ end
 
 module KeywordValue : sig
   type t =
-  | Nameserver of string * int option
+  | Nameserver of Ipaddr.t * int option
   | Port of int
   | Domain of string
   | Lookup of LookupValue.t list
@@ -56,6 +56,6 @@ end
 val map_line : string -> string option
 
 type t = KeywordValue.t list
-val all_servers : KeywordValue.t list -> (string * int) list
-val choose_server : KeywordValue.t list -> (string * int) option
+val all_servers : KeywordValue.t list -> (Ipaddr.t * int) list
+val choose_server : KeywordValue.t list -> (Ipaddr.t * int) option
 val search_domains : KeywordValue.t list -> string list

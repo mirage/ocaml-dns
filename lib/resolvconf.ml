@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2012 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2012-2014 Anil Madhavapeddy <anil@recoil.org>
  * Copyright (c) 2005 Fraser Research Inc. <djs@fraserresearch.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -100,7 +100,7 @@ end
 
 module KeywordValue = struct
   type t =
-  | Nameserver of string * int option (* ipv4 dotted quad or ipv6 hex and colon *)
+  | Nameserver of Ipaddr.t * int option (* ipv4 dotted quad or ipv6 hex and colon *)
   | Port of int
   | Domain of string
   | Lookup of LookupValue.t list
@@ -113,19 +113,19 @@ module KeywordValue = struct
   let ns_of_string ns =
     let open Re_str in
     match string_match (regexp "\\[\\(.+\\)\\]:\\([0-9]+\\)") ns 0 with
-    |false -> Nameserver (ns, None)
+    |false -> Nameserver (Ipaddr.of_string_exn ns, None)
     |true ->
-      let ns = matched_group 1 ns in
+      let server = Ipaddr.of_string_exn (matched_group 1 ns) in
       let port = 
         try Some (int_of_string (matched_group 2 ns))
         with _ -> None
       in
-      Nameserver (ns, port)
+      Nameserver (server, port)
 
   let string_of_ns ns =
     match ns with
-    |ns, None -> ns
-    |ns, Some p -> Printf.sprintf "[%s]:%d" ns p
+    |ns, None -> Ipaddr.to_string ns
+    |ns, Some p -> Printf.sprintf "[%s]:%d" (Ipaddr.to_string ns) p
 
   let of_string x = 
     match split (String.lowercase x) with

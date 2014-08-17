@@ -1,3 +1,7 @@
+0.10.1 (trunk):
+* `Dns.Resolvconf` parses `/etc/resolv.conf` entries using `Ipaddr.t`
+  instead of `string` values now.
+
 0.9.1 (2014-07-29):
 * Fix file descriptor leak in resolver (#15, #16) by expanding `commfn`
   with a cleanup function.
