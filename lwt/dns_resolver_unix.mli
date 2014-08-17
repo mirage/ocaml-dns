@@ -1,5 +1,6 @@
 (*
  * Copyright (c) 2012 Richard Mortier <mort@cantab.net>
+ * Copyright (c) 2014 Anil Madhavapeddy <anil@recoil.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,7 +22,7 @@ open Cstruct
 
 type t = {
   client : (module CLIENT);
-  servers : (string * int) list;
+  servers : (Ipaddr.t * int) list;
   search_domains : string list;
 }
 
@@ -29,7 +30,7 @@ type t = {
     client resolution. *)
 type config = [
   | `Resolv_conf of string  (** A [resolv.conf] filename *)
-  | `Static of (string * int) list * string list (** A list of [hostname,port] of stub resolvers, and a search domain list *)
+  | `Static of (Ipaddr.t * int) list * string list (** A list of [hostname,port] of stub resolvers, and a search domain list *)
 ]
 
 (** Create a resolver instance that either uses the system
@@ -38,10 +39,10 @@ type config = [
 val create : ?client:(module CLIENT) -> ?config:config -> unit -> t Lwt.t
 
 (** Lookup a {! domain_name }.
-    @return the corresponding IPv4 addresses.
+    @return the corresponding IPv4/6 addresses.
 *)
 val gethostbyname : t -> ?q_class:q_class -> ?q_type:q_type
-  -> string -> Ipaddr.V4.t list Lwt.t
+  -> string -> Ipaddr.t list Lwt.t
 
 (** Reverse lookup an IPv4 address.
     @return the corresponding {! domain_name }s.

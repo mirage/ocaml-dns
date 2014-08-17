@@ -108,7 +108,10 @@ let gethostbyname
   resolve (module Dns.Protocol.Client) commfn q_class q_type domain
   >|= fun r ->
     List.fold_left (fun a x ->
-      match x.rdata with |A ip -> ip::a |_ -> a
+      match x.rdata with
+      | A ip -> Ipaddr.V4 ip :: a
+      | AAAA ip -> Ipaddr.V6 ip :: a
+      | _ -> a
     ) [] r.answers
    |> List.rev
 

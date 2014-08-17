@@ -34,7 +34,7 @@ val resolve :
 val gethostbyname :
   ?q_class:Dns.Packet.q_class ->
   ?q_type:Dns.Packet.q_type -> commfn ->
-  string -> Ipaddr.V4.t list Lwt.t
+  string -> Ipaddr.t list Lwt.t
 
 val gethostbyaddr :
   ?q_class:Dns.Packet.q_class ->
