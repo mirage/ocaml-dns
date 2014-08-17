@@ -28,5 +28,6 @@ depends: [
   "cmdliner"
   "ipaddr" {>= "2.2.0"}
   "io-page"
+  "base64"
 ]
 ocaml-version: [>= "4.00.0"]
