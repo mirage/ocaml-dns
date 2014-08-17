@@ -44,33 +44,32 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
       >>= function
       | None -> fail (Failure "DNS resolver connection lost")
       | Some buf ->
-         match f (Dns.Buf.of_cstruct buf) with
-         | None -> rxfn f
-         | Some packet -> return packet
+        match f (Dns.Buf.of_cstruct buf) with
+        | None -> rxfn f
+        | Some packet -> return packet
     in
     { txfn; rxfn; timerfn; cleanfn }
 
-let resolve client
-    ?(dnssec=false)
-    s server dns_port
-    (q_class:DP.q_class) (q_type:DP.q_type)
-    (q_name:domain_name) =
-   let commfn = connect_to_resolver s server dns_port in
-   resolve client ~dnssec commfn q_class q_type q_name
+  let resolve client
+      ?(dnssec=false)
+      s server dns_port
+      (q_class:DP.q_class) (q_type:DP.q_type)
+      (q_name:domain_name) =
+    let commfn = connect_to_resolver s server dns_port in
+    resolve client ~dnssec commfn q_class q_type q_name
 
-let gethostbyname
-    s ?(server = ns) ?(dns_port = port)
-    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
-    name =
-   let commfn = connect_to_resolver s server dns_port in
-   gethostbyname ~q_class ~q_type commfn name
+  let gethostbyname
+      s ?(server = ns) ?(dns_port = port)
+      ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
+      name =
+    let commfn = connect_to_resolver s server dns_port in
+    gethostbyname ~q_class ~q_type commfn name
 
-let gethostbyaddr
-    s ?(server = ns) ?(dns_port = port)
-    ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
-    addr
-    =
-   let commfn = connect_to_resolver s server dns_port in
-   gethostbyaddr ~q_class ~q_type commfn addr
+  let gethostbyaddr
+      s ?(server = ns) ?(dns_port = port)
+      ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
+      addr =
+    let commfn = connect_to_resolver s server dns_port in
+    gethostbyaddr ~q_class ~q_type commfn addr
 
 end
