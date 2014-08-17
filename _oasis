@@ -46,7 +46,7 @@ Library "dns-lwt"
   FindlibParent: dns
 
 Library "dns-lwt-mirage"
-  Path: lwt
+  Path: mirage
   Build$: flag(mirage)
   Install$: flag(mirage)
   Findlibname: mirage

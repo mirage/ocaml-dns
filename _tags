@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: b510f54e94dc63a3111eb107e7176262)
+# DO NOT EDIT (digest: 7022706dc018b2f5b670954d37816bdc)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -39,8 +39,22 @@
 # Library dns-lwt-core
 "lwt/dns-lwt-core.cmxs": use_dns-lwt-core
 # Library dns-lwt-mirage
-"lwt/dns-lwt-mirage.cmxs": use_dns-lwt-mirage
-<lwt/*.ml{,i}>: package(tcpip)
+"mirage/dns-lwt-mirage.cmxs": use_dns-lwt-mirage
+<mirage/*.ml{,i}>: package(base64)
+<mirage/*.ml{,i}>: package(cstruct)
+<mirage/*.ml{,i}>: package(cstruct.lwt)
+<mirage/*.ml{,i}>: package(cstruct.syntax)
+<mirage/*.ml{,i}>: package(io-page)
+<mirage/*.ml{,i}>: package(io-page.unix)
+<mirage/*.ml{,i}>: package(ipaddr)
+<mirage/*.ml{,i}>: package(ipaddr.unix)
+<mirage/*.ml{,i}>: package(lwt)
+<mirage/*.ml{,i}>: package(lwt.syntax)
+<mirage/*.ml{,i}>: package(re)
+<mirage/*.ml{,i}>: package(re.str)
+<mirage/*.ml{,i}>: package(tcpip)
+<mirage/*.ml{,i}>: use_dns
+<mirage/*.ml{,i}>: use_dns-lwt-core
 # Library dns-lwt
 "lwt/dns-lwt.cmxs": use_dns-lwt
 # Executable lwt_server
