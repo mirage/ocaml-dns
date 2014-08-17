@@ -6,6 +6,8 @@
   match the conventional `dig` tool behaviour.
 * Add `Dns_resolver_mirage` module for making stub resolution requests
   using the Mirage module types.
+* Expose `Dns.Packet.Not_implemented` exception rather than a pattern
+  match failure.
 
 0.9.1 (2014-07-29):
 * Fix file descriptor leak in resolver (#15, #16) by expanding `commfn`

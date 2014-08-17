@@ -1,6 +1,6 @@
 (*
  * Copyright (c) 2011 Richard Mortier <mort@cantab.net>
- * Copyright (c) 2011 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2011-2014 Anil Madhavapeddy <anil@recoil.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -236,12 +236,20 @@ type rdata =
 val hex_of_string : string -> string
 val rdata_to_string : rdata -> string
 val rdata_to_rr_type : rdata -> rr_type
+
 val marshal_rdata: int Name.Map.t ->
   ?compress:bool -> int -> t -> rdata -> rr_type *  int Name.Map.t * int
+(** Marshal the RR data into the DNS binary format.  Raises [Not_implemented]
+    if the RR type is known but the logic is not implemented in the library
+    yet. *)
+
 val compare_rdata : rdata -> rdata -> int
 
+exception Not_implemented
+
 (** Parse an RDATA element from a packet, given the set of already encountered
-    names, a starting index, and the type of the RDATA. *)
+    names, a starting index, and the type of the RDATA. Raises [Not_implemented]
+    if the RR type is not recognized. *)
 val parse_rdata :
   (int, label) Hashtbl.t -> int -> rr_type -> int -> int32 -> t -> rdata
 
