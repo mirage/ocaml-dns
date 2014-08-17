@@ -1,4 +1,4 @@
-0.10.1 (trunk):
+0.10.0 (trunk):
 * `Dns.Resolvconf` parses `/etc/resolv.conf` entries using `Ipaddr.t`
   instead of `string` values now.
 * Adapt `Dns_resolver` and `Dns_resolver_unix` to use `Ipaddr.t` more.
