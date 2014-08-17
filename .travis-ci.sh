@@ -1,5 +1,3 @@
-OPAM_DEPENDS="lwt cstruct ipaddr re ounit cmdliner io-page sexplib"
-
 case "$OCAML_VERSION,$OPAM_VERSION" in
 3.12.1,1.0.0) ppa=avsm/ocaml312+opam10 ;;
 3.12.1,1.1.0) ppa=avsm/ocaml312+opam11 ;;
@@ -15,14 +13,17 @@ sudo apt-get update -qq
 sudo apt-get install -qq ocaml ocaml-native-compilers camlp4-extra opam
 
 export OPAMYES=1
+export OPAMVERBOSE=1
 echo OCaml version
 ocaml -version
 echo OPAM versions
 opam --version
 opam --git-version
 
-opam init
-opam install ${OPAM_DEPENDS}
+opam init git://github.com/ocaml/opam-repository >/dev/null 2>&1
+opam pin dns .
+opam install dns
 
 eval `opam config env`
+make clean
 make

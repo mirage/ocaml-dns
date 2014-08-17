@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 3826f6ea3bbaf381aba78bdd1c4385c7)
+# DO NOT EDIT (digest: b510f54e94dc63a3111eb107e7176262)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -15,7 +15,6 @@
 "_darcs": not_hygienic
 # Library dns
 "lib/dns.cmxs": use_dns
-"lib/base64.cmx": for-pack(Dns)
 "lib/hashcons.cmx": for-pack(Dns)
 "lib/loader.cmx": for-pack(Dns)
 "lib/name.cmx": for-pack(Dns)
@@ -30,6 +29,7 @@
 "lib/resolvconf.cmx": for-pack(Dns)
 "lib/buf.cmx": for-pack(Dns)
 "lib/protocol.cmx": for-pack(Dns)
+<lib/*.ml{,i}>: package(base64)
 <lib/*.ml{,i}>: package(cstruct)
 <lib/*.ml{,i}>: package(cstruct.syntax)
 <lib/*.ml{,i}>: package(io-page)
@@ -44,6 +44,7 @@
 # Library dns-lwt
 "lwt/dns-lwt.cmxs": use_dns-lwt
 # Executable lwt_server
+<lib_test/unix/lwt_server.{native,byte}>: package(base64)
 <lib_test/unix/lwt_server.{native,byte}>: package(cstruct)
 <lib_test/unix/lwt_server.{native,byte}>: package(cstruct.lwt)
 <lib_test/unix/lwt_server.{native,byte}>: package(cstruct.syntax)
@@ -61,6 +62,7 @@
 <lib_test/unix/lwt_server.{native,byte}>: use_dns-lwt-core
 <lib_test/unix/lwt_server.{native,byte}>: custom
 # Executable time_server
+<lib_test/unix/time_server.{native,byte}>: package(base64)
 <lib_test/unix/time_server.{native,byte}>: package(cstruct)
 <lib_test/unix/time_server.{native,byte}>: package(cstruct.lwt)
 <lib_test/unix/time_server.{native,byte}>: package(cstruct.syntax)
@@ -76,6 +78,7 @@
 <lib_test/unix/time_server.{native,byte}>: use_dns
 <lib_test/unix/time_server.{native,byte}>: use_dns-lwt
 <lib_test/unix/time_server.{native,byte}>: use_dns-lwt-core
+<lib_test/unix/*.ml{,i}>: package(base64)
 <lib_test/unix/*.ml{,i}>: package(cstruct)
 <lib_test/unix/*.ml{,i}>: package(cstruct.lwt)
 <lib_test/unix/*.ml{,i}>: package(cstruct.syntax)
@@ -93,6 +96,7 @@
 <lib_test/unix/*.ml{,i}>: use_dns-lwt-core
 <lib_test/unix/time_server.{native,byte}>: custom
 # Executable mldig
+<lwt/mldig.{native,byte}>: package(base64)
 <lwt/mldig.{native,byte}>: package(cmdliner)
 <lwt/mldig.{native,byte}>: package(cstruct)
 <lwt/mldig.{native,byte}>: package(cstruct.lwt)
@@ -109,6 +113,7 @@
 <lwt/mldig.{native,byte}>: use_dns
 <lwt/mldig.{native,byte}>: use_dns-lwt
 <lwt/mldig.{native,byte}>: use_dns-lwt-core
+<lwt/*.ml{,i}>: package(base64)
 <lwt/*.ml{,i}>: package(cmdliner)
 <lwt/*.ml{,i}>: package(cstruct)
 <lwt/*.ml{,i}>: package(cstruct.lwt)
