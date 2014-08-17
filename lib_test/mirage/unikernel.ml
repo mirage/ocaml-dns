@@ -18,12 +18,13 @@ module Client (C:CONSOLE) (S:STACKV4) (E:ENTROPY) = struct
   module DNS = Dns_resolver_mirage.Make(OS.Time)(S)
 
   let start c s e =
+    let t = DNS.create s in
     Console.log_s c "Started, will begin resolving shortly..." >>= fun () ->
     OS.Time.sleep 2.0 >>= fun () ->
     while_lwt true do
       Console.log_s c (green "Resolving %s" domain)
       >>= fun () ->
-      DNS.gethostbyname s ~server "google.com"
+      DNS.gethostbyname t ~server "google.com"
       >>= fun rl ->
       Lwt_list.iter_s
         (fun r ->
