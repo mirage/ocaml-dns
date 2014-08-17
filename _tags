@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 78990316922073e9f73a863c21eff3b9)
+# DO NOT EDIT (digest: 6a8f139def217f20b5fae9cc3a37aac8)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -38,6 +38,9 @@
 <lib/*.ml{,i}>: package(re.str)
 # Library dns-lwt-core
 "lwt/dns-lwt-core.cmxs": use_dns-lwt-core
+# Library dns-lwt-mirage
+"lwt/dns-lwt-mirage.cmxs": use_dns-lwt-mirage
+<lwt/*.ml{,i}>: package(tcpip)
 # Library dns-lwt
 "lwt/dns-lwt.cmxs": use_dns-lwt
 # Executable lwt_server
