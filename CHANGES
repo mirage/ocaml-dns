@@ -1,6 +1,9 @@
 0.10.1 (trunk):
 * `Dns.Resolvconf` parses `/etc/resolv.conf` entries using `Ipaddr.t`
   instead of `string` values now.
+* Adapt `Dns_resolver` and `Dns_resolver_unix` to use `Ipaddr.t` more.
+* Improve `mldig` to use `Ipaddr` more and add more RR printing to
+  match the conventional `dig` tool behaviour.
 
 0.9.1 (2014-07-29):
 * Fix file descriptor leak in resolver (#15, #16) by expanding `commfn`
