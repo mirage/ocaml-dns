@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: c5ec42f92856d93bcde200768354b40c) *)
+(* DO NOT EDIT (digest: 1dfcc00992dd9a3aee0b877769bc687c) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -604,7 +604,7 @@ let package_default =
        ];
      lib_c = [];
      flags = [];
-     includes = [("lwt", ["lib"]); ("lib_test", ["lib"; "lwt"])]
+     includes = [("lwt", ["lib"]); ("lib_test/unix", ["lib"; "lwt"])]
   }
   ;;
 
