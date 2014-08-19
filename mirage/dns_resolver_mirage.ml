@@ -26,8 +26,36 @@ module DP = Dns.Packet
 let default_ns = Ipaddr.V4.of_string_exn "8.8.8.8"
 let default_port = 53
 
+module type S = sig
+  type t
+  type stack
+
+  val create : stack -> t
+
+  val resolve :
+    (module Dns.Protocol.CLIENT) ->
+    t -> Ipaddr.V4.t -> int ->
+    Dns.Packet.q_class ->
+    Dns.Packet.q_type ->
+    Dns.Name.domain_name ->
+    Dns.Packet.t Lwt.t
+
+  val gethostbyname : t ->
+    ?server:Ipaddr.V4.t -> ?dns_port:int ->
+    ?q_class:Dns.Packet.q_class ->
+    ?q_type:Dns.Packet.q_type ->
+    string -> Ipaddr.t list Lwt.t
+
+  val gethostbyaddr : t ->
+    ?server:Ipaddr.V4.t -> ?dns_port:int ->
+    ?q_class:Dns.Packet.q_class ->
+    ?q_type:Dns.Packet.q_type ->
+    Ipaddr.V4.t -> string list Lwt.t
+end
+
 module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
 
+  type stack = S.t
   type endp = Ipaddr.V4.t * int
 
   type t = {
@@ -66,12 +94,11 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
       commfn
 
   let resolve client
-      ?(dnssec=false)
       s server dns_port
       (q_class:DP.q_class) (q_type:DP.q_type)
       (q_name:domain_name) =
     let commfn = connect_to_resolver s (server,dns_port) in
-    resolve client ~dnssec commfn q_class q_type q_name
+    resolve client commfn q_class q_type q_name
 
   let gethostbyname
       s ?(server = default_ns) ?(dns_port = default_port)
