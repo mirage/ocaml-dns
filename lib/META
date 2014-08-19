@@ -1,8 +1,8 @@
 # OASIS_START
-# DO NOT EDIT (digest: 1386e66d18596cc42a83effd913eaccf)
+# DO NOT EDIT (digest: 54060849482b4df1ba73039266f3e18b)
 version = "0.10.0"
 description = "DNS client and server implementation"
-requires = "cstruct re re.str ipaddr io-page"
+requires = "cstruct re re.str ipaddr io-page base64"
 archive(byte) = "dns.cma"
 archive(byte, plugin) = "dns.cma"
 archive(native) = "dns.cmxa"

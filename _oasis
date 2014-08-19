@@ -33,7 +33,7 @@ Library dns
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
   BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0), io-page, base64
-  XMetaRequires: cstruct, re, re.str, ipaddr, io-page
+  XMetaRequires: cstruct, re, re.str, ipaddr, io-page, base64
 
 Library "dns-lwt"
   Path: lwt
