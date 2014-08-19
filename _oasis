@@ -51,8 +51,8 @@ Library "dns-lwt-mirage"
   Install$: flag(mirage)
   Findlibname: mirage
   Modules: Dns_resolver_mirage
-  BuildDepends: cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix, io-page.unix, tcpip
-  XMetaRequires: lwt.unix, cstruct.lwt, dns, dns.lwt-core, ipaddr.unix, io-page.unix, tcpip
+  BuildDepends: cstruct, lwt.syntax, dns, dns.lwt-core, tcpip
+  XMetaRequires: cstruct, dns, dns.lwt-core, tcpip
   FindlibParent: dns
 
 Library "dns-lwt-core"
@@ -62,6 +62,7 @@ Library "dns-lwt-core"
   Findlibname: lwt-core
   Modules: Dns_server, Dns_resolver
   BuildDepends: lwt, cstruct, lwt.syntax, dns
+  XMetaRequires: lwt, cstruct, dns
   FindlibParent: dns
 
 Document dns

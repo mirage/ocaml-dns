@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 7022706dc018b2f5b670954d37816bdc)
+# DO NOT EDIT (digest: 1fef36b7982b7347691d423e55c4d237)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -42,12 +42,9 @@
 "mirage/dns-lwt-mirage.cmxs": use_dns-lwt-mirage
 <mirage/*.ml{,i}>: package(base64)
 <mirage/*.ml{,i}>: package(cstruct)
-<mirage/*.ml{,i}>: package(cstruct.lwt)
 <mirage/*.ml{,i}>: package(cstruct.syntax)
 <mirage/*.ml{,i}>: package(io-page)
-<mirage/*.ml{,i}>: package(io-page.unix)
 <mirage/*.ml{,i}>: package(ipaddr)
-<mirage/*.ml{,i}>: package(ipaddr.unix)
 <mirage/*.ml{,i}>: package(lwt)
 <mirage/*.ml{,i}>: package(lwt.syntax)
 <mirage/*.ml{,i}>: package(re)
