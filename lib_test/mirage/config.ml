@@ -22,5 +22,5 @@ let client =
   foreign "Unikernel.Client" @@ console @-> stackv4 @-> entropy @-> job
 
 let () =
-  add_to_ocamlfind_libraries [ "dns.mirage"; "mirage-entropy-unix" ] ;
+  add_to_ocamlfind_libraries [ "dns.mirage"; ];
   register "dns-client" [ client $ default_console $ stack default_console $ default_entropy ]

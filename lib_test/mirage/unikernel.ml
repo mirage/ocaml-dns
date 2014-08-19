@@ -2,15 +2,13 @@ open Lwt
 open V1_LWT
 open Printf
 
-let listening_port = 5354
-
 let red fmt    = sprintf ("\027[31m"^^fmt^^"\027[m")
 let green fmt  = sprintf ("\027[32m"^^fmt^^"\027[m")
 let yellow fmt = sprintf ("\027[33m"^^fmt^^"\027[m")
 let blue fmt   = sprintf ("\027[36m"^^fmt^^"\027[m")
 
 let domain = "google.com"
-let server = Ipaddr.V4.of_string_exn "127.0.0.1"
+let server = Ipaddr.V4.of_string_exn "8.8.8.8"
 
 module Client (C:CONSOLE) (S:STACKV4) (E:ENTROPY) = struct
 
