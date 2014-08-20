@@ -1,11 +1,11 @@
-0.10.0 (trunk):
+0.10.0 (2014-08-20):
+* Add `Dns_resolver_mirage` module for making stub resolution requests
+  using the Mirage module types.
 * `Dns.Resolvconf` parses `/etc/resolv.conf` entries using `Ipaddr.t`
   instead of `string` values now.
 * Adapt `Dns_resolver` and `Dns_resolver_unix` to use `Ipaddr.t` more.
 * Improve `mldig` to use `Ipaddr` more and add more RR printing to
   match the conventional `dig` tool behaviour.
-* Add `Dns_resolver_mirage` module for making stub resolution requests
-  using the Mirage module types.
 * Expose `Dns.Packet.Not_implemented` exception rather than a pattern
   match failure.
 * Depend on external `Base64` package instead of bundling one inside
