@@ -862,6 +862,8 @@ let marshal_question ?(compress=true) (names, base, buf) q =
   set_q_cls buf (q_class_to_int q.q_class);
   names, base+sizeof_q, Cstruct.shift buf sizeof_q
 
+exception Not_implemented
+
 let parse_rdata names base t cls ttl buf =
   (** Drop remainder of buf to stop parsing and demuxing. *)
   let stop (x, _) = x in
@@ -1031,6 +1033,7 @@ let parse_rdata names base t cls ttl buf =
     | RR_X25 ->
         let x25,_ = parse_charstr buf in
         X25 x25
+    | _ -> raise Not_implemented
 
   let marshal_rdata names ?(compress=true) base rdbuf = function
     | A ip ->
@@ -1182,6 +1185,7 @@ let parse_rdata names base t cls ttl buf =
     | UNKNOWN (typ, data) ->
         Cstruct.blit_from_string data 0 rdbuf 0 (String.length data);
         RR_UNSPEC, names, (String.length data)
+    | _ -> raise Not_implemented
 
   let compare_rdata a_rdata b_rdata =
     match (a_rdata, b_rdata) with

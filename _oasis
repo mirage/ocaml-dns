@@ -1,7 +1,7 @@
 OASISFormat: 0.3
 OCamlVersion: >= 4.00.0
 Name:        dns
-Version:     0.9.1
+Version:     0.10.0
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC
@@ -21,15 +21,19 @@ Flag nettests
   Description: run the internet-using tests
   Default: false
 
+Flag mirage
+  Description: build the Mirage library
+  Default: false
+
 Library dns
   Path: lib
   Findlibname: dns
   Pack: true
   Modules:
-    Base64, Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
+    Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
-  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0), io-page
-  XMetaRequires: cstruct, re, re.str, ipaddr, io-page
+  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0), io-page, base64
+  XMetaRequires: cstruct, re, re.str, ipaddr, io-page, base64
 
 Library "dns-lwt"
   Path: lwt
@@ -41,6 +45,16 @@ Library "dns-lwt"
   XMetaRequires: lwt.unix, cstruct.lwt, dns, dns.lwt-core, ipaddr.unix, io-page.unix
   FindlibParent: dns
 
+Library "dns-lwt-mirage"
+  Path: mirage
+  Build$: flag(mirage)
+  Install$: flag(mirage)
+  Findlibname: mirage
+  Modules: Dns_resolver_mirage
+  BuildDepends: cstruct, lwt.syntax, dns, dns.lwt-core, tcpip
+  XMetaRequires: cstruct, dns, dns.lwt-core, tcpip
+  FindlibParent: dns
+
 Library "dns-lwt-core"
   Path: lwt
   Build$: flag(lwt)
@@ -48,6 +62,7 @@ Library "dns-lwt-core"
   Findlibname: lwt-core
   Modules: Dns_server, Dns_resolver
   BuildDepends: lwt, cstruct, lwt.syntax, dns
+  XMetaRequires: lwt, cstruct, dns
   FindlibParent: dns
 
 Document dns
@@ -68,7 +83,7 @@ Document dns_lwt
   XOCamlbuildModules:   Dns_resolver, Dns_server
 
 Executable lwt_server
-  Path:               lib_test
+  Path:               lib_test/unix
   MainIs:             lwt_server.ml
   Build$:             flag(tests) && flag(lwt)
   Custom:             true
@@ -77,7 +92,7 @@ Executable lwt_server
   BuildDepends:       lwt, lwt.unix, re, re.str, dns, dns.lwt
 
 Executable time_server
-  Path:               lib_test
+  Path:               lib_test/unix
   MainIs:             time_server.ml
   Build$:             flag(tests) && flag(lwt)
   Custom:             true
@@ -97,4 +112,4 @@ Executable mldig
 Test lwt_server
   Run$:               flag(tests) && flag(lwt)
   Command:            $lwt_server
-  WorkingDirectory:   lib_test
+  WorkingDirectory:   lib_test/unix

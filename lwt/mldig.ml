@@ -68,7 +68,8 @@ let print_answers p =
       if al ob > 0 then print_section nm;
       List.iter (fun rr ->
         match rr.rdata with
-        |A ip-> print_rr rr "A" (Ipaddr.V4.to_string ip);
+        |A ip -> print_rr rr "A" (Ipaddr.V4.to_string ip);
+        |AAAA ip -> print_rr rr "AAAA" (Ipaddr.V6.to_string ip)
         |SOA (n1,n2,a1,a2,a3,a4,a5) ->
           print_rr rr "SOA"
             (sprintf "%s %s %lu %lu %lu %lu %lu" (string_of_name n1)
@@ -77,6 +78,7 @@ let print_answers p =
           print_rr rr "MX" (sprintf "%d %s" pref (string_of_name host));
         |CNAME a -> print_rr rr "CNAME" (string_of_name a)
         |NS a -> print_rr rr "NS" (string_of_name a)
+        |TXT s -> print_rr rr "TXT" (sprintf "%S" (String.concat "" s))
         |_ -> printf "unknown\n"
       ) ob;
       if al ob > 0 then print_newline ()
@@ -109,23 +111,27 @@ let dig source_ip opt_dest_port q_class q_type args =
         |None, Some q_class -> (server, q_class, q_type, domains)
         |Some q_type, Some q_class -> (server, q_class, q_type, domains)
       end
-  ) (begin match res.Dns_resolver_unix.servers with
-    [] -> None | (s,p)::_ -> Some (s,Some p) end,
+  ) (begin
+     match res.Dns_resolver_unix.servers with
+     | [] -> None
+     | (s,p)::_ -> Some (Ipaddr.to_string s, Some p) 
+     end,
     q_class, q_type, []) args in
   let domains = match domains with |[] -> ["."] |_ -> domains in
   printf ";; <<>> MLDiG 1.0 <<>>\n"; (* TODO put query domains from Sys.argv here *)
- match server with
-  |None -> error "dig" "Must specify a DNS resolver (with @<hostname>)"
-  |Some (x, opt_port) ->
+  match server with
+  | None -> error "dig" "Must specify a DNS resolver (with @<hostname>)"
+  | Some (x, opt_port) ->
     debug (sprintf "Querying DNS server %s" x);
     let domain = string_to_domain_name (List.hd domains) in
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
-    lwt addr = try return Ipaddr.V4.(to_string (of_string_exn x))
+    lwt addr =
+      try return (Ipaddr.of_string_exn x)
       with Ipaddr.Parse_error _ ->
         lwt addrs = Dns_resolver_unix.gethostbyname res x in
         match addrs with
         | [] -> error "dig" ("Could not resolve nameserver '"^x^"'")
-        | addr::_ -> return (Ipaddr.V4.to_string addr)
+        | addr::_ -> return addr
     in
     let port = match opt_port with None -> dns_port | Some p -> p in
     Dns_resolver_unix.(resolve

@@ -1,17 +1,28 @@
 # OASIS_START
-# DO NOT EDIT (digest: c262d26c5dc803b940e7a415fd29bdcd)
-version = "0.9.1"
+# DO NOT EDIT (digest: 08bd769e2c3d4771dc74405b93faba62)
+version = "0.10.0"
 description = "DNS client and server implementation"
-requires = "cstruct re re.str ipaddr io-page"
+requires = "cstruct re re.str ipaddr io-page base64"
 archive(byte) = "dns.cma"
 archive(byte, plugin) = "dns.cma"
 archive(native) = "dns.cmxa"
 archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
-package "lwt-core" (
- version = "0.9.1"
+package "mirage" (
+ version = "0.10.0"
  description = "DNS client and server implementation"
- requires = "lwt cstruct lwt.syntax dns"
+ requires = "cstruct dns dns.lwt-core tcpip"
+ archive(byte) = "dns-lwt-mirage.cma"
+ archive(byte, plugin) = "dns-lwt-mirage.cma"
+ archive(native) = "dns-lwt-mirage.cmxa"
+ archive(native, plugin) = "dns-lwt-mirage.cmxs"
+ exists_if = "dns-lwt-mirage.cma"
+)
+
+package "lwt-core" (
+ version = "0.10.0"
+ description = "DNS client and server implementation"
+ requires = "lwt cstruct dns"
  archive(byte) = "dns-lwt-core.cma"
  archive(byte, plugin) = "dns-lwt-core.cma"
  archive(native) = "dns-lwt-core.cmxa"
@@ -20,7 +31,7 @@ package "lwt-core" (
 )
 
 package "lwt" (
- version = "0.9.1"
+ version = "0.10.0"
  description = "DNS client and server implementation"
  requires = "lwt.unix cstruct.lwt dns dns.lwt-core ipaddr.unix io-page.unix"
  archive(byte) = "dns-lwt.cma"

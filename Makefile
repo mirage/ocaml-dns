@@ -6,10 +6,8 @@ PREFIX ?= /usr/local
 NAME=dns
 
 LWT ?= $(shell if ocamlfind query lwt.unix >/dev/null 2>&1; then echo --enable-lwt; fi)
-MIRAGE ?= $(shell if ocamlfind query mirage-net >/dev/null 2>&1; then echo --enable-mirage; fi)
-ifneq ($(MIRAGE_OS),xen)
+MIRAGE ?= $(shell if ocamlfind query mirage >/dev/null 2>&1; then echo --enable-mirage; fi)
 TESTS ?= --enable-tests
-endif
 
 -include Makefile.config
 

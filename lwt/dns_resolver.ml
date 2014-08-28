@@ -33,38 +33,35 @@ type commfn = {
   cleanfn : unit -> unit Lwt.t;
 }
 
-let log_info s = eprintf "INFO: %s\n%!" s
-let log_debug s = eprintf "DEBUG: %s\n%!" s
-let log_warn s = eprintf "WARN: %s\n%!" s
-
-let rec send_req txfn timerfn q = function
-  | 0 -> return ()
+let rec send_req txfn timerfn q =
+  function
+  | 0 -> return_unit
   | count ->
-      txfn q >>= fun _ ->
-      timerfn () >>= fun () ->
-      printf "retrying query for %d times\n%!" (4-count);
-      send_req txfn timerfn q (count - 1)
+    txfn q >>= fun _ ->
+    timerfn () >>= fun () ->
+    printf "retrying query for %d times\n%!" (4-count);
+    send_req txfn timerfn q (count - 1)
 
 let send_pkt client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
   let module R = (val client : CLIENT) in
   let cqpl = R.marshal pkt in
   let resl = List.map (fun (ctxt,q) ->
-    (* make a new socket for each request flavor *)
-    (* start the requests in parallel and run them until success or timeout*)
-    let t, w = Lwt.wait () in
-    async (fun () -> pick [
-      (send_req txfn timerfn q 4
-       >>= fun () -> return (wakeup w (Error (R.timeout ctxt))));
-      (catch
-         (fun () ->
-           rxfn (R.parse ctxt)
-           >>= fun r -> return (wakeup w (Answer r))
-         )
-         (fun exn -> return (wakeup w (Error exn)))
-      )
-    ]);
-    t
-  ) cqpl in
+      (* make a new socket for each request flavor *)
+      (* start the requests in parallel and run them until success or timeout*)
+      let t, w = Lwt.wait () in
+      async (fun () -> pick [
+          (send_req txfn timerfn q 4
+           >>= fun () -> return (wakeup w (Error (R.timeout ctxt))));
+          (catch
+             (fun () ->
+                rxfn (R.parse ctxt)
+                >>= fun r -> return (wakeup w (Answer r))
+             )
+             (fun exn -> return (wakeup w (Error exn)))
+          )
+        ]);
+      t
+    ) cqpl in
   (* return an answer or all the errors if no request succeeded *)
   let rec select errors = function
     | [] -> fail (Dns_resolve_error errors)
@@ -87,7 +84,6 @@ let resolve client
   try_lwt
     let id = (let module R = (val client : CLIENT) in R.get_id ()) in
     let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
-    log_info (sprintf "query: %s\n%!" (DP.to_string q));
     send_pkt client commfn q
     >>= fun r ->
     commfn.cleanfn ()
@@ -96,7 +92,6 @@ let resolve client
   with exn ->
     commfn.cleanfn ()
     >>= fun () ->
-    log_warn (sprintf "%s\n%!" (Printexc.to_string exn));
     fail exn
 
 let gethostbyname
@@ -107,22 +102,24 @@ let gethostbyname
   let domain = string_to_domain_name name in
   resolve (module Dns.Protocol.Client) commfn q_class q_type domain
   >|= fun r ->
-    List.fold_left (fun a x ->
-      match x.rdata with |A ip -> ip::a |_ -> a
+  List.fold_left (fun a x ->
+      match x.rdata with
+      | A ip -> Ipaddr.V4 ip :: a
+      | AAAA ip -> Ipaddr.V6 ip :: a
+      | _ -> a
     ) [] r.answers
-   |> List.rev
+  |> List.rev
 
 let gethostbyaddr
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
     commfn
     addr
-    =
+  =
   let addr = for_reverse addr in
-  log_info (sprintf "gethostbyaddr: %s" (domain_name_to_string addr));
   let open DP in
   resolve (module Dns.Protocol.Client) commfn q_class q_type addr
   >|= fun r ->
-    List.fold_left (fun a x ->
+  List.fold_left (fun a x ->
       match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a
     ) [] r.answers
-   |> List.rev
+  |> List.rev

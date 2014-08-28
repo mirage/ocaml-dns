@@ -1,7 +1,5 @@
 (*
- * Copyright (c) 2012 Richard Mortier <mort@cantab.net>
  * Copyright (c) 2014 Anil Madhavapeddy <anil@recoil.org>
- * Copyright (c) 2014 David Sheets <sheets@alum.mit.edu>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,27 +14,34 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-type commfn = {
-  txfn    : Dns.Buf.t -> unit Lwt.t;
-  rxfn    : (Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Lwt.t;
-  timerfn : unit -> unit Lwt.t;
-  cleanfn : unit -> unit Lwt.t;
-}
+val default_ns : Ipaddr.V4.t
+val default_port : int
 
-val resolve : 
-  (module Dns.Protocol.CLIENT) ->
-  ?dnssec:bool ->
-  commfn -> Dns.Packet.q_class -> 
-  Dns.Packet.q_type -> 
-  Dns.Name.domain_name -> 
-  Dns.Packet.t Lwt.t
+module type S = sig
+  type t
+  type stack
 
-val gethostbyname :
-  ?q_class:Dns.Packet.q_class ->
-  ?q_type:Dns.Packet.q_type -> commfn ->
-  string -> Ipaddr.t list Lwt.t
+  val create : stack -> t
 
-val gethostbyaddr :
-  ?q_class:Dns.Packet.q_class ->
-  ?q_type:Dns.Packet.q_type -> commfn ->
-  Ipaddr.V4.t -> string list Lwt.t
+  val resolve :
+    (module Dns.Protocol.CLIENT) ->
+    t -> Ipaddr.V4.t -> int ->
+    Dns.Packet.q_class ->
+    Dns.Packet.q_type ->
+    Dns.Name.domain_name ->
+    Dns.Packet.t Lwt.t
+
+  val gethostbyname : t ->
+    ?server:Ipaddr.V4.t -> ?dns_port:int ->
+    ?q_class:Dns.Packet.q_class ->
+    ?q_type:Dns.Packet.q_type ->
+    string -> Ipaddr.t list Lwt.t
+
+  val gethostbyaddr : t ->
+    ?server:Ipaddr.V4.t -> ?dns_port:int ->
+    ?q_class:Dns.Packet.q_class ->
+    ?q_type:Dns.Packet.q_type ->
+    Ipaddr.V4.t -> string list Lwt.t
+end
+
+module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) : S with type stack = S.t
