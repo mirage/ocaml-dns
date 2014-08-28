@@ -25,6 +25,7 @@ opam pin dns .
 opam install base64 # can remove with opam 1.2?
 opam install dns
 opam install mirage-types
+opam reinstall dns # local depopt not picked up by opam 1.1
 
 eval `opam config env`
 make clean
