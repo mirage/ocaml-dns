@@ -11,6 +11,7 @@
 * Depend on external `Base64` package instead of bundling one inside
   the `Dns` packed module.
 * Add a local `opam` file for easier pinning.
+* Add an `examples/` directory with a DNS forwarder sample (#21).
 
 0.9.1 (2014-07-29):
 * Fix file descriptor leak in resolver (#15, #16) by expanding `commfn`

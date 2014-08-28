@@ -28,6 +28,8 @@ opam install dns
 eval `opam config env`
 make clean
 make
+cd examples
+make
 
 opam install mirage crunch
 git clone git://github.com/mirage/mirage-skeleton
