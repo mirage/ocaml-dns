@@ -95,12 +95,3 @@ let gethostbyname
     name =
    connect_to_resolver server dns_port >>= (fun commfn ->
    gethostbyname ~q_class ~q_type commfn name)
-
-let () =
-  don't_wait_for ((gethostbyname "www.google.com" >>| (fun l ->
-    List.iter ~f:(fun addr -> print_endline (Ipaddr.to_string addr)) l)) >>|
-    (fun () -> shutdown 0))
-
-
-let () = 
-  never_returns (Scheduler.go ())
