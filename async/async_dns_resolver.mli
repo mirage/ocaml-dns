@@ -14,10 +14,16 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Core.Std
+open Async.Std
+open Dns.Name
+open Dns.Operators
+open Dns.Protocol
+open Dns.Packet
 
 type commfn = {
   txfn : Dns.Buf.t -> unit Async_kernel.Deferred.t;
-  rxfn : (Dns.Buf.t -> Dns.Packet.t option) -> DP.t Async_kernel.Deferred.t;
+  rxfn : (Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Async_kernel.Deferred.t;
   timerfn : unit -> unit Async_kernel.Deferred.t;
   cleanfn : unit -> unit Async_kernel.Deferred.t;
 }
@@ -26,12 +32,12 @@ val resolve :
   (module Dns.Protocol.CLIENT) ->
   ?dnssec:bool ->
   commfn ->
-  DP.q_class ->
-  DP.q_type -> Dns.Name.domain_name -> DP.t Async_kernel.Deferred.t
+  q_class ->
+  q_type -> Dns.Name.domain_name -> Dns.Packet.t Async_kernel.Deferred.t
 
 val gethostbyname :
-  ?q_class:DP.q_class ->
-  ?q_type:DP.q_type ->
+  ?q_class:q_class ->
+  ?q_type:q_type ->
   commfn ->
   string ->
   (Ipaddr.V4.t, Ipaddr.V6.t) Ipaddr.v4v6 list Async_kernel.Deferred.t

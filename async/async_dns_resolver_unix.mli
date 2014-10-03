@@ -14,10 +14,17 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+open Core.Std
+open Async.Std
+open Dns.Name
+open Dns.Operators
+open Dns.Protocol
+open Dns.Packet
+
 val gethostbyname :
   ?server:string ->
   ?dns_port:int ->
-  ?q_class:DP.q_class ->
-  ?q_type:DP.q_type ->
+  ?q_class:q_class ->
+  ?q_type:q_type ->
   string ->
   (Ipaddr.V4.t, Ipaddr.V6.t) Ipaddr.v4v6 list Async_kernel.Deferred.t
