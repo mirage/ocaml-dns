@@ -30,26 +30,12 @@ let active_sock_exn addr port =
   and timeout = after (sec 10.) in
   Socket.connect_interruptible sock addr ~interrupt:timeout
 
-
-(*
-string ->
-int ->
-{                                                                 
-  txfn : Dns.Buf.t -> unit Async_kernel.Deferred.t;                             
-  rxfn : (Dns.Buf.t -> Dns.Packet.t option) -> DP.t Async_kernel.Deferred.t;    
-  timerfn : unit -> unit Async_kernel.Deferred.t;                               
-  cleanfn : unit -> unit Async_kernel.Deferred.t;                               
-}  
-*)
-
 let timerfn () = after (sec 5.0)
-
 
 let cleanfn sock () =
   ((try Socket.shutdown sock `Both with | _ -> ());
    (try_with (fun () -> Unix.close (Socket.fd sock))) >>| fun _ -> ())
 ;;
-
 
 let connect_to_resolver server_addr port =
   let sock = Socket.create (Socket.Type.udp)

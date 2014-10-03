@@ -13,35 +13,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
-val buflen : int
-val ns : string
-val port : int
-val stderr_writer : unit -> Async_unix.Writer.t
-val log_warn : string -> unit
-val sockaddr : string -> int -> Async.Std.Socket.Address.Inet.t
-val sockaddr_to_string : [< Async.Std.Socket.Address.t ] -> string
-val active_sock_exn :
-  string ->
-  int ->
-  [ `Interrupted
-  | `Ok of
-      ([ `Active ], Async.Std.Socket.Address.Inet.t)
-      Async_extra.Import.Socket.t ]
-  Async_kernel.Deferred.t
-val timerfn : unit -> unit Async_kernel.Deferred.t
-val cleanfn :
-  ([< `Active | `Bound | `Passive | `Unconnected ],
-   [< Async.Std.Socket.Address.t ])
-  Async_extra.Import.Socket.t -> unit -> unit Async_kernel.Deferred.t
-val connect_to_resolver :
-  string -> int -> Async_dns_resolver.commfn Async_kernel.Deferred.t
-val resolve :
-  (module Dns.Protocol.CLIENT) ->
-  ?dnssec:bool ->
-  string ->
-  int ->
-  DP.q_class ->
-  DP.q_type -> Dns.Name.domain_name -> DP.t Async_kernel.Deferred.t
+
 val gethostbyname :
   ?server:string ->
   ?dns_port:int ->
