@@ -1,6 +1,7 @@
 0.11.0 (trunk):
 * Do not depend in Io_page; instead `Dns.Buf.create` now accepts an
   optional `alloc` parameter to use a custom allocator such as `Io_page`.
+* Add Async DNS resolver modules from @marklrh (#22).
 
 0.10.0 (2014-08-20):
 * Add `Dns_resolver_mirage` module for making stub resolution requests
