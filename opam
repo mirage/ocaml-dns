@@ -27,11 +27,14 @@ depends: [
   "re"
   "cmdliner"
   "ipaddr" {>= "2.2.0"}
-  "io-page"
   "base64"
 ]
 depopts: [
   "mirage-types"
+  "async"
 ]
-conflicts: ["mirage-types" {<"1.2.0"}]
+conflicts: [
+  "mirage-types" {<"1.2.0"}
+  "async" {<"109.21.00"}
+]
 ocaml-version: [>= "4.00.0"]
