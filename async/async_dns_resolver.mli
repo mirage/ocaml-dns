@@ -14,30 +14,29 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+(** Async DNS resolution logic *)
+
 open Core.Std
 open Async.Std
-open Dns.Name
-open Dns.Operators
-open Dns.Protocol
-open Dns.Packet
 
 type commfn = {
-  txfn : Dns.Buf.t -> unit Async_kernel.Deferred.t;
-  rxfn : (Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Async_kernel.Deferred.t;
-  timerfn : unit -> unit Async_kernel.Deferred.t;
-  cleanfn : unit -> unit Async_kernel.Deferred.t;
+  txfn : Dns.Buf.t -> unit Deferred.t;
+  rxfn : (Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Deferred.t;
+  timerfn : unit -> unit Deferred.t;
+  cleanfn : unit -> unit Deferred.t;
 }
 
 val resolve :
   (module Dns.Protocol.CLIENT) ->
   ?dnssec:bool ->
   commfn ->
-  q_class ->
-  q_type -> Dns.Name.domain_name -> Dns.Packet.t Async_kernel.Deferred.t
+  Dns.Packet.q_class ->
+  Dns.Packet.q_type ->
+  Dns.Name.domain_name -> Dns.Packet.t Deferred.t
 
 val gethostbyname :
-  ?q_class:q_class ->
-  ?q_type:q_type ->
+  ?q_class:Dns.Packet.q_class ->
+  ?q_type:Dns.Packet.q_type ->
   commfn ->
   string ->
-  (Ipaddr.V4.t, Ipaddr.V6.t) Ipaddr.v4v6 list Async_kernel.Deferred.t
+  Ipaddr.t list Deferred.t
