@@ -14,17 +14,15 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
+(** Async DNS resolution interface on Unix *)
+
 open Core.Std
 open Async.Std
-open Dns.Name
-open Dns.Operators
-open Dns.Protocol
-open Dns.Packet
 
 val gethostbyname :
   ?server:string ->
   ?dns_port:int ->
-  ?q_class:q_class ->
-  ?q_type:q_type ->
+  ?q_class:Dns.Packet.q_class ->
+  ?q_type:Dns.Packet.q_type ->
   string ->
-  (Ipaddr.V4.t, Ipaddr.V6.t) Ipaddr.v4v6 list Async_kernel.Deferred.t
+  Ipaddr.t list Deferred.t
