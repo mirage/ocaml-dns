@@ -44,4 +44,12 @@ module type S = sig
     Ipaddr.V4.t -> string list Lwt.t
 end
 
+type static_dns = 
+{
+  names: (string, Ipaddr.t) Hashtbl.t;
+  rev: (Ipaddr.V4.t, string) Hashtbl.t;
+}
+
+module Static : S with type stack = static_dns
+
 module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) : S with type stack = S.t

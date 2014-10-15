@@ -53,6 +53,36 @@ module type S = sig
     Ipaddr.V4.t -> string list Lwt.t
 end
 
+type static_dns = {
+  names: (string, Ipaddr.t) Hashtbl.t;
+  rev: (Ipaddr.V4.t, string) Hashtbl.t;
+}
+
+module Static = struct
+  type stack = static_dns
+  type t = stack
+
+  let create s = s
+
+  let resolve client
+      s server dns_port
+      (q_class:DP.q_class) (q_type:DP.q_type)
+      (q_name:domain_name) =
+    fail (Failure "Dummy stack cannot call resolve")
+
+  let gethostbyname
+      s ?(server = default_ns) ?(dns_port = default_port)
+      ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
+      name =
+    return (Hashtbl.find_all s.names name)
+
+  let gethostbyaddr
+      s ?(server = default_ns) ?(dns_port = default_port)
+      ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
+      addr =
+   return (Hashtbl.find_all s.rev addr)
+end
+
 module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
 
   type stack = S.t
