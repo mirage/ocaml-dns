@@ -1,7 +1,7 @@
 OASISFormat: 0.3
 OCamlVersion: >= 4.00.0
 Name:        dns
-Version:     0.10.0
+Version:     0.11.0
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC
@@ -25,6 +25,10 @@ Flag mirage
   Description: build the Mirage library
   Default: false
 
+Flag async
+  Description: build the Async library
+  Default: false
+
 Library dns
   Path: lib
   Findlibname: dns
@@ -32,8 +36,8 @@ Library dns
   Modules:
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
-  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0), io-page, base64
-  XMetaRequires: cstruct, re, re.str, ipaddr, io-page, base64
+  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0), base64
+  XMetaRequires: cstruct, re, re.str, ipaddr, base64
 
 Library "dns-lwt"
   Path: lwt
@@ -41,8 +45,8 @@ Library "dns-lwt"
   Install$: flag(lwt)
   Findlibname: lwt
   Modules: Dns_server_unix, Dns_resolver_unix
-  BuildDepends: lwt.unix (>= 2.4.1), cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix, io-page.unix
-  XMetaRequires: lwt.unix, cstruct.lwt, dns, dns.lwt-core, ipaddr.unix, io-page.unix
+  BuildDepends: lwt.unix (>= 2.4.1), cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix
+  XMetaRequires: lwt.unix, cstruct.lwt, dns, dns.lwt-core, ipaddr.unix
   FindlibParent: dns
 
 Library "dns-lwt-mirage"
@@ -63,6 +67,16 @@ Library "dns-lwt-core"
   Modules: Dns_server, Dns_resolver
   BuildDepends: lwt, cstruct, lwt.syntax, dns
   XMetaRequires: lwt, cstruct, dns
+  FindlibParent: dns
+
+Library "dns-async"
+  Path: async
+  Build$: flag(async)
+  Install$: flag(async)
+  Findlibname: async
+  Modules: Async_dns_resolver, Async_dns_resolver_unix
+  BuildDepends: async, ipaddr, dns, core.syntax, threads
+  XMetaRequires: async, ipaddr, dns, threads
   FindlibParent: dns
 
 Document dns
@@ -108,6 +122,16 @@ Executable mldig
   CompiledObject:     best
   Install:            false
   BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, dns.lwt, re, re.str, ipaddr, cmdliner
+
+Executable async_resolver
+  Path:               lib_test/async
+  MainIs:             test_async_dns_resolver_unix.ml
+  Build$:             flag(tests) && flag(async)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       async, dns.async
+
 
 Test lwt_server
   Run$:               flag(tests) && flag(lwt)

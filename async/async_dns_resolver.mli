@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2013 David Sheets <sheets@alum.mit.edu>
+ * Copyright (c) 2014 marklrh <marklrh@gmail.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -12,18 +12,31 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- *
  *)
 
-module B = Bigarray
-module B1 = B.Array1
+(** Async DNS resolution logic *)
 
-type t = (char, B.int8_unsigned_elt, B.c_layout) B1.t
+open Core.Std
+open Async.Std
 
-let default_allocator () = Bigarray.(Array1.create char c_layout 4096)
+type commfn = {
+  txfn : Dns.Buf.t -> unit Deferred.t;
+  rxfn : (Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Deferred.t;
+  timerfn : unit -> unit Deferred.t;
+  cleanfn : unit -> unit Deferred.t;
+}
 
-let create ?(alloc=default_allocator) len = B1.sub (alloc ()) 0 len
-let length = B1.dim
-let of_cstruct c = Cstruct.(B1.sub c.buffer c.off c.len)
-let shift b k = B1.sub b k (length b - k)
-let sub = B1.sub
+val resolve :
+  (module Dns.Protocol.CLIENT) ->
+  ?dnssec:bool ->
+  commfn ->
+  Dns.Packet.q_class ->
+  Dns.Packet.q_type ->
+  Dns.Name.domain_name -> Dns.Packet.t Deferred.t
+
+val gethostbyname :
+  ?q_class:Dns.Packet.q_class ->
+  ?q_type:Dns.Packet.q_type ->
+  commfn ->
+  string ->
+  Ipaddr.t list Deferred.t
