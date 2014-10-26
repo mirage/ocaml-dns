@@ -30,7 +30,7 @@ depends: [
   "base64"
 ]
 depopts: [
-  "mirage-types"
+  ("mirage-types" & "tcpip")
   "async"
 ]
 conflicts: [
