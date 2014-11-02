@@ -32,7 +32,7 @@ module type CLIENT = sig
       successful parse or timeout. With this behavior, it is easy to construct
       low-latency but network-environment-aware DNS resolvers.
   *)
-  val marshal : Packet.t -> (context * Buf.t) list
+  val marshal : ?alloc:(unit -> Buf.t) -> Packet.t -> (context * Buf.t) list
 
   (** [parse ctxt buf] is the potential packet extracted out of [buf]
       with [ctxt]

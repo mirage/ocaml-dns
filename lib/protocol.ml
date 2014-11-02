@@ -22,7 +22,7 @@ module type CLIENT = sig
 
   val get_id : unit -> int
 
-  val marshal : Packet.t -> (context * Buf.t) list
+  val marshal : ?alloc:(unit -> Buf.t) -> Packet.t -> (context * Buf.t) list
   val parse : context -> Buf.t -> Packet.t option
 
   val timeout : context -> exn
@@ -36,7 +36,9 @@ module Client : CLIENT = struct
     Random.self_init ();
     Random.int (1 lsl 16)
 
-  let marshal q = [q.Packet.id, Packet.marshal (Buf.create 4096) q]
+  let marshal ?alloc q =
+    [q.Packet.id, Packet.marshal (Buf.create ?alloc 4096) q]
+
   let parse id buf =
     let pkt = Packet.parse buf in
     if pkt.Packet.id = id then Some pkt else None
@@ -51,6 +53,7 @@ module type SERVER = sig
 
   val parse   : Buf.t -> context option
   val marshal : Buf.t -> context -> Packet.t -> Buf.t option
+
 end
 
 let contain_exc l v =
