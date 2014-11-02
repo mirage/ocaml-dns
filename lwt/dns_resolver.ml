@@ -42,9 +42,9 @@ let rec send_req txfn timerfn q =
     printf "retrying query for %d times\n%!" (4-count);
     send_req txfn timerfn q (count - 1)
 
-let send_pkt client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
+let send_pkt ?alloc client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
   let module R = (val client : CLIENT) in
-  let cqpl = R.marshal pkt in
+  let cqpl = R.marshal ?alloc pkt in
   let resl = List.map (fun (ctxt,q) ->
       (* make a new socket for each request flavor *)
       (* start the requests in parallel and run them until success or timeout*)
@@ -77,6 +77,7 @@ let send_pkt client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
   in select [] resl
 
 let resolve client
+    ?alloc
     ?(dnssec=false)
     (commfn:commfn)
     (q_class:DP.q_class) (q_type:DP.q_type)
@@ -84,7 +85,7 @@ let resolve client
   try_lwt
     let id = (let module R = (val client : CLIENT) in R.get_id ()) in
     let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
-    send_pkt client commfn q
+    send_pkt ?alloc client commfn q
     >>= fun r ->
     commfn.cleanfn ()
     >>= fun () ->
@@ -95,12 +96,13 @@ let resolve client
     fail exn
 
 let gethostbyname
+    ?alloc
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
     commfn
     name =
   let open DP in
   let domain = string_to_domain_name name in
-  resolve (module Dns.Protocol.Client) commfn q_class q_type domain
+  resolve ?alloc (module Dns.Protocol.Client) commfn q_class q_type domain
   >|= fun r ->
   List.fold_left (fun a x ->
       match x.rdata with
@@ -111,13 +113,14 @@ let gethostbyname
   |> List.rev
 
 let gethostbyaddr
+    ?alloc
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
     commfn
     addr
   =
   let addr = for_reverse addr in
   let open DP in
-  resolve (module Dns.Protocol.Client) commfn q_class q_type addr
+  resolve ?alloc (module Dns.Protocol.Client) commfn q_class q_type addr
   >|= fun r ->
   List.fold_left (fun a x ->
       match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a

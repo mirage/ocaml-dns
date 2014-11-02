@@ -123,25 +123,27 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
       Hashtbl.add res endp commfn;
       commfn
 
+  let alloc () = Io_page.get 1
+
   let resolve client
       s server dns_port
       (q_class:DP.q_class) (q_type:DP.q_type)
       (q_name:domain_name) =
     let commfn = connect_to_resolver s (server,dns_port) in
-    resolve client commfn q_class q_type q_name
+    resolve ~alloc client commfn q_class q_type q_name
 
   let gethostbyname
       s ?(server = default_ns) ?(dns_port = default_port)
       ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
       name =
     let commfn = connect_to_resolver s (server,dns_port) in
-    gethostbyname ~q_class ~q_type commfn name
+    gethostbyname ~alloc ~q_class ~q_type commfn name
 
   let gethostbyaddr
       s ?(server = default_ns) ?(dns_port = default_port)
       ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
       addr =
     let commfn = connect_to_resolver s (server,dns_port) in
-    gethostbyaddr ~q_class ~q_type commfn addr
+    gethostbyaddr ~alloc ~q_class ~q_type commfn addr
 
 end

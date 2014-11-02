@@ -25,6 +25,7 @@ type commfn = {
 
 val resolve : 
   (module Dns.Protocol.CLIENT) ->
+  ?alloc:(unit -> Dns.Buf.t) ->
   ?dnssec:bool ->
   commfn -> Dns.Packet.q_class -> 
   Dns.Packet.q_type -> 
@@ -32,11 +33,13 @@ val resolve :
   Dns.Packet.t Lwt.t
 
 val gethostbyname :
+  ?alloc:(unit -> Dns.Buf.t) ->
   ?q_class:Dns.Packet.q_class ->
   ?q_type:Dns.Packet.q_type -> commfn ->
   string -> Ipaddr.t list Lwt.t
 
 val gethostbyaddr :
+  ?alloc:(unit -> Dns.Buf.t) ->
   ?q_class:Dns.Packet.q_class ->
   ?q_type:Dns.Packet.q_type -> commfn ->
   Ipaddr.V4.t -> string list Lwt.t

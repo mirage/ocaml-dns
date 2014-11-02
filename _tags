@@ -1,8 +1,9 @@
 # OASIS_START
-# DO NOT EDIT (digest: 0deea38929ba0e8cb731d80c2e44233e)
+# DO NOT EDIT (digest: a37dc27a925bfba7673fea3e37998142)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
+true: annot, bin_annot
 <**/.svn>: -traverse
 <**/.svn>: not_hygienic
 ".bzr": -traverse
@@ -29,41 +30,42 @@
 "lib/resolvconf.cmx": for-pack(Dns)
 "lib/buf.cmx": for-pack(Dns)
 "lib/protocol.cmx": for-pack(Dns)
-<lib/*.ml{,i}>: package(base64)
-<lib/*.ml{,i}>: package(cstruct)
-<lib/*.ml{,i}>: package(cstruct.syntax)
-<lib/*.ml{,i}>: package(ipaddr)
-<lib/*.ml{,i}>: package(re)
-<lib/*.ml{,i}>: package(re.str)
+<lib/*.ml{,i,y}>: package(base64)
+<lib/*.ml{,i,y}>: package(cstruct)
+<lib/*.ml{,i,y}>: package(cstruct.syntax)
+<lib/*.ml{,i,y}>: package(ipaddr)
+<lib/*.ml{,i,y}>: package(re)
+<lib/*.ml{,i,y}>: package(re.str)
 # Library dns-lwt-core
 "lwt/dns-lwt-core.cmxs": use_dns-lwt-core
 # Library dns-lwt-mirage
 "mirage/dns-lwt-mirage.cmxs": use_dns-lwt-mirage
-<mirage/*.ml{,i}>: package(base64)
-<mirage/*.ml{,i}>: package(cstruct)
-<mirage/*.ml{,i}>: package(cstruct.syntax)
-<mirage/*.ml{,i}>: package(ipaddr)
-<mirage/*.ml{,i}>: package(lwt)
-<mirage/*.ml{,i}>: package(lwt.syntax)
-<mirage/*.ml{,i}>: package(mirage-types)
-<mirage/*.ml{,i}>: package(re)
-<mirage/*.ml{,i}>: package(re.str)
-<mirage/*.ml{,i}>: use_dns
-<mirage/*.ml{,i}>: use_dns-lwt-core
+<mirage/*.ml{,i,y}>: package(base64)
+<mirage/*.ml{,i,y}>: package(cstruct)
+<mirage/*.ml{,i,y}>: package(cstruct.syntax)
+<mirage/*.ml{,i,y}>: package(io-page)
+<mirage/*.ml{,i,y}>: package(ipaddr)
+<mirage/*.ml{,i,y}>: package(lwt)
+<mirage/*.ml{,i,y}>: package(lwt.syntax)
+<mirage/*.ml{,i,y}>: package(mirage-types)
+<mirage/*.ml{,i,y}>: package(re)
+<mirage/*.ml{,i,y}>: package(re.str)
+<mirage/*.ml{,i,y}>: use_dns
+<mirage/*.ml{,i,y}>: use_dns-lwt-core
 # Library dns-lwt
 "lwt/dns-lwt.cmxs": use_dns-lwt
 # Library dns-async
 "async/dns-async.cmxs": use_dns-async
-<async/*.ml{,i}>: package(async)
-<async/*.ml{,i}>: package(base64)
-<async/*.ml{,i}>: package(core.syntax)
-<async/*.ml{,i}>: package(cstruct)
-<async/*.ml{,i}>: package(cstruct.syntax)
-<async/*.ml{,i}>: package(ipaddr)
-<async/*.ml{,i}>: package(re)
-<async/*.ml{,i}>: package(re.str)
-<async/*.ml{,i}>: package(threads)
-<async/*.ml{,i}>: use_dns
+<async/*.ml{,i,y}>: package(async)
+<async/*.ml{,i,y}>: package(base64)
+<async/*.ml{,i,y}>: package(core.syntax)
+<async/*.ml{,i,y}>: package(cstruct)
+<async/*.ml{,i,y}>: package(cstruct.syntax)
+<async/*.ml{,i,y}>: package(ipaddr)
+<async/*.ml{,i,y}>: package(re)
+<async/*.ml{,i,y}>: package(re.str)
+<async/*.ml{,i,y}>: package(threads)
+<async/*.ml{,i,y}>: use_dns
 # Executable lwt_server
 <lib_test/unix/lwt_server.{native,byte}>: package(base64)
 <lib_test/unix/lwt_server.{native,byte}>: package(cstruct)
@@ -95,20 +97,20 @@
 <lib_test/unix/time_server.{native,byte}>: use_dns
 <lib_test/unix/time_server.{native,byte}>: use_dns-lwt
 <lib_test/unix/time_server.{native,byte}>: use_dns-lwt-core
-<lib_test/unix/*.ml{,i}>: package(base64)
-<lib_test/unix/*.ml{,i}>: package(cstruct)
-<lib_test/unix/*.ml{,i}>: package(cstruct.lwt)
-<lib_test/unix/*.ml{,i}>: package(cstruct.syntax)
-<lib_test/unix/*.ml{,i}>: package(ipaddr)
-<lib_test/unix/*.ml{,i}>: package(ipaddr.unix)
-<lib_test/unix/*.ml{,i}>: package(lwt)
-<lib_test/unix/*.ml{,i}>: package(lwt.syntax)
-<lib_test/unix/*.ml{,i}>: package(lwt.unix)
-<lib_test/unix/*.ml{,i}>: package(re)
-<lib_test/unix/*.ml{,i}>: package(re.str)
-<lib_test/unix/*.ml{,i}>: use_dns
-<lib_test/unix/*.ml{,i}>: use_dns-lwt
-<lib_test/unix/*.ml{,i}>: use_dns-lwt-core
+<lib_test/unix/*.ml{,i,y}>: package(base64)
+<lib_test/unix/*.ml{,i,y}>: package(cstruct)
+<lib_test/unix/*.ml{,i,y}>: package(cstruct.lwt)
+<lib_test/unix/*.ml{,i,y}>: package(cstruct.syntax)
+<lib_test/unix/*.ml{,i,y}>: package(ipaddr)
+<lib_test/unix/*.ml{,i,y}>: package(ipaddr.unix)
+<lib_test/unix/*.ml{,i,y}>: package(lwt)
+<lib_test/unix/*.ml{,i,y}>: package(lwt.syntax)
+<lib_test/unix/*.ml{,i,y}>: package(lwt.unix)
+<lib_test/unix/*.ml{,i,y}>: package(re)
+<lib_test/unix/*.ml{,i,y}>: package(re.str)
+<lib_test/unix/*.ml{,i,y}>: use_dns
+<lib_test/unix/*.ml{,i,y}>: use_dns-lwt
+<lib_test/unix/*.ml{,i,y}>: use_dns-lwt-core
 <lib_test/unix/time_server.{native,byte}>: custom
 # Executable mldig
 <lwt/mldig.{native,byte}>: package(base64)
@@ -126,21 +128,21 @@
 <lwt/mldig.{native,byte}>: use_dns
 <lwt/mldig.{native,byte}>: use_dns-lwt
 <lwt/mldig.{native,byte}>: use_dns-lwt-core
-<lwt/*.ml{,i}>: package(base64)
-<lwt/*.ml{,i}>: package(cmdliner)
-<lwt/*.ml{,i}>: package(cstruct)
-<lwt/*.ml{,i}>: package(cstruct.lwt)
-<lwt/*.ml{,i}>: package(cstruct.syntax)
-<lwt/*.ml{,i}>: package(ipaddr)
-<lwt/*.ml{,i}>: package(ipaddr.unix)
-<lwt/*.ml{,i}>: package(lwt)
-<lwt/*.ml{,i}>: package(lwt.syntax)
-<lwt/*.ml{,i}>: package(lwt.unix)
-<lwt/*.ml{,i}>: package(re)
-<lwt/*.ml{,i}>: package(re.str)
-<lwt/*.ml{,i}>: use_dns
-<lwt/*.ml{,i}>: use_dns-lwt
-<lwt/*.ml{,i}>: use_dns-lwt-core
+<lwt/*.ml{,i,y}>: package(base64)
+<lwt/*.ml{,i,y}>: package(cmdliner)
+<lwt/*.ml{,i,y}>: package(cstruct)
+<lwt/*.ml{,i,y}>: package(cstruct.lwt)
+<lwt/*.ml{,i,y}>: package(cstruct.syntax)
+<lwt/*.ml{,i,y}>: package(ipaddr)
+<lwt/*.ml{,i,y}>: package(ipaddr.unix)
+<lwt/*.ml{,i,y}>: package(lwt)
+<lwt/*.ml{,i,y}>: package(lwt.syntax)
+<lwt/*.ml{,i,y}>: package(lwt.unix)
+<lwt/*.ml{,i,y}>: package(re)
+<lwt/*.ml{,i,y}>: package(re.str)
+<lwt/*.ml{,i,y}>: use_dns
+<lwt/*.ml{,i,y}>: use_dns-lwt
+<lwt/*.ml{,i,y}>: use_dns-lwt-core
 <lwt/mldig.{native,byte}>: custom
 # Executable async_resolver
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: package(async)
@@ -154,17 +156,17 @@
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: package(threads)
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: use_dns
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: use_dns-async
-<lib_test/async/*.ml{,i}>: package(async)
-<lib_test/async/*.ml{,i}>: package(base64)
-<lib_test/async/*.ml{,i}>: package(core.syntax)
-<lib_test/async/*.ml{,i}>: package(cstruct)
-<lib_test/async/*.ml{,i}>: package(cstruct.syntax)
-<lib_test/async/*.ml{,i}>: package(ipaddr)
-<lib_test/async/*.ml{,i}>: package(re)
-<lib_test/async/*.ml{,i}>: package(re.str)
-<lib_test/async/*.ml{,i}>: package(threads)
-<lib_test/async/*.ml{,i}>: use_dns
-<lib_test/async/*.ml{,i}>: use_dns-async
+<lib_test/async/*.ml{,i,y}>: package(async)
+<lib_test/async/*.ml{,i,y}>: package(base64)
+<lib_test/async/*.ml{,i,y}>: package(core.syntax)
+<lib_test/async/*.ml{,i,y}>: package(cstruct)
+<lib_test/async/*.ml{,i,y}>: package(cstruct.syntax)
+<lib_test/async/*.ml{,i,y}>: package(ipaddr)
+<lib_test/async/*.ml{,i,y}>: package(re)
+<lib_test/async/*.ml{,i,y}>: package(re.str)
+<lib_test/async/*.ml{,i,y}>: package(threads)
+<lib_test/async/*.ml{,i,y}>: use_dns
+<lib_test/async/*.ml{,i,y}>: use_dns-async
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: custom
 # OASIS_STOP
 true: annot, bin_annot
