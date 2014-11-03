@@ -312,7 +312,6 @@ val rcode_to_string : rcode -> string
 
 (** The [detail] field from the DNS header, with the usual conversion
     functions. *)
-
 type detail = {
   qr: qr;
   opcode: opcode;
