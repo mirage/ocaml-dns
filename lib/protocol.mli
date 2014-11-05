@@ -58,15 +58,15 @@ module type SERVER = sig
   val query_of_context : context -> Packet.t
 
   (** DNS wire format parser function.
-      @param message buffer
+      @param buf message buffer
       @return parsed packet and context
   *)
   val parse   : Buf.t -> context option
 
   (** DNS wire format marshal function.
-      @param output resource
-      @param context
-      @param answer packet
+      @param buf output resource
+      @param _q context
+      @param response answer packet
       @return buffer to write
   *)
   val marshal : Buf.t -> context -> Packet.t -> Buf.t option
