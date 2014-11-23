@@ -261,6 +261,7 @@ val rr_class_to_string : rr_class -> string
 type rr = {
   name  : domain_name;
   cls   : rr_class;
+  flush : bool;  (* mDNS cache flush bit *)
   ttl   : int32;
   rdata : rdata;
 }

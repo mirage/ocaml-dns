@@ -71,7 +71,7 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
   let additionals =
     if dnssec then
       [ ( {
-        name=[]; cls=RR_IN; ttl=0l;
+        name=[]; cls=RR_IN; flush=false; ttl=0l;
         rdata=(EDNS0(1500, 0, true, []));} ) ]
     else
       []
@@ -127,6 +127,7 @@ let answer ?(dnssec=false) qname qtype trie =
       in
       let rr = Packet.({ name = owner;
                          cls = rrclass;
+                         flush = false;
                          ttl = ttl;
                          rdata = rr })
       in
@@ -431,7 +432,8 @@ let answer ?(dnssec=false) qname qtype trie =
       add_opt_rrset o Packet.Q_ANY_TYP t `Additional) !addqueue;
     let _ =
       if (dnssec) then
-      let rr = Packet.({ name = []; cls = RR_IN; ttl = 0x00008000l;
+      let rr = Packet.({ name = []; cls = RR_IN; flush = false;
+                         ttl = 0x00008000l;
                          rdata = EDNS0(1500, 0, true, [])})
       in
         add_rrs := !add_rrs @ [(rr)]

@@ -391,13 +391,15 @@ cstruct rr {
 type rr = {
   name  : domain_name;
   cls   : rr_class;
+  flush : bool;  (* mDNS cache flush bit *)
   ttl   : int32;
   rdata : rdata;
 }
 
 let rr_to_string rr =
-  sprintf "%s <%s|%ld> [%s]"
+  sprintf "%s <%s%s|%ld> [%s]"
     (domain_name_to_string rr.name) (rr_class_to_string rr.cls)
+    (if rr.flush then ",flush" else "")
     rr.ttl (rdata_to_string rr.rdata)
 
 type q_type =
@@ -1236,7 +1238,7 @@ let parse_rr names base buf =
           | Some cls -> cls in
         let data = Cstruct.to_string
         (Cstruct.sub buf sizeof_rr rdlen) in
-        ({name; cls; ttl; rdata=UNKNOWN(t, data) },
+        ({name; cls; flush=false; ttl; rdata=UNKNOWN(t, data) },
           ((base+sizeof_rr+rdlen), Cstruct.shift buf (sizeof_rr+rdlen))
         )
     | Some typ ->
@@ -1244,21 +1246,25 @@ let parse_rr names base buf =
         let rdlen = get_rr_rdlen buf in
         let cls = get_rr_cls buf in
         let rdata =
-        let rdbuf = Cstruct.sub buf sizeof_rr rdlen in
+          let rdbuf = Cstruct.sub buf sizeof_rr rdlen in
           parse_rdata names (base+sizeof_rr) typ cls ttl rdbuf
-          in
-        match (typ, (get_rr_cls buf |> int_to_rr_class)) with
-          | (RR_OPT, _) ->
-              ({ name; cls=RR_IN; ttl; rdata },
+        in
+        match typ with
+          | RR_OPT ->
+              ({ name; cls=RR_IN; flush=false; ttl; rdata },
                ((base+sizeof_rr+rdlen),
                Cstruct.shift buf (sizeof_rr+rdlen))
               )
-          | (_, (Some cls)) ->
-              ({ name; cls; ttl; rdata },
-               ((base+sizeof_rr+rdlen),
-               Cstruct.shift buf (sizeof_rr+rdlen))
-              )
-          | (_, None) -> failwith "parse_rr: unknown class"
+          | _ ->
+            (* mDNS uses bit 15 as cache flush flag *)
+            let flush = (((cls lsr 15) land 1) = 1) in
+            match ((cls land 0x7FFF) |> int_to_rr_class) with
+              | Some cls ->
+                  ({ name; cls; flush; ttl; rdata },
+                   ((base+sizeof_rr+rdlen),
+                   Cstruct.shift buf (sizeof_rr+rdlen))
+                  )
+              | None -> failwith "parse_rr: unknown class"
 
 let marshal_rr ?(compress=true) (names, base, buf) rr =
   let names, base, buf = marshal_name ~compress names base
@@ -1284,9 +1290,11 @@ let marshal_rr ?(compress=true) (names, base, buf) rr =
       let _ = set_rr_cls buf (rr_class_to_int rr.cls) in
       let _ = set_rr_ttl buf rr.ttl in
         ()
-    | _ ->
-       set_rr_cls buf (rr_class_to_int rr.cls);
-       set_rr_ttl buf rr.ttl
+  | _ ->
+      let flush = (if rr.flush then 1 else 0) in
+      let cls = rr_class_to_int rr.cls in
+      set_rr_cls buf ((flush lsl 15) lor cls);
+      set_rr_ttl buf rr.ttl
   in
   names, base+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
 
