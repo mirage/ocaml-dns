@@ -28,8 +28,8 @@ depends: [
   "cmdliner"
   "ipaddr" {>= "2.2.0"}
   "base64"
-  "ounit" {build}
-  "pcap-format" {build}
+  "ounit"
+  "pcap-format"
 ]
 depopts: [
   ("mirage-types" & "tcpip")
