@@ -33,6 +33,7 @@ opam install async
 eval `opam config env`
 make clean
 make
+make test
 cd examples
 make
 
