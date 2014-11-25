@@ -95,6 +95,7 @@ let tests =
         assert_equal ~msg:"q_name" "www.google.com" (domain_name_to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
+        assert_equal ~msg:"q_unicast" QM q.q_unicast;
     );
 
     "marshal-dns-q-A" >:: (fun test_ctxt ->
@@ -106,7 +107,7 @@ let tests =
           } in
           let q = {
             q_name=(string_to_domain_name "www.google.com");
-            q_type=Q_A; q_class=Q_IN;
+            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
           } in
           {
             id=0x930b; detail; questions=[q];
@@ -136,6 +137,7 @@ let tests =
         assert_equal ~msg:"q_name" "www.google.com" (domain_name_to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
+        assert_equal ~msg:"q_unicast" QM q.q_unicast;
 
         let rev_answers = List.rev packet.answers in
         let expected_fourth = [208; 211; 209; 212; 210] in
@@ -160,7 +162,7 @@ let tests =
           } in
           let q = {
             q_name=(string_to_domain_name "www.google.com");
-            q_type=Q_A; q_class=Q_IN;
+            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
           } in
           let answers = List.map (fun fourth -> {
                 name=q.q_name; cls=RR_IN; flush=false; ttl=Int32.of_int 220;
@@ -194,7 +196,8 @@ let tests =
         let q = List.hd packet.questions in
         assert_equal ~msg:"q_name" "cubieboard2.local" (domain_name_to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
-        assert_equal ~msg:"q_class" Q_IN q.q_class
+        assert_equal ~msg:"q_class" Q_IN q.q_class;
+        assert_equal ~msg:"q_unicast" QM q.q_unicast;
     );
 
     "marshal-mdns-q-A" >:: (fun test_ctxt ->
@@ -206,7 +209,7 @@ let tests =
           } in
           let q = {
             q_name=(string_to_domain_name "cubieboard2.local");
-            q_type=Q_A; q_class=Q_IN;
+            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
           } in
           {
             id=0; detail; questions=[q];
@@ -261,5 +264,25 @@ let tests =
         assert_equal ~printer:hexdump raw buf
     );
 
+    "q_unicast" >:: (fun test_ctxt ->
+        (* Verify that q_unicast=QU can be marshalled and then parsed *)
+        let packet =
+          let detail = {
+            qr=Query; opcode=Standard; aa=false;
+            tc=false; rd=false; ra=false; rcode=NoError
+          } in
+          let q = {
+            q_name=(string_to_domain_name "cubieboard2.local");
+            q_type=Q_A; q_class=Q_IN; q_unicast=QU;
+          } in
+          {
+            id=0; detail; questions=[q];
+            answers=[]; authorities=[]; additionals=[];
+          } in
+        let buf = marshal (Dns.Buf.create 512) packet in
+        let parsed = parse buf in
+        let q = List.hd parsed.questions in
+        assert_equal QU q.q_unicast
+      );
   ]
 

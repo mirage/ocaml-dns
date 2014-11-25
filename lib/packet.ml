@@ -826,21 +826,30 @@ let q_class_to_string x =
 let string_to_q_class x =
   string_to_q_class ("Q_"^x)
 
+type q_unicast = QM | QU
+
+let q_unicast_to_string x =
+  match x with
+  | QM -> "QM"
+  | QU -> "QU"
+
 cstruct q {
   uint16_t typ;
   uint16_t cls
 } as big_endian
 
 type question = {
-  q_name  : domain_name;
-  q_type  : q_type;
-  q_class : q_class;
+  q_name    : domain_name;
+  q_type    : q_type;
+  q_class   : q_class;
+  q_unicast : q_unicast;
 }
 
 let question_to_string q =
-  sprintf "%s. <%s|%s>"
+  sprintf "%s. <%s|%s%s>"
     (domain_name_to_string q.q_name)
     (q_type_to_string q.q_type) (q_class_to_string q.q_class)
+    (if q.q_unicast = QU then "|QU" else "")
 
 let parse_question names base buf =
   let q_name, (base,buf) = parse_name names base buf in
@@ -850,18 +859,21 @@ let parse_question names base buf =
       | None -> failwith (sprintf "parse_question: typ %d" typ)
       | Some typ -> typ
   in
-  let q_class =
+  let q_class, q_unicast =
     let cls = get_q_cls buf in
-    match int_to_q_class cls with
+    (* mDNS uses bit 15 as the unicast-response bit *)
+    let q_unicast = if (((cls lsr 15) land 1) = 1) then QU else QM in
+    match int_to_q_class (cls land 0x7FFF) with
       | None -> failwith (sprintf "parse_question: cls %d" cls)
-      | Some cls -> cls
+      | Some cls -> cls, q_unicast
   in
-  { q_name; q_type; q_class }, (base+sizeof_q, Cstruct.shift buf sizeof_q)
+  { q_name; q_type; q_class; q_unicast; }, (base+sizeof_q, Cstruct.shift buf sizeof_q)
 
 let marshal_question ?(compress=true) (names, base, buf) q =
   let names, base, buf = marshal_name names base buf q.q_name in
   set_q_typ buf (q_type_to_int q.q_type);
-  set_q_cls buf (q_class_to_int q.q_class);
+  let q_unicast = (if q.q_unicast = QU then 1 else 0) in
+  set_q_cls buf ((q_unicast lsl 15) lor (q_class_to_int q.q_class));
   names, base+sizeof_q, Cstruct.shift buf sizeof_q
 
 exception Not_implemented

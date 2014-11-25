@@ -285,11 +285,16 @@ type q_class = Q_IN | Q_CS | Q_CH | Q_HS | Q_NONE | Q_ANY_CLS
 val q_class_to_string : q_class -> string
 val string_to_q_class : string -> q_class option
 
+(** mDNS unicast response bit. *)
+type q_unicast = QM | QU
+val q_unicast_to_string : q_unicast -> string
+
 (** A question, with the usual conversion functions. *)
 type question = {
-  q_name  : domain_name;
-  q_type  : q_type;
-  q_class : q_class;
+  q_name    : domain_name;
+  q_type    : q_type;
+  q_class   : q_class;
+  q_unicast : q_unicast;
 }
 val question_to_string : question -> string
 val parse_question :

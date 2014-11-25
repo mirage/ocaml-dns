@@ -76,7 +76,7 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
     else
       []
   in
-  let question = { q_name; q_type; q_class } in
+  let question = { q_name; q_type; q_class; q_unicast=QM } in
   { id; detail; questions=[question];
     answers=[]; authorities=[]; additionals;
   }
