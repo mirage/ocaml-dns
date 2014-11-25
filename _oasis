@@ -131,8 +131,17 @@ Executable async_resolver
   Install:            false
   BuildDepends:       async, dns.async
 
+Executable test
+  Path:               lib_test/ounit
+  MainIs:             test.ml
+  Build$:             flag(tests)
+  Custom:             true
+  CompiledObject:     best
+  Install:            false
+  BuildDepends:       dns, unix, oUnit, pcap-format
 
-Test lwt_server
-  Run$:               flag(tests) && flag(lwt)
-  Command:            $lwt_server
-  WorkingDirectory:   lib_test/unix
+Test test
+  Run$:               flag(tests)
+  Command:            $test
+  WorkingDirectory:   lib_test/ounit
+
