@@ -57,13 +57,25 @@ let load_packet path =
   | None ->
     assert_failure "No packets"
 
+let hexdump ibuf =
+  let n = Dns.Buf.length ibuf in
+  let obuf = Buffer.create (3 * n) in
+  let rec acc i =
+    Buffer.add_string obuf (sprintf "%.2x " (int_of_char ibuf.{i}));
+    if i mod 16 = 15 then Buffer.add_char obuf '\n';
+    if i < n - 1 then acc (i + 1);
+  in
+  if n >= 1 then acc 0;
+  if n mod 16 != 15 then Buffer.add_char obuf '\n';
+  Buffer.contents obuf
+
 open Dns.Packet
 open Dns.Name
 
 let tests =
   "Packet" >:::
   [
-    "parse-dns-q" >:: (fun test_ctxt ->
+    "parse-dns-q-A" >:: (fun test_ctxt ->
         let raw = load_packet "dns-q-A.pcap" in
         let packet = parse raw in
         assert_equal ~msg:"id" 0x930b packet.id;
@@ -76,12 +88,32 @@ let tests =
         assert_equal ~msg:"rcode" NoError packet.detail.rcode;
         assert_equal ~msg:"#qu" 1 (List.length packet.questions);
         assert_equal ~msg:"#an" 0 (List.length packet.answers);
+        assert_equal ~msg:"#au" 0 (List.length packet.authorities);
         assert_equal ~msg:"#ad" 0 (List.length packet.additionals);
 
         let q = List.hd packet.questions in
         assert_equal ~msg:"q_name" "www.google.com" (domain_name_to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
+    );
+
+    "marshal-dns-q-A" >:: (fun test_ctxt ->
+        let raw = load_packet "dns-q-A.pcap" in
+        let packet =
+          let detail = {
+            qr=Query; opcode=Standard; aa=false;
+            tc=false; rd=true; ra=false; rcode=NoError
+          } in
+          let q = {
+            q_name=(string_to_domain_name "www.google.com");
+            q_type=Q_A; q_class=Q_IN;
+          } in
+          {
+            id=0x930b; detail; questions=[q];
+            answers=[]; authorities=[]; additionals=[];
+          } in
+        let buf = marshal (Dns.Buf.create 512) packet in
+        assert_equal ~printer:hexdump raw buf
     );
 
     "parse-dns-r-A" >:: (fun test_ctxt ->
@@ -97,6 +129,7 @@ let tests =
         assert_equal ~msg:"rcode" NoError packet.detail.rcode;
         assert_equal ~msg:"#qu" 1 (List.length packet.questions);
         assert_equal ~msg:"#an" 5 (List.length packet.answers);
+        assert_equal ~msg:"#au" 0 (List.length packet.authorities);
         assert_equal ~msg:"#ad" 0 (List.length packet.additionals);
 
         let q = List.hd packet.questions in
@@ -118,6 +151,30 @@ let tests =
           ) expected_fourth rev_answers
     );
 
+    "marshal-dns-r-A" >:: (fun test_ctxt ->
+        let raw = load_packet "dns-r-A.pcap" in
+        let packet =
+          let detail = {
+            qr=Response; opcode=Standard; aa=false;
+            tc=false; rd=true; ra=true; rcode=NoError
+          } in
+          let q = {
+            q_name=(string_to_domain_name "www.google.com");
+            q_type=Q_A; q_class=Q_IN;
+          } in
+          let answers = List.map (fun fourth -> {
+                name=q.q_name; cls=RR_IN; flush=false; ttl=Int32.of_int 220;
+                rdata=A (Ipaddr.V4.of_string_exn (sprintf "74.125.237.%d" fourth));
+              }) [208; 211; 209; 212; 210]
+          in
+          {
+            id=0x930b; detail; questions=[q];
+            answers; authorities=[]; additionals=[];
+          } in
+        let buf = marshal (Dns.Buf.create 512) packet in
+        assert_equal ~printer:hexdump raw buf
+    );
+
     "parse-mdns-q-A" >:: (fun test_ctxt ->
         let raw = load_packet "mdns-q-A.pcap" in
         let packet = parse raw in
@@ -131,12 +188,32 @@ let tests =
         assert_equal ~msg:"rcode" NoError packet.detail.rcode;
         assert_equal ~msg:"#qu" 1 (List.length packet.questions);
         assert_equal ~msg:"#an" 0 (List.length packet.answers);
+        assert_equal ~msg:"#au" 0 (List.length packet.authorities);
         assert_equal ~msg:"#ad" 0 (List.length packet.additionals);
 
         let q = List.hd packet.questions in
         assert_equal ~msg:"q_name" "cubieboard2.local" (domain_name_to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class
+    );
+
+    "marshal-mdns-q-A" >:: (fun test_ctxt ->
+        let raw = load_packet "mdns-q-A.pcap" in
+        let packet =
+          let detail = {
+            qr=Query; opcode=Standard; aa=false;
+            tc=false; rd=false; ra=false; rcode=NoError
+          } in
+          let q = {
+            q_name=(string_to_domain_name "cubieboard2.local");
+            q_type=Q_A; q_class=Q_IN;
+          } in
+          {
+            id=0; detail; questions=[q];
+            answers=[]; authorities=[]; additionals=[];
+          } in
+        let buf = marshal (Dns.Buf.create 512) packet in
+        assert_equal ~printer:hexdump raw buf
     );
 
     "parse-mdns-r-A" >:: (fun test_ctxt ->
@@ -152,6 +229,7 @@ let tests =
         assert_equal ~msg:"rcode" NoError packet.detail.rcode;
         assert_equal ~msg:"#qu" 0 (List.length packet.questions);
         assert_equal ~msg:"#an" 1 (List.length packet.answers);
+        assert_equal ~msg:"#au" 0 (List.length packet.authorities);
         assert_equal ~msg:"#ad" 0 (List.length packet.additionals);
 
         let a = List.hd packet.answers in
@@ -163,5 +241,25 @@ let tests =
         | A addr -> assert_equal ~msg:"A" "192.168.2.106" (Ipaddr.V4.to_string addr)
         | _ -> assert_failure "RR type";
     );
+
+    "marshal-mdns-r-A" >:: (fun test_ctxt ->
+        let raw = load_packet "mdns-r-A.pcap" in
+        let packet =
+          let detail = {
+            qr=Response; opcode=Standard; aa=true;
+            tc=false; rd=false; ra=false; rcode=NoError
+          } in
+          let a = {
+            name=(string_to_domain_name "cubieboard2.local"); cls=RR_IN; flush=true; ttl=Int32.of_int 120;
+            rdata=A (Ipaddr.V4.of_string_exn "192.168.2.106");
+          } in
+          {
+            id=0; detail; questions=[];
+            answers=[a]; authorities=[]; additionals=[];
+          } in
+        let buf = marshal (Dns.Buf.create 512) packet in
+        assert_equal ~printer:hexdump raw buf
+    );
+
   ]
 
