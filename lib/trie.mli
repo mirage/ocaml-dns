@@ -38,7 +38,7 @@ val new_trie : unit -> dnstrie
 val simple_lookup : Name.key -> dnstrie -> RR.dnsnode option
 
 (** Look up a DNS entry in the trie, with full return. *)
-val lookup : Name.key -> dnstrie ->
+val lookup : Name.key -> dnstrie -> mdns:bool ->
     [> `Delegated of bool * RR.dnsnode
      | `Found of bool * RR.dnsnode * RR.dnsnode
      | `NXDomain of RR.dnsnode

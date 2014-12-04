@@ -47,6 +47,15 @@ let bad_node = { data = None; edge = ""; byte = -1;
 		 children = [||]; ch_key = ""; least_child = '\255';
 		 flags = Nothing; }
 
+let local_dnsnode = { owner = hashcons_domainname (string_to_domain_name "local."); rrsets = [] }
+let local_dnstrie = {
+  data = Some local_dnsnode; edge = ""; byte = 0;
+  children = [||]; ch_key = ""; least_child = '\255';
+  flags = Nothing;
+}
+
+let mdns_not_found = `NXDomain local_dnsnode
+
 exception TrieCorrupt			(* Missing data from a soa/cut node *)
 
 (* Utility for trie ops: compare the remaining bytes of key with the 
@@ -176,10 +185,12 @@ let rec simple_lookup key node =
 
 
 (* DNS lookup function *)
-let lookup key trie =
+let lookup key trie ~(mdns:bool) =
   
+  let default_soa = if mdns then local_dnstrie else bad_node in
+
   (* Variables we keep track of all the way down *)
-  let last_soa = ref bad_node in	(* Last time we saw a zone head *)
+  let last_soa = ref default_soa in	(* Last time we saw a zone head *)
   let last_cut = ref trie in		(* Last time we saw a cut point *)
   let last_lt = ref trie in		(* Last time we saw something < key *)
   let last_rr = ref trie in		(* Last time we saw any data *)
@@ -256,7 +267,8 @@ let lookup key trie =
   
   (* DNS lookup function, part 2a: gather NSECs and wildcards *)
   let lookup_failed key last_branch = 
-    if (!last_cut.byte > !last_soa.byte) 
+    if mdns then mdns_not_found
+    else if (!last_cut.byte > !last_soa.byte)
     then `Delegated (!secured, not_optional !last_cut.data)
     else begin 
       if !secured then
@@ -279,7 +291,8 @@ let lookup key trie =
 
   (* DNS lookup function, part 2b: gather NSEC for NoError *)
   let lookup_noerror key  = 
-    if (!last_cut.byte > !last_soa.byte) 
+    if mdns then mdns_not_found
+    else if (!last_cut.byte > !last_soa.byte)
     then `Delegated (!secured, not_optional !last_cut.data)
     else begin
       if !secured then
@@ -318,7 +331,7 @@ let lookup key trie =
 	  if ((String.length key) = node.byte) then 
 	    match node.data with 
 	      Some answer -> 
-		if (!last_cut.byte > !last_soa.byte) 
+		if (!last_cut.byte > !last_soa.byte)
 		then `Delegated (!secured, not_optional !last_cut.data)
 		else `Found (!secured, answer, not_optional !last_soa.data)
 	    | None -> lookup_noerror key 
