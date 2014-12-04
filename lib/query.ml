@@ -36,7 +36,7 @@ type answer = {
   additional: Packet.rr list;
 }
 
-let response_of_answer query answer =
+let response_of_answer ?(mdns=false) query answer =
   (*let edns_rec =
     try
     List.find (fun rr -> ) query.additionals
@@ -47,11 +47,13 @@ let response_of_answer query answer =
     tc=false; rd=Packet.(query.detail.rd); ra=false; rcode=answer.rcode
   } in
   Packet.({
-    id=query.id; detail; questions=query.questions;
-    answers=answer.answer;
-    authorities=answer.authority;
-    additionals=answer.additional;
-  })
+      id=query.id; detail;
+      (* mDNS does not echo questions in the response *)
+      questions=(if mdns then [] else query.questions);
+      answers=answer.answer;
+      authorities=answer.authority;
+      additionals=answer.additional;
+    })
 
 let answer_of_response ?(preserve_aa=false) ({
   Packet.detail={ Packet.rcode; aa };
@@ -81,7 +83,7 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
     answers=[]; authorities=[]; additionals;
   }
 
-let answer ?(dnssec=false) qname qtype trie =
+let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
 
   let aa_flag = ref true in
   let ans_rrs = ref [] in
@@ -181,7 +183,15 @@ let answer ?(dnssec=false) qname qtype trie =
           addrr (Packet.WKS (address, protocol, bitmap.H.node))) l
 
       | RR.PTR l ->
-        List.iter (fun d -> addrr (Packet.PTR d.owner.H.node)) l
+        List.iter (
+          fun d ->
+            if mdns then begin
+              (* RFC 6763 section 12.1 *)
+              enqueue_additional d Packet.RR_SRV;
+              enqueue_additional d Packet.RR_TXT;
+            end;
+            addrr (Packet.PTR d.owner.H.node)
+        ) l
 
       | RR.HINFO l ->
         List.iter (fun (cpu, os) ->
@@ -349,7 +359,9 @@ let answer ?(dnssec=false) qname qtype trie =
   in
 
   (* Get the SOA RRSet for a negative response *)
-  let add_negative_soa_rrset node =
+  let add_negative_soa_rrset =
+    if mdns then fun node -> ()
+    else fun node ->
     (* Don't need to check if it's already there *)
     let a = get_rrsets Packet.Q_SOA node.rrsets false in
     if a = [] then raise TrieCorrupt;
@@ -383,9 +395,9 @@ let answer ?(dnssec=false) qname qtype trie =
   (* Call the trie lookup and assemble the RRs for a response *)
   let main_lookup qname qtype trie =
     let key = canon2key qname in
-    match lookup key trie with
+    match lookup key trie ~mdns with
       | `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
-          add_answer_rrsets node.owner.H.node node.rrsets qtype;
+        add_answer_rrsets node.owner.H.node node.rrsets qtype;
         add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
         Packet.NoError
 
@@ -426,8 +438,23 @@ let answer ?(dnssec=false) qname qtype trie =
         Packet.NXDomain
   in
 
+  let rec lookup_multiple qs trie rc =
+    let open Packet in
+    match qs with
+    | [] -> rc
+    | hd::tl ->
+      let next_rc = main_lookup hd.q_name hd.q_type trie in
+      match next_rc with
+      (* If all questions result in NXDomain then return NXDomain,
+         or if any question results in another kind of error then abort,
+         else return NoError *)
+      | NoError -> lookup_multiple tl trie NoError
+      | NXDomain -> lookup_multiple tl trie rc
+      | _ -> next_rc
+  in
+
   try
-    let rc = main_lookup qname qtype trie in
+    let rc = lookup_multiple questions trie Packet.NXDomain in
     List.iter (fun (o, t) ->
       add_opt_rrset o Packet.Q_ANY_TYP t `Additional) !addqueue;
     let _ =
@@ -443,5 +470,11 @@ let answer ?(dnssec=false) qname qtype trie =
   with
       BadDomainName _ -> { rcode = Packet.FormErr; aa = false;
                     answer = []; authority = []; additional=[] }
-    | TrieCorrupt ->  { rcode = Packet.ServFail; aa = false;
-                    answer = []; authority = []; additional=[] }
+  | TrieCorrupt ->
+    { rcode = Packet.ServFail; aa = false; answer = []; authority = []; additional=[] }
+
+let answer ?(dnssec=false) ?(mdns=false) qname qtype trie =
+  answer_multiple ~dnssec ~mdns
+    [{Packet.q_name=qname; Packet.q_type=qtype; Packet.q_class=Packet.Q_IN; Packet.q_unicast=Packet.QM}]
+    trie
+
