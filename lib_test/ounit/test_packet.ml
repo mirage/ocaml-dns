@@ -2,8 +2,6 @@
 open OUnit2
 open Printf
 
-exception TestData
-
 (* Adapted from ocaml-pcap/print/print.ml *)
 
 cstruct ethernet {
