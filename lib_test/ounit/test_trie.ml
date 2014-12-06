@@ -20,7 +20,7 @@ let load_test_zone path =
 let tests =
   "Trie" >:::
   [
-    "lookup" >:: (fun test_ctxt ->
+    "found-dns" >:: (fun test_ctxt ->
         let trie = load_test_zone "test_dns.zone" in
 
         let name = string_to_domain_name "mail.d1.signpo.st." in
@@ -62,7 +62,7 @@ let tests =
         | _ -> assert_failure "Not found"
       );
 
-    "lookup-mdns" >:: (fun test_ctxt ->
+    "found-mdns" >:: (fun test_ctxt ->
         let trie = load_test_zone "test_mdns.zone" in
 
         let name = string_to_domain_name "fake1.local." in
@@ -79,8 +79,74 @@ let tests =
               assert_equal 1 (List.length ips);
               assert_equal "127.0.0.94" (ips |> List.hd |> Ipaddr.V4.to_string)
             | _ -> assert_failure "Not A"
+            (* zonehead is not used for mDNS *)
           end
         | _ -> assert_failure "Not found";
+      );
+
+    "nxdomain-dns" >:: (fun test_ctxt ->
+        let trie = load_test_zone "test_dns.zone" in
+
+        let name = string_to_domain_name "bigfoot.d1.signpo.st." in
+        match lookup (canon2key name) trie ~mdns:false with
+        | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
+          (* Verify part of the SOA record *)
+          assert_equal "d1.signpo.st" (domain_name_to_string zonehead.owner.H.node);
+          assert_equal ~printer:string_of_int 3 (List.length zonehead.rrsets);
+          let soa = List.nth zonehead.rrsets 1 in
+          assert_equal (Int32.of_int 604800) soa.ttl;
+        | _ -> assert_failure "Not NXDomain"
+      );
+
+    "nxdomain-mdns" >:: (fun test_ctxt ->
+        let trie = load_test_zone "test_mdns.zone" in
+
+        let names = ["bigfoot.local."; "bigfoot"; "bigfoot.d1.signpo.st."] in
+        List.iter (fun name ->
+            match lookup (name |> string_to_domain_name |> canon2key) trie ~mdns:true with
+            | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
+              (* Note that NXDomain is only used internally and not transmitted for mDNS *)
+              (* zonehead is not used for mDNS *)
+              ()
+            | _ -> assert_failure ("Not NXDomain: " ^ name)
+          ) names
+      );
+
+    "delegated" >:: (fun test_ctxt ->
+        let trie = load_test_zone "test_dns.zone" in
+
+        let name = string_to_domain_name "cam.ac.uk." in
+        match lookup (canon2key name) trie ~mdns:false with
+        | `Delegated (sec, cutpoint) ->   (* Name is delegated. *)
+          (* Verify the NS record *)
+          assert_equal false sec;
+          assert_equal "uk" (domain_name_to_string cutpoint.owner.H.node);
+          assert_equal ~printer:string_of_int 1 (List.length cutpoint.rrsets);
+          let ns = List.hd cutpoint.rrsets in
+          assert_equal (Int32.of_int 1000) ns.ttl;
+          begin
+            match ns.rdata with
+            | NS l ->
+              assert_equal 1 (List.length l);
+              let node = List.hd l in
+              assert_equal "ns1.nic.uk" (domain_name_to_string node.owner.H.node);
+            | _ -> assert_failure "Not NS"
+          end
+        | _ -> assert_failure "Not Delegated"
+      );
+
+    "noerror" >:: (fun test_ctxt ->
+        let trie = load_test_zone "test_dns.zone" in
+
+        let name = string_to_domain_name "one.d1.signpo.st." in
+        match lookup (canon2key name) trie ~mdns:false with
+        | `NoError (zonehead) ->          (* Name "exists", but has no RRs. *)
+          (* Verify part of the SOA record *)
+          assert_equal "d1.signpo.st" (domain_name_to_string zonehead.owner.H.node);
+          assert_equal ~printer:string_of_int 3 (List.length zonehead.rrsets);
+          let soa = List.nth zonehead.rrsets 1 in
+          assert_equal (Int32.of_int 604800) soa.ttl;
+        | _ -> assert_failure "Not Delegated"
       );
 
   ]
