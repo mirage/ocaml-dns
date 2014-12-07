@@ -26,7 +26,7 @@ let tests =
           assert_equal (Int32.of_int 172800) a.ttl;
           match a.rdata with
           | A ip ->
-            assert_equal ~printer:(fun s -> s) "127.0.0.94" (ip |> Ipaddr.V4.to_string)
+            assert_equal ~printer:(fun s -> s) "127.0.0.94" (Ipaddr.V4.to_string ip)
           | _ -> assert_failure "Not A"
         end;
 
@@ -70,5 +70,115 @@ let tests =
         end
 
       );
+
+    "answer-mdns-A" >:: (fun test_ctxt ->
+        let trie = Test_trie.load_test_zone "test_mdns.zone" in
+        let name = string_to_domain_name "fake1.local" in
+        let answer = Q.answer ~dnssec:false ~mdns:true name Q_A trie in
+        assert_equal NoError answer.Q.rcode;
+        assert_equal true answer.Q.aa;
+        assert_equal 1 (List.length answer.Q.answer);
+        assert_equal ~printer:string_of_int 0 (List.length answer.Q.authority);
+        assert_equal ~printer:string_of_int 0 (List.length answer.Q.additional);
+
+        (* Verify the A record *)
+        begin 
+          let a = List.hd answer.Q.answer in
+          assert_equal name a.name;
+          assert_equal (Int32.of_int 4500) a.ttl;
+          match a.rdata with
+          | A ip ->
+            assert_equal ~printer:(fun s -> s) "127.0.0.94" (Ipaddr.V4.to_string ip)
+          | _ -> assert_failure "Not A"
+        end;
+      );
+
+    "answer-mdns-PTR" >:: (fun test_ctxt ->
+        let trie = Test_trie.load_test_zone "test_mdns.zone" in
+        let name = string_to_domain_name "_snake._tcp.local" in
+        let answer = Q.answer ~dnssec:false ~mdns:true name Q_PTR trie in
+        assert_equal NoError answer.Q.rcode;
+        assert_equal true answer.Q.aa;
+        assert_equal 3 (List.length answer.Q.answer);
+        assert_equal ~printer:string_of_int 0 (List.length answer.Q.authority);
+        assert_equal ~printer:string_of_int 12 (List.length answer.Q.additional);
+
+        (* Verify the PTR records *)
+        (* Unfortunately the order of records is non-deterministic so we build a sorted list first *)
+        let ptrl = ["dugite._snake._tcp.local"; "king\032brown._snake._tcp.local"; "tiger._snake._tcp.local"] in
+        let rec get_ptr_list rrs rest =
+            begin
+              match rrs with
+              | [] -> rest;
+              | rr::tl ->
+                begin
+                  assert_equal ~msg:"name" ~printer:(fun s -> s) "_snake._tcp.local" (domain_name_to_string rr.name);
+                  assert_equal ~msg:"cls" RR_IN rr.cls;
+                  assert_equal ~msg:"flush" false rr.flush;
+                  assert_equal ~msg:"ttl" ~printer:Int32.to_string (Int32.of_int 120) rr.ttl;
+                  match rr.rdata with
+                  | PTR name ->
+                    get_ptr_list tl ((domain_name_to_string name) :: rest)
+                  | _ -> assert_failure "Not PTR";
+                end
+            end in
+        let ptr_list = get_ptr_list answer.Q.answer [] in
+        let ptr_sorted = List.sort String.compare ptr_list in
+        let rec dump_str_l l =
+          match l with
+          | [] -> ""
+          | hd::tl -> hd ^ "; " ^ (dump_str_l tl) in
+        assert_equal ~printer:dump_str_l ptrl ptr_sorted;
+
+        (* Verify the additional SRV, TXT and A records *)
+        (* First create association lists for the expected results *)
+        let srvl = ["fake2.local"; "fake3.local"; "fake1.local"] in
+        let srv_assoc = List.combine ptrl srvl in
+        let txt_assoc = List.combine ptrl ["species=Pseudonaja affinis"; "species=Pseudechis australis"; "species=Notechis scutatus"] in
+        let a_assoc = List.combine srvl ["127.0.0.95"; "127.0.0.96"; "127.0.0.94"] in
+        List.iter (fun rr ->
+            let key = String.lowercase (domain_name_to_string rr.name) in
+            match rr.rdata with
+            | SRV (priority, weight, port, srv) ->
+              assert_equal 0 priority;
+              assert_equal 0 weight;
+              assert_equal 33333 port;
+              assert_equal ~printer:(fun s -> s) (List.assoc key srv_assoc) (domain_name_to_string srv)
+            | TXT txtl ->
+              assert_equal 2 (List.length txtl);
+              assert_equal "txtvers=1" (List.hd txtl);
+              assert_equal ~printer:(fun s -> s) (List.assoc key txt_assoc) (List.nth txtl 1)
+            | A ip ->
+              assert_equal ~printer:(fun s -> s) (List.assoc key a_assoc) (Ipaddr.V4.to_string ip)
+            | _ -> assert_failure "Not SRV, TXT or A"
+          ) answer.Q.additional;
+      );
+
+    "answer_multiple-mdns" >:: (fun test_ctxt ->
+        (* mDNS supports multiple questions in one query *)
+        let trie = Test_trie.load_test_zone "test_mdns.zone" in
+        let names = List.map string_to_domain_name ["fake1.local"; "fake2.local"] in
+        let questions = List.map
+            (fun name -> {q_name=name; q_type=Q_A; q_class=Q_IN; q_unicast=QM})
+            names
+        in
+        let answer = Q.answer_multiple ~dnssec:false ~mdns:true questions trie in
+        assert_equal NoError answer.Q.rcode;
+        assert_equal true answer.Q.aa;
+        assert_equal 2 (List.length answer.Q.answer);
+        assert_equal ~printer:string_of_int 0 (List.length answer.Q.authority);
+        assert_equal ~printer:string_of_int 0 (List.length answer.Q.additional);
+
+        (* Verify the A records (ignoring order) *)
+        let a_assoc = List.combine names ["127.0.0.94"; "127.0.0.95"] in
+        List.iter (fun rr ->
+          assert_equal (Int32.of_int 4500) rr.ttl;
+          match rr.rdata with
+          | A ip ->
+            assert_equal ~printer:(fun s -> s) (List.assoc rr.name a_assoc) (Ipaddr.V4.to_string ip)
+          | _ -> assert_failure "Not A"
+          ) answer.Q.answer
+      );
+
   ]
 
