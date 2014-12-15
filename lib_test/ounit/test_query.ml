@@ -101,7 +101,7 @@ let tests =
         assert_equal true answer.Q.aa;
         assert_equal 3 (List.length answer.Q.answer);
         assert_equal ~printer:string_of_int 0 (List.length answer.Q.authority);
-        assert_equal ~printer:string_of_int 12 (List.length answer.Q.additional);
+        assert_equal ~printer:string_of_int 6 (List.length answer.Q.additional);
 
         (* Verify the PTR records *)
         (* Unfortunately the order of records is non-deterministic so we build a sorted list first *)

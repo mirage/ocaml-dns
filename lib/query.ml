@@ -106,7 +106,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
   let log_rrset owner rrtype =
     addqueue :=
       List.filter
-      (fun (n, t) -> rrtype != t || owner != n.owner.H.node)
+      (fun (n, q, t) -> rrtype != t || owner != n.owner.H.node)
       !addqueue;
     rrlog := (owner, rrtype) :: !rrlog
   in
@@ -116,9 +116,9 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
     with Not_found -> false
   in
 
-  let enqueue_additional dnsnode rrtype =
+  let enqueue_additional dnsnode qtype rrtype =
     if not (in_log dnsnode.owner.H.node rrtype )
-    then addqueue := (dnsnode, rrtype) :: !addqueue
+    then addqueue := (dnsnode, qtype, rrtype) :: !addqueue
   in
 
   let add_rrset owner ttl rdata section =
@@ -152,8 +152,8 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
       | RR.NS l ->
           log_rrset owner Packet.RR_NS;
         List.iter (fun d ->
-          enqueue_additional d Packet.RR_A;
-            enqueue_additional d Packet.RR_AAAA;
+            enqueue_additional d Packet.Q_A Packet.RR_A;
+            enqueue_additional d Packet.Q_AAAA Packet.RR_AAAA;
             addrr (Packet.NS d.owner.H.node)
           ) l
 
@@ -168,8 +168,8 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
 
       | RR.MB l ->
         List.iter (fun d ->
-          enqueue_additional d Packet.RR_A;
-            enqueue_additional d Packet.RR_AAAA;
+          enqueue_additional d Packet.Q_A Packet.RR_A;
+          enqueue_additional d Packet.Q_AAAA Packet.RR_AAAA;
           addrr (Packet.MB d.owner.H.node)) l
 
       | RR.MG l ->
@@ -187,8 +187,8 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
           fun d ->
             if mdns then begin
               (* RFC 6763 section 12.1 *)
-              enqueue_additional d Packet.RR_SRV;
-              enqueue_additional d Packet.RR_TXT;
+              enqueue_additional d Packet.Q_SRV Packet.RR_SRV;
+              enqueue_additional d Packet.Q_TXT Packet.RR_TXT;
             end;
             addrr (Packet.PTR d.owner.H.node)
         ) l
@@ -203,8 +203,8 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
 
       | RR.MX l ->
         List.iter (fun (preference, d) ->
-          enqueue_additional d Packet.RR_A;
-          enqueue_additional d Packet.RR_AAAA;
+          enqueue_additional d Packet.Q_A Packet.RR_A;
+          enqueue_additional d Packet.Q_AAAA Packet.RR_AAAA;
           addrr (Packet.MX (preference, d.owner.H.node))) l
 
       | RR.TXT l ->
@@ -218,8 +218,8 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
 
       | RR.AFSDB l ->
         List.iter (fun (t, d) ->
-          enqueue_additional d Packet.RR_A;
-          enqueue_additional d Packet.RR_AAAA;
+          enqueue_additional d Packet.Q_A Packet.RR_A;
+          enqueue_additional d Packet.Q_AAAA Packet.RR_AAAA;
           addrr (Packet.AFSDB (t, d.owner.H.node))) l
 
       | RR.X25 l ->
@@ -242,16 +242,16 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
 
       | RR.RT l ->
         List.iter (fun (preference, d) ->
-          enqueue_additional d Packet.RR_A;
-          enqueue_additional d Packet.RR_AAAA;
-          enqueue_additional d Packet.RR_X25;
-          enqueue_additional d Packet.RR_ISDN;
+          enqueue_additional d Packet.Q_A Packet.RR_A;
+          enqueue_additional d Packet.Q_AAAA Packet.RR_AAAA;
+          enqueue_additional d Packet.Q_X25 Packet.RR_X25;
+          enqueue_additional d Packet.Q_ISDN Packet.RR_ISDN;
           addrr (Packet.RT (preference, d.owner.H.node))) l
 
       | RR.SRV l ->
           List.iter (fun (priority, weight, port, d) ->
-          enqueue_additional d Packet.RR_A;
-          enqueue_additional d Packet.RR_AAAA;
+          enqueue_additional d Packet.Q_A Packet.RR_A;
+          enqueue_additional d Packet.Q_AAAA Packet.RR_AAAA;
           addrr (Packet.SRV (priority, weight, port, d.owner.H.node))) l
       | RR.DS l ->
           List.iter (fun (tag, alg, digest, k) ->
@@ -455,8 +455,8 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
 
   try
     let rc = lookup_multiple questions trie Packet.NXDomain in
-    List.iter (fun (o, t) ->
-      add_opt_rrset o Packet.Q_ANY_TYP t `Additional) !addqueue;
+    List.iter (fun (o, q, t) ->
+      add_opt_rrset o q t `Additional) !addqueue;
     let _ =
       if (dnssec) then
       let rr = Packet.({ name = []; cls = RR_IN; flush = false;
