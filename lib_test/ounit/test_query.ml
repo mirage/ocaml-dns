@@ -105,7 +105,7 @@ let tests =
 
         (* Verify the PTR records *)
         (* Unfortunately the order of records is non-deterministic so we build a sorted list first *)
-        let ptrl = ["dugite._snake._tcp.local"; "king\032brown._snake._tcp.local"; "tiger._snake._tcp.local"] in
+        let ptrl = ["dugite._snake._tcp.local"; "king brown._snake._tcp.local"; "tiger._snake._tcp.local"] in
         let rec get_ptr_list rrs rest =
             begin
               match rrs with
