@@ -24,6 +24,7 @@ opam --git-version
 opam init git://github.com/ocaml/opam-repository >/dev/null 2>&1
 opam pin $pinx dns .
 opam install base64 # can remove with opam 1.2?
+opam install pcap-format  # needed for opam 1.1?
 opam install dns
 opam install mirage-types tcpip
 opam reinstall dns # local depopt not picked up by opam 1.1
