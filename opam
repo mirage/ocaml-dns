@@ -1,5 +1,9 @@
-opam-version: "1"
-maintainer: "mirageos-devel@lists.xenproject.org"
+opam-version: "1.2"
+maintainer:   "anil@recoil.org"
+homepage:     "https://github.com/mirage/ocaml-dns"
+dev-repo:     "https://github.com/mirage/ocaml-dns.git"
+bug-reports:  "https://github.com/mirage/ocaml-dns/issues"
+maintainer:   "mirageos-devel@lists.xenproject.org"
 authors: [
   "Anil Madhavapeddy"
   "Tim Deegan"
@@ -29,7 +33,7 @@ depends: [
   "ipaddr" {>= "2.2.0"}
   "base64"
   "ounit"
-  "pcap-format"
+  "pcap-format" {test}
 ]
 depopts: [
   ("mirage-types" & "tcpip")
