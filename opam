@@ -3,7 +3,6 @@ maintainer:   "anil@recoil.org"
 homepage:     "https://github.com/mirage/ocaml-dns"
 dev-repo:     "https://github.com/mirage/ocaml-dns.git"
 bug-reports:  "https://github.com/mirage/ocaml-dns/issues"
-maintainer:   "mirageos-devel@lists.xenproject.org"
 authors: [
   "Anil Madhavapeddy"
   "Tim Deegan"
@@ -13,7 +12,6 @@ authors: [
   "Thomas Gazagnaire"
   "Luke Dunstan"
 ]
-homepage: "https://github.com/mirage/ocaml-dns"
 license: "LGPL-2.0 &\n   LGPL-2.1 with OCaml linking exception &\n   ISC"
 tags: [
   "org:mirage"
@@ -37,7 +35,7 @@ depends: [
   "pcap-format" {test}
 ]
 depopts: [
-  ("mirage-types" & "tcpip")
+  "tcpip"
   "async"
 ]
 conflicts: [
