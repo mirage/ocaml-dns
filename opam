@@ -11,6 +11,7 @@ authors: [
   "Haris Rotsos"
   "David Sheets"
   "Thomas Gazagnaire"
+  "Luke Dunstan"
 ]
 homepage: "https://github.com/mirage/ocaml-dns"
 license: "LGPL-2.0 &\n   LGPL-2.1 with OCaml linking exception &\n   ISC"
