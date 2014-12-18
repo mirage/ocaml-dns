@@ -15,9 +15,17 @@
  *
  *)
 
+(** Buffer handling for DNS packets *)
+
+(** A [t] is an externally managed Bigarray *)
 type t = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
+(** [create ?alloc b] will allocate a buffer of [b] bytes, where the
+    maximum size is 4096 bytes.
+    If [alloc] is supplied then it will be used to allocate the memory
+    page instead of the default [malloc]-based Bigarray create function. *)
 val create : ?alloc:(unit -> t) -> int -> t
+
 val length : t -> int
 val of_cstruct : Cstruct.t -> t
 val shift : t -> int -> t
