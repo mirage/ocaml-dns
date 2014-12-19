@@ -36,6 +36,8 @@ type answer = {
   additional: Packet.rr list;
 }
 
+type filter = domain_name -> RR.rrset -> RR.rrset
+
 let response_of_answer ?(mdns=false) query answer =
   (*let edns_rec =
     try
@@ -83,7 +85,9 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
     answers=[]; authorities=[]; additionals;
   }
 
-let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
+let null_filter owner rrset = rrset
+
+let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) questions trie =
 
   let aa_flag = ref true in
   let ans_rrs = ref [] in
@@ -335,7 +339,9 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
                 })
         | (_, _) -> None
     in List.fold_right (fun set sets ->
-      match some_rrset set with Some set -> set::sets | None -> sets
+        match some_rrset set with
+        | Some set -> set::sets
+        | _ -> sets
     ) sets []
   in
 
@@ -389,7 +395,9 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
         | _ -> add_rrset owner s.ttl s.rdata `Answer
     in
     let a = get_rrsets qtype rrsets true in
-    List.iter add_answer_rrset a
+    let f1 = List.map (filter owner) a in
+    let f2 = List.filter (fun rrset -> rrset.RR.ttl <> 0l) f1 in
+    List.iter add_answer_rrset f2
   in
 
   (* Call the trie lookup and assemble the RRs for a response *)
@@ -473,8 +481,8 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) questions trie =
   | TrieCorrupt ->
     { rcode = Packet.ServFail; aa = false; answer = []; authority = []; additional=[] }
 
-let answer ?(dnssec=false) ?(mdns=false) qname qtype trie =
-  answer_multiple ~dnssec ~mdns
+let answer ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) qname qtype trie =
+  answer_multiple ~dnssec ~mdns ~filter
     [{Packet.q_name=qname; Packet.q_type=qtype; Packet.q_class=Packet.Q_IN; Packet.q_unicast=Packet.QM}]
     trie
 
