@@ -1,6 +1,7 @@
-0.12.0 (trunk):
-* Parse and marshal the mDNS unicast-response bit.
+0.12.0 (2014-12-21):
+* Parse and marshal the mDNS unicast-response bit (#29).
 * Add OUnit tests for `Dns.Packet.parse` using `pcap` files.
+* Fix parsing of `SRV` records (#30).
 
 0.11.0 (2014-11-02):
 * Do not depend in Io_page; instead `Dns.Buf.create` now accepts an
