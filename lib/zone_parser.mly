@@ -65,13 +65,13 @@ let parse_hexbytes s =
   let rec unhex src dst off =
     if (off < 0) then ()
     else begin
-      dst.[off] <- char_of_int (int_of_string ("0x" ^ String.sub s (off*2) 2));
+      Bytes.set dst off (char_of_int (int_of_string ("0x" ^ Bytes.sub s (off*2) 2)));
       unhex src dst (off - 1)
     end
   in
-  let slen = String.length s in
+  let slen = Bytes.length s in
   if not (slen mod 2 = 0) then raise Parsing.Parse_error;
-  let r = String.create (slen / 2)
+  let r = Bytes.create (slen / 2)
   in unhex s r (slen / 2 - 1);
   r
 
@@ -93,11 +93,11 @@ let parse_wks proto services =
   in let addport bitmap n =
     let byte = n/8 in
     let bit = 128 lsr (n mod 8) in
-    bitmap.[byte] <- char_of_int ((int_of_char bitmap.[byte]) lor bit)
+    Bytes.set bitmap byte (char_of_int ((int_of_char bitmap.[byte]) lor bit))
   in
   let ports = List.map (s2n proto) services in
   let maxport = List.fold_left max 0 ports in
-  let s = String.make ((maxport/8)+1) '\000' in
+  let s = Bytes.make ((maxport/8)+1) '\000' in
   List.iter (addport s) ports;
   s
 
@@ -330,7 +330,7 @@ int32: NUMBER
 	 raise Parsing.Parse_error }
 
 generic_type: TYPE_GENERIC
-     { try parse_uint16 (String.sub $1 4 (String.length $1 - 4))
+     { try parse_uint16 (Bytes.sub $1 4 (Bytes.length $1 - 4))
        with Parsing.Parse_error ->
 	 parse_error ($1 ^ " is not a 16-bit number");
 	 raise Parsing.Parse_error }
@@ -338,10 +338,10 @@ generic_type: TYPE_GENERIC
 generic_rdata: GENERIC s NUMBER s generic_words
      { try
          let len = int_of_string $3 in
-           if not (String.length $5 = len)
+           if not (Bytes.length $5 = len)
              then parse_warning ("generic data length field is "
 				 ^ $3 ^ " but actual length is "
-				 ^ (string_of_int (String.length $5)));
+				 ^ (string_of_int (Bytes.length $5)));
 	 $5
        with Failure _ ->
 	 parse_error ("\\# should be followed by a number");
@@ -367,14 +367,14 @@ owner:
 domain:
    DOT { [] }
  | AT { state.origin }
- | label_except_at { (String.lowercase $1) :: state.origin }
- | label DOT { [ (String.lowercase $1) ] }
- | label DOT domain_labels { ((String.lowercase $1) :: $3) @ state.origin }
- | label DOT domain_labels DOT { (String.lowercase $1) :: $3 }
+ | label_except_at { (Bytes.lowercase $1) :: state.origin }
+ | label DOT { [ (Bytes.lowercase $1) ] }
+ | label DOT domain_labels { ((Bytes.lowercase $1) :: $3) @ state.origin }
+ | label DOT domain_labels DOT { (Bytes.lowercase $1) :: $3 }
 
 domain_labels:
-   label { [(String.lowercase $1)] }
- | domain_labels DOT label { $1 @ [(String.lowercase $3)] }
+   label { [(Bytes.lowercase $1)] }
+ | domain_labels DOT label { $1 @ [(Bytes.lowercase $3)] }
 
 /* It's acceptable to re-use numbers and keywords as character-strings.
    This is pretty ugly: we need special cases to distinguish a domain
@@ -385,7 +385,7 @@ charstrings: charstring { [$1] } | charstrings s charstring { $1 @ [$3] }
 charstring: CHARSTRING { $1 } | keyword_or_number { $1 } | AT { "@" }
 
 label_except_specials: CHARSTRING
-    { if String.length $1 > 63 then begin
+    { if Bytes.length $1 > 63 then begin
         parse_error "label is longer than 63 bytes";
         raise Parsing.Parse_error;
       end; $1 }

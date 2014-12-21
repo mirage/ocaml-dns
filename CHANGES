@@ -2,6 +2,7 @@
 * Parse and marshal the mDNS unicast-response bit (#29).
 * Add OUnit tests for `Dns.Packet.parse` using `pcap` files.
 * Fix parsing of `SRV` records (#30).
+* Use `Bytes` instead of `String` for mutable buffers.
 
 0.11.0 (2014-11-02):
 * Do not depend in Io_page; instead `Dns.Buf.create` now accepts an
