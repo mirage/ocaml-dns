@@ -56,3 +56,5 @@ val lookup_or_insert :
 (** Sort out flags for a key's node: call after adding or removing NS, SOA and
     KEY RRs *)
 val fix_flags : Name.key -> dnstrie -> unit
+
+val iter : (RR.dnsnode -> unit) -> dnstrie -> unit

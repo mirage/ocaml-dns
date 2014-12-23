@@ -472,3 +472,14 @@ let rec delete key ?(gparent = None) ?(parent = None) node =
 	  end
       | _ -> ()
   end
+
+let rec iter f trie =
+  let each_child c node =
+    iter f node
+  in
+  begin
+    match trie.data with
+    | None -> ()
+    | Some dnsnode -> f dnsnode
+  end;
+  children_iter each_child trie
