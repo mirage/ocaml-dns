@@ -33,23 +33,23 @@ let unescape s =
   let rec copy_unescaped src dst slen soff doff = 
     if soff >= slen then doff 
     else if Re_str.string_match re_octet src soff then begin
-      dst.[doff] <- char_of_int (int_of_string (String.sub s (soff + 1) 3));
+      Bytes.set dst doff (char_of_int (int_of_string (Bytes.sub s (soff + 1) 3)));
       copy_unescaped src dst slen (soff + 4) (doff + 1)
     end else if Re_str.string_match re_escape src soff then begin 
-      dst.[doff] <- src.[soff + 1]; 
+      Bytes.set dst doff (Bytes.get src (soff+1));
       copy_unescaped src dst slen (soff + 2) (doff + 1)
     end else begin
-      dst.[doff] <- src.[soff];
+      Bytes.set dst doff (Bytes.get src soff);
       copy_unescaped src dst slen (soff + 1) (doff + 1)
     end
-  in let slen = String.length s
-  in let d = String.create slen
+  in let slen = Bytes.length s
+  in let d = Bytes.create slen
   in let dlen = copy_unescaped s d slen 0 0 
-  in CHARSTRING (String.sub d 0 dlen)
+  in CHARSTRING (Bytes.sub d 0 dlen)
 
 
 (* Disambiguate keywords and generic character strings *)
-let kw_or_cs s = match (String.uppercase s) with 
+let kw_or_cs s = match (Bytes.uppercase s) with 
     "A" -> TYPE_A s
   | "NS" -> TYPE_NS s 
   | "MD" -> TYPE_MD s
@@ -116,7 +116,7 @@ let kw_or_cs s = match (String.uppercase s) with
 
 (* Scan an accepted token for linebreaks *)
 let count_linebreaks s = 
-  String.iter (function '\n' -> state.lineno <- state.lineno + 1 | _ -> ()) s
+  Bytes.iter (function '\n' -> state.lineno <- state.lineno + 1 | _ -> ()) s
 
 
 } 
