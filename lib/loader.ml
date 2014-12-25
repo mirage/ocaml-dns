@@ -276,7 +276,7 @@ let add_srv_rr pri weight port target ttl owner db =
 let add_dnskey_rr flags typ key ttl owner db =
   let flags = flags in
   let typ = typ in
-  let tmp = Base64.decode key in
+  let tmp = B64.decode key in
   let dnskey = hashcons_charstring tmp in
   add_rrset { ttl; rdata = DNSKEY [ (flags, typ, dnskey) ] } owner db
 
@@ -346,7 +346,7 @@ let add_rrsig_rr typ alg lbl orig_ttl exp_ts inc_ts tag name sign ttl owner db =
       | Some a -> a
   in
     (* TODO: Check if sign is in the future or if the sign has expired *)
-  let sign = Base64.decode sign in
+  let sign = B64.decode sign in
   let rr = RRSIG [{
     rrsig_type   = typ;
     rrsig_alg    = alg;
