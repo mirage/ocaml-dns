@@ -913,7 +913,7 @@ let parse_rdata names base t cls ttl buf =
         let inc_ts = Cstruct.BE.get_uint32 buf 12 in
         let tag = Cstruct.BE.get_uint16 buf 16 in
         let buf = Cstruct.shift buf 18 in
-        let (name, (len, buf)) = Name.parse_name names 0 buf in
+        let (name, (len, buf)) = Name.parse_name names (base+18) buf in
         let sign = Cstruct.to_string buf in
           RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign)
 
@@ -928,7 +928,7 @@ let parse_rdata names base t cls ttl buf =
         let inc_ts = Cstruct.BE.get_uint32 buf 12 in
         let tag = Cstruct.BE.get_uint16 buf 16 in
         let buf = Cstruct.shift buf 18 in
-        let (name, (len, buf)) = Name.parse_name names 0 buf in
+        let (name, (len, buf)) = Name.parse_name names (base+18) buf in
         let sign = Cstruct.to_string buf in
           SIG (alg, exp_ts, inc_ts, tag, name, sign)
 
@@ -937,7 +937,7 @@ let parse_rdata names base t cls ttl buf =
     | RR_AAAA -> AAAA (Ipaddr.V6.of_int64 ((BE.get_uint64 buf 0),(BE.get_uint64 buf 8)))
 
     | RR_AFSDB -> AFSDB (BE.get_uint16 buf 0,
-                         buf |> parse_name names (base+2) |> stop)
+                         Cstruct.shift buf 2 |> parse_name names (base+2) |> stop)
 
     | RR_CNAME -> CNAME (buf |> parse_name names base |> stop)
 
@@ -966,7 +966,7 @@ let parse_rdata names base t cls ttl buf =
         let key = Cstruct.shift buf 4 |> to_string in
           DS(tag, alg, digest, key)
     | RR_NSEC ->
-        let (name, (len, buf)) = Name.parse_name names 0 buf in
+        let (name, (base, buf)) = Name.parse_name names base buf in
         NSEC (name, [(char_of_int 0), (char_of_int 0), buf] )
 
     | RR_HINFO -> let cpu, buf = parse_charstr buf in
@@ -986,25 +986,25 @@ let parse_rdata names base t cls ttl buf =
 
     | RR_MG -> MG (buf |> parse_name names base |> stop)
 
-    | RR_MINFO -> let rm, (o,buf) = buf |> parse_name names base in
-                  let em = buf |> parse_name names (base+o) |> stop in
+    | RR_MINFO -> let rm, (base,buf) = buf |> parse_name names base in
+                  let em = buf |> parse_name names base |> stop in
                   MINFO (rm, em)
 
     | RR_MR -> MR (buf |> parse_name names base |> stop)
 
     | RR_MX -> MX (BE.get_uint16 buf 0,
-                   Cstruct.shift buf 2 |> parse_name names base |> stop)
+                   Cstruct.shift buf 2 |> parse_name names (base+2) |> stop)
 
     | RR_NS -> NS (buf |> parse_name names base |> stop)
 
     | RR_PTR -> PTR (buf |> parse_name names base |> stop)
 
-    | RR_RP -> let mbox, (o,buf) = buf |> parse_name names base in
-               let txt = buf |> parse_name names (base+o) |> stop in
+    | RR_RP -> let mbox, (base,buf) = buf |> parse_name names base in
+               let txt = buf |> parse_name names base |> stop in
                RP (mbox, txt)
 
     | RR_RT -> RT (BE.get_uint16 buf 0,
-                   Cstruct.shift buf 2 |> parse_name names base |> stop)
+                   Cstruct.shift buf 2 |> parse_name names (base+2) |> stop)
 
     | RR_SOA ->
         let mn, (base, buf) = parse_name names base buf in
@@ -1022,7 +1022,7 @@ let parse_rdata names base t cls ttl buf =
           SRV (get_uint16 buf 0, (* prio *)
                get_uint16 buf 2, (* weight *)
                get_uint16 buf 4, (* port *)
-               parse_name names (base+6) buf |> stop
+               Cstruct.shift buf 6 |> parse_name names (base+6) |> stop
           ))
 
     | RR_TXT ->

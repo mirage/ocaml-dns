@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 6bcb902477722ed05ad25beb2555acfe)
+# DO NOT EDIT (digest: eefda97a7a038bffab19720f0d34747f)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -31,6 +31,7 @@ true: annot, bin_annot
 "lib/buf.cmx": for-pack(Dns)
 "lib/protocol.cmx": for-pack(Dns)
 <lib/*.ml{,i,y}>: pkg_base64
+<lib/*.ml{,i,y}>: pkg_bytes
 <lib/*.ml{,i,y}>: pkg_cstruct
 <lib/*.ml{,i,y}>: pkg_cstruct.syntax
 <lib/*.ml{,i,y}>: pkg_ipaddr
@@ -41,6 +42,7 @@ true: annot, bin_annot
 # Library dns-lwt-mirage
 "mirage/dns-lwt-mirage.cmxs": use_dns-lwt-mirage
 <mirage/*.ml{,i,y}>: pkg_base64
+<mirage/*.ml{,i,y}>: pkg_bytes
 <mirage/*.ml{,i,y}>: pkg_cstruct
 <mirage/*.ml{,i,y}>: pkg_cstruct.syntax
 <mirage/*.ml{,i,y}>: pkg_io-page
@@ -58,6 +60,7 @@ true: annot, bin_annot
 "async/dns-async.cmxs": use_dns-async
 <async/*.ml{,i,y}>: pkg_async
 <async/*.ml{,i,y}>: pkg_base64
+<async/*.ml{,i,y}>: pkg_bytes
 <async/*.ml{,i,y}>: pkg_core.syntax
 <async/*.ml{,i,y}>: pkg_cstruct
 <async/*.ml{,i,y}>: pkg_cstruct.syntax
@@ -68,6 +71,7 @@ true: annot, bin_annot
 <async/*.ml{,i,y}>: use_dns
 # Executable lwt_server
 <lib_test/unix/lwt_server.{native,byte}>: pkg_base64
+<lib_test/unix/lwt_server.{native,byte}>: pkg_bytes
 <lib_test/unix/lwt_server.{native,byte}>: pkg_cstruct
 <lib_test/unix/lwt_server.{native,byte}>: pkg_cstruct.lwt
 <lib_test/unix/lwt_server.{native,byte}>: pkg_cstruct.syntax
@@ -84,6 +88,7 @@ true: annot, bin_annot
 <lib_test/unix/lwt_server.{native,byte}>: custom
 # Executable time_server
 <lib_test/unix/time_server.{native,byte}>: pkg_base64
+<lib_test/unix/time_server.{native,byte}>: pkg_bytes
 <lib_test/unix/time_server.{native,byte}>: pkg_cstruct
 <lib_test/unix/time_server.{native,byte}>: pkg_cstruct.lwt
 <lib_test/unix/time_server.{native,byte}>: pkg_cstruct.syntax
@@ -98,6 +103,7 @@ true: annot, bin_annot
 <lib_test/unix/time_server.{native,byte}>: use_dns-lwt
 <lib_test/unix/time_server.{native,byte}>: use_dns-lwt-core
 <lib_test/unix/*.ml{,i,y}>: pkg_base64
+<lib_test/unix/*.ml{,i,y}>: pkg_bytes
 <lib_test/unix/*.ml{,i,y}>: pkg_cstruct
 <lib_test/unix/*.ml{,i,y}>: pkg_cstruct.lwt
 <lib_test/unix/*.ml{,i,y}>: pkg_cstruct.syntax
@@ -114,6 +120,7 @@ true: annot, bin_annot
 <lib_test/unix/time_server.{native,byte}>: custom
 # Executable mldig
 <lwt/mldig.{native,byte}>: pkg_base64
+<lwt/mldig.{native,byte}>: pkg_bytes
 <lwt/mldig.{native,byte}>: pkg_cmdliner
 <lwt/mldig.{native,byte}>: pkg_cstruct
 <lwt/mldig.{native,byte}>: pkg_cstruct.lwt
@@ -129,6 +136,7 @@ true: annot, bin_annot
 <lwt/mldig.{native,byte}>: use_dns-lwt
 <lwt/mldig.{native,byte}>: use_dns-lwt-core
 <lwt/*.ml{,i,y}>: pkg_base64
+<lwt/*.ml{,i,y}>: pkg_bytes
 <lwt/*.ml{,i,y}>: pkg_cmdliner
 <lwt/*.ml{,i,y}>: pkg_cstruct
 <lwt/*.ml{,i,y}>: pkg_cstruct.lwt
@@ -147,6 +155,7 @@ true: annot, bin_annot
 # Executable async_resolver
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_async
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_base64
+<lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_bytes
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_core.syntax
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_cstruct
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_cstruct.syntax
@@ -158,6 +167,7 @@ true: annot, bin_annot
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: use_dns-async
 <lib_test/async/*.ml{,i,y}>: pkg_async
 <lib_test/async/*.ml{,i,y}>: pkg_base64
+<lib_test/async/*.ml{,i,y}>: pkg_bytes
 <lib_test/async/*.ml{,i,y}>: pkg_core.syntax
 <lib_test/async/*.ml{,i,y}>: pkg_cstruct
 <lib_test/async/*.ml{,i,y}>: pkg_cstruct.syntax
@@ -170,6 +180,7 @@ true: annot, bin_annot
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: custom
 # Executable test
 <lib_test/ounit/test.{native,byte}>: pkg_base64
+<lib_test/ounit/test.{native,byte}>: pkg_bytes
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct.syntax
 <lib_test/ounit/test.{native,byte}>: pkg_ipaddr
@@ -180,6 +191,7 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: pkg_unix
 <lib_test/ounit/test.{native,byte}>: use_dns
 <lib_test/ounit/*.ml{,i,y}>: pkg_base64
+<lib_test/ounit/*.ml{,i,y}>: pkg_bytes
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct.syntax
 <lib_test/ounit/*.ml{,i,y}>: pkg_ipaddr
