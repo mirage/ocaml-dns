@@ -24,13 +24,14 @@ build: [
 ]
 remove: [["ocamlfind" "remove" "dns"]]
 depends: [
+  "base-bytes"
   "lwt" {>= "2.4.3"}
   "cstruct" {>= "1.0.1"}
   "ocamlfind"
   "re"
   "cmdliner"
   "ipaddr" {>= "2.2.0"}
-  "base64"
+  "base64" {>= "2.0.0"}
   "ounit"
   "pcap-format" {test}
 ]

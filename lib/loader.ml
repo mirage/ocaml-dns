@@ -276,7 +276,7 @@ let add_srv_rr pri weight port target ttl owner db =
 let add_dnskey_rr flags typ key ttl owner db =
   let flags = flags in
   let typ = typ in
-  let tmp = Base64.decode key in
+  let tmp = B64.decode key in
   let dnskey = hashcons_charstring tmp in
   add_rrset { ttl; rdata = DNSKEY [ (flags, typ, dnskey) ] } owner db
 
@@ -293,28 +293,28 @@ let char_of_hex_value c =
 let init n f =
   if n >= 0
   then
-    let s = String.create n in
+    let s = Bytes.create n in
     for i = 0 to pred n do
-      String.set s i (f i)
+      Bytes.set s i (f i)
     done ;
     s
     else
       let n = (- n) in
-      let s = String.create n in
+      let s = Bytes.create n in
       for i = pred n downto 0 do
-        String.set s i (f (n-i-1))
+        Bytes.set s i (f (n-i-1))
     done ;
     s
 
 let string_of_hex s =
-  let l = String.length s in
-  if l land 1 = 1 then invalid_arg "String.from_hex" ;
+  let l = Bytes.length s in
+  if l land 1 = 1 then invalid_arg "Bytes.from_hex" ;
         init (l lsr 1) (
           fun i ->
             let i = i lsl 1 in
             Char.chr (
-              (char_of_hex_value (String.get s i) lsl 4)
-              + (char_of_hex_value (String.get s (i+1)))
+              (char_of_hex_value (Bytes.get s i) lsl 4)
+              + (char_of_hex_value (Bytes.get s (i+1)))
             )
        )
 
@@ -346,7 +346,7 @@ let add_rrsig_rr typ alg lbl orig_ttl exp_ts inc_ts tag name sign ttl owner db =
       | Some a -> a
   in
     (* TODO: Check if sign is in the future or if the sign has expired *)
-  let sign = Base64.decode sign in
+  let sign = B64.decode sign in
   let rr = RRSIG [{
     rrsig_type   = typ;
     rrsig_alg    = alg;

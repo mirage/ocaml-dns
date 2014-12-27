@@ -1,6 +1,10 @@
-0.12.0 (trunk):
-* Parse and marshal the mDNS unicast-response bit.
+0.12.0 (2014-12-24):
+* Parse and marshal the mDNS unicast-response bit (#29).
 * Add OUnit tests for `Dns.Packet.parse` using `pcap` files.
+* Fix parsing of `SRV` records (#30).
+* Use `Bytes` instead of `String` for mutable buffers.
+* Switch to `Base64` v2, which uses `B64` as the toplevel module name
+  to avoid linking conflicts with other community libraries.
 
 0.11.0 (2014-11-02):
 * Do not depend in Io_page; instead `Dns.Buf.create` now accepts an
