@@ -35,6 +35,8 @@ type answer = {
 
 type filter = Name.domain_name -> RR.rrset -> RR.rrset
 
+type flush = Name.domain_name -> Packet.rdata -> bool
+
 (** [response_of_answer query answer] is the {! Packet.t } constructed
     from the [answer] to the [query]
 *)
@@ -51,14 +53,14 @@ val answer_of_response : ?preserve_aa:bool -> Packet.t -> answer
 
     @return the {! answer}
 *)
-val answer : ?dnssec:bool -> ?mdns:bool -> ?filter:filter ->
+val answer : ?dnssec:bool -> ?mdns:bool -> ?filter:filter -> ?flush:flush ->
   Name.domain_name -> Packet.q_type -> Trie.dnstrie -> answer
 
 (** Answer one or more {! questions} given a {! Trie} of DNS data.
 
     @return the {! answer}
 *)
-val answer_multiple : ?dnssec:bool -> ?mdns:bool -> ?filter:filter ->
+val answer_multiple : ?dnssec:bool -> ?mdns:bool -> ?filter:filter -> ?flush:flush ->
   Packet.question list -> Trie.dnstrie -> answer
 
 (** [create ~id q_class q_type q_name] creates a query for [q_name] with the

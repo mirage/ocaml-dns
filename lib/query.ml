@@ -38,6 +38,8 @@ type answer = {
 
 type filter = domain_name -> RR.rrset -> RR.rrset
 
+type flush = Name.domain_name -> Packet.rdata -> bool
+
 let response_of_answer ?(mdns=false) query answer =
   (*let edns_rec =
     try
@@ -87,7 +89,9 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
 
 let null_filter owner rrset = rrset
 
-let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) questions trie =
+let flush_false owner rdata = false
+
+let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=flush_false) questions trie =
 
   let aa_flag = ref true in
   let ans_rrs = ref [] in
@@ -133,7 +137,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) question
       in
       let rr = Packet.({ name = owner;
                          cls = rrclass;
-                         flush = false;
+                         flush = flush owner rr;
                          ttl = ttl;
                          rdata = rr })
       in
@@ -481,7 +485,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) question
   | TrieCorrupt ->
     { rcode = Packet.ServFail; aa = false; answer = []; authority = []; additional=[] }
 
-let answer ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) qname qtype trie =
+let answer ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=flush_false) qname qtype trie =
   answer_multiple ~dnssec ~mdns ~filter
     [{Packet.q_name=qname; Packet.q_type=qtype; Packet.q_class=Packet.Q_IN; Packet.q_unicast=Packet.QM}]
     trie
