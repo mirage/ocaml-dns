@@ -57,4 +57,5 @@ val lookup_or_insert :
     KEY RRs *)
 val fix_flags : Name.key -> dnstrie -> unit
 
+(** Iterate over all of the nodes in the trie. *)
 val iter : (RR.dnsnode -> unit) -> dnstrie -> unit
