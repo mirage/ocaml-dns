@@ -37,9 +37,8 @@ let rec send_req txfn timerfn q =
   function
   | 0 -> return_unit
   | count ->
-    txfn q >>= fun _ ->
+    txfn q >>= fun () ->
     timerfn () >>= fun () ->
-    printf "retrying query for %d times\n%!" (4-count);
     send_req txfn timerfn q (count - 1)
 
 let send_pkt ?alloc client ({ txfn; rxfn; timerfn; cleanfn }) pkt =

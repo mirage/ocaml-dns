@@ -38,7 +38,7 @@ val new_trie : unit -> dnstrie
 val simple_lookup : Name.key -> dnstrie -> RR.dnsnode option
 
 (** Look up a DNS entry in the trie, with full return. *)
-val lookup : Name.key -> dnstrie ->
+val lookup : Name.key -> dnstrie -> mdns:bool ->
     [> `Delegated of bool * RR.dnsnode
      | `Found of bool * RR.dnsnode * RR.dnsnode
      | `NXDomain of RR.dnsnode
@@ -56,3 +56,6 @@ val lookup_or_insert :
 (** Sort out flags for a key's node: call after adding or removing NS, SOA and
     KEY RRs *)
 val fix_flags : Name.key -> dnstrie -> unit
+
+(** Iterate over all of the nodes in the trie. *)
+val iter : (RR.dnsnode -> unit) -> dnstrie -> unit

@@ -2,12 +2,12 @@ This is a pure OCaml implementation of the DNS protocol.  It is intended to be
 a reasonably high-performance implementation, but clarity is preferred rather
 than low-level performance hacks.
 
-To build it, the following packages are required:
+To build it, please use the [OPAM](https://opam.ocaml.org) package manager (1.2+):
 
-* OCaml 4.00.1 or higher.
-* Lwt 2.3.2 or higher: http://ocsigen.org/lwt/
-* Cstruct: http://github.com/mirage/ocaml-cstruct
-* Re: http://github.com/mirage/ocaml-re
+    opam pin add dns .
+
+This will install the dependencies needed and give you a working development
+version of the library.
 
 Packages:
 

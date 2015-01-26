@@ -203,11 +203,4 @@ true: annot, bin_annot
 <lib_test/ounit/*.ml{,i,y}>: use_dns
 <lib_test/ounit/test.{native,byte}>: custom
 # OASIS_STOP
-true: annot, bin_annot
-<lib/*>: syntax_camlp4o, pkg_lwt.syntax
-<lwt/*>: syntax_camlp4o, pkg_lwt.syntax
-<mirage/*>: syntax_camlp4o, pkg_lwt.syntax
-<lib_test/*>: syntax_camlp4o
-<lib_test/*>: pkg_lwt.syntax
 <lib_test/*>: not_hygienic
-<client/*>: syntax_camlp4o, pkg_lwt.syntax
