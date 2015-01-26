@@ -1,5 +1,4 @@
 0.13.0 (2015-01-26):
-* Switch to `Bytes` instead of `String` for eventual `-safe-string` support.
 * Add support for multicast DNS (RFC6762) in the trie. (#35 from Luke Dunstan)
   * mDNS doesn't use SOA nor delegation (RFC 6762 section 12), so some minor changes
     to Trie are required to handle this.
@@ -22,6 +21,8 @@
   * A query for `PTR` returns additional records for `SRV` and `TXT`, to support efficient
     service discovery.
   * `Trie.iter` was added to support mDNS announcements.
+* Switch to `Bytes` instead of `String` for eventual `-safe-string` support.
+* Partially remove some error printing to stderr. (#36)
 
 Unit tests were added for some of the changes above, including a test-only
 dependency on `pcap-format`.

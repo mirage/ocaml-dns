@@ -60,9 +60,7 @@ let listen ~fd ~src ~processor =
     done
   in
   let t,u = Lwt.task () in
-  Lwt.on_cancel t
-    (fun () -> Printf.eprintf "listen: cancelled\n%!"; cont := false);
-  Printf.eprintf "listen: done\n%!";
+  Lwt.on_cancel t (fun () -> cont := false);
   t
 
 let serve_with_processor ~address ~port ~processor =
