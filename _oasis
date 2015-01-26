@@ -1,6 +1,6 @@
 OASISFormat: 0.3
 Name:        dns
-Version:     0.12.0
+Version:     0.13.0
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire, Luke Dunstan
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC
@@ -36,7 +36,7 @@ Library dns
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
   BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0), base64 (>= 2.0.0), bytes
-  XMetaRequires: cstruct, re, re.str, ipaddr, base64
+  XMetaRequires: cstruct, re, re.str, ipaddr, base64, bytes
 
 Library "dns-lwt"
   Path: lwt

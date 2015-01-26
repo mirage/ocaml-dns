@@ -10,7 +10,7 @@ open Dns.RR
 let load_test_zone path =
   let ch = open_in path in
   let n = in_channel_length ch in
-  let data = String.create n in
+  let data = Bytes.create n in
   really_input ch data 0 n;
   close_in ch;
   let db = Dns.Loader.new_db () in
