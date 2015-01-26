@@ -12,6 +12,21 @@ let tests =
     "answer-dns" >:: (fun test_ctxt ->
         let trie = Test_trie.load_test_zone "test_dns.zone" in
         let name = string_to_domain_name "mail.d1.signpo.st." in
+        let query =
+          let detail = {
+            qr=Query; opcode=Standard; aa=false;
+            tc=false; rd=true; ra=false; rcode=NoError
+          } in
+          let q = {
+            q_name=name;
+            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
+          } in
+          {
+            id=0x930b; detail; questions=[q];
+            answers=[]; authorities=[]; additionals=[];
+          }
+        in
+
         let answer = Q.answer ~dnssec:false ~mdns:false name Q_A trie in
         assert_equal NoError answer.Q.rcode;
         assert_equal true answer.Q.aa;
@@ -67,13 +82,36 @@ let tests =
           match ns.rdata with
           | A addr -> assert_equal ~msg:"A" ~printer:(fun s -> s) "127.0.0.94" (Ipaddr.V4.to_string addr)
           | _ -> assert_failure "Authority not A";
-        end
+        end;
 
+        let response = Q.response_of_answer query answer in
+        assert_equal ~msg:"id" 0x930b response.id;
+        assert_equal ~msg:"qr" Response response.detail.qr;
+        assert_equal ~msg:"qu" query.questions response.questions;
+        assert_equal ~msg:"an" answer.Q.answer response.answers;
+        assert_equal ~msg:"au" answer.Q.authority response.authorities;
+        assert_equal ~msg:"ad" answer.Q.additional response.additionals;
       );
 
     "answer-mdns-A" >:: (fun test_ctxt ->
         let trie = Test_trie.load_test_zone "test_mdns.zone" in
         let name = string_to_domain_name "fake1.local" in
+        let query =
+          let detail = {
+            qr=Query; opcode=Standard; aa=false;
+            tc=false; rd=true; ra=false; rcode=NoError
+          } in
+          let q = {
+            q_name=name;
+            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
+          } in
+          {
+            id=0x930b;  (* Should be ignored for mDNS *)
+            detail; questions=[q];
+            answers=[]; authorities=[]; additionals=[];
+          }
+        in
+
         let answer = Q.answer ~dnssec:false ~mdns:true name Q_A trie in
         assert_equal NoError answer.Q.rcode;
         assert_equal true answer.Q.aa;
@@ -91,6 +129,14 @@ let tests =
             assert_equal ~printer:(fun s -> s) "127.0.0.94" (Ipaddr.V4.to_string ip)
           | _ -> assert_failure "Not A"
         end;
+
+        let response = Q.response_of_answer ~mdns:true query answer in
+        assert_equal ~msg:"id" ~printer:string_of_int 0 response.id;
+        assert_equal ~msg:"qr" Response response.detail.qr;
+        assert_equal ~msg:"#qu" ~printer:string_of_int 0 (List.length response.questions);
+        assert_equal ~msg:"an" answer.Q.answer response.answers;
+        assert_equal ~msg:"au" answer.Q.authority response.authorities;
+        assert_equal ~msg:"ad" answer.Q.additional response.additionals;
       );
 
     "answer-mdns-PTR" >:: (fun test_ctxt ->

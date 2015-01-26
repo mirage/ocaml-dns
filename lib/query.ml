@@ -51,7 +51,8 @@ let response_of_answer ?(mdns=false) query answer =
     tc=false; rd=Packet.(query.detail.rd); ra=false; rcode=answer.rcode
   } in
   Packet.({
-      id=query.id; detail;
+      id=(if mdns then 0 else query.id);
+      detail;
       (* mDNS does not echo questions in the response *)
       questions=(if mdns then [] else query.questions);
       answers=answer.answer;
