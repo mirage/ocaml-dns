@@ -93,7 +93,7 @@ let tests =
         assert_equal ~msg:"q_name" "www.google.com" (domain_name_to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
-        assert_equal ~msg:"q_unicast" QM q.q_unicast;
+        assert_equal ~msg:"q_unicast" Q_Normal q.q_unicast;
     );
 
     "marshal-dns-q-A" >:: (fun test_ctxt ->
@@ -103,10 +103,7 @@ let tests =
             qr=Query; opcode=Standard; aa=false;
             tc=false; rd=true; ra=false; rcode=NoError
           } in
-          let q = {
-            q_name=(string_to_domain_name "www.google.com");
-            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
-          } in
+          let q = make_question Q_A (string_to_domain_name "www.google.com") in
           {
             id=0x930b; detail; questions=[q];
             answers=[]; authorities=[]; additionals=[];
@@ -135,7 +132,7 @@ let tests =
         assert_equal ~msg:"q_name" "www.google.com" (domain_name_to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
-        assert_equal ~msg:"q_unicast" QM q.q_unicast;
+        assert_equal ~msg:"q_unicast" Q_Normal q.q_unicast;
 
         let rev_answers = List.rev packet.answers in
         let expected_fourth = [208; 211; 209; 212; 210] in
@@ -158,10 +155,7 @@ let tests =
             qr=Response; opcode=Standard; aa=false;
             tc=false; rd=true; ra=true; rcode=NoError
           } in
-          let q = {
-            q_name=(string_to_domain_name "www.google.com");
-            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
-          } in
+          let q = make_question ~q_class:Q_IN ~q_unicast:Q_Normal Q_A (string_to_domain_name "www.google.com") in
           let answers = List.map (fun fourth -> {
                 name=q.q_name; cls=RR_IN; flush=false; ttl=Int32.of_int 220;
                 rdata=A (Ipaddr.V4.of_string_exn (sprintf "74.125.237.%d" fourth));
@@ -195,7 +189,7 @@ let tests =
         assert_equal ~msg:"q_name" "cubieboard2.local" (domain_name_to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
-        assert_equal ~msg:"q_unicast" QM q.q_unicast;
+        assert_equal ~msg:"q_unicast" Q_Normal q.q_unicast;
     );
 
     "marshal-mdns-q-A" >:: (fun test_ctxt ->
@@ -207,7 +201,7 @@ let tests =
           } in
           let q = {
             q_name=(string_to_domain_name "cubieboard2.local");
-            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
+            q_type=Q_A; q_class=Q_IN; q_unicast=Q_Normal;
           } in
           {
             id=0; detail; questions=[q];
@@ -263,7 +257,7 @@ let tests =
     );
 
     "q_unicast" >:: (fun test_ctxt ->
-        (* Verify that q_unicast=QU can be marshalled and then parsed *)
+        (* Verify that q_unicast=Q_mDNS_Unicast can be marshalled and then parsed *)
         let packet =
           let detail = {
             qr=Query; opcode=Standard; aa=false;
@@ -271,7 +265,7 @@ let tests =
           } in
           let q = {
             q_name=(string_to_domain_name "cubieboard2.local");
-            q_type=Q_A; q_class=Q_IN; q_unicast=QU;
+            q_type=Q_A; q_class=Q_IN; q_unicast=Q_mDNS_Unicast;
           } in
           {
             id=0; detail; questions=[q];
@@ -280,7 +274,7 @@ let tests =
         let buf = marshal (Dns.Buf.create 512) packet in
         let parsed = parse buf in
         let q = List.hd parsed.questions in
-        assert_equal QU q.q_unicast
+        assert_equal Q_mDNS_Unicast q.q_unicast
       );
 
     "parse-mdns-r-SD" >:: (fun test_ctxt ->

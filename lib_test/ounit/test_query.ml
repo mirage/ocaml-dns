@@ -19,7 +19,7 @@ let tests =
           } in
           let q = {
             q_name=name;
-            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
+            q_type=Q_A; q_class=Q_IN; q_unicast=Q_Normal;
           } in
           {
             id=0x930b; detail; questions=[q];
@@ -103,7 +103,7 @@ let tests =
           } in
           let q = {
             q_name=name;
-            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
+            q_type=Q_A; q_class=Q_IN; q_unicast=Q_Normal;
           } in
           {
             id=0x930b;  (* Should be ignored for mDNS *)
@@ -205,7 +205,7 @@ let tests =
         let trie = Test_trie.load_test_zone "test_mdns.zone" in
         let names = List.map string_to_domain_name ["fake1.local"; "fake2.local"] in
         let questions = List.map
-            (fun name -> {q_name=name; q_type=Q_A; q_class=Q_IN; q_unicast=QM})
+            (fun name -> {q_name=name; q_type=Q_A; q_class=Q_IN; q_unicast=Q_Normal})
             names
         in
         let answer = Q.answer_multiple ~dnssec:false ~mdns:true questions trie in

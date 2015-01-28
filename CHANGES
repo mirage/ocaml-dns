@@ -1,3 +1,8 @@
+0.14.0 (trunk):
+* Renamed `Packet.QM` to `Packet.Q_Normal` and `QU` to `Q_mDNS_Unicast` for
+  clarity and added more detailed doc comments. Added constructor function
+  `Packet.make_question` for convenience. (#41)
+
 0.13.0 (2015-01-26):
 * Add support for multicast DNS (RFC6762) in the trie. (#35 from Luke Dunstan)
   * mDNS doesn't use SOA nor delegation (RFC 6762 section 12), so some minor changes
