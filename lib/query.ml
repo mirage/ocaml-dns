@@ -83,7 +83,7 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
     else
       []
   in
-  let question = { q_name; q_type; q_class; q_unicast=QM } in
+  let question = { q_name; q_type; q_class; q_unicast=Q_Normal } in
   { id; detail; questions=[question];
     answers=[]; authorities=[]; additionals;
   }
@@ -488,6 +488,6 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
 
 let answer ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=flush_false) qname qtype trie =
   answer_multiple ~dnssec ~mdns ~filter
-    [{Packet.q_name=qname; Packet.q_type=qtype; Packet.q_class=Packet.Q_IN; Packet.q_unicast=Packet.QM}]
+    [{Packet.q_name=qname; Packet.q_type=qtype; Packet.q_class=Packet.Q_IN; Packet.q_unicast=Packet.Q_Normal}]
     trie
 

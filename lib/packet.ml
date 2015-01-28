@@ -826,12 +826,12 @@ let q_class_to_string x =
 let string_to_q_class x =
   string_to_q_class ("Q_"^x)
 
-type q_unicast = QM | QU
+type q_unicast = Q_Normal | Q_mDNS_Unicast
 
 let q_unicast_to_string x =
   match x with
-  | QM -> "QM"
-  | QU -> "QU"
+  | Q_Normal -> "Q_Normal"
+  | Q_mDNS_Unicast -> "Q_mDNS_Unicast"
 
 cstruct q {
   uint16_t typ;
@@ -845,11 +845,14 @@ type question = {
   q_unicast : q_unicast;
 }
 
+let make_question ?(q_class=Q_IN) ?(q_unicast=Q_Normal) q_type q_name =
+  { q_name; q_type; q_class; q_unicast; }
+
 let question_to_string q =
   sprintf "%s. <%s|%s%s>"
     (domain_name_to_string q.q_name)
     (q_type_to_string q.q_type) (q_class_to_string q.q_class)
-    (if q.q_unicast = QU then "|QU" else "")
+    (if q.q_unicast = Q_mDNS_Unicast then "|QU" else "")
 
 let parse_question names base buf =
   let q_name, (base,buf) = parse_name names base buf in
@@ -862,7 +865,7 @@ let parse_question names base buf =
   let q_class, q_unicast =
     let cls = get_q_cls buf in
     (* mDNS uses bit 15 as the unicast-response bit *)
-    let q_unicast = if (((cls lsr 15) land 1) = 1) then QU else QM in
+    let q_unicast = if (((cls lsr 15) land 1) = 1) then Q_mDNS_Unicast else Q_Normal in
     match int_to_q_class (cls land 0x7FFF) with
       | None -> failwith (sprintf "parse_question: cls %d" cls)
       | Some cls -> cls, q_unicast
@@ -872,7 +875,7 @@ let parse_question names base buf =
 let marshal_question ?(compress=true) (names, base, buf) q =
   let names, base, buf = marshal_name names base buf q.q_name in
   set_q_typ buf (q_type_to_int q.q_type);
-  let q_unicast = (if q.q_unicast = QU then 1 else 0) in
+  let q_unicast = (if q.q_unicast = Q_mDNS_Unicast then 1 else 0) in
   set_q_cls buf ((q_unicast lsl 15) lor (q_class_to_int q.q_class));
   names, base+sizeof_q, Cstruct.shift buf sizeof_q
 

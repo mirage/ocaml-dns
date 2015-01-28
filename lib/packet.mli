@@ -285,17 +285,27 @@ type q_class = Q_IN | Q_CS | Q_CH | Q_HS | Q_NONE | Q_ANY_CLS
 val q_class_to_string : q_class -> string
 val string_to_q_class : string -> q_class option
 
-(** mDNS unicast response bit. *)
-type q_unicast = QM | QU
+(** This bit is unused in normal DNS, but in mDNS a value
+    of 0 means that multicast responses are desired,
+    while a value of 1 is a request for unicast responses. *)
+type q_unicast =
+  | Q_Normal
+  | Q_mDNS_Unicast
 val q_unicast_to_string : q_unicast -> string
 
-(** A question, with the usual conversion functions. *)
+(** A question, with the usual conversion functions.
+    Use make_question if you want to take advantage of default values. *)
 type question = {
   q_name    : domain_name;
   q_type    : q_type;
   q_class   : q_class;
   q_unicast : q_unicast;
 }
+(** A convenience function to create a question record with default
+    values for q_class (Q_IN) and q_unicast (Q_Normal). *)
+val make_question : ?q_class:q_class -> ?q_unicast:q_unicast ->
+  q_type -> domain_name -> question
+
 val question_to_string : question -> string
 val parse_question :
   (int, label) Hashtbl.t -> int -> t -> question * (int * t)
