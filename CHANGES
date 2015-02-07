@@ -1,7 +1,8 @@
-0.14.0 (trunk):
+0.14.0 (2015-01-29):
 * Renamed `Packet.QM` to `Packet.Q_Normal` and `QU` to `Q_mDNS_Unicast` for
   clarity and added more detailed doc comments. Added constructor function
   `Packet.make_question` for convenience. (#41)
+* Support `io-page` 1.3.0+ interface. (#40)
 
 0.13.0 (2015-01-26):
 * Add support for multicast DNS (RFC6762) in the trie. (#35 from Luke Dunstan)

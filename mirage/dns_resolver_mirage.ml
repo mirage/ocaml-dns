@@ -123,7 +123,7 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
       Hashtbl.add res endp commfn;
       commfn
 
-  let alloc () = Io_page.get 1
+  let alloc () = (Io_page.get 1 :> Dns.Buf.t)
 
   let resolve client
       s server dns_port

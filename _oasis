@@ -1,6 +1,6 @@
-OASISFormat: 0.3
+OASISFormat: 0.4
 Name:        dns
-Version:     0.13.0
+Version:     0.14.0
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire, Luke Dunstan
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC
@@ -9,7 +9,7 @@ Description: This is a pure OCaml implementation of the DNS protocol.
   It is intended to be a reasonably high-performance implementation,
   but clarity is preferred rather than low-level performance hacks.
 Homepage:    https://github.com/mirage/ocaml-dns
-Plugins:     META (0.3)
+Plugins:     META (0.4)
 BuildTools:  ocamlbuild
 
 Flag lwt
