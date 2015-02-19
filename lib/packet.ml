@@ -1223,9 +1223,10 @@ let parse_rdata names base t cls ttl buf =
           ) else
             compare a_f b_f
     | MB a, MB b  | MD a, MD b | MF a, MF b | MG a, MG b
-    | MR a, MR b | NS a, NS b | PTR a, PTR b | TXT a, TXT b
+    | MR a, MR b | NS a, NS b | PTR a, PTR b 
     | CNAME a, CNAME b ->
         Name.dnssec_compare a b
+    | TXT a, TXT b -> Name.dnssec_compare_str a b
 (*| DS (tag, alg, digest, key) ->
   | HINFO (cpu,os) ->
   | ISDN (a,sa) ->

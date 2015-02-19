@@ -1,6 +1,7 @@
 (*
  * Copyright (c) 2011 Richard Mortier <mort@cantab.net>
  * Copyright (c) 2011 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2015 Heidi Howard <hh360@cam.ac.uk>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -27,12 +28,27 @@ open Cstruct
 type label
 
 (** Domain name, as a list of strings. *)
-type domain_name = string list
+type domain_name
 
 (** Domain name map *)
 module Map: Map.S with type key = domain_name
 
-(** Render a {! domain_name} to a simple string. *)
+(** Create empty {! domain_name}. *)
+val empty: domain_name
+
+(** Render a {! domain_name} to a {! string} list. *)
+val to_string_list : domain_name -> string list
+
+(** Convert a standard domain {! string} list to a {! domain_name}. *)
+val of_string_list : string list -> domain_name
+
+(** Append two {! domain_name} values. *)
+val append: domain_name -> domain_name -> domain_name
+
+(** Concatenate a {! string} onto a {! domain_name}. *) 
+val cons: string -> domain_name -> domain_name
+
+(** Render a {! domain_name} to a simple {! string}. *)
 val domain_name_to_string : domain_name -> string
 
 (** Convert a standard domain {! string} to a {! domain_name}. *)
@@ -74,3 +90,4 @@ type key = string
 val canon2key : domain_name -> key
 
 val dnssec_compare : domain_name -> domain_name -> int
+val dnssec_compare_str : string list -> string list -> int

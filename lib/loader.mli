@@ -86,8 +86,8 @@ type parserstate = {
     mutable paren: int;
     mutable filename: string;
     mutable lineno: int;
-    mutable origin: string list;
+    mutable origin: domain_name;
     mutable ttl: int32;
-    mutable owner: string list;
+    mutable owner: domain_name;
   }
 val state : parserstate

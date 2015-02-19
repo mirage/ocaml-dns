@@ -20,6 +20,7 @@ open Printf
 
 module DR = Dns.RR
 module DP = Dns.Packet
+module DN = Dns.Name
 
 type ip_endpoint = Ipaddr.t * int
 
@@ -59,7 +60,6 @@ let process_of_zonebufs zonebufs =
     (Dns.Loader.new_db ()) zonebufs in
   let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =
-    let qname = List.map String.lowercase qname in
     Dns.Query.answer ~dnssec:true qname qtype dnstrie
   in
   fun ~src ~dst d ->

@@ -366,9 +366,9 @@ type parserstate = {
   mutable paren: int;
   mutable filename: string;
   mutable lineno: int;
-  mutable origin: string list;
+  mutable origin: domain_name;
   mutable ttl: int32;
-  mutable owner: string list;
+  mutable owner: domain_name;
 }
 
 let new_state () = {
@@ -377,8 +377,8 @@ let new_state () = {
   filename = "";
   lineno = 1;
   ttl = Int32.of_int 3600;
-  origin = [];
-  owner = [];
+  origin = empty;
+  owner = empty;
 }
 
 let state = new_state ()

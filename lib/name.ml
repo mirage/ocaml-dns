@@ -35,9 +35,15 @@ module Map = Map.Make(struct
       | i -> i
 end)
 
-let domain_name_to_string dn = String.concat "." dn
+let empty = []
+let append = (@)
+let cons x xs = (String.lowercase x) :: xs
+let to_string_list dn = dn
+let of_string_list = List.map String.lowercase
+
+let domain_name_to_string = String.concat "."
 let string_to_domain_name (s:string) : domain_name =
-  Re_str.split (Re_str.regexp "\\.") s
+  Re_str.split (Re_str.regexp "\\.") (String.lowercase s)
 
 let for_reverse ip =
   (".arpa.in-addr."^Ipaddr.V4.to_string ip) |> string_to_domain_name |> List.rev
@@ -204,3 +210,4 @@ let rec dnssec_compare a b =
           else
             compare (String.length a) (String.length b)
         )
+let dnssec_compare_str = dnssec_compare

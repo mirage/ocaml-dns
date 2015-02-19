@@ -78,7 +78,7 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
   let additionals =
     if dnssec then
       [ ( {
-        name=[]; cls=RR_IN; flush=false; ttl=0l;
+        name=Name.empty; cls=RR_IN; flush=false; ttl=0l;
         rdata=(EDNS0(1500, 0, true, []));} ) ]
     else
       []
@@ -472,7 +472,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
       add_opt_rrset o q t `Additional) !addqueue;
     let _ =
       if (dnssec) then
-      let rr = Packet.({ name = []; cls = RR_IN; flush = false;
+      let rr = Packet.({ name = Name.empty; cls = RR_IN; flush = false;
                          ttl = 0x00008000l;
                          rdata = EDNS0(1500, 0, true, [])})
       in
