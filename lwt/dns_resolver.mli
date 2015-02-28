@@ -23,6 +23,12 @@ type commfn = {
   cleanfn : unit -> unit Lwt.t;
 }
 
+val resolve_pkt :
+  (module Dns.Protocol.CLIENT) ->
+  ?alloc:(unit -> Dns.Buf.t) ->
+  commfn -> Dns.Packet.t ->
+  Dns.Packet.t Lwt.t
+
 val resolve : 
   (module Dns.Protocol.CLIENT) ->
   ?alloc:(unit -> Dns.Buf.t) ->
