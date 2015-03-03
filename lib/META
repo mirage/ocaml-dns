@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: bfd482a39ce5f2e0cb1cc78cb4c1fd5c)
+# DO NOT EDIT (digest: 142e2a20d08da0fbfa2ddc781d97686a)
 version = "0.14.0"
 description = "DNS client and server implementation"
 requires = "cstruct re re.str ipaddr base64 bytes"
@@ -22,7 +22,7 @@ package "mirage" (
 package "lwt-core" (
  version = "0.14.0"
  description = "DNS client and server implementation"
- requires = "lwt cstruct dns"
+ requires = "lwt cstruct dns mirage-profile"
  archive(byte) = "dns-lwt-core.cma"
  archive(byte, plugin) = "dns-lwt-core.cma"
  archive(native) = "dns-lwt-core.cmxa"

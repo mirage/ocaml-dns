@@ -64,8 +64,8 @@ Library "dns-lwt-core"
   Install$: flag(lwt)
   Findlibname: lwt-core
   Modules: Dns_server, Dns_resolver
-  BuildDepends: lwt, cstruct, lwt.syntax, dns
-  XMetaRequires: lwt, cstruct, dns
+  BuildDepends: lwt, cstruct, lwt.syntax, dns, mirage-profile
+  XMetaRequires: lwt, cstruct, dns, mirage-profile
   FindlibParent: dns
 
 Library "dns-async"
@@ -138,7 +138,7 @@ Executable test
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       dns, unix, oUnit, pcap-format
+  BuildDepends:       dns, dns.lwt-core, unix, oUnit, pcap-format, lwt.unix
 
 Test test
   Run$:               flag(tests)

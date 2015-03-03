@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: eefda97a7a038bffab19720f0d34747f)
+# DO NOT EDIT (digest: d7ab3ee969542277c36f09f8a174e289)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -49,6 +49,7 @@ true: annot, bin_annot
 <mirage/*.ml{,i,y}>: pkg_ipaddr
 <mirage/*.ml{,i,y}>: pkg_lwt
 <mirage/*.ml{,i,y}>: pkg_lwt.syntax
+<mirage/*.ml{,i,y}>: pkg_mirage-profile
 <mirage/*.ml{,i,y}>: pkg_mirage-types
 <mirage/*.ml{,i,y}>: pkg_re
 <mirage/*.ml{,i,y}>: pkg_re.str
@@ -80,6 +81,7 @@ true: annot, bin_annot
 <lib_test/unix/lwt_server.{native,byte}>: pkg_lwt
 <lib_test/unix/lwt_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/unix/lwt_server.{native,byte}>: pkg_lwt.unix
+<lib_test/unix/lwt_server.{native,byte}>: pkg_mirage-profile
 <lib_test/unix/lwt_server.{native,byte}>: pkg_re
 <lib_test/unix/lwt_server.{native,byte}>: pkg_re.str
 <lib_test/unix/lwt_server.{native,byte}>: use_dns
@@ -97,6 +99,7 @@ true: annot, bin_annot
 <lib_test/unix/time_server.{native,byte}>: pkg_lwt
 <lib_test/unix/time_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/unix/time_server.{native,byte}>: pkg_lwt.unix
+<lib_test/unix/time_server.{native,byte}>: pkg_mirage-profile
 <lib_test/unix/time_server.{native,byte}>: pkg_re
 <lib_test/unix/time_server.{native,byte}>: pkg_re.str
 <lib_test/unix/time_server.{native,byte}>: use_dns
@@ -112,6 +115,7 @@ true: annot, bin_annot
 <lib_test/unix/*.ml{,i,y}>: pkg_lwt
 <lib_test/unix/*.ml{,i,y}>: pkg_lwt.syntax
 <lib_test/unix/*.ml{,i,y}>: pkg_lwt.unix
+<lib_test/unix/*.ml{,i,y}>: pkg_mirage-profile
 <lib_test/unix/*.ml{,i,y}>: pkg_re
 <lib_test/unix/*.ml{,i,y}>: pkg_re.str
 <lib_test/unix/*.ml{,i,y}>: use_dns
@@ -130,6 +134,7 @@ true: annot, bin_annot
 <lwt/mldig.{native,byte}>: pkg_lwt
 <lwt/mldig.{native,byte}>: pkg_lwt.syntax
 <lwt/mldig.{native,byte}>: pkg_lwt.unix
+<lwt/mldig.{native,byte}>: pkg_mirage-profile
 <lwt/mldig.{native,byte}>: pkg_re
 <lwt/mldig.{native,byte}>: pkg_re.str
 <lwt/mldig.{native,byte}>: use_dns
@@ -146,6 +151,7 @@ true: annot, bin_annot
 <lwt/*.ml{,i,y}>: pkg_lwt
 <lwt/*.ml{,i,y}>: pkg_lwt.syntax
 <lwt/*.ml{,i,y}>: pkg_lwt.unix
+<lwt/*.ml{,i,y}>: pkg_mirage-profile
 <lwt/*.ml{,i,y}>: pkg_re
 <lwt/*.ml{,i,y}>: pkg_re.str
 <lwt/*.ml{,i,y}>: use_dns
@@ -184,23 +190,33 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct.syntax
 <lib_test/ounit/test.{native,byte}>: pkg_ipaddr
+<lib_test/ounit/test.{native,byte}>: pkg_lwt
+<lib_test/ounit/test.{native,byte}>: pkg_lwt.syntax
+<lib_test/ounit/test.{native,byte}>: pkg_lwt.unix
+<lib_test/ounit/test.{native,byte}>: pkg_mirage-profile
 <lib_test/ounit/test.{native,byte}>: pkg_oUnit
 <lib_test/ounit/test.{native,byte}>: pkg_pcap-format
 <lib_test/ounit/test.{native,byte}>: pkg_re
 <lib_test/ounit/test.{native,byte}>: pkg_re.str
 <lib_test/ounit/test.{native,byte}>: pkg_unix
 <lib_test/ounit/test.{native,byte}>: use_dns
+<lib_test/ounit/test.{native,byte}>: use_dns-lwt-core
 <lib_test/ounit/*.ml{,i,y}>: pkg_base64
 <lib_test/ounit/*.ml{,i,y}>: pkg_bytes
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct.syntax
 <lib_test/ounit/*.ml{,i,y}>: pkg_ipaddr
+<lib_test/ounit/*.ml{,i,y}>: pkg_lwt
+<lib_test/ounit/*.ml{,i,y}>: pkg_lwt.syntax
+<lib_test/ounit/*.ml{,i,y}>: pkg_lwt.unix
+<lib_test/ounit/*.ml{,i,y}>: pkg_mirage-profile
 <lib_test/ounit/*.ml{,i,y}>: pkg_oUnit
 <lib_test/ounit/*.ml{,i,y}>: pkg_pcap-format
 <lib_test/ounit/*.ml{,i,y}>: pkg_re
 <lib_test/ounit/*.ml{,i,y}>: pkg_re.str
 <lib_test/ounit/*.ml{,i,y}>: pkg_unix
 <lib_test/ounit/*.ml{,i,y}>: use_dns
+<lib_test/ounit/*.ml{,i,y}>: use_dns-lwt-core
 <lib_test/ounit/test.{native,byte}>: custom
 # OASIS_STOP
 <lib_test/*>: not_hygienic
