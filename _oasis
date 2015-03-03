@@ -53,7 +53,7 @@ Library "dns-lwt-mirage"
   Build$: flag(mirage)
   Install$: flag(mirage)
   Findlibname: mirage
-  Modules: Dns_server_mirage, Dns_resolver_mirage
+  Modules: Dns_server_mirage, Dns_resolver_mirage, Mdns_resolver_mirage
   BuildDepends: cstruct, lwt.syntax, dns, dns.lwt-core, mirage-types, io-page
   XMetaRequires: cstruct, dns, dns.lwt-core, tcpip, mirage-types, io-page
   FindlibParent: dns
@@ -138,7 +138,7 @@ Executable test
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       dns, dns.lwt-core, unix, oUnit, pcap-format, lwt.unix
+  BuildDepends:       dns, dns.lwt-core, dns.mirage, io-page.unix, unix, oUnit, pcap-format, lwt.unix
 
 Test test
   Run$:               flag(tests)
