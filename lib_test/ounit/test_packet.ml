@@ -59,7 +59,9 @@ let hexdump ibuf =
   let n = Dns.Buf.length ibuf in
   let obuf = Buffer.create (3 * n) in
   let rec acc i =
-    Buffer.add_string obuf (sprintf "%.2x " (int_of_char ibuf.{i}));
+    let ch = (int_of_char ibuf.{i}) in
+    Buffer.add_char obuf (if ch < 32 || ch >= 127 then '.' else ibuf.{i});
+    Buffer.add_string obuf (sprintf "%.2x " ch);
     if i mod 16 = 15 then Buffer.add_char obuf '\n';
     if i < n - 1 then acc (i + 1);
   in
