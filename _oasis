@@ -63,7 +63,7 @@ Library "dns-lwt-core"
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt-core
-  Modules: Dns_server, Dns_resolver
+  Modules: Dns_server, Dns_resolver, Mdns_responder
   BuildDepends: lwt, cstruct, lwt.syntax, dns, mirage-profile
   XMetaRequires: lwt, cstruct, dns, mirage-profile
   FindlibParent: dns
