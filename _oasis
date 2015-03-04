@@ -93,7 +93,7 @@ Document dns_lwt
   BuildTools+:          ocamldoc
   Build$:               flag(lwt)
   XOCamlbuildPath:      lwt
-  XOCamlbuildModules:   Dns_resolver, Dns_server
+  XOCamlbuildModules:   Dns_resolver, Dns_server, Mdns_responder
 
 Executable lwt_server
   Path:               lib_test/unix
