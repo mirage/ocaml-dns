@@ -34,7 +34,7 @@ end
 type 'a processor = (module PROCESSOR with type context = 'a)
 
 (** [compose process backup_process] is [process] unless it returns 
-	{!ServFail} or {!NXDomain} in which case it becomes [backup_process]. *)
+	an {!rcode} other than {!NoError} in which case it becomes [backup_process]. *)
 val compose: Dns.Packet.t process -> Dns.Packet.t process -> Dns.Packet.t process
 
 (** [process_query ibuf ibuflen obuf src dst processor] *)

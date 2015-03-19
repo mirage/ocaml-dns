@@ -40,8 +40,8 @@ let compose process backup ~src ~dst packet =
   | Some a ->
       let open DQ in
       (match a.rcode with
-      | NXDomain | ServFail -> backup ~src ~dst packet
-      | _ -> return result)
+      | NoError -> return result
+      | _ -> backup ~src ~dst packet)
   | None -> backup ~src ~dst packet
 
 let process_query buf len obuf src dst processor =
