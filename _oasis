@@ -43,7 +43,7 @@ Library "dns-lwt"
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt
-  Modules: Dns_server_unix, Dns_resolver_unix, Mldig_unix
+  Modules: Dns_server_unix, Dns_resolver_unix
   BuildDepends: lwt.unix (>= 2.4.1), cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix
   XMetaRequires: lwt.unix, cstruct.lwt, dns, dns.lwt-core, ipaddr.unix
   FindlibParent: dns

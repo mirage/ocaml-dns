@@ -22,5 +22,4 @@ val string_of_secname: string -> string
 val string_of_rrecord: rr -> string
 val string_of_flags: detail -> string
 val string_of_question: question -> string
-val string_of_section: ('a -> string) -> string -> 'a list -> string
 val string_of_answers: t -> string

@@ -1,4 +1,5 @@
 (*
+ * Copyright (c) 2015 Heidi Howard <hh360@cam.ac.uk>
  * Copyright (c) 2005-2012 Anil Madhavapeddy <anil@recoil.org>
  * Copyright (c) 2005 David Scott <djs@fraserresearch.org>
  *
