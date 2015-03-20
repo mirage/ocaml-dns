@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: eefda97a7a038bffab19720f0d34747f)
+# DO NOT EDIT (digest: acf171699059e41aac8135d9d1c869ec)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -119,22 +119,22 @@ true: annot, bin_annot
 <lib_test/unix/*.ml{,i,y}>: use_dns-lwt-core
 <lib_test/unix/time_server.{native,byte}>: custom
 # Executable mldig
-<lwt/mldig.{native,byte}>: pkg_base64
-<lwt/mldig.{native,byte}>: pkg_bytes
-<lwt/mldig.{native,byte}>: pkg_cmdliner
-<lwt/mldig.{native,byte}>: pkg_cstruct
-<lwt/mldig.{native,byte}>: pkg_cstruct.lwt
-<lwt/mldig.{native,byte}>: pkg_cstruct.syntax
-<lwt/mldig.{native,byte}>: pkg_ipaddr
-<lwt/mldig.{native,byte}>: pkg_ipaddr.unix
-<lwt/mldig.{native,byte}>: pkg_lwt
-<lwt/mldig.{native,byte}>: pkg_lwt.syntax
-<lwt/mldig.{native,byte}>: pkg_lwt.unix
-<lwt/mldig.{native,byte}>: pkg_re
-<lwt/mldig.{native,byte}>: pkg_re.str
-<lwt/mldig.{native,byte}>: use_dns
-<lwt/mldig.{native,byte}>: use_dns-lwt
-<lwt/mldig.{native,byte}>: use_dns-lwt-core
+<lwt/mldig_unix.{native,byte}>: pkg_base64
+<lwt/mldig_unix.{native,byte}>: pkg_bytes
+<lwt/mldig_unix.{native,byte}>: pkg_cmdliner
+<lwt/mldig_unix.{native,byte}>: pkg_cstruct
+<lwt/mldig_unix.{native,byte}>: pkg_cstruct.lwt
+<lwt/mldig_unix.{native,byte}>: pkg_cstruct.syntax
+<lwt/mldig_unix.{native,byte}>: pkg_ipaddr
+<lwt/mldig_unix.{native,byte}>: pkg_ipaddr.unix
+<lwt/mldig_unix.{native,byte}>: pkg_lwt
+<lwt/mldig_unix.{native,byte}>: pkg_lwt.syntax
+<lwt/mldig_unix.{native,byte}>: pkg_lwt.unix
+<lwt/mldig_unix.{native,byte}>: pkg_re
+<lwt/mldig_unix.{native,byte}>: pkg_re.str
+<lwt/mldig_unix.{native,byte}>: use_dns
+<lwt/mldig_unix.{native,byte}>: use_dns-lwt
+<lwt/mldig_unix.{native,byte}>: use_dns-lwt-core
 <lwt/*.ml{,i,y}>: pkg_base64
 <lwt/*.ml{,i,y}>: pkg_bytes
 <lwt/*.ml{,i,y}>: pkg_cmdliner
@@ -151,7 +151,7 @@ true: annot, bin_annot
 <lwt/*.ml{,i,y}>: use_dns
 <lwt/*.ml{,i,y}>: use_dns-lwt
 <lwt/*.ml{,i,y}>: use_dns-lwt-core
-<lwt/mldig.{native,byte}>: custom
+<lwt/mldig_unix.{native,byte}>: custom
 # Executable async_resolver
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_async
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_base64
