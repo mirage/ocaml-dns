@@ -34,7 +34,7 @@ Library dns
   Pack: true
   Modules:
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
-    Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
+    Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol, Dig
   BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0), base64 (>= 2.0.0), bytes
   XMetaRequires: cstruct, re, re.str, ipaddr, base64, bytes
 
@@ -63,7 +63,7 @@ Library "dns-lwt-core"
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt-core
-  Modules: Dns_server, Dns_resolver, Dig
+  Modules: Dns_server, Dns_resolver
   BuildDepends: lwt, cstruct, lwt.syntax, dns
   XMetaRequires: lwt, cstruct, dns
   FindlibParent: dns

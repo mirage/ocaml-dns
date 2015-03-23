@@ -16,7 +16,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Dns.Packet
+(** Pretty printing (dig style) of DNS Packets and their components *)
+
+open Packet
 
 val string_of_secname: string -> string
 val string_of_rrecord: rr -> string

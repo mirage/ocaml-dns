@@ -17,8 +17,8 @@
  *)
 
 open Printf
-open Dns.Name
-open Dns.Packet
+open Name
+open Packet
 
 let al = List.length
 
