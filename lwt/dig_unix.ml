@@ -18,7 +18,7 @@
 open Printf
 open Dns.Name
 open Dns.Packet
-open Mldig
+open Dig
 
 let debug_active = ref false
 let debug x = if !debug_active then prerr_endline (sprintf "[debug] %s" x)

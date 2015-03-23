@@ -63,7 +63,7 @@ Library "dns-lwt-core"
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt-core
-  Modules: Dns_server, Dns_resolver, Mldig
+  Modules: Dns_server, Dns_resolver, Dig
   BuildDepends: lwt, cstruct, lwt.syntax, dns
   XMetaRequires: lwt, cstruct, dns
   FindlibParent: dns
@@ -115,7 +115,7 @@ Executable time_server
 
 Executable mldig
   Path:               lwt
-  MainIs:             mldig_unix.ml
+  MainIs:             dig_unix.ml
   Build$:             flag(tests) && flag(lwt)
   Custom:             true
   CompiledObject:     best
