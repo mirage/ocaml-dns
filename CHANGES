@@ -1,3 +1,6 @@
+0.14.1 (2015-03-29):
+* Reduce namespace pollution in `name.ml` to avoid breaking with Cstruct 1.6.0+
+ 
 0.14.0 (2015-01-29):
 * Renamed `Packet.QM` to `Packet.Q_Normal` and `QU` to `Q_mDNS_Unicast` for
   clarity and added more detailed doc comments. Added constructor function

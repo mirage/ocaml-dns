@@ -19,7 +19,6 @@
 
 open Printf
 open Operators
-open Cstruct
 
 type domain_name = string list
 module Map = Map.Make(struct
@@ -119,7 +118,7 @@ let marshal_name ?(compress=true) names base buf name =
         | None ->
             (match labels with
               | [] ->
-                  set_uint8 buf offset 0;
+                  Cstruct.set_uint8 buf offset 0;
                   names, offset+1
 
               | (hd :: tl) as ls ->
@@ -130,7 +129,7 @@ let marshal_name ?(compress=true) names base buf name =
             )
 
         | Some o ->
-            BE.set_uint16 buf offset (pointer o);
+            Cstruct.BE.set_uint16 buf offset (pointer o);
             names, offset+2
     in
     let names, offset = aux names 0 name in
