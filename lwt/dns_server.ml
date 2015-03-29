@@ -40,7 +40,7 @@ let compose process backup ~src ~dst packet =
   | Some a ->
       let open DQ in
       (match a.rcode with
-      | NoError -> return result
+      | DP.NoError -> return result
       | _ -> backup ~src ~dst packet)
   | None -> backup ~src ~dst packet
 
