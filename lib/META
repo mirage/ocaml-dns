@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: e0be643d87d2a0fcf73bffac1d91f89b)
+# DO NOT EDIT (digest: abf7e81e524e741f99f94433b9f8d8d1)
 version = "0.14.1"
 description = "DNS client and server implementation"
 requires = "cstruct re re.str ipaddr base64 bytes"
@@ -41,10 +41,21 @@ package "lwt" (
  exists_if = "dns-lwt.cma"
 )
 
+package "async-unix" (
+ version = "0.14.1"
+ description = "DNS client and server implementation"
+ requires = "async dns.async threads"
+ archive(byte) = "dns-async-unix.cma"
+ archive(byte, plugin) = "dns-async-unix.cma"
+ archive(native) = "dns-async-unix.cmxa"
+ archive(native, plugin) = "dns-async-unix.cmxs"
+ exists_if = "dns-async-unix.cma"
+)
+
 package "async" (
  version = "0.14.1"
  description = "DNS client and server implementation"
- requires = "async ipaddr dns threads"
+ requires = "async_kernel ipaddr dns"
  archive(byte) = "dns-async.cma"
  archive(byte, plugin) = "dns-async.cma"
  archive(native) = "dns-async.cmxa"
