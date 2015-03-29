@@ -6,4 +6,4 @@ env:
   - PACKAGE="dns" OCAML_VERSION=4.01 POST_INSTALL_HOOK="./.travis-ci-post.sh"
   - PACKAGE="dns" OCAML_VERSION=4.02 DEPOPTS="tcpip" POST_INSTALL_HOOK="./.travis-ci-post.sh"
   - PACKAGE="dns" OCAML_VERSION=4.02 DEPOPTS="async"
-  - PACKAGE="dns" OCAML_VERSION=4.01 DEPOPTS="async"
+  - PACKAGE="dns" OCAML_VERSION=4.01 DEPOPTS="tcpip lwt" REVDEPS=true
