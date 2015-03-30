@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: eefda97a7a038bffab19720f0d34747f)
+# DO NOT EDIT (digest: e1b56de685fe4f22bf8fe52edcc12561)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -58,7 +58,10 @@ true: annot, bin_annot
 "lwt/dns-lwt.cmxs": use_dns-lwt
 # Library dns-async
 "async/dns-async.cmxs": use_dns-async
+# Library dns-async-unix
+"async/dns-async-unix.cmxs": use_dns-async-unix
 <async/*.ml{,i,y}>: pkg_async
+<async/*.ml{,i,y}>: pkg_async_kernel
 <async/*.ml{,i,y}>: pkg_base64
 <async/*.ml{,i,y}>: pkg_bytes
 <async/*.ml{,i,y}>: pkg_core.syntax
@@ -69,6 +72,7 @@ true: annot, bin_annot
 <async/*.ml{,i,y}>: pkg_re.str
 <async/*.ml{,i,y}>: pkg_threads
 <async/*.ml{,i,y}>: use_dns
+<async/*.ml{,i,y}>: use_dns-async
 # Executable lwt_server
 <lib_test/unix/lwt_server.{native,byte}>: pkg_base64
 <lib_test/unix/lwt_server.{native,byte}>: pkg_bytes
@@ -154,6 +158,7 @@ true: annot, bin_annot
 <lwt/mldig.{native,byte}>: custom
 # Executable async_resolver
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_async
+<lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_async_kernel
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_base64
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_bytes
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_core.syntax
@@ -165,7 +170,9 @@ true: annot, bin_annot
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_threads
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: use_dns
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: use_dns-async
+<lib_test/async/test_async_dns_resolver_unix.{native,byte}>: use_dns-async-unix
 <lib_test/async/*.ml{,i,y}>: pkg_async
+<lib_test/async/*.ml{,i,y}>: pkg_async_kernel
 <lib_test/async/*.ml{,i,y}>: pkg_base64
 <lib_test/async/*.ml{,i,y}>: pkg_bytes
 <lib_test/async/*.ml{,i,y}>: pkg_core.syntax
@@ -177,6 +184,7 @@ true: annot, bin_annot
 <lib_test/async/*.ml{,i,y}>: pkg_threads
 <lib_test/async/*.ml{,i,y}>: use_dns
 <lib_test/async/*.ml{,i,y}>: use_dns-async
+<lib_test/async/*.ml{,i,y}>: use_dns-async-unix
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: custom
 # Executable test
 <lib_test/ounit/test.{native,byte}>: pkg_base64
@@ -204,3 +212,4 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: custom
 # OASIS_STOP
 <lib_test/*>: not_hygienic
+true: annot, principal, bin_annot, debug, short_paths
