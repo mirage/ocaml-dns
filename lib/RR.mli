@@ -21,7 +21,6 @@
     @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
-open Name
 open Cstruct
 
 (** DNS serial number -- 32 bits. *)
@@ -32,7 +31,7 @@ type cstr = string Hashcons.hash_consed
 
 (** A node in the trie. *)
 and dnsnode = {
-  owner : Name.domain_name Hashcons.hash_consed;
+  owner : Name.t Hashcons.hash_consed;
   (** The name for which the node contains memoised attributes. *)
   mutable rrsets : rrset list;
 (** The set of attributes as  resource records. *)
@@ -50,7 +49,7 @@ and rrsig = {
   rrsig_expiry : int32;
   rrsig_incept : int32;
   rrsig_keytag : int;
-  rrsig_name   : Name.domain_name;
+  rrsig_name   : Name.t;
   rrsig_sig    : string;
 }
 

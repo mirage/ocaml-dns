@@ -21,10 +21,14 @@ open Printf
 open Operators
 open Cstruct
 
-type domain_name = string list
+type t = string list
+
+type key = string
+
 module Map = Map.Make(struct
-  type t = domain_name
-  let eq = (=)
+  type x = t
+  type t = x
+  let eq x y = x = y
   let rec compare l1 l2 = match (l1, l2) with
     | []    ,  []    -> 0
     | _::_  , []     -> 1
@@ -41,12 +45,15 @@ let cons x xs = (String.lowercase x) :: xs
 let to_string_list dn = dn
 let of_string_list = List.map String.lowercase
 
-let domain_name_to_string = String.concat "."
-let string_to_domain_name (s:string) : domain_name =
+let to_string = String.concat "."
+
+(* TODO: this looks wrong for the trailing dot case/we should ensure
+   we handle the trailing dot case consistently *)
+let of_string (s:string) : t =
   Re_str.split (Re_str.regexp "\\.") (String.lowercase s)
 
 let for_reverse ip =
-  (".arpa.in-addr."^Ipaddr.V4.to_string ip) |> string_to_domain_name |> List.rev
+  (".arpa.in-addr."^Ipaddr.V4.to_string ip) |> of_string |> List.rev
 
 type label =
   | L of string * int (* string *)
@@ -161,12 +168,13 @@ let hashcons_charstring s = CSH.hashcons !cstr_hash s
    N.B. RFC 4343 says we shouldn't do this downcasing.
 *)
 module DNH = Hashcons.Make (struct
-  type t = domain_name
+  type x = t
+  type t = x
   let equal a b = (a = b)
   let hash s = Hashtbl.hash s
 end)
 let dn_hash = ref (DNH.create 101)
-let rec hashcons_domainname (x:domain_name) = match x with
+let rec hashcons_domainname (x:t) = match x with
   | [] -> DNH.hashcons !dn_hash []
   | h :: t ->
       let th = hashcons_domainname t in
@@ -181,8 +189,6 @@ let clear_cons_tables () =
   cstr_hash := CSH.create 1
 
 exception BadDomainName of string
-
-type key = string
 
 let canon2key domain_name =
   let check s =

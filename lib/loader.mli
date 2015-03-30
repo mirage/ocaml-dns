@@ -21,7 +21,6 @@
     @author Richard Mortier <mort\@cantab.net>
 *)
 
-open Name
 open Cstruct
 
 (** Loader database: the DNS trie plus a hash table of other names in use. *)
@@ -37,41 +36,41 @@ val no_more_updates : db -> unit
 
 (** Insert RRs in the database: args are rdata, ttl, owner, db. *)
 
-val add_generic_rr : int -> string -> int32 -> domain_name -> db -> unit
-val add_a_rr : Ipaddr.V4.t -> int32 -> domain_name -> db -> unit
-val add_aaaa_rr : Ipaddr.V6.t -> int32 -> domain_name -> db -> unit
-val add_ns_rr : domain_name -> int32 -> domain_name -> db -> unit
-val add_cname_rr : domain_name -> int32 -> domain_name -> db -> unit
+val add_generic_rr : int -> string -> int32 -> Name.t -> db -> unit
+val add_a_rr : Ipaddr.V4.t -> int32 -> Name.t -> db -> unit
+val add_aaaa_rr : Ipaddr.V6.t -> int32 -> Name.t -> db -> unit
+val add_ns_rr : Name.t -> int32 -> Name.t -> db -> unit
+val add_cname_rr : Name.t -> int32 -> Name.t -> db -> unit
 val add_soa_rr :
-  domain_name -> domain_name -> RR.serial -> int32 -> int32 -> int32 -> int32
-  -> int32 -> domain_name -> db -> unit
-val add_mb_rr : domain_name -> int32 -> domain_name -> db -> unit
-val add_mg_rr : domain_name -> int32 -> domain_name -> db -> unit
-val add_mr_rr : domain_name -> int32 -> domain_name -> db -> unit
+  Name.t -> Name.t -> RR.serial -> int32 -> int32 -> int32 -> int32
+  -> int32 -> Name.t -> db -> unit
+val add_mb_rr : Name.t -> int32 -> Name.t -> db -> unit
+val add_mg_rr : Name.t -> int32 -> Name.t -> db -> unit
+val add_mr_rr : Name.t -> int32 -> Name.t -> db -> unit
 val add_wks_rr :
-  Ipaddr.V4.t -> byte -> string -> int32 -> domain_name -> db -> unit
-val add_ptr_rr : domain_name -> int32 -> domain_name -> db -> unit
-val add_hinfo_rr : string -> string -> int32 -> domain_name -> db -> unit
+  Ipaddr.V4.t -> byte -> string -> int32 -> Name.t -> db -> unit
+val add_ptr_rr : Name.t -> int32 -> Name.t -> db -> unit
+val add_hinfo_rr : string -> string -> int32 -> Name.t -> db -> unit
 val add_minfo_rr :
-  domain_name -> domain_name -> int32 -> domain_name -> db -> unit
-val add_mx_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
-val add_txt_rr : string list -> int32 -> domain_name -> db -> unit
+  Name.t -> Name.t -> int32 -> Name.t -> db -> unit
+val add_mx_rr : int -> Name.t -> int32 -> Name.t -> db -> unit
+val add_txt_rr : string list -> int32 -> Name.t -> db -> unit
 val add_rp_rr :
-  domain_name -> domain_name -> int32 -> domain_name -> db -> unit
-val add_afsdb_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
-val add_x25_rr : string -> int32 -> domain_name -> db -> unit
+  Name.t -> Name.t -> int32 -> Name.t -> db -> unit
+val add_afsdb_rr : int -> Name.t -> int32 -> Name.t -> db -> unit
+val add_x25_rr : string -> int32 -> Name.t -> db -> unit
 val add_isdn_rr :
-  string -> string option -> int32 -> domain_name -> db -> unit
-val add_rt_rr : int -> domain_name -> int32 -> domain_name -> db -> unit
+  string -> string option -> int32 -> Name.t -> db -> unit
+val add_rt_rr : int -> Name.t -> int32 -> Name.t -> db -> unit
 val add_srv_rr :
-  int -> int -> int -> domain_name -> int32 -> domain_name -> db -> unit
-(* val add_unspec_rr : string -> int32 -> domain_name -> db -> unit *)
-val add_txt_rr : string list -> int32 -> domain_name -> db -> unit
-val add_dnskey_rr : int -> int -> string -> int32 -> domain_name -> db -> unit
-val add_ds_rr : int -> int -> int -> string -> int32 -> domain_name -> db ->
+  int -> int -> int -> Name.t -> int32 -> Name.t -> db -> unit
+(* val add_unspec_rr : string -> int32 -> Name.t -> db -> unit *)
+val add_txt_rr : string list -> int32 -> Name.t -> db -> unit
+val add_dnskey_rr : int -> int -> string -> int32 -> Name.t -> db -> unit
+val add_ds_rr : int -> int -> int -> string -> int32 -> Name.t -> db ->
   unit
-val add_rrsig_rr : string -> int -> int -> int32 -> int32 -> int32 -> int -> domain_name ->
-  string -> int32 -> domain_name -> db -> unit
+val add_rrsig_rr : string -> int -> int -> int32 -> int32 -> int32 -> int -> Name.t ->
+  string -> int32 -> Name.t -> db -> unit
 
 (** Raised if we already had an RRSet for this name and type, but with a
     different TTL. Also possible: {! Trie.BadName}.
@@ -86,8 +85,8 @@ type parserstate = {
     mutable paren: int;
     mutable filename: string;
     mutable lineno: int;
-    mutable origin: domain_name;
+    mutable origin: Name.t;
     mutable ttl: int32;
-    mutable owner: domain_name;
+    mutable owner: Name.t;
   }
 val state : parserstate

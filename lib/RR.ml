@@ -17,7 +17,6 @@
  *
  *)
 
-open Name
 open Cstruct
 
 (* Mnemonicity! *)
@@ -26,7 +25,7 @@ type cstr = string Hashcons.hash_consed
 
 (* DNS node: everything we know about a domain name *)
 and dnsnode = {
-  owner: Name.domain_name Hashcons.hash_consed;
+  owner: Name.t Hashcons.hash_consed;
   mutable rrsets: rrset list;
 }
 
@@ -44,7 +43,7 @@ and rrsig = {
   rrsig_expiry : int32;
   rrsig_incept : int32;
   rrsig_keytag : int;
-  rrsig_name   : Name.domain_name;
+  rrsig_name   : Name.t;
   rrsig_sig    : string;
 }
 

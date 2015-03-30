@@ -16,8 +16,8 @@
  *)
 
 open Printf
-open Dns.Name
-open Dns.Packet
+open Dns
+open Packet
 
 let debug_active = ref false
 let debug x = if !debug_active then prerr_endline (sprintf "[debug] %s" x)
@@ -32,7 +32,7 @@ let print_error e = printf ";; read error: %s\n" (Unix.error_message e)
 let print_section s = printf ";; %s SECTION:\n" (String.uppercase s)
 
 (* TODO: Should Name do this? *)
-let string_of_name n = (domain_name_to_string n)^"."
+let string_of_name n = (Name.to_string n)^"."
 
 let print_answers p =
     printf ";; global options: \n";
@@ -123,7 +123,7 @@ let dig source_ip opt_dest_port q_class q_type args =
   | None -> error "dig" "Must specify a DNS resolver (with @<hostname>)"
   | Some (x, opt_port) ->
     debug (sprintf "Querying DNS server %s" x);
-    let domain = string_to_domain_name (List.hd domains) in
+    let domain = Name.of_string (List.hd domains) in
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
     lwt addr =
       try return (Ipaddr.of_string_exn x)

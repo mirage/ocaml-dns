@@ -16,12 +16,12 @@
 
 open Lwt
 open Printf
-open Dns.Name
-open Dns.Operators
-open Dns.Protocol
+open Dns
+open Operators
+open Protocol
 open Dns_resolver
 
-module DP = Dns.Packet
+module DP = Packet
 
 let default_ns = Ipaddr.V4.of_string_exn "8.8.8.8"
 let default_port = 53
@@ -33,12 +33,12 @@ module type S = sig
   val create : stack -> t
 
   val resolve :
-    (module Dns.Protocol.CLIENT) ->
+    (module Protocol.CLIENT) ->
     t -> Ipaddr.V4.t -> int ->
-    Dns.Packet.q_class ->
-    Dns.Packet.q_type ->
-    Dns.Name.domain_name ->
-    Dns.Packet.t Lwt.t
+    Packet.q_class ->
+    Packet.q_type ->
+    Name.t ->
+    Packet.t Lwt.t
 
   val gethostbyname : t ->
     ?server:Ipaddr.V4.t -> ?dns_port:int ->
@@ -67,7 +67,7 @@ module Static = struct
   let resolve client
       s server dns_port
       (q_class:DP.q_class) (q_type:DP.q_type)
-      (q_name:domain_name) =
+      (q_name:Name.t) =
     fail (Failure "Dummy stack cannot call resolve")
 
   let gethostbyname
@@ -128,7 +128,7 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
   let resolve client
       s server dns_port
       (q_class:DP.q_class) (q_type:DP.q_type)
-      (q_name:domain_name) =
+      (q_name:Name.t) =
     let commfn = connect_to_resolver s (server,dns_port) in
     resolve ~alloc client commfn q_class q_type q_name
 
