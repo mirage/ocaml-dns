@@ -59,8 +59,13 @@ val to_string : t -> string
     human-readable serialization [name]. *)
 val of_string : string -> t
 
-(** [for_reverse ip] is the name used for reverse lookup of IP address [ip]. *)
-val for_reverse : Ipaddr.t -> t
+(** [string_to_domain_name] is {! of_string } but retained for
+    backward compatibility.
+    @deprecated since 0.15.0; use {! of_string } in new developments *)
+val string_to_domain_name : string -> t
+
+(** [of_ipaddr ip] is the name used for reverse lookup of IP address [ip]. *)
+val of_ipaddr : Ipaddr.t -> t
 
 (** Parse a {! t} out of a {! Cstruct.t} given a set of already
     observed names from the packet, and the offset we are into the packet.

@@ -50,8 +50,9 @@ let to_string = String.concat "."
    we handle the trailing dot case consistently *)
 let of_string (s:string) : t =
   Re_str.split (Re_str.regexp "\\.") (String.lowercase s)
+let string_to_domain_name = of_string
 
-let for_reverse ip = of_string_list (Ipaddr.to_domain_name ip)
+let of_ipaddr ip = of_string_list (Ipaddr.to_domain_name ip)
 
 type label =
   | L of string * int (* string *)
