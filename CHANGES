@@ -8,6 +8,14 @@
 * Name.hashcons_domainname has been renamed to Name.hashcons
 * Name.for_reverse now accepts a V4/V6 Ipaddr.t and we require >= ipaddr.2.6.0
 
+0.14.1 (2015-03-29):
+* Reduce namespace pollution in `name.ml` to avoid breaking with Cstruct 1.6.0+.
+* Add a `Dns_server.compose` function to make it easier to build resolution pipelines (#58).
+* Add a `Dns_server_mirage` functor (#55).
+* Add `Dns_resolver.resolve_pkt` to support custom query packets (#49).
+* Split out the experimental Async_resolver into a `Async_kernel` and Unix libraries.
+  This introduces the `dns.async-unix` library.
+ 
 0.14.0 (2015-01-29):
 * Renamed `Packet.QM` to `Packet.Q_Normal` and `QU` to `Q_mDNS_Unicast` for
   clarity and added more detailed doc comments. Added constructor function

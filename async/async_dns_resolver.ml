@@ -14,8 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Core.Std
-open Async.Std
+open Core_kernel.Std
+open Async_kernel.Std
 
 open Dns
 open Operators
@@ -23,7 +23,7 @@ open Protocol
 
 module DP = Packet
 
-type result = Answer of DP.t | Error of exn
+type result = Answer of DP.t | Err of exn
 
 type commfn = {
   txfn    : Buf.t -> unit Deferred.t;
@@ -32,11 +32,15 @@ type commfn = {
   cleanfn : unit -> unit Deferred.t;
 }
 
+(*
+TODO: move to a Unix module, since library should not write to stdout
+    
 let stdout_writer () = Lazy.force Writer.stdout
 let stderr_writer () = Lazy.force Writer.stderr
 
 let message s = Writer.write (stdout_writer ()) s
 let warn s = Writer.write (stderr_writer ()) (Printf.sprintf "WARN: %s\n%!" s)
+*)
 
 let nchoose_split l = 
   let fold_f (rs, ts) cur =
@@ -52,7 +56,6 @@ let rec send_req txfn timerfn q =
   | count -> begin
       txfn q >>= fun _ ->
       timerfn () >>= fun () ->
-      message (Printf.sprintf "retry query for %d times\n" (4 - count));
       send_req txfn timerfn q (count - 1)
     end
 
@@ -62,11 +65,11 @@ let send_pkt client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
   let resl = List.map cqpl ~f:(fun (ctxt, q) ->
     Deferred.any [
       ((send_req txfn timerfn q 4) >>= fun () -> 
-        return (Error (R.timeout ctxt)));
+        return (Err (R.timeout ctxt)));
       (try_with (fun () -> rxfn (R.parse ctxt))
         >>| function
         | Ok r -> (Answer r)
-        | Error exn -> (Error exn))
+        | Error exn -> (Err exn))
       ]) in
   let rec select errors = function
     | [] -> raise (Dns_resolve_error errors)
@@ -76,7 +79,7 @@ let send_pkt client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
       let rec find_answer errors = function
         | [] -> select errors ts
         | (Answer a) ::  _ -> return a
-        | (Error e) :: r -> find_answer (e :: errors) r
+        | (Err e) :: r -> find_answer (e :: errors) r
       in
       find_answer errors rs
   in select [] resl
