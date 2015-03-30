@@ -1,3 +1,8 @@
+0.15.0 (trunk):
+* Name.domain_name has been renamed to Name.t and is now abstract
+* Name.domain_name_to_string has been renamed to Name.to_string
+* Name.string_to_domain_name has been renamed to Name.of_string
+
 0.14.0 (2015-01-29):
 * Renamed `Packet.QM` to `Packet.Q_Normal` and `QU` to `Q_mDNS_Unicast` for
   clarity and added more detailed doc comments. Added constructor function
