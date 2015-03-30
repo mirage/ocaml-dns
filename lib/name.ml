@@ -75,9 +75,9 @@ let parse_label base buf =
           L (name, base), 1+v
         )
         else
-          failwith (sprintf "parse_label: invalid length %d" v)
+          failwith (sprintf "Name.parse_label: invalid length %d" v)
 
-let parse_name names base buf = (* what. a. mess. *)
+let parse names base buf = (* what. a. mess. *)
   let rec aux offsets name base buf =
     match parse_label base buf with
       | (Z o as zero, offset) ->
@@ -100,14 +100,14 @@ let parse_name names base buf = (* what. a. mess. *)
           (* convert label list into string list *)
           (ns ||> (function
             | L (nm,_) -> nm
-            | _ -> failwith "parse_name")
+            | _ -> failwith "Name.parse")
           ) @ name, base+offset, Cstruct.shift buf offset
 
   in
   let name, base, buf = aux [] [] base buf in
   List.rev name, (base,buf)
 
-let marshal_name ?(compress=true) names base buf name =
+let marshal ?(compress=true) names base buf name =
   let not_compressed names base buf name =
     let base, buf =
       List.fold_left (fun (base,buf) label ->
@@ -158,7 +158,7 @@ module CSH = Hashcons.Make (struct
   let hash s = Hashtbl.hash s
 end)
 let cstr_hash = ref (CSH.create 101)
-let hashcons_charstring s = CSH.hashcons !cstr_hash s
+let hashcons_string s = CSH.hashcons !cstr_hash s
 
 (*
    Hash-consing: domain names (string lists).  This requires a little
@@ -173,12 +173,12 @@ module DNH = Hashcons.Make (struct
   let hash s = Hashtbl.hash s
 end)
 let dn_hash = ref (DNH.create 101)
-let rec hashcons_domainname (x:t) = match x with
+let rec hashcons (x:t) = match x with
   | [] -> DNH.hashcons !dn_hash []
   | h :: t ->
-      let th = hashcons_domainname t in
+      let th = hashcons t in
       DNH.hashcons !dn_hash
-	    (((hashcons_charstring (String.lowercase h)).Hashcons.node)
+	    (((hashcons_string (String.lowercase h)).Hashcons.node)
 	     :: (th.Hashcons.node))
 
 let clear_cons_tables () =

@@ -67,18 +67,18 @@ val for_reverse : Ipaddr.t -> t
 
     @return {! t} and the remainder
 *)
-val parse_name :
+val parse :
   (int, label) Hashtbl.t -> int -> Cstruct.t -> t * (int * Cstruct.t)
 
-val marshal_name : ?compress:bool ->
+val marshal : ?compress:bool ->
   int Map.t -> int -> Cstruct.t -> t -> int Map.t * int * Cstruct.t
 
 (** Construct a {! Hashcons} character-string from a string. *)
-val hashcons_charstring : string -> string Hashcons.hash_consed
+val hashcons_string : string -> string Hashcons.hash_consed
 
 (** Construct a {! Hashcons} domain name (list of labels) from a {!
     t}. *)
-val hashcons_domainname : t -> t Hashcons.hash_consed
+val hashcons : t -> t Hashcons.hash_consed
 
 (** Clear the {! Hashcons} tables. *)
 val clear_cons_tables : unit -> unit

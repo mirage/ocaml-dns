@@ -47,7 +47,7 @@ let bad_node = { data = None; edge = ""; byte = -1;
 		 flags = Nothing; }
 
 let local_dnsnode = {
-  owner = Name.hashcons_domainname (Name.of_string "local."); rrsets = [];
+  owner = Name.hashcons (Name.of_string "local."); rrsets = [];
 }
 let local_dnstrie = {
   data = Some local_dnsnode; edge = ""; byte = 0;

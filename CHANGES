@@ -2,6 +2,10 @@
 * Name.domain_name has been renamed to Name.t and is now abstract
 * Name.domain_name_to_string has been renamed to Name.to_string
 * Name.string_to_domain_name has been renamed to Name.of_string
+* Name.parse_name has been renamed to Name.parse
+* Name.marshal_name has been renamed to Name.marshal
+* Name.hashcons_charstring has been renamed to Name.hashcons_string
+* Name.hashcons_domainname has been renamed to Name.hashcons
 * Name.for_reverse now accepts a V4/V6 Ipaddr.t and we require >= ipaddr.2.6.0
 
 0.14.0 (2015-01-29):

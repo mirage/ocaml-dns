@@ -854,7 +854,7 @@ let question_to_string q =
     (if q.q_unicast = Q_mDNS_Unicast then "|QU" else "")
 
 let parse_question names base buf =
-  let q_name, (base,buf) = Name.parse_name names base buf in
+  let q_name, (base,buf) = Name.parse names base buf in
   let q_type =
     let typ = get_q_typ buf in
     match int_to_q_type typ with
@@ -872,7 +872,7 @@ let parse_question names base buf =
   { q_name; q_type; q_class; q_unicast; }, (base+sizeof_q, Cstruct.shift buf sizeof_q)
 
 let marshal_question ?(compress=true) (names, base, buf) q =
-  let names, base, buf = Name.marshal_name names base buf q.q_name in
+  let names, base, buf = Name.marshal names base buf q.q_name in
   set_q_typ buf (q_type_to_int q.q_type);
   let q_unicast = (if q.q_unicast = Q_mDNS_Unicast then 1 else 0) in
   set_q_cls buf ((q_unicast lsl 15) lor (q_class_to_int q.q_class));
@@ -915,7 +915,7 @@ let parse_rdata names base t cls ttl buf =
         let inc_ts = Cstruct.BE.get_uint32 buf 12 in
         let tag = Cstruct.BE.get_uint16 buf 16 in
         let buf = Cstruct.shift buf 18 in
-        let (name, (len, buf)) = Name.parse_name names (base+18) buf in
+        let (name, (len, buf)) = Name.parse names (base+18) buf in
         let sign = Cstruct.to_string buf in
           RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign)
 
@@ -930,7 +930,7 @@ let parse_rdata names base t cls ttl buf =
         let inc_ts = Cstruct.BE.get_uint32 buf 12 in
         let tag = Cstruct.BE.get_uint16 buf 16 in
         let buf = Cstruct.shift buf 18 in
-        let (name, (len, buf)) = Name.parse_name names (base+18) buf in
+        let (name, (len, buf)) = Name.parse names (base+18) buf in
         let sign = Cstruct.to_string buf in
           SIG (alg, exp_ts, inc_ts, tag, name, sign)
 
@@ -939,9 +939,9 @@ let parse_rdata names base t cls ttl buf =
     | RR_AAAA -> AAAA (Ipaddr.V6.of_int64 ((BE.get_uint64 buf 0),(BE.get_uint64 buf 8)))
 
     | RR_AFSDB -> AFSDB (BE.get_uint16 buf 0,
-                         Cstruct.shift buf 2 |> Name.parse_name names (base+2) |> stop)
+                         Cstruct.shift buf 2 |> Name.parse names (base+2) |> stop)
 
-    | RR_CNAME -> CNAME (buf |> Name.parse_name names base |> stop)
+    | RR_CNAME -> CNAME (buf |> Name.parse names base |> stop)
 
     | RR_DNSKEY ->
         let flags = BE.get_uint16 buf 0 in
@@ -968,7 +968,7 @@ let parse_rdata names base t cls ttl buf =
         let key = Cstruct.shift buf 4 |> to_string in
           DS(tag, alg, digest, key)
     | RR_NSEC ->
-        let (name, (base, buf)) = Name.parse_name names base buf in
+        let (name, (base, buf)) = Name.parse names base buf in
         NSEC (name, [(char_of_int 0), (char_of_int 0), buf] )
 
     | RR_HINFO -> let cpu, buf = parse_charstr buf in
@@ -982,35 +982,35 @@ let parse_rdata names base t cls ttl buf =
                  in
                  ISDN (a, sa)
 
-    | RR_MB -> MB (buf |> Name.parse_name names base |> stop)
-    | RR_MD -> MD (buf |> Name.parse_name names base |> stop)
-    | RR_MF -> MF (buf |> Name.parse_name names base |> stop)
+    | RR_MB -> MB (buf |> Name.parse names base |> stop)
+    | RR_MD -> MD (buf |> Name.parse names base |> stop)
+    | RR_MF -> MF (buf |> Name.parse names base |> stop)
 
-    | RR_MG -> MG (buf |> Name.parse_name names base |> stop)
+    | RR_MG -> MG (buf |> Name.parse names base |> stop)
 
-    | RR_MINFO -> let rm, (base,buf) = buf |> Name.parse_name names base in
-                  let em = buf |> Name.parse_name names base |> stop in
+    | RR_MINFO -> let rm, (base,buf) = buf |> Name.parse names base in
+                  let em = buf |> Name.parse names base |> stop in
                   MINFO (rm, em)
 
-    | RR_MR -> MR (buf |> Name.parse_name names base |> stop)
+    | RR_MR -> MR (buf |> Name.parse names base |> stop)
 
     | RR_MX -> MX (BE.get_uint16 buf 0,
-                   Cstruct.shift buf 2 |> Name.parse_name names (base+2) |> stop)
+                   Cstruct.shift buf 2 |> Name.parse names (base+2) |> stop)
 
-    | RR_NS -> NS (buf |> Name.parse_name names base |> stop)
+    | RR_NS -> NS (buf |> Name.parse names base |> stop)
 
-    | RR_PTR -> PTR (buf |> Name.parse_name names base |> stop)
+    | RR_PTR -> PTR (buf |> Name.parse names base |> stop)
 
-    | RR_RP -> let mbox, (base,buf) = buf |> Name.parse_name names base in
-               let txt = buf |> Name.parse_name names base |> stop in
+    | RR_RP -> let mbox, (base,buf) = buf |> Name.parse names base in
+               let txt = buf |> Name.parse names base |> stop in
                RP (mbox, txt)
 
     | RR_RT -> RT (BE.get_uint16 buf 0,
-                   Cstruct.shift buf 2 |> Name.parse_name names (base+2) |> stop)
+                   Cstruct.shift buf 2 |> Name.parse names (base+2) |> stop)
 
     | RR_SOA ->
-        let mn, (base, buf) = Name.parse_name names base buf in
-        let rn, (_, buf) = Name.parse_name names base buf in
+        let mn, (base, buf) = Name.parse names base buf in
+        let rn, (_, buf) = Name.parse names base buf in
         BE.(SOA (mn, rn,
                  BE.get_uint32 buf 0,  (* serial *)
                  BE.get_uint32 buf 4,  (* refresh *)
@@ -1024,7 +1024,7 @@ let parse_rdata names base t cls ttl buf =
           SRV (get_uint16 buf 0, (* prio *)
                get_uint16 buf 2, (* weight *)
                get_uint16 buf 4, (* port *)
-               Cstruct.shift buf 6 |> Name.parse_name names (base+6) |> stop
+               Cstruct.shift buf 6 |> Name.parse names (base+6) |> stop
           ))
 
     | RR_TXT ->
@@ -1063,11 +1063,11 @@ let parse_rdata names base t cls ttl buf =
     | AFSDB (x,name) ->
         BE.set_uint16 rdbuf 0 x;
         let names, offset, _ =
-          Name.marshal_name ~compress names (base+2) (Cstruct.shift rdbuf 2) name
+          Name.marshal ~compress names (base+2) (Cstruct.shift rdbuf 2) name
        in
         RR_AFSDB, names, offset-base
     | CNAME name ->
-        let names, offset, _ = Name.marshal_name ~compress names base rdbuf name in
+        let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_CNAME, names, offset-base
     | DNSKEY (flags, alg, key) ->
         BE.set_uint16 rdbuf 0 flags;
@@ -1092,7 +1092,7 @@ let parse_rdata names base t cls ttl buf =
         let _ = Cstruct.BE.set_uint32 rdbuf 12 inc_ts in
         let _ = Cstruct.BE.set_uint16 rdbuf 16 tag in
         let rdbuf = Cstruct.shift rdbuf 18 in
-        let (names, len, rdbuf) = Name.marshal_name ~compress names 0 rdbuf name in
+        let (names, len, rdbuf) = Name.marshal ~compress names 0 rdbuf name in
         let _ = Cstruct.blit_from_string sign 0 rdbuf 0 (String.length sign) in
           RR_RRSIG, names, (18+len+(String.length sign))
      | SIG (alg, exp_ts, inc_ts, tag, name, sign) ->
@@ -1104,7 +1104,7 @@ let parse_rdata names base t cls ttl buf =
         let _ = Cstruct.BE.set_uint32 rdbuf 12 inc_ts in
         let _ = Cstruct.BE.set_uint16 rdbuf 16 tag in
         let rdbuf = Cstruct.shift rdbuf 18 in
-        let (names, len, rdbuf) = Name.marshal_name ~compress names 0 rdbuf name in
+        let (names, len, rdbuf) = Name.marshal ~compress names 0 rdbuf name in
         let _ = Cstruct.blit_from_string sign 0 rdbuf 0 (String.length sign) in
           RR_SIG, names, (18+len+(String.length sign))
      | HINFO (cpu,os) ->
@@ -1123,49 +1123,49 @@ let parse_rdata names base t cls ttl buf =
         Cstruct.blit_from_string sastr 0 rdbuf alen salen;
         RR_ISDN, names, alen+salen
     | MB name ->
-        let names, offset, _ = Name.marshal_name ~compress names base rdbuf name in
+        let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_MB, names, offset-base
     | MD name ->
-        let names, offset, _ = Name.marshal_name ~compress names base rdbuf name in
+        let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_MD, names, offset-base
     | MF name ->
-        let names, offset, _ = Name.marshal_name ~compress names base rdbuf name in
+        let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_MF, names, offset-base
     | MG name ->
-        let names, offset, _ = Name.marshal_name ~compress names base rdbuf name in
+        let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_MG, names, offset-base
     | MINFO (rm,em) ->
-        let names, offset, rdbuf = Name.marshal_name ~compress names base rdbuf rm in
-        let names, offset, _ = Name.marshal_name ~compress names offset rdbuf em in
+        let names, offset, rdbuf = Name.marshal ~compress names base rdbuf rm in
+        let names, offset, _ = Name.marshal ~compress names offset rdbuf em in
         RR_MINFO, names, offset-base
     | MR name ->
-        let names, offset, _ = Name.marshal_name ~compress names base rdbuf name in
+        let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_MR, names, offset-base
     | MX (pref,xchg) ->
         BE.set_uint16 rdbuf 0 pref;
         let names, offset, _ =
-          Name.marshal_name ~compress names (base+2) (Cstruct.shift rdbuf 2) xchg
+          Name.marshal ~compress names (base+2) (Cstruct.shift rdbuf 2) xchg
         in
         RR_MX, names, offset-base
     | NS name ->
-        let names, offset, _ = Name.marshal_name ~compress names base rdbuf name in
+        let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_NS, names, offset-base
     | RP (mbox,txt) ->
-        let names, offset, rdbuf = Name.marshal_name ~compress names base rdbuf mbox in
-        let names, offset, _ = Name.marshal_name ~compress names offset rdbuf txt in
+        let names, offset, rdbuf = Name.marshal ~compress names base rdbuf mbox in
+        let names, offset, _ = Name.marshal ~compress names offset rdbuf txt in
         RR_RP, names, offset-base
     | RT (x, name) ->
         BE.set_uint16 rdbuf 0 x;
         let names, offset, _ =
-          Name.marshal_name ~compress names (base+2) (Cstruct.shift rdbuf 2) name
+          Name.marshal ~compress names (base+2) (Cstruct.shift rdbuf 2) name
         in
         RR_RT, names, offset-base
     | PTR name ->
-        let names, offset, _ = Name.marshal_name ~compress names base rdbuf name in
+        let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_PTR, names, offset-base
     | SOA (mn,rn, serial, refresh, retry, expire, minimum) ->
-        let names, offset, rdbuf = Name.marshal_name ~compress names base rdbuf mn in
-        let names, offset, rdbuf = Name.marshal_name ~compress names offset rdbuf rn in
+        let names, offset, rdbuf = Name.marshal ~compress names base rdbuf mn in
+        let names, offset, rdbuf = Name.marshal ~compress names offset rdbuf rn in
         BE.set_uint32 rdbuf 0 serial;
         BE.set_uint32 rdbuf 4 refresh;
         BE.set_uint32 rdbuf 8 retry;
@@ -1177,7 +1177,7 @@ let parse_rdata names base t cls ttl buf =
         BE.set_uint16 rdbuf 2 weight;
         BE.set_uint16 rdbuf 4 port;
         let names, offset, _ =
-          Name.marshal_name ~compress names (base+6) (Cstruct.shift rdbuf 6) name
+          Name.marshal ~compress names (base+6) (Cstruct.shift rdbuf 6) name
         in
         RR_SRV, names, offset-base
     | TXT strings ->
@@ -1241,7 +1241,7 @@ let parse_rdata names base t cls ttl buf =
   | _ -> failwith (sprintf "unsported rdata compare : %s - %s"
                     (rdata_to_string a_rdata) (rdata_to_string b_rdata))
 let parse_rr names base buf =
-  let name, (base,buf) = Name.parse_name names base buf in
+  let name, (base,buf) = Name.parse names base buf in
   let t = get_rr_typ buf in
   match int_to_rr_type t with
     | None ->
@@ -1282,7 +1282,7 @@ let parse_rr names base buf =
               | None -> failwith "parse_rr: unknown class"
 
 let marshal_rr ?(compress=true) (names, base, buf) rr =
-  let names, base, buf = Name.marshal_name ~compress names base
+  let names, base, buf = Name.marshal ~compress names base
                           buf rr.name in
   let base, rdbuf = base+sizeof_rr, Cstruct.shift buf sizeof_rr in
   let t, names, rdlen = marshal_rdata names ~compress base
