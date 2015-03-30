@@ -59,8 +59,8 @@ val to_string : t -> string
     human-readable serialization [name]. *)
 val of_string : string -> t
 
-(** Construct name for reverse lookup given an IPv4 address. *)
-val for_reverse : Ipaddr.V4.t -> t
+(** [for_reverse ip] is the name used for reverse lookup of IP address [ip]. *)
+val for_reverse : Ipaddr.t -> t
 
 (** Parse a {! t} out of a {! Cstruct.t} given a set of already
     observed names from the packet, and the offset we are into the packet.

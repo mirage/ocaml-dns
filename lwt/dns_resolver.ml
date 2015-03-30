@@ -117,7 +117,7 @@ let gethostbyaddr
     commfn
     addr
   =
-  let addr = Name.for_reverse addr in
+  let addr = Name.for_reverse (Ipaddr.V4 addr) in
   let open DP in
   resolve ?alloc (module Dns.Protocol.Client) commfn q_class q_type addr
   >|= fun r ->

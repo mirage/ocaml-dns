@@ -52,8 +52,7 @@ let to_string = String.concat "."
 let of_string (s:string) : t =
   Re_str.split (Re_str.regexp "\\.") (String.lowercase s)
 
-let for_reverse ip =
-  (".arpa.in-addr."^Ipaddr.V4.to_string ip) |> of_string |> List.rev
+let for_reverse ip = of_string_list (Ipaddr.to_domain_name ip)
 
 type label =
   | L of string * int (* string *)
