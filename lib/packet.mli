@@ -23,8 +23,6 @@
     @author Haris Rotsos
 *)
 
-open Cstruct
-
 cenum digest_alg {
   SHA1 = 1;
   SHA256 = 2
@@ -198,12 +196,12 @@ type type_bit_maps
 type rdata =
 | A of Ipaddr.V4.t
 | AAAA of Ipaddr.V6.t
-| AFSDB of uint16 * Name.t
+| AFSDB of Cstruct.uint16 * Name.t
 | CNAME of Name.t
-| DNSKEY of uint16 * dnssec_alg * string
-| DS of uint16 * dnssec_alg * digest_alg * string
+| DNSKEY of Cstruct.uint16 * dnssec_alg * string
+| DS of Cstruct.uint16 * dnssec_alg * digest_alg * string
 | HINFO of string * string
-| IPSECKEY of byte * gateway_tc * ipseckey_alg * gateway * string
+| IPSECKEY of Cstruct.byte * gateway_tc * ipseckey_alg * gateway * string
 | ISDN of string * string option
 | MB of Name.t
 | MD of Name.t
@@ -211,23 +209,24 @@ type rdata =
 | MG of Name.t
 | MINFO of Name.t * Name.t
 | MR of Name.t
-| MX of uint16 * Name.t
+| MX of Cstruct.uint16 * Name.t
 | NS of Name.t
 | NSEC of Name.t (* uncompressed *) * type_bit_maps
-| NSEC3 of hash_alg * byte * uint16 * byte * string * byte * string * type_bit_maps
-| NSEC3PARAM of hash_alg * byte * uint16 * byte * string
+| NSEC3 of hash_alg * Cstruct.byte * Cstruct.uint16 * Cstruct.byte *
+             string * Cstruct.byte * string * type_bit_maps
+| NSEC3PARAM of hash_alg * Cstruct.byte * Cstruct.uint16 * Cstruct.byte * string
 | PTR of Name.t
 | RP of Name.t * Name.t
-| RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 *
-    Name.t (* uncompressed *) * string
-| SIG of dnssec_alg * int32 * int32 * uint16 * Name.t * string
-| RT of uint16 * Name.t
+| RRSIG of rr_type * dnssec_alg * Cstruct.byte * int32 * int32 * int32 *
+             Cstruct.uint16 * Name.t (* uncompressed *) * string
+| SIG of dnssec_alg * int32 * int32 * Cstruct.uint16 * Name.t * string
+| RT of Cstruct.uint16 * Name.t
 | SOA of Name.t * Name.t * int32 * int32 * int32 * int32 * int32
-| SRV of uint16 * uint16 * uint16 * Name.t
+| SRV of Cstruct.uint16 * Cstruct.uint16 * Cstruct.uint16 * Name.t
 | SSHFP of pubkey_alg * fp_type * string
 | TXT of string list
 | UNKNOWN of int * string
-| WKS of Ipaddr.V4.t * byte * string
+| WKS of Ipaddr.V4.t * Cstruct.byte * string
 | X25 of string
            (* udp size, rcode, do bit, options *)
 | EDNS0 of (int * int * bool * ((int * string) list))
@@ -237,7 +236,7 @@ val rdata_to_string : rdata -> string
 val rdata_to_rr_type : rdata -> rr_type
 
 val marshal_rdata: int Name.Map.t ->
-  ?compress:bool -> int -> t -> rdata -> rr_type *  int Name.Map.t * int
+  ?compress:bool -> int -> Cstruct.t -> rdata -> rr_type *  int Name.Map.t * int
 (** Marshal the RR data into the DNS binary format.  Raises [Not_implemented]
     if the RR type is known but the logic is not implemented in the library
     yet. *)
@@ -250,7 +249,8 @@ exception Not_implemented
     names, a starting index, and the type of the RDATA. Raises [Not_implemented]
     if the RR type is not recognized. *)
 val parse_rdata :
-  (int, Name.label) Hashtbl.t -> int -> rr_type -> int -> int32 -> t -> rdata
+  (int, Name.label) Hashtbl.t -> int -> rr_type -> int -> int32 -> Cstruct.t ->
+  rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
 type rr_class = RR_IN | RR_CS | RR_CH | RR_HS | RR_ANY
@@ -266,11 +266,11 @@ type rr = {
 }
 val rr_to_string : rr -> string
 val marshal_rr : ?compress:bool ->
-  int Name.Map.t * int * t -> rr ->
-  int Name.Map.t * int * t
+  int Name.Map.t * int * Cstruct.t -> rr ->
+  int Name.Map.t * int * Cstruct.t
 
 val parse_rr :
-  (int, Name.label) Hashtbl.t -> int -> t -> rr * (int * t)
+  (int, Name.label) Hashtbl.t -> int -> Cstruct.t -> rr * (int * Cstruct.t)
 
 (** A predicate to test if a {! q_type } applies to an {! rr_type }. *)
 val q_type_matches_rr_type : q_type -> rr_type -> bool
@@ -310,7 +310,7 @@ val make_question : ?q_class:q_class -> ?q_unicast:q_unicast ->
 
 val question_to_string : question -> string
 val parse_question :
-  (int, Name.label) Hashtbl.t -> int -> t -> question * (int * t)
+  (int, Name.label) Hashtbl.t -> int -> Cstruct.t -> question * (int * Cstruct.t)
 
 (** The [qr] field from the DNS header {! detail}. *)
 type qr = Query | Response

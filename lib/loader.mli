@@ -21,8 +21,6 @@
     @author Richard Mortier <mort\@cantab.net>
 *)
 
-open Cstruct
-
 (** Loader database: the DNS trie plus a hash table of other names in use. *)
 type db = { trie : Trie.dnstrie;
 	        mutable names : (Name.key, RR.dnsnode) Hashtbl.t;
@@ -48,7 +46,7 @@ val add_mb_rr : Name.t -> int32 -> Name.t -> db -> unit
 val add_mg_rr : Name.t -> int32 -> Name.t -> db -> unit
 val add_mr_rr : Name.t -> int32 -> Name.t -> db -> unit
 val add_wks_rr :
-  Ipaddr.V4.t -> byte -> string -> int32 -> Name.t -> db -> unit
+  Ipaddr.V4.t -> Cstruct.byte -> string -> int32 -> Name.t -> db -> unit
 val add_ptr_rr : Name.t -> int32 -> Name.t -> db -> unit
 val add_hinfo_rr : string -> string -> int32 -> Name.t -> db -> unit
 val add_minfo_rr :
