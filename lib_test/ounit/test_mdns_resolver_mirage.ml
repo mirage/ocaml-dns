@@ -294,7 +294,7 @@ end
 
 let mdns_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
 let good_query_str = "valid.local"
-let good_query_name = Dns.Name.string_to_domain_name good_query_str
+let good_query_name = Dns.Name.of_string good_query_str
 let good_response_ip = Ipaddr.V4.of_string_exn "10.0.0.3"
 let good_detail = { qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError }
 let good_answer = { name=good_query_name; cls=RR_IN; flush=true; ttl=120l; rdata=A good_response_ip }
@@ -372,7 +372,7 @@ let tests =
         simulate_good_response stack;
         (*
         let response_ip = Ipaddr.V4.of_string_exn "10.0.0.3" in
-        let response_name = Dns.Name.string_to_domain_name query_str in
+        let response_name = Dns.Name.of_string query_str in
         let answer = { name=response_name; cls=RR_IN; flush=true; ttl=120l; rdata=A response_ip } in
         let response = {
           id=0;
@@ -419,7 +419,7 @@ let tests =
         (* Wrong rcode *)
         simulate_response ~detail:{ good_detail with rcode=NXDomain } stack;
         (* Wrong name *)
-        simulate_response ~answers:[{ good_answer with name=Dns.Name.string_to_domain_name "wrong.local" }] stack;
+        simulate_response ~answers:[{ good_answer with name=Dns.Name.of_string "wrong.local" }] stack;
         (* Wrong class *)
         simulate_response ~answers:[{ good_answer with cls=RR_CS }] stack;
         (* Wrong RR type *)
