@@ -18,7 +18,6 @@
 
 open Printf
 open Operators
-open Cstruct
 
 cenum digest_alg {
   SHA1 = 1;
@@ -179,7 +178,7 @@ cenum rr_type {
    A zone MUST NOT include an NSEC RR for any domain name that only
    holds glue records.
 *)
-type type_bit_map = byte * byte * Cstruct.t
+type type_bit_map = Cstruct.byte * Cstruct.byte * Cstruct.t
 let type_bit_map_to_string (tbm:type_bit_map) : string =
   "TYPE_BIT_MAP"
 
@@ -190,12 +189,12 @@ let type_bit_maps_to_string (tbms:type_bit_maps) : string =
 type rdata =
   | A of Ipaddr.V4.t
   | AAAA of Ipaddr.V6.t
-  | AFSDB of uint16 * Name.t
+  | AFSDB of Cstruct.uint16 * Name.t
   | CNAME of Name.t
-  | DNSKEY of uint16 * dnssec_alg * string
-  | DS of uint16 * dnssec_alg * digest_alg * string
+  | DNSKEY of Cstruct.uint16 * dnssec_alg * string
+  | DS of Cstruct.uint16 * dnssec_alg * digest_alg * string
   | HINFO of string * string
-  | IPSECKEY of byte * gateway_tc * ipseckey_alg * gateway * string
+  | IPSECKEY of Cstruct.byte * gateway_tc * ipseckey_alg * gateway * string
   | ISDN of string * string option
   | MB of Name.t
   | MD of Name.t
@@ -203,25 +202,25 @@ type rdata =
   | MG of Name.t
   | MINFO of Name.t * Name.t
   | MR of Name.t
-  | MX of uint16 * Name.t
+  | MX of Cstruct.uint16 * Name.t
   | NS of Name.t
   | NSEC of Name.t (* uncompressed *) * type_bit_maps
-  | NSEC3 of hash_alg * byte * uint16 * byte * string * byte * string *
+  | NSEC3 of hash_alg * Cstruct.byte * Cstruct.uint16 * Cstruct.byte * string * Cstruct.byte * string *
       type_bit_maps
-  | NSEC3PARAM of hash_alg * byte * uint16 * byte * string
+  | NSEC3PARAM of hash_alg * Cstruct.byte * Cstruct.uint16 * Cstruct.byte * string
   | PTR of Name.t
   | RP of Name.t * Name.t
-  | RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 *
+  | RRSIG of rr_type * dnssec_alg * Cstruct.byte * int32 * int32 * int32 * Cstruct.uint16 *
       Name.t (* uncompressed *) * string
-  | SIG of dnssec_alg * int32 * int32 * uint16 * Name.t * string
-   | RT of uint16 * Name.t
+  | SIG of dnssec_alg * int32 * int32 * Cstruct.uint16 * Name.t * string
+   | RT of Cstruct.uint16 * Name.t
   | SOA of Name.t * Name.t * int32 * int32 * int32 * int32 * int32
-  | SRV of uint16 * uint16 * uint16 * Name.t
+  | SRV of Cstruct.uint16 * Cstruct.uint16 * Cstruct.uint16 * Name.t
   | SSHFP of pubkey_alg * fp_type * string
   | TXT of string list
   | UNKNOWN of int * string
   (*  | UNSPEC of string -- wikipedia says deprecated in the 90s *)
-  | WKS of Ipaddr.V4.t * byte * string
+  | WKS of Ipaddr.V4.t * Cstruct.byte * string
   | X25 of string
   | EDNS0 of (int * int * bool * ((int * string) list))
 
@@ -277,7 +276,7 @@ let rdata_to_string = function
   | UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (B64.encode bs)
   (* | UNSPEC bs -> sprintf "UNSPEC (%s)" bs*)
   | WKS (a, y, s) ->
-    sprintf "WKS (%s, %d, %s)" (Ipaddr.V4.to_string a) (byte_to_int y) s
+    sprintf "WKS (%s, %d, %s)" (Ipaddr.V4.to_string a) (Cstruct.byte_to_int y) s
   | X25 s -> sprintf "X25 (%s)" s
   | EDNS0 (len, rcode, do_bit, opts) ->
       sprintf "EDNS0 (version:0, UDP: %d, flags: %s)"
@@ -297,7 +296,7 @@ let rdata_to_string = function
           (hex_of_string digest)
     )
   | IPSECKEY (precedence, gw_type, alg, gw, pubkey)
-    -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" (byte_to_int precedence)
+    -> (sprintf "IPSECKEY (%d, %s,%s, %s, '%s')" (Cstruct.byte_to_int precedence)
           (gateway_tc_to_string gw_type) (ipseckey_alg_to_string alg)
           (gateway_to_string gw) pubkey
     )
@@ -307,14 +306,14 @@ let rdata_to_string = function
     )
   | NSEC3 (halg, flgs, iterations, salt_l, salt, hash_l, next_name, tbms)
     -> (sprintf "NSEC3 (%s, %x, %d, %d,'%s', %d,'%s', %s)"
-          (hash_alg_to_string halg) (byte_to_int flgs) iterations
-          (byte_to_int salt_l) salt (byte_to_int  hash_l) next_name
+          (hash_alg_to_string halg) (Cstruct.byte_to_int flgs) iterations
+          (Cstruct.byte_to_int salt_l) salt (Cstruct.byte_to_int  hash_l) next_name
           (type_bit_maps_to_string tbms)
     )
   | NSEC3PARAM (halg, flgs, iterations, salt_l, salt)
     -> (sprintf "NSEC3PARAM (%s,%x, %d, %d, '%s')"
-          (hash_alg_to_string halg) (byte_to_int flgs) iterations
-          (byte_to_int salt_l) salt
+          (hash_alg_to_string halg) (Cstruct.byte_to_int flgs) iterations
+          (Cstruct.byte_to_int salt_l) salt
     )
  | SSHFP (alg, fpt, fp)
     -> (sprintf "SSHFP (%s,%s, '%s')" (pubkey_alg_to_string alg)
@@ -886,8 +885,8 @@ let parse_rdata names base t cls ttl buf =
   (** Extract (length, string) encoded strings, with remainder for
       chaining. *)
   let parse_charstr buf =
-    let len = get_uint8 buf 0 in
-      to_string (sub buf 1 len), Cstruct.shift buf (1+len)
+    let len = Cstruct.get_uint8 buf 0 in
+      Cstruct.to_string (Cstruct.sub buf 1 len), Cstruct.shift buf (1+len)
   in
   match t with
     | RR_OPT ->
@@ -934,38 +933,38 @@ let parse_rdata names base t cls ttl buf =
         let sign = Cstruct.to_string buf in
           SIG (alg, exp_ts, inc_ts, tag, name, sign)
 
-    | RR_A -> A (Ipaddr.V4.of_int32 (BE.get_uint32 buf 0))
+    | RR_A -> A Cstruct.(Ipaddr.V4.of_int32 (BE.get_uint32 buf 0))
 
-    | RR_AAAA -> AAAA (Ipaddr.V6.of_int64 ((BE.get_uint64 buf 0),(BE.get_uint64 buf 8)))
+    | RR_AAAA -> AAAA (Ipaddr.V6.of_int64 Cstruct.((BE.get_uint64 buf 0),(BE.get_uint64 buf 8)))
 
-    | RR_AFSDB -> AFSDB (BE.get_uint16 buf 0,
+    | RR_AFSDB -> AFSDB (Cstruct.BE.get_uint16 buf 0,
                          Cstruct.shift buf 2 |> Name.parse names (base+2) |> stop)
 
     | RR_CNAME -> CNAME (buf |> Name.parse names base |> stop)
 
     | RR_DNSKEY ->
-        let flags = BE.get_uint16 buf 0 in
+        let flags = Cstruct.BE.get_uint16 buf 0 in
         let alg =
-          let a = get_uint8 buf 3 in
+          let a = Cstruct.get_uint8 buf 3 in
           match int_to_dnssec_alg a with
             | None -> failwith (sprintf "parse_rdata: DNSKEY alg %d" a)
             | Some a -> a
         in
-        let key = Cstruct.shift buf 4 |> to_string in
+        let key = Cstruct.(shift buf 4 |> to_string) in
         DNSKEY (flags, alg, key)
     | RR_DS ->
-        let tag = BE.get_uint16 buf 0 in
+        let tag = Cstruct.BE.get_uint16 buf 0 in
         let alg =
-          match (int_to_dnssec_alg (get_uint8 buf 2)) with
+          match (int_to_dnssec_alg (Cstruct.get_uint8 buf 2)) with
           | Some a -> a
           | None -> failwith "parse_rdata unsupported dnssec_alg id"
         in
         let digest =
-          match (int_to_digest_alg (get_uint8 buf 3)) with
+          match (int_to_digest_alg (Cstruct.get_uint8 buf 3)) with
           |Some a -> a
           | None -> failwith "parse_rdata unsupported hash algorithm id"
         in
-        let key = Cstruct.shift buf 4 |> to_string in
+        let key = Cstruct.(shift buf 4 |> to_string) in
           DS(tag, alg, digest, key)
     | RR_NSEC ->
         let (name, (base, buf)) = Name.parse names base buf in
@@ -994,7 +993,7 @@ let parse_rdata names base t cls ttl buf =
 
     | RR_MR -> MR (buf |> Name.parse names base |> stop)
 
-    | RR_MX -> MX (BE.get_uint16 buf 0,
+    | RR_MX -> MX (Cstruct.BE.get_uint16 buf 0,
                    Cstruct.shift buf 2 |> Name.parse names (base+2) |> stop)
 
     | RR_NS -> NS (buf |> Name.parse names base |> stop)
@@ -1005,27 +1004,27 @@ let parse_rdata names base t cls ttl buf =
                let txt = buf |> Name.parse names base |> stop in
                RP (mbox, txt)
 
-    | RR_RT -> RT (BE.get_uint16 buf 0,
+    | RR_RT -> RT (Cstruct.BE.get_uint16 buf 0,
                    Cstruct.shift buf 2 |> Name.parse names (base+2) |> stop)
 
     | RR_SOA ->
         let mn, (base, buf) = Name.parse names base buf in
         let rn, (_, buf) = Name.parse names base buf in
-        BE.(SOA (mn, rn,
-                 BE.get_uint32 buf 0,  (* serial *)
-                 BE.get_uint32 buf 4,  (* refresh *)
-                 BE.get_uint32 buf 8,  (* retry *)
-                 BE.get_uint32 buf 12, (* expire *)
-                 BE.get_uint32 buf 16  (* minimum *)
+        Cstruct.BE.(SOA (mn, rn,
+                 get_uint32 buf 0,  (* serial *)
+                 get_uint32 buf 4,  (* refresh *)
+                 get_uint32 buf 8,  (* retry *)
+                 get_uint32 buf 12, (* expire *)
+                 get_uint32 buf 16  (* minimum *)
         ))
 
     | RR_SRV ->
-        BE.(
+        Cstruct.(BE.(
           SRV (get_uint16 buf 0, (* prio *)
                get_uint16 buf 2, (* weight *)
                get_uint16 buf 4, (* port *)
-               Cstruct.shift buf 6 |> Name.parse names (base+6) |> stop
-          ))
+               shift buf 6 |> Name.parse names (base+6) |> stop
+          )))
 
     | RR_TXT ->
         let strings =
@@ -1041,10 +1040,10 @@ let parse_rdata names base t cls ttl buf =
         TXT strings
 
     | RR_WKS ->
-        let addr = Ipaddr.V4.of_int32 (BE.get_uint32 buf 0) in
-        let proto = get_uint8 buf 4 in
-        let bitmap = Cstruct.shift buf 5 |> to_string in
-        WKS (addr, byte proto, bitmap)
+        let addr = Ipaddr.V4.of_int32 (Cstruct.BE.get_uint32 buf 0) in
+        let proto = Cstruct.get_uint8 buf 4 in
+        let bitmap = Cstruct.(shift buf 5 |> to_string) in
+        WKS (addr, Cstruct.byte proto, bitmap)
 
     | RR_X25 ->
         let x25,_ = parse_charstr buf in
@@ -1053,15 +1052,15 @@ let parse_rdata names base t cls ttl buf =
 
   let marshal_rdata names ?(compress=true) base rdbuf = function
     | A ip ->
-        BE.set_uint32 rdbuf 0 (Ipaddr.V4.to_int32 ip);
+        Cstruct.BE.set_uint32 rdbuf 0 (Ipaddr.V4.to_int32 ip);
         RR_A, names, 4
     | AAAA ip ->
         let s1,s2 = Ipaddr.V6.to_int64 ip in
-        BE.set_uint64 rdbuf 0 s1;
-        BE.set_uint64 rdbuf 8 s2;
+        Cstruct.BE.set_uint64 rdbuf 0 s1;
+        Cstruct.BE.set_uint64 rdbuf 8 s2;
         RR_AAAA, names, 16
     | AFSDB (x,name) ->
-        BE.set_uint16 rdbuf 0 x;
+        Cstruct.BE.set_uint16 rdbuf 0 x;
         let names, offset, _ =
           Name.marshal ~compress names (base+2) (Cstruct.shift rdbuf 2) name
        in
@@ -1070,16 +1069,16 @@ let parse_rdata names base t cls ttl buf =
         let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_CNAME, names, offset-base
     | DNSKEY (flags, alg, key) ->
-        BE.set_uint16 rdbuf 0 flags;
-        set_uint8 rdbuf 2 3;
-        set_uint8 rdbuf 3 (dnssec_alg_to_int alg);
+        Cstruct.BE.set_uint16 rdbuf 0 flags;
+        Cstruct.set_uint8 rdbuf 2 3;
+        Cstruct.set_uint8 rdbuf 3 (dnssec_alg_to_int alg);
         let slen = String.length key in
         Cstruct.blit_from_string key 0 rdbuf 4 slen;
         RR_DNSKEY, names, 4+slen
     | DS (tag, alg, digest, key) ->
-        BE.set_uint16 rdbuf 0 tag;
-        set_uint8 rdbuf 2 (dnssec_alg_to_int alg);
-        set_uint8 rdbuf 3 (digest_alg_to_int digest);
+        Cstruct.BE.set_uint16 rdbuf 0 tag;
+        Cstruct.set_uint8 rdbuf 2 (dnssec_alg_to_int alg);
+        Cstruct.set_uint8 rdbuf 3 (digest_alg_to_int digest);
         let slen = String.length key in
         Cstruct.blit_from_string key 0 rdbuf 4 slen;
         RR_DS, names, 4+slen
@@ -1142,7 +1141,7 @@ let parse_rdata names base t cls ttl buf =
         let names, offset, _ = Name.marshal ~compress names base rdbuf name in
         RR_MR, names, offset-base
     | MX (pref,xchg) ->
-        BE.set_uint16 rdbuf 0 pref;
+        Cstruct.BE.set_uint16 rdbuf 0 pref;
         let names, offset, _ =
           Name.marshal ~compress names (base+2) (Cstruct.shift rdbuf 2) xchg
         in
@@ -1155,7 +1154,7 @@ let parse_rdata names base t cls ttl buf =
         let names, offset, _ = Name.marshal ~compress names offset rdbuf txt in
         RR_RP, names, offset-base
     | RT (x, name) ->
-        BE.set_uint16 rdbuf 0 x;
+        Cstruct.BE.set_uint16 rdbuf 0 x;
         let names, offset, _ =
           Name.marshal ~compress names (base+2) (Cstruct.shift rdbuf 2) name
         in
@@ -1166,16 +1165,20 @@ let parse_rdata names base t cls ttl buf =
     | SOA (mn,rn, serial, refresh, retry, expire, minimum) ->
         let names, offset, rdbuf = Name.marshal ~compress names base rdbuf mn in
         let names, offset, rdbuf = Name.marshal ~compress names offset rdbuf rn in
-        BE.set_uint32 rdbuf 0 serial;
-        BE.set_uint32 rdbuf 4 refresh;
-        BE.set_uint32 rdbuf 8 retry;
-        BE.set_uint32 rdbuf 12 expire;
-        BE.set_uint32 rdbuf 16 minimum;
+        Cstruct.BE.(
+        set_uint32 rdbuf 0 serial;
+        set_uint32 rdbuf 4 refresh;
+        set_uint32 rdbuf 8 retry;
+        set_uint32 rdbuf 12 expire;
+        set_uint32 rdbuf 16 minimum;
+        );
         RR_SOA, names, 20+offset-base
     | SRV (prio, weight, port, name) ->
-        BE.set_uint16 rdbuf 0 prio;
-        BE.set_uint16 rdbuf 2 weight;
-        BE.set_uint16 rdbuf 4 port;
+        Cstruct.BE.(
+        set_uint16 rdbuf 0 prio;
+        set_uint16 rdbuf 2 weight;
+        set_uint16 rdbuf 4 port;
+        );
         let names, offset, _ =
           Name.marshal ~compress names (base+6) (Cstruct.shift rdbuf 6) name
         in
@@ -1187,8 +1190,8 @@ let parse_rdata names base t cls ttl buf =
           acc+slen
         ) 0 strings
     | WKS (a,p, bm) ->
-        BE.set_uint32 rdbuf 0 (Ipaddr.V4.to_int32 a);
-        set_uint8 rdbuf 4 (byte_to_int p);
+        Cstruct.BE.set_uint32 rdbuf 0 (Ipaddr.V4.to_int32 a);
+        Cstruct.set_uint8 rdbuf 4 (Cstruct.byte_to_int p);
         let bmlen = String.length bm in
         Cstruct.blit_from_string bm 0 rdbuf 5 bmlen;
         RR_WKS, names, 5+bmlen
@@ -1478,7 +1481,7 @@ let marshal txbuf dns =
   let names,base,buf = marshaln marshal_rr names base buf dns.authorities in
   let _,_,buf = marshaln marshal_rr names base buf dns.additionals in
 
-  let txbuf = Buf.sub txbuf.buffer 0 Cstruct.(len txbuf - len buf) in
+  let txbuf = Buf.sub txbuf.Cstruct.buffer 0 Cstruct.(len txbuf - len buf) in
   (* Cstruct.hexdump txbuf;   *)
   (* eprintf "TX: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string); *)
   txbuf
