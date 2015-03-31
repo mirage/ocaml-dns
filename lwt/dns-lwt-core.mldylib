@@ -1,5 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: afa1c4196651341a2e7387809c75f0c6)
+# DO NOT EDIT (digest: 58545f91eccd7b6ac02b59ae3254290f)
 Dns_server
 Dns_resolver
+Mdns_responder
 # OASIS_STOP
