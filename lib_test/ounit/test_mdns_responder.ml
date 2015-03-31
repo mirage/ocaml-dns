@@ -16,8 +16,8 @@ let assert_range low high actual =
 
 let allocfn () = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 4096
 
-open Dns.Packet
-open Dns.Name
+open Dns
+open Packet
 
 let assert_packet ?(prefix="") ?(id=0) packet expected_detail nq nan nau nad =
   assert_equal ~msg:(prefix ^ "id") ~printer:string_of_int id packet.id;
@@ -73,7 +73,7 @@ let tests =
         assert_packet packet {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError} 0 1 0 0;
 
         let a = List.hd packet.answers in
-        assert_equal ~msg:"name" "mirage1.local" (domain_name_to_string a.name);
+        assert_equal ~msg:"name" "mirage1.local" (Name.to_string a.name);
         assert_equal ~msg:"cls" RR_IN a.cls;
         assert_equal ~msg:"flush" false a.flush;
         assert_equal ~msg:"ttl" (Int32.of_int 120) a.ttl;
@@ -113,13 +113,13 @@ let tests =
         assert_packet ~id:0x1df9 packet {qr=Response; opcode=Standard; aa=true; tc=false; rd=true; ra=false; rcode=NoError} 1 1 0 0;
 
         let q = List.hd packet.questions in
-        assert_equal ~msg:"q_name" "mirage1.local" (domain_name_to_string q.q_name);
+        assert_equal ~msg:"q_name" "mirage1.local" (Name.to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
         assert_equal ~msg:"q_unicast" Q_Normal q.q_unicast;
 
         let a = List.hd packet.answers in
-        assert_equal ~msg:"name" "mirage1.local" (domain_name_to_string a.name);
+        assert_equal ~msg:"name" "mirage1.local" (Name.to_string a.name);
         assert_equal ~msg:"cls" RR_IN a.cls;
         assert_equal ~msg:"flush" false a.flush;
         assert_equal ~msg:"ttl" (Int32.of_int 120) a.ttl;
@@ -166,13 +166,13 @@ let tests =
             | [] -> rest;
             | rr::tl ->
               begin
-                assert_equal ~msg:"name" ~printer:(fun s -> s) "_snake._tcp.local" (domain_name_to_string rr.name);
+                assert_equal ~msg:"name" ~printer:(fun s -> s) "_snake._tcp.local" (Name.to_string rr.name);
                 assert_equal ~msg:"cls" RR_IN rr.cls;
                 assert_equal ~msg:"flush" false rr.flush;
                 assert_equal ~msg:"ttl" ~printer:Int32.to_string (Int32.of_int 120) rr.ttl;
                 match rr.rdata with
                 | PTR name ->
-                  get_ptr_list tl ((domain_name_to_string name) :: rest)
+                  get_ptr_list tl ((Name.to_string name) :: rest)
                 | _ -> assert_failure "Not PTR";
               end
           end
@@ -192,13 +192,13 @@ let tests =
         let txt_assoc = List.combine ptrl ["species=Pseudonaja affinis"; "species=Pseudechis australis"; "species=Notechis scutatus"] in
         let a_assoc = List.combine srvl ["127.0.0.95"; "127.0.0.96"; "127.0.0.94"] in
         List.iter (fun rr ->
-            let key = String.lowercase (domain_name_to_string rr.name) in
+            let key = String.lowercase (Name.to_string rr.name) in
             match rr.rdata with
             | SRV (priority, weight, port, srv) ->
               assert_equal 0 priority;
               assert_equal 0 weight;
               assert_equal 33333 port;
-              assert_equal ~printer:(fun s -> s) (List.assoc key srv_assoc) (domain_name_to_string srv)
+              assert_equal ~printer:(fun s -> s) (List.assoc key srv_assoc) (Name.to_string srv)
             | TXT txtl ->
               assert_equal 2 (List.length txtl);
               assert_equal "txtvers=1" (List.hd txtl);
@@ -247,26 +247,26 @@ let tests =
 
         let module DR = Dns.RR in
         let module H = Dns.Hashcons in
-        let name = string_to_domain_name "mirage1.local" in
+        let name = Name.of_string "mirage1.local" in
         begin
-          let key = canon2key name in
+          let key = Name.canon2key name in
           match Dns.Trie.simple_lookup key (Responder.trie responder) with
           | None -> assert_failure "mirage1.local not found";
           | Some node ->
-            assert_equal ~msg:"owner" ~printer:(fun s -> s) "mirage1.local" (domain_name_to_string node.DR.owner.H.node);
+            assert_equal ~msg:"owner" ~printer:(fun s -> s) "mirage1.local" (Name.to_string node.DR.owner.H.node);
         end;
 
         (* Add a unique hostname *)
         let unique_ip = Ipaddr.V4.of_string_exn "1.2.3.4" in
         let unique_name_str = "unique.local" in
-        let name = string_to_domain_name unique_name_str in
+        let name = Name.of_string unique_name_str in
         Responder.add_unique_hostname responder name unique_ip;
         begin
-          let key = canon2key name in
+          let key = Name.canon2key name in
           match Dns.Trie.simple_lookup key (Responder.trie responder) with
           | None -> assert_failure "unique.local not found";
           | Some node ->
-            assert_equal ~msg:"owner" ~printer:(fun s -> s) unique_name_str (domain_name_to_string node.DR.owner.H.node);
+            assert_equal ~msg:"owner" ~printer:(fun s -> s) unique_name_str (Name.to_string node.DR.owner.H.node);
         end
       );
 
@@ -290,7 +290,7 @@ let tests =
         (* Add a unique hostname *)
         let unique_ip = Ipaddr.V4.of_string_exn "1.2.3.4" in
         let unique_str = "unique.local" in
-        let name = string_to_domain_name unique_str in
+        let name = Name.of_string unique_str in
         Responder.add_unique_hostname responder name unique_ip;
 
         (* Create the probe thread *)
@@ -354,8 +354,8 @@ let tests =
         assert_packet packet {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError} 0 18 0 0;
 
         (* Verify that the cache flush bit is set on the announced unique record *)
-        let rr = List.find (fun rr -> (domain_name_to_string rr.name) = "unique.local") packet.answers in
-        assert_equal ~msg:"unique name" ~printer:(fun s -> s) "unique.local" (domain_name_to_string rr.name);
+        let rr = List.find (fun rr -> (Name.to_string rr.name) = "unique.local") packet.answers in
+        assert_equal ~msg:"unique name" ~printer:(fun s -> s) "unique.local" (Name.to_string rr.name);
         assert_equal ~msg:"unique cls" RR_IN rr.cls;
         assert_equal ~msg:"unique flush" true rr.flush;
         assert_equal ~msg:"unique ttl" (Int32.of_int 120) rr.ttl;
@@ -392,7 +392,7 @@ let tests =
         (* Add a unique hostname *)
         let unique_ip = Ipaddr.V4.of_string_exn "1.2.3.4" in
         let unique_str = "unique.local" in
-        let name = string_to_domain_name unique_str in
+        let name = Name.of_string unique_str in
         Responder.add_unique_hostname responder name unique_ip;
 
         (* Create the probe thread *)
@@ -420,7 +420,7 @@ let tests =
 
         (* Simulate a conflicting response *)
         let response_src_ip = Ipaddr.V4.of_string_exn "10.0.0.3" in
-        let unique_name = string_to_domain_name unique_str in
+        let unique_name = Name.of_string unique_str in
         let answer = { name=unique_name; cls=RR_IN; flush=true; ttl=120l; rdata=A response_src_ip } in
         let response = {
           id=0;
@@ -470,7 +470,7 @@ let tests =
         (* Add a unique hostname *)
         let unique_ip = Ipaddr.V4.of_string_exn "1.2.3.4" in
         let unique_str = "unique.local" in
-        let name = string_to_domain_name unique_str in
+        let name = Name.of_string unique_str in
         Responder.add_unique_hostname responder name unique_ip;
 
         (* Create the probe thread *)
@@ -499,7 +499,7 @@ let tests =
         (* Simulate a conflicting simultaneous probe *)
         (* The received data is lexicographically greater and therefore we lose *)
         let conflict_src_ip = Ipaddr.V4.of_string_exn "10.0.0.3" in
-        let unique_name = string_to_domain_name unique_str in
+        let unique_name = Name.of_string unique_str in
         let question = { q_name=unique_name; q_type=Q_ANY_TYP; q_class=Q_IN; q_unicast=Q_mDNS_Unicast } in
         let auth = { name=unique_name; cls=RR_IN; flush=true; ttl=120l; rdata=A conflict_src_ip } in
         let query = {

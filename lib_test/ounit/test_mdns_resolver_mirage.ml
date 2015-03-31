@@ -204,7 +204,7 @@ module MockStack (*:
     c     : Console.t;
     netif : Netif.t;
     ethif : Ethif.t;
-    *)
+     *)
     ipv4  : ipv4;
     udpv4 : udpv4;
     tcpv4 : tcpv4;
@@ -242,11 +242,21 @@ module MockStack (*:
 
   let listen t = return_unit
 
-  let connect id ethif ipv4 udpv4 tcpv4 =
+  let connect id =
     let { V1_LWT.console = c; interface = netif; mode; _ } = id in
     let udpv4_listeners = Hashtbl.create 7 in
-    let t = { id; (*c;*) mode; (*netif; ethif;*) ipv4; tcpv4; udpv4;
-              udpv4_listeners; (*tcpv4_listeners*) } in
+    let ethif = () in
+    StubIpv4.connect ethif >>= function
+    | `Error _ -> fail (Failure "StubIpv4")
+    | `Ok ipv4 ->
+    MockUdpv4.connect ipv4 >>= function
+    | `Error _ -> fail (Failure "MockUdpv4")
+    | `Ok udpv4 ->
+    StubTcpv4.connect ipv4 >>= function
+    | `Error _ -> fail (Failure "StubTcpv4")
+    | `Ok tcpv4 ->
+      let t = { id; (*c;*) mode; (*netif; ethif;*) ipv4; tcpv4; udpv4;
+                udpv4_listeners; (*tcpv4_listeners*) } in
     let _ = listen t in
     configure t t.mode
     >>= fun () ->
@@ -270,17 +280,7 @@ let create_stack_lwt () =
     console; interface;
     mode (*= `IPv4 (Ipaddr.V4.of_string_exn "10.0.0.2", Ipaddr.V4.of_string_exn "255.255.255.0", [Ipaddr.V4.of_string_exn "10.0.0.1"])*);
   } in
-  let ethif = () in
-  StubIpv4.connect ethif >>= function
-  | `Error _ -> fail (Failure "StubIpv4")
-  | `Ok ipv4 ->
-  MockUdpv4.connect ipv4 >>= function
-  | `Error _ -> fail (Failure "MockUdpv4")
-  | `Ok udpv4 ->
-  StubTcpv4.connect ipv4 >>= function
-  | `Error _ -> fail (Failure "StubTcpv4")
-  | `Ok tcpv4 ->
-  MockStack.connect config ethif ipv4 udpv4 tcpv4
+  MockStack.connect config
 
 let create_stack () =
   match Lwt_main.run (create_stack_lwt ()) with

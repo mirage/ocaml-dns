@@ -1,5 +1,6 @@
 PKG lwt cstruct mirage-net-unix mirage
 PKG pcap-format oUnit re ipaddr base64
+PKG mirage-profile
 S lib
 S lib_test
 S lwt
