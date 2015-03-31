@@ -249,7 +249,7 @@ let tests =
         let module H = Dns.Hashcons in
         let name = Name.of_string "mirage1.local" in
         begin
-          let key = Name.canon2key name in
+          let key = Name.to_key name in
           match Dns.Trie.simple_lookup key (Responder.trie responder) with
           | None -> assert_failure "mirage1.local not found";
           | Some node ->
@@ -262,7 +262,7 @@ let tests =
         let name = Name.of_string unique_name_str in
         Responder.add_unique_hostname responder name unique_ip;
         begin
-          let key = Name.canon2key name in
+          let key = Name.to_key name in
           match Dns.Trie.simple_lookup key (Responder.trie responder) with
           | None -> assert_failure "unique.local not found";
           | Some node ->

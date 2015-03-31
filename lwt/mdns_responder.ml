@@ -575,7 +575,7 @@ module Make (Transport : TRANSPORT) = struct
       | [] -> failwith "can't offer the DNS root"
     in
     (* Find the old RR from the trie *)
-    let rrsets = match Dns.Trie.simple_lookup (Dns.Name.canon2key old_name) t.dnstrie with
+    let rrsets = match Dns.Trie.simple_lookup (Dns.Name.to_key old_name) t.dnstrie with
       | None -> failwith "rename_unique: old not not found"
       | Some node ->
         let rrsets = node.DR.rrsets in

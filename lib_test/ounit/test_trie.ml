@@ -24,7 +24,7 @@ let tests =
         let trie = load_test_zone "test_dns.zone" in
 
         let name = Name.of_string "mail.d1.signpo.st." in
-        match lookup (Name.canon2key name) trie ~mdns:false with
+        match lookup (Name.to_key name) trie ~mdns:false with
         | `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
           assert_equal false sec;
           (* Verify the A record *)
@@ -66,7 +66,7 @@ let tests =
         let trie = load_test_zone "test_mdns.zone" in
 
         let name = Name.of_string "fake1.local." in
-        match lookup (Name.canon2key name) trie ~mdns:true with
+        match lookup (Name.to_key name) trie ~mdns:true with
         | `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
           begin 
             assert_equal false sec;
@@ -88,7 +88,7 @@ let tests =
         let trie = load_test_zone "test_dns.zone" in
 
         let name = Name.of_string "bigfoot.d1.signpo.st." in
-        match lookup (Name.canon2key name) trie ~mdns:false with
+        match lookup (Name.to_key name) trie ~mdns:false with
         | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
           (* Verify part of the SOA record *)
           assert_equal "d1.signpo.st" (Name.to_string zonehead.owner.H.node);
@@ -103,7 +103,7 @@ let tests =
 
         let names = ["bigfoot.local."; "bigfoot"; "bigfoot.d1.signpo.st."] in
         List.iter (fun name ->
-            match lookup (name |> Name.of_string |> Name.canon2key) trie ~mdns:true with
+            match lookup (name |> Name.of_string |> Name.to_key) trie ~mdns:true with
             | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
               (* Note that NXDomain is only used internally and not transmitted for mDNS *)
               (* zonehead is not used for mDNS *)
@@ -116,7 +116,7 @@ let tests =
         let trie = load_test_zone "test_dns.zone" in
 
         let name = Name.of_string "cam.ac.uk." in
-        match lookup (Name.canon2key name) trie ~mdns:false with
+        match lookup (Name.to_key name) trie ~mdns:false with
         | `Delegated (sec, cutpoint) ->   (* Name is delegated. *)
           (* Verify the NS record *)
           assert_equal false sec;
@@ -139,7 +139,7 @@ let tests =
         let trie = load_test_zone "test_dns.zone" in
 
         let name = Name.of_string "one.d1.signpo.st." in
-        match lookup (Name.canon2key name) trie ~mdns:false with
+        match lookup (Name.to_key name) trie ~mdns:false with
         | `NoError (zonehead) ->          (* Name "exists", but has no RRs. *)
           (* Verify part of the SOA record *)
           assert_equal "d1.signpo.st" (Name.to_string zonehead.owner.H.node);

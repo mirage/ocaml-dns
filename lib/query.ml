@@ -406,7 +406,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
 
   (* Call the trie lookup and assemble the RRs for a response *)
   let main_lookup qname qtype trie =
-    let key = Name.canon2key qname in
+    let key = Name.to_key qname in
     match lookup key trie ~mdns with
       | `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
         add_answer_rrsets node.owner.H.node node.rrsets qtype;

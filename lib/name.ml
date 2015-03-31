@@ -189,7 +189,7 @@ let clear_cons_tables () =
 
 exception BadDomainName of string
 
-let canon2key domain_name =
+let to_key domain_name =
   let check s =
     if String.contains s '\000' then
       raise (BadDomainName "contains null character");

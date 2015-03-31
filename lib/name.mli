@@ -92,7 +92,7 @@ val clear_cons_tables : unit -> unit
 exception BadDomainName of string
 
 (** Convert a canonical [[ "www"; "example"; "com" ]] domain name into a key. *)
-val canon2key : t -> key
+val to_key : t -> key
 
 val dnssec_compare : t -> t -> int
 val dnssec_compare_str : string list -> string list -> int

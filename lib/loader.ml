@@ -38,7 +38,7 @@ let no_more_updates db = Hashtbl.clear db.names; db.names <- Hashtbl.create 1
 
 (* Get the dnsnode that represents this name, making a new one if needed *)
 let get_target_dnsnode owner db =
-  let key = Name.canon2key owner in
+  let key = Name.to_key owner in
   match simple_lookup key db.trie with
     Some n -> n
   | None ->
@@ -60,7 +60,7 @@ let get_owner_dnsnode owner db =
     with Not_found -> { owner = Name.hashcons owner;
 			rrsets = []; }
   in
-  let key = Name.canon2key owner in
+  let key = Name.to_key owner in
   lookup_or_insert key db.trie (pull_name db.names key owner)
 
 
@@ -177,9 +177,9 @@ let add_ns_rr target ttl owner db =
   try
     let targetnode = get_target_dnsnode target db in
     add_rrset { ttl; rdata = NS [ targetnode ] } owner db;
-    fix_flags (Name.canon2key owner) db.trie
+    fix_flags (Name.to_key owner) db.trie
   with TTLMismatch ->
-    fix_flags (Name.canon2key owner) db.trie; raise TTLMismatch
+    fix_flags (Name.to_key owner) db.trie; raise TTLMismatch
 
 let add_cname_rr target ttl owner db =
   let targetnode = get_target_dnsnode target db in
@@ -191,9 +191,9 @@ let add_soa_rr master rp serial refresh retry expiry min ttl owner db =
     let rpnode = get_target_dnsnode rp db in
     let rdata = (masternode, rpnode, serial, refresh, retry, expiry, min) in
     add_rrset { ttl; rdata = SOA [ rdata ] } owner db;
-    fix_flags (Name.canon2key owner) db.trie
+    fix_flags (Name.to_key owner) db.trie
   with TTLMismatch ->
-    fix_flags (Name.canon2key owner) db.trie; raise TTLMismatch
+    fix_flags (Name.to_key owner) db.trie; raise TTLMismatch
 
 let add_mb_rr target ttl owner db =
   let targetnode = get_target_dnsnode target db in
