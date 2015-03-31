@@ -17,7 +17,6 @@
  *
  *)
 
-open Cstruct
 open Operators
 open RR
 open Trie
