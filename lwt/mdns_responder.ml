@@ -361,6 +361,8 @@ module Make (Transport : TRANSPORT) = struct
     begin
       try_lwt
         (* If we lose a simultaneous probe tie-break then we have to delay 1 second *)
+        (* TODO: if there are more than 15 conflicts in 10 seconds then we are
+           supposed to wait 5 seconds *)
         (if t.probe_tiebreak then
           Transport.sleep 1.0
         else
@@ -438,6 +440,8 @@ module Make (Transport : TRANSPORT) = struct
         write_repeat dest obuf (repeat - 1) (sleept *. 2.0)
     in
     Dns.Trie.iter build_questions t.dnstrie;
+    (* TODO: if the data for a shared record has changed, we should send 'goodbye'.
+       See RFC 6762 section 8.4 *)
     let answer = DQ.answer_multiple ~dnssec:false ~mdns:true ~flush:(is_confirmed_unique t) !questions t.dnstrie in
     let answer = dedup_answer answer in
     let dest_host = multicast_ip in
@@ -501,6 +505,8 @@ module Make (Transport : TRANSPORT) = struct
               end
             (* else if compare > 0 then the requester will restart its own probe sequence *)
             (* else if compare = 0 then there is no conflict *)
+            (* TODO: if compare = 0 and the peer is sending a TTL less than half of our record
+               then we are supposed to announce our record to avoid premature expiry *)
             with
             | Not_found -> ()
         ) theirs;
@@ -536,7 +542,7 @@ module Make (Transport : TRANSPORT) = struct
         if legacy then
           false
         else
-          List.fold_left (fun all_unicast q -> all_unicast && (q.DP.q_unicast = DP.Q_mDNS_Unicast)) true query.DP.questions
+          List.for_all (fun q -> q.DP.q_unicast = DP.Q_mDNS_Unicast) query.DP.questions
       in
       let reply_host = if legacy || unicast then src_host else multicast_ip in
       let reply_port = src_port in
@@ -642,6 +648,7 @@ module Make (Transport : TRANSPORT) = struct
     | Some dp -> process_response t dp
 
   let stop_probe t =
+    (* TODO: send 'goodbye' for all names *)
     t.probe_end <- true;
     Lwt_condition.signal t.probe_condition ();
     t.probe_forever
