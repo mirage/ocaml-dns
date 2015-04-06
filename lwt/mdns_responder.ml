@@ -319,13 +319,13 @@ module Make (Transport : TRANSPORT) = struct
     label "probe.w1";
     Transport.write dest packet >>= fun () ->
     (* Fixed delay of 250 ms *)
-    label "probe.d2";
+    label "probe.d1";
     delay 0.25 >>= fun () ->
     (* Second probe *)
     label "probe.w2";
     Transport.write dest packet >>= fun () ->
     (* Fixed delay of 250 ms *)
-    label "probe.d3";
+    label "probe.d2";
     delay 0.25 >>= fun () ->
     (* Third probe *)
     label "probe.w3";
