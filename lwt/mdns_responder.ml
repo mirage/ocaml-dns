@@ -228,10 +228,10 @@ module Make (Transport : TRANSPORT) = struct
   let of_zonebuf zonebuf = of_zonebufs [zonebuf]
 
 
-  let add_unique_hostname t name ip =
+  let add_unique_hostname t name ?(ttl=120l) ip =
     (* TODO: support IPv6 with AAAA *)
     (* Add it to the trie *)
-    Dns.Loader.add_a_rr ip 120l name t.db;
+    Dns.Loader.add_a_rr ip ttl name t.db;
     (* Add an entry to our own table of unique records *)
     Hashtbl.add t.unique name PreProbe
 
