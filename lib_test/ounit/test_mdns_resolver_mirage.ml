@@ -11,7 +11,7 @@ let run_timeout thread =
       thread
     ])
 
-module StubIpv4 : V1_LWT.IPV4 with type ethif = unit = struct
+module StubIpv4 (*: V1_LWT.IPV4 with type ethif = unit*) = struct
   type error = [
     | `Unknown of string (** an undiagnosed error *)
     | `Unimplemented     (** operation not yet implemented in the code *)
@@ -81,6 +81,10 @@ module StubIpv4 : V1_LWT.IPV4 with type ethif = unit = struct
 
   let get_source t ~dst:_ =
     t.ip
+
+  type uipaddr = Ipaddr.t
+  let to_uipaddr ip = Ipaddr.V4 ip
+  let of_uipaddr = Ipaddr.to_v4
 end
 
 
@@ -138,7 +142,7 @@ module MockUdpv4 (*: V1_LWT.UDPV4 with type ip = StubIpv4.t*) = struct
 end
 
 
-module StubTcpv4 : V1_LWT.TCPV4 with type ip = StubIpv4.t = struct
+module StubTcpv4 (*: V1_LWT.TCPV4 with type ip = StubIpv4.t*) = struct
   type flow = unit (*Pcb.pcb*)
   type ip = StubIpv4.t
   type ipaddr = StubIpv4.ipaddr
@@ -200,7 +204,7 @@ module MockStack (*:
     c     : Console.t;
     netif : Netif.t;
     ethif : Ethif.t;
-    *)
+     *)
     ipv4  : ipv4;
     udpv4 : udpv4;
     tcpv4 : tcpv4;
@@ -240,38 +244,46 @@ module MockStack (*:
 
   let connect id =
     let { V1_LWT.console = c; interface = netif; mode; _ } = id in
-    let or_error fn t err =
-      fn t
-      >>= function
-      | `Error _ -> fail (Failure err)
-      | `Ok r -> return r
-    in
-    let ethif = () in
-    or_error StubIpv4.connect ethif "ipv4"
-    >>= fun ipv4 ->
-    or_error MockUdpv4.connect ipv4 "udpv4"
-    >>= fun udpv4 ->
-    or_error StubTcpv4.connect ipv4 "tcpv4"
-    >>= fun tcpv4 ->
     let udpv4_listeners = Hashtbl.create 7 in
-    let t = { id; mode; (*c; netif; ethif;*) ipv4; tcpv4; udpv4;
-              udpv4_listeners; (*tcpv4_listeners*) } in
+    let ethif = () in
+    StubIpv4.connect ethif >>= function
+    | `Error _ -> fail (Failure "StubIpv4")
+    | `Ok ipv4 ->
+    MockUdpv4.connect ipv4 >>= function
+    | `Error _ -> fail (Failure "MockUdpv4")
+    | `Ok udpv4 ->
+    StubTcpv4.connect ipv4 >>= function
+    | `Error _ -> fail (Failure "StubTcpv4")
+    | `Ok tcpv4 ->
+      let t = { id; (*c;*) mode; (*netif; ethif;*) ipv4; tcpv4; udpv4;
+                udpv4_listeners; (*tcpv4_listeners*) } in
     let _ = listen t in
     configure t t.mode
     >>= fun () ->
+    (* TODO: this is fine for now, because the DHCP state machine isn't fully
+       implemented and its thread will terminate after one successful lease
+       transaction.  For a DHCP thread that runs forever, `configure` will need
+       to spawn a background thread, but we need to consider how to inform the
+       application stack that the IP address has changed (perhaps via a control
+       Lwt_stream that the application can ignore if it doesn't care). *)
     return (`Ok t)
 
   let disconnect t = return_unit
 end
 
-let create_stack () : MockStack.t =
+let create_stack_lwt () =
+  let console = () in
+  let interface = () in
+  let mode = () in
   let config = {
     V1_LWT.name = "mockstack";
-    console = (); interface = ();
-    (*mode = `IPv4 (Ipaddr.V4.of_string_exn "10.0.0.2", Ipaddr.V4.of_string_exn "255.255.255.0", [Ipaddr.V4.of_string_exn "10.0.0.1"]);*)
-    mode = ();
+    console; interface;
+    mode (*= `IPv4 (Ipaddr.V4.of_string_exn "10.0.0.2", Ipaddr.V4.of_string_exn "255.255.255.0", [Ipaddr.V4.of_string_exn "10.0.0.1"])*);
   } in
-  match Lwt_main.run (MockStack.connect config) with
+  MockStack.connect config
+
+let create_stack () =
+  match Lwt_main.run (create_stack_lwt ()) with
   | `Error e -> assert_failure "create_stack"
   | `Ok stackv41 -> stackv41
 
@@ -282,7 +294,7 @@ end
 
 let mdns_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
 let good_query_str = "valid.local"
-let good_query_name = Dns.Name.string_to_domain_name good_query_str
+let good_query_name = Dns.Name.of_string good_query_str
 let good_response_ip = Ipaddr.V4.of_string_exn "10.0.0.3"
 let good_detail = { qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError }
 let good_answer = { name=good_query_name; cls=RR_IN; flush=true; ttl=120l; rdata=A good_response_ip }
@@ -360,7 +372,7 @@ let tests =
         simulate_good_response stack;
         (*
         let response_ip = Ipaddr.V4.of_string_exn "10.0.0.3" in
-        let response_name = Dns.Name.string_to_domain_name query_str in
+        let response_name = Dns.Name.of_string query_str in
         let answer = { name=response_name; cls=RR_IN; flush=true; ttl=120l; rdata=A response_ip } in
         let response = {
           id=0;
@@ -407,7 +419,7 @@ let tests =
         (* Wrong rcode *)
         simulate_response ~detail:{ good_detail with rcode=NXDomain } stack;
         (* Wrong name *)
-        simulate_response ~answers:[{ good_answer with name=Dns.Name.string_to_domain_name "wrong.local" }] stack;
+        simulate_response ~answers:[{ good_answer with name=Dns.Name.of_string "wrong.local" }] stack;
         (* Wrong class *)
         simulate_response ~answers:[{ good_answer with cls=RR_CS }] stack;
         (* Wrong RR type *)

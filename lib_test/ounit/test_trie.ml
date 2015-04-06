@@ -3,9 +3,9 @@ open OUnit2
 open Printf
 
 module H = Dns.Hashcons
-open Dns.Name
-open Dns.Trie
-open Dns.RR
+open Dns
+open Trie
+open RR
 
 let load_test_zone path =
   let ch = open_in path in
@@ -23,8 +23,8 @@ let tests =
     "found-dns" >:: (fun test_ctxt ->
         let trie = load_test_zone "test_dns.zone" in
 
-        let name = string_to_domain_name "mail.d1.signpo.st." in
-        match lookup (canon2key name) trie ~mdns:false with
+        let name = Name.of_string "mail.d1.signpo.st." in
+        match lookup (Name.to_key name) trie ~mdns:false with
         | `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
           assert_equal false sec;
           (* Verify the A record *)
@@ -41,7 +41,7 @@ let tests =
           end;
 
           (* Verify the SOA record *)
-          assert_equal "d1.signpo.st" (domain_name_to_string zonehead.owner.H.node);
+          assert_equal "d1.signpo.st" (Name.to_string zonehead.owner.H.node);
           assert_equal ~printer:string_of_int 3 (List.length zonehead.rrsets);
           let soa = List.nth zonehead.rrsets 1 in
           assert_equal (Int32.of_int 604800) soa.ttl;
@@ -50,9 +50,9 @@ let tests =
             | SOA soas ->
               assert_equal 1 (List.length soas);
               let (master, rp, serial, refresh, retry, expiry, min) = List.hd soas in
-              assert_equal "ns0.d1.signpo.st" (domain_name_to_string master.owner.H.node);
+              assert_equal "ns0.d1.signpo.st" (Name.to_string master.owner.H.node);
               (* Warning: the first dot is part of the first label *)
-              assert_equal "john.doe.d1.signpo.st" (domain_name_to_string rp.owner.H.node);
+              assert_equal "john.doe.d1.signpo.st" (Name.to_string rp.owner.H.node);
               assert_equal ~msg:"refresh" (Int32.of_int 3600) refresh;
               assert_equal ~msg:"retry" (Int32.of_int 1800) retry;
               assert_equal ~msg:"expiry" (Int32.of_int 3024000) expiry;
@@ -65,8 +65,8 @@ let tests =
     "found-mdns" >:: (fun test_ctxt ->
         let trie = load_test_zone "test_mdns.zone" in
 
-        let name = string_to_domain_name "fake1.local." in
-        match lookup (canon2key name) trie ~mdns:true with
+        let name = Name.of_string "fake1.local." in
+        match lookup (Name.to_key name) trie ~mdns:true with
         | `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
           begin 
             assert_equal false sec;
@@ -87,11 +87,11 @@ let tests =
     "nxdomain-dns" >:: (fun test_ctxt ->
         let trie = load_test_zone "test_dns.zone" in
 
-        let name = string_to_domain_name "bigfoot.d1.signpo.st." in
-        match lookup (canon2key name) trie ~mdns:false with
+        let name = Name.of_string "bigfoot.d1.signpo.st." in
+        match lookup (Name.to_key name) trie ~mdns:false with
         | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
           (* Verify part of the SOA record *)
-          assert_equal "d1.signpo.st" (domain_name_to_string zonehead.owner.H.node);
+          assert_equal "d1.signpo.st" (Name.to_string zonehead.owner.H.node);
           assert_equal ~printer:string_of_int 3 (List.length zonehead.rrsets);
           let soa = List.nth zonehead.rrsets 1 in
           assert_equal (Int32.of_int 604800) soa.ttl;
@@ -103,7 +103,7 @@ let tests =
 
         let names = ["bigfoot.local."; "bigfoot"; "bigfoot.d1.signpo.st."] in
         List.iter (fun name ->
-            match lookup (name |> string_to_domain_name |> canon2key) trie ~mdns:true with
+            match lookup (name |> Name.of_string |> Name.to_key) trie ~mdns:true with
             | `NXDomain (zonehead) ->         (* Name doesn't exist. *)
               (* Note that NXDomain is only used internally and not transmitted for mDNS *)
               (* zonehead is not used for mDNS *)
@@ -115,12 +115,12 @@ let tests =
     "delegated" >:: (fun test_ctxt ->
         let trie = load_test_zone "test_dns.zone" in
 
-        let name = string_to_domain_name "cam.ac.uk." in
-        match lookup (canon2key name) trie ~mdns:false with
+        let name = Name.of_string "cam.ac.uk." in
+        match lookup (Name.to_key name) trie ~mdns:false with
         | `Delegated (sec, cutpoint) ->   (* Name is delegated. *)
           (* Verify the NS record *)
           assert_equal false sec;
-          assert_equal "uk" (domain_name_to_string cutpoint.owner.H.node);
+          assert_equal "uk" (Name.to_string cutpoint.owner.H.node);
           assert_equal ~printer:string_of_int 1 (List.length cutpoint.rrsets);
           let ns = List.hd cutpoint.rrsets in
           assert_equal (Int32.of_int 1000) ns.ttl;
@@ -129,7 +129,7 @@ let tests =
             | NS l ->
               assert_equal 1 (List.length l);
               let node = List.hd l in
-              assert_equal "ns1.nic.uk" (domain_name_to_string node.owner.H.node);
+              assert_equal "ns1.nic.uk" (Name.to_string node.owner.H.node);
             | _ -> assert_failure "Not NS"
           end
         | _ -> assert_failure "Not Delegated"
@@ -138,11 +138,11 @@ let tests =
     "noerror" >:: (fun test_ctxt ->
         let trie = load_test_zone "test_dns.zone" in
 
-        let name = string_to_domain_name "one.d1.signpo.st." in
-        match lookup (canon2key name) trie ~mdns:false with
+        let name = Name.of_string "one.d1.signpo.st." in
+        match lookup (Name.to_key name) trie ~mdns:false with
         | `NoError (zonehead) ->          (* Name "exists", but has no RRs. *)
           (* Verify part of the SOA record *)
-          assert_equal "d1.signpo.st" (domain_name_to_string zonehead.owner.H.node);
+          assert_equal "d1.signpo.st" (Name.to_string zonehead.owner.H.node);
           assert_equal ~printer:string_of_int 3 (List.length zonehead.rrsets);
           let soa = List.nth zonehead.rrsets 1 in
           assert_equal (Int32.of_int 604800) soa.ttl;

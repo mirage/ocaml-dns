@@ -16,9 +16,9 @@
 
 open Lwt
 open Printf
-open Dns.Name
-open Dns.Operators
-open Dns.Protocol
+open Dns
+open Operators
+open Protocol
 open Dns_resolver
 
 module DP = Dns.Packet
@@ -128,7 +128,7 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
   let resolve client
       t server dns_port
       (q_class:DP.q_class) (q_type:DP.q_type)
-      (q_name:domain_name) =
+      (q_name:Name.t) =
     let commfn = connect_to_resolver t (server,dns_port) in
     let q = create_packet q_class q_type q_name in
     resolve_pkt ~alloc client commfn q
@@ -139,7 +139,7 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
       name =
     (* TODO: duplicates Dns_resolver.gethostbyname *)
     let open DP in
-    let domain = string_to_domain_name name in
+    let domain = Name.of_string name in
     resolve (module Client) t server dns_port q_class q_type domain
     >|= fun r ->
     List.fold_left (fun a x ->
@@ -155,12 +155,12 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
       ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
       addr =
     (* TODO: duplicates Dns_resolver.gethostbyaddr *)
-    let addr = for_reverse addr in
+    let addr = Name.of_ipaddr (Ipaddr.V4 addr) in
     let open DP in
     resolve (module Client) t server dns_port q_class q_type addr
     >|= fun r ->
     List.fold_left (fun a x ->
-        match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a
+        match x.rdata with |PTR n -> (Name.to_string n)::a |_->a
       ) [] r.answers
     |> List.rev
 

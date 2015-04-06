@@ -28,7 +28,7 @@ module type S = sig
     t -> Ipaddr.V4.t -> int ->
     Dns.Packet.q_class ->
     Dns.Packet.q_type ->
-    Dns.Name.domain_name ->
+    Dns.Name.t ->
     Dns.Packet.t Lwt.t
 
   val gethostbyname : t ->

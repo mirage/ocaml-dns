@@ -2,16 +2,16 @@
 open OUnit2
 open Printf
 
-open Dns.Packet
-open Dns.Name
-module Q = Dns.Query
+open Dns
+open Packet
+module Q = Query
 
 let tests =
   "Query" >:::
   [
     "answer-dns" >:: (fun test_ctxt ->
         let trie = Test_trie.load_test_zone "test_dns.zone" in
-        let name = string_to_domain_name "mail.d1.signpo.st." in
+        let name = Name.of_string "mail.d1.signpo.st." in
         let query =
           let detail = {
             qr=Query; opcode=Standard; aa=false;
@@ -54,13 +54,14 @@ let tests =
               | [] -> rest;
               | ns::tl ->
                 begin
-                  assert_equal ~msg:"name" ~printer:(fun s -> s) "d1.signpo.st" (domain_name_to_string ns.name);
+                  assert_equal ~msg:"name" ~printer:(fun s -> s) "d1.signpo.st"
+                               (Name.to_string ns.name);
                   assert_equal ~msg:"cls" RR_IN ns.cls;
                   assert_equal ~msg:"flush" false ns.flush;
                   assert_equal ~msg:"ttl" ~printer:Int32.to_string (Int32.of_int 604800) ns.ttl;
                   match ns.rdata with
                   | NS name ->
-                    get_ns_list tl ((domain_name_to_string name) :: rest)
+                    get_ns_list tl ((Name.to_string name) :: rest)
                   | _ -> assert_failure "Authority not A";
                 end
             end in
@@ -75,7 +76,7 @@ let tests =
         (* Verify the additional record *)
         begin
           let ns = List.hd answer.Q.additional in
-          assert_equal ~msg:"name" "ns0.d1.signpo.st" (domain_name_to_string ns.name);
+          assert_equal ~msg:"name" "ns0.d1.signpo.st" (Name.to_string ns.name);
           assert_equal ~msg:"cls" RR_IN ns.cls;
           assert_equal ~msg:"flush" false ns.flush;
           assert_equal ~msg:"ttl" (Int32.of_int 172800) ns.ttl;
@@ -95,7 +96,7 @@ let tests =
 
     "answer-mdns-A" >:: (fun test_ctxt ->
         let trie = Test_trie.load_test_zone "test_mdns.zone" in
-        let name = string_to_domain_name "fake1.local" in
+        let name = Name.of_string "fake1.local" in
         let query =
           let detail = {
             qr=Query; opcode=Standard; aa=false;
@@ -141,7 +142,7 @@ let tests =
 
     "answer-mdns-PTR" >:: (fun test_ctxt ->
         let trie = Test_trie.load_test_zone "test_mdns.zone" in
-        let name = string_to_domain_name "_snake._tcp.local" in
+        let name = Name.of_string "_snake._tcp.local" in
         let answer = Q.answer ~dnssec:false ~mdns:true name Q_PTR trie in
         assert_equal NoError answer.Q.rcode;
         assert_equal true answer.Q.aa;
@@ -158,13 +159,14 @@ let tests =
               | [] -> rest;
               | rr::tl ->
                 begin
-                  assert_equal ~msg:"name" ~printer:(fun s -> s) "_snake._tcp.local" (domain_name_to_string rr.name);
+                  assert_equal ~msg:"name" ~printer:(fun s -> s)
+                               "_snake._tcp.local" (Name.to_string rr.name);
                   assert_equal ~msg:"cls" RR_IN rr.cls;
                   assert_equal ~msg:"flush" false rr.flush;
                   assert_equal ~msg:"ttl" ~printer:Int32.to_string (Int32.of_int 120) rr.ttl;
                   match rr.rdata with
                   | PTR name ->
-                    get_ptr_list tl ((domain_name_to_string name) :: rest)
+                    get_ptr_list tl ((Name.to_string name) :: rest)
                   | _ -> assert_failure "Not PTR";
                 end
             end in
@@ -183,13 +185,14 @@ let tests =
         let txt_assoc = List.combine ptrl ["species=Pseudonaja affinis"; "species=Pseudechis australis"; "species=Notechis scutatus"] in
         let a_assoc = List.combine srvl ["127.0.0.95"; "127.0.0.96"; "127.0.0.94"] in
         List.iter (fun rr ->
-            let key = String.lowercase (domain_name_to_string rr.name) in
+            let key = String.lowercase (Name.to_string rr.name) in
             match rr.rdata with
             | SRV (priority, weight, port, srv) ->
               assert_equal 0 priority;
               assert_equal 0 weight;
               assert_equal 33333 port;
-              assert_equal ~printer:(fun s -> s) (List.assoc key srv_assoc) (domain_name_to_string srv)
+              assert_equal ~printer:(fun s -> s) (List.assoc key srv_assoc)
+                           (Name.to_string srv)
             | TXT txtl ->
               assert_equal 2 (List.length txtl);
               assert_equal "txtvers=1" (List.hd txtl);
@@ -203,7 +206,7 @@ let tests =
     "answer_multiple-mdns" >:: (fun test_ctxt ->
         (* mDNS supports multiple questions in one query *)
         let trie = Test_trie.load_test_zone "test_mdns.zone" in
-        let names = List.map string_to_domain_name ["fake1.local"; "fake2.local"] in
+        let names = List.map Name.of_string ["fake1.local"; "fake2.local"] in
         let questions = List.map
             (fun name -> {q_name=name; q_type=Q_A; q_class=Q_IN; q_unicast=Q_Normal})
             names

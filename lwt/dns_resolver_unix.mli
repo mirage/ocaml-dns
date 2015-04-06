@@ -15,13 +15,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Dns.Name
-open Dns.Packet
-open Dns.Protocol
-open Cstruct
+open Dns
 
 type t = {
-  client : (module CLIENT);
+  client : (module Protocol.CLIENT);
   servers : (Ipaddr.t * int) list;
   search_domains : string list;
 }
@@ -36,23 +33,23 @@ type config = [
 (** Create a resolver instance that either uses the system
     [/etc/resolv.conf], or a statically specified preference
   *)
-val create : ?client:(module CLIENT) -> ?config:config -> unit -> t Lwt.t
+val create : ?client:(module Protocol.CLIENT) -> ?config:config -> unit ->
+             t Lwt.t
 
-(** Lookup a {! domain_name }.
+(** Lookup a {! Name.t }.
     @return the corresponding IPv4/6 addresses.
 *)
-val gethostbyname : t -> ?q_class:q_class -> ?q_type:q_type
+val gethostbyname : t -> ?q_class:Packet.q_class -> ?q_type:Packet.q_type
   -> string -> Ipaddr.t list Lwt.t
 
 (** Reverse lookup an IPv4 address.
-    @return the corresponding {! domain_name }s.
+    @return the corresponding {! Name.t }s.
 *)
-val gethostbyaddr : t -> ?q_class:q_class -> ?q_type:q_type
+val gethostbyaddr : t -> ?q_class:Packet.q_class -> ?q_type:Packet.q_type
   -> Ipaddr.V4.t -> string list Lwt.t
 
-(** Resolve a fully specified query, {! q_class }, {! q_type } and {!
-    domain_name }.
+(** Resolve a fully specified query, {! q_class }, {! q_type } and {! Name.t }.
     @return the full a {! dns } structure.
 *)
-val resolve : t -> ?dnssec:bool -> q_class -> q_type ->
-  domain_name -> Dns.Packet.t Lwt.t
+val resolve : t -> ?dnssec:bool -> Packet.q_class -> Packet.q_type -> Name.t ->
+              Packet.t Lwt.t

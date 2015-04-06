@@ -18,11 +18,11 @@
 
 open Lwt
 open Printf
-open Dns.Name
-open Dns.Operators
-open Dns.Protocol
+open Dns
+open Operators
+open Protocol
 
-module DP = Dns.Packet
+module DP = Packet
 
 type result = Answer of DP.t | Error of exn
 
@@ -92,7 +92,7 @@ let resolve client
     ?(dnssec=false)
     (commfn:commfn)
     (q_class:DP.q_class) (q_type:DP.q_type)
-    (q_name:domain_name) =
+    (q_name:Name.t) =
   let id = (let module R = (val client : CLIENT) in R.get_id ()) in
   let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
   resolve_pkt client ?alloc commfn q
@@ -103,7 +103,7 @@ let gethostbyname
     commfn
     name =
   let open DP in
-  let domain = string_to_domain_name name in
+  let domain = Name.of_string name in
   resolve ?alloc (module Dns.Protocol.Client) commfn q_class q_type domain
   >|= fun r ->
   List.fold_left (fun a x ->
@@ -120,11 +120,11 @@ let gethostbyaddr
     commfn
     addr
   =
-  let addr = for_reverse addr in
+  let addr = Name.of_ipaddr (Ipaddr.V4 addr) in
   let open DP in
   resolve ?alloc (module Dns.Protocol.Client) commfn q_class q_type addr
   >|= fun r ->
   List.fold_left (fun a x ->
-      match x.rdata with |PTR n -> (domain_name_to_string n)::a |_->a
+      match x.rdata with |PTR n -> (Name.to_string n)::a |_->a
     ) [] r.answers
   |> List.rev

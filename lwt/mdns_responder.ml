@@ -192,7 +192,7 @@ module Make (Transport : TRANSPORT) = struct
 
   (* RFC 6762 section 10.2 implies that uniqueness is based on name/rrtype/rrclass,
      but section 8.1 implies that a domain name is enough. *)
-  type unique_key = Dns.Name.domain_name
+  type unique_key = Dns.Name.t
   type unique_state = PreProbe | Probing | Confirmed
   type unique_assoc = unique_key * unique_state
 
@@ -562,19 +562,20 @@ module Make (Transport : TRANSPORT) = struct
 
 
   let rename_unique t old_name state =
-    let increment_name name =
-      let head = List.hd name in
-      let re = Re_str.regexp "\\(.*\\)\\([0-9]+\\)" in
-      let new_head = if Re_str.string_match re head 0 then begin
+    let increment_name name = match Dns.Name.to_string_list name with
+      | head :: tail ->
+        let re = Re_str.regexp "\\(.*\\)\\([0-9]+\\)" in
+        let new_head = if Re_str.string_match re head 0 then begin
           let num = int_of_string (Re_str.matched_group 2 head) in
           (Re_str.matched_group 1 head) ^ (string_of_int (num + 1))
         end else
           head ^ "2"
-      in
-      new_head :: (List.tl name)
+        in
+        Dns.Name.of_string_list (new_head :: tail)
+      | [] -> failwith "can't offer the DNS root"
     in
     (* Find the old RR from the trie *)
-    let rrsets = match Dns.Trie.simple_lookup (Dns.Name.canon2key old_name) t.dnstrie with
+    let rrsets = match Dns.Trie.simple_lookup (Dns.Name.to_key old_name) t.dnstrie with
       | None -> failwith "rename_unique: old not not found"
       | Some node ->
         let rrsets = node.DR.rrsets in

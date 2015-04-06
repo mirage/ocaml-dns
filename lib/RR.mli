@@ -21,9 +21,6 @@
     @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
-open Name
-open Cstruct
-
 (** DNS serial number -- 32 bits. *)
 type serial = int32
 
@@ -32,7 +29,7 @@ type cstr = string Hashcons.hash_consed
 
 (** A node in the trie. *)
 and dnsnode = {
-  owner : Name.domain_name Hashcons.hash_consed;
+  owner : Name.t Hashcons.hash_consed;
   (** The name for which the node contains memoised attributes. *)
   mutable rrsets : rrset list;
 (** The set of attributes as  resource records. *)
@@ -50,7 +47,7 @@ and rrsig = {
   rrsig_expiry : int32;
   rrsig_incept : int32;
   rrsig_keytag : int;
-  rrsig_name   : Name.domain_name;
+  rrsig_name   : Name.t;
   rrsig_sig    : string;
 }
 
@@ -65,7 +62,7 @@ and rrsig = {
 and rdata =
   | A of Ipaddr.V4.t list
   | AAAA of Ipaddr.V6.t list
-  | AFSDB of (uint16 * dnsnode) list
+  | AFSDB of (Cstruct.uint16 * dnsnode) list
   | CNAME of dnsnode list
   | HINFO of (cstr * cstr) list
   | ISDN of (cstr * cstr option) list
@@ -73,17 +70,17 @@ and rdata =
   | MG of dnsnode list
   | MINFO of (dnsnode * dnsnode) list
   | MR of dnsnode list
-  | MX of (uint16 * dnsnode) list
+  | MX of (Cstruct.uint16 * dnsnode) list
   | NS of dnsnode list
   | PTR of dnsnode list
   | RP of (dnsnode * dnsnode) list
-  | RT of (uint16 * dnsnode) list
+  | RT of (Cstruct.uint16 * dnsnode) list
   | SOA of (dnsnode * dnsnode * serial * int32 * int32 * int32 * int32) list
-  | SRV of (uint16 * uint16 * uint16 * dnsnode) list
+  | SRV of (Cstruct.uint16 * Cstruct.uint16 * Cstruct.uint16 * dnsnode) list
   | TXT of cstr list list
   (* | UNSPEC of cstr list *)
   | Unknown of int * cstr list
-  | WKS of (Ipaddr.V4.t * byte * cstr) list
+  | WKS of (Ipaddr.V4.t * Cstruct.byte * cstr) list
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
   | DS of (int * Packet.dnssec_alg * Packet.digest_alg * cstr) list

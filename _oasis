@@ -1,6 +1,6 @@
 OASISFormat: 0.4
 Name:        dns
-Version:     0.14.0
+Version:     0.14.1
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire, Luke Dunstan
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC
@@ -25,7 +25,7 @@ Flag mirage
   Default: false
 
 Flag async
-  Description: build the Async library
+  Description: build the Async_kernel library
   Default: false
 
 Library dns
@@ -73,9 +73,19 @@ Library "dns-async"
   Build$: flag(async)
   Install$: flag(async)
   Findlibname: async
-  Modules: Async_dns_resolver, Async_dns_resolver_unix
-  BuildDepends: async, ipaddr, dns, core.syntax, threads
-  XMetaRequires: async, ipaddr, dns, threads
+  Modules: Async_dns_resolver
+  BuildDepends: async_kernel, ipaddr, dns, core.syntax
+  XMetaRequires: async_kernel, ipaddr, dns
+  FindlibParent: dns
+
+Library "dns-async-unix"
+  Path: async
+  Build$: flag(async)
+  Install$: flag(async)
+  Findlibname: async-unix
+  Modules: Async_dns_resolver_unix
+  BuildDepends: async, dns.async, threads
+  XMetaRequires: async, dns.async, threads
   FindlibParent: dns
 
 Document dns
@@ -129,7 +139,7 @@ Executable async_resolver
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       async, dns.async
+  BuildDepends:       async, dns.async-unix
 
 Executable test
   Path:               lib_test/ounit
