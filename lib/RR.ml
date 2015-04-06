@@ -17,16 +17,13 @@
  *
  *)
 
-open Name
-open Cstruct
-
 (* Mnemonicity! *)
 type serial = int32
 type cstr = string Hashcons.hash_consed
 
 (* DNS node: everything we know about a domain name *)
 and dnsnode = {
-  owner: Name.domain_name Hashcons.hash_consed;
+  owner: Name.t Hashcons.hash_consed;
   mutable rrsets: rrset list;
 }
 
@@ -44,7 +41,7 @@ and rrsig = {
   rrsig_expiry : int32;
   rrsig_incept : int32;
   rrsig_keytag : int;
-  rrsig_name   : Name.domain_name;
+  rrsig_name   : Name.t;
   rrsig_sig    : string;
 }
 
@@ -70,7 +67,7 @@ and rdata =
   | TXT of (cstr list) list
   (* | UNSPEC of cstr list*)
   | Unknown of int * cstr list
-  | WKS of (Ipaddr.V4.t * byte * cstr) list
+  | WKS of (Ipaddr.V4.t * Cstruct.byte * cstr) list
   | X25 of cstr list
   | DNSKEY of (int * int * cstr) list
   | DS of (int * Packet.dnssec_alg * Packet.digest_alg * cstr) list

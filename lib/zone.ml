@@ -29,7 +29,7 @@ let load ?(db=new_db ()) origin buf =
     state.paren <- 0;
     state.filename <- "<string>";
     state.lineno <- 1;
-    state.origin <- List.map String.lowercase origin;
+    state.origin <- Name.of_string_list origin;
     state.ttl <- Int32.of_int 3600;
     state.owner <- state.origin;
     Zone_parser.zfile Zone_lexer.token lexbuf;

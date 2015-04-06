@@ -19,14 +19,13 @@
 
 open RR
 open Trie
-open Name
 open Operators
 open Printf
 
 (* Loader database: the DNS trie plus a hash table of other names in use *)
 type db = {
     trie: dnstrie;		       	     (* Names that have RRSets *)
-    mutable names: (key, dnsnode) Hashtbl.t; (* All other names *)
+    mutable names: (Name.key, dnsnode) Hashtbl.t; (* All other names *)
   }
 
 (* Get a new, empty database *)
@@ -39,14 +38,14 @@ let no_more_updates db = Hashtbl.clear db.names; db.names <- Hashtbl.create 1
 
 (* Get the dnsnode that represents this name, making a new one if needed *)
 let get_target_dnsnode owner db =
-  let key = canon2key owner in
+  let key = Name.to_key owner in
   match simple_lookup key db.trie with
     Some n -> n
   | None ->
       try
       	Hashtbl.find db.names key
       with Not_found ->
-	let n = { owner = hashcons_domainname owner;
+	let n = { owner = Name.hashcons owner;
 		  rrsets = []; }
 	in Hashtbl.add db.names key n ;
 	n
@@ -58,10 +57,10 @@ let get_owner_dnsnode owner db =
     try
       match Hashtbl.find tbl key with
 	d -> Hashtbl.remove tbl key; d
-    with Not_found -> { owner = hashcons_domainname owner;
+    with Not_found -> { owner = Name.hashcons owner;
 			rrsets = []; }
   in
-  let key = canon2key owner in
+  let key = Name.to_key owner in
   lookup_or_insert key db.trie (pull_name db.names key owner)
 
 
@@ -165,7 +164,7 @@ let add_rrset rrset owner db =
   if not (old_ttl = rrset.ttl) then raise TTLMismatch
 
 let add_generic_rr tcode str ttl owner db =
-  let s = hashcons_charstring str in
+  let s = Name.hashcons_string str in
   add_rrset { ttl; rdata = Unknown (tcode, [ s ]) } owner db
 
 let add_a_rr ip ttl owner db =
@@ -178,9 +177,9 @@ let add_ns_rr target ttl owner db =
   try
     let targetnode = get_target_dnsnode target db in
     add_rrset { ttl; rdata = NS [ targetnode ] } owner db;
-    fix_flags (canon2key owner) db.trie
+    fix_flags (Name.to_key owner) db.trie
   with TTLMismatch ->
-    fix_flags (canon2key owner) db.trie; raise TTLMismatch
+    fix_flags (Name.to_key owner) db.trie; raise TTLMismatch
 
 let add_cname_rr target ttl owner db =
   let targetnode = get_target_dnsnode target db in
@@ -192,9 +191,9 @@ let add_soa_rr master rp serial refresh retry expiry min ttl owner db =
     let rpnode = get_target_dnsnode rp db in
     let rdata = (masternode, rpnode, serial, refresh, retry, expiry, min) in
     add_rrset { ttl; rdata = SOA [ rdata ] } owner db;
-    fix_flags (canon2key owner) db.trie
+    fix_flags (Name.to_key owner) db.trie
   with TTLMismatch ->
-    fix_flags (canon2key owner) db.trie; raise TTLMismatch
+    fix_flags (Name.to_key owner) db.trie; raise TTLMismatch
 
 let add_mb_rr target ttl owner db =
   let targetnode = get_target_dnsnode target db in
@@ -209,7 +208,7 @@ let add_mr_rr target ttl owner db =
   add_rrset { ttl; rdata = MR [ targetnode ] } owner db
 
 let add_wks_rr addr prot bitmap ttl owner db =
-  let b = hashcons_charstring bitmap in
+  let b = Name.hashcons_string bitmap in
   add_rrset { ttl; rdata = WKS [ (addr, prot, b) ] } owner db
 
 let add_ptr_rr target ttl owner db =
@@ -217,8 +216,8 @@ let add_ptr_rr target ttl owner db =
   add_rrset { ttl; rdata = PTR [ targetnode ] } owner db
 
 let add_hinfo_rr cpu os ttl owner db =
-  let c = hashcons_charstring cpu in
-  let o = hashcons_charstring os in
+  let c = Name.hashcons_string cpu in
+  let o = Name.hashcons_string os in
   add_rrset { ttl; rdata = HINFO [ (c, o) ] } owner db
 
 let add_minfo_rr rmailbx emailbx ttl owner db =
@@ -232,7 +231,7 @@ let add_mx_rr pri target ttl owner db =
   add_rrset { ttl; rdata = MX [ (pri, targetnode) ] } owner db
 
 let add_txt_rr strl ttl owner db =
-  let sl = List.map hashcons_charstring strl in
+  let sl = List.map Name.hashcons_string strl in
   add_rrset { ttl; rdata = TXT [ sl ] } owner db
 
 let add_rp_rr mbox txt ttl owner db =
@@ -246,14 +245,14 @@ let add_afsdb_rr subtype target ttl owner db =
   add_rrset { ttl; rdata = AFSDB [ (st, targetnode) ] } owner db
 
 let add_x25_rr addr ttl owner db =
-  let a = hashcons_charstring addr in
+  let a = Name.hashcons_string addr in
   add_rrset { ttl; rdata = X25 [ a ] } owner db
 
 let add_isdn_rr addr sa ttl owner db =
-  let a = hashcons_charstring addr in
+  let a = Name.hashcons_string addr in
   let s = match sa with
     | None -> None
-    | Some x -> Some (hashcons_charstring x) in
+    | Some x -> Some (Name.hashcons_string x) in
   add_rrset { ttl; rdata = ISDN [ (a, s) ] } owner db
 
 let add_rt_rr pref target ttl owner db =
@@ -277,7 +276,7 @@ let add_dnskey_rr flags typ key ttl owner db =
   let flags = flags in
   let typ = typ in
   let tmp = B64.decode key in
-  let dnskey = hashcons_charstring tmp in
+  let dnskey = Name.hashcons_string tmp in
   add_rrset { ttl; rdata = DNSKEY [ (flags, typ, dnskey) ] } owner db
 
 (** valeur entière d'un chiffre hexa *)
@@ -331,7 +330,7 @@ let add_ds_rr tag alg digest key ttl owner db =
       | None -> failwith (sprintf "add_ds_rr : invalid hashing alg %d" digest)
   in
   let tmp = string_of_hex key in
-  let ds = hashcons_charstring tmp in
+  let ds = Name.hashcons_string tmp in
   add_rrset { ttl; rdata = DS [ (tag, alg, digest, ds) ] } owner db
 
 let add_rrsig_rr typ alg lbl orig_ttl exp_ts inc_ts tag name sign ttl owner db =
@@ -366,9 +365,9 @@ type parserstate = {
   mutable paren: int;
   mutable filename: string;
   mutable lineno: int;
-  mutable origin: string list;
+  mutable origin: Name.t;
   mutable ttl: int32;
-  mutable owner: string list;
+  mutable owner: Name.t;
 }
 
 let new_state () = {
@@ -377,8 +376,8 @@ let new_state () = {
   filename = "";
   lineno = 1;
   ttl = Int32.of_int 3600;
-  origin = [];
-  owner = [];
+  origin = Name.empty;
+  owner = Name.empty;
 }
 
 let state = new_state ()

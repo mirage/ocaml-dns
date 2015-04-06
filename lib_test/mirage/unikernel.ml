@@ -22,7 +22,7 @@ module Client (C:CONSOLE) (S:STACKV4) = struct
     while_lwt true do
       C.log_s c (green "Resolving %s" domain)
       >>= fun () ->
-      DNS.gethostbyname t ~server "google.com"
+      DNS.gethostbyname t ~server domain
       >>= fun rl ->
       Lwt_list.iter_s
         (fun r ->

@@ -17,11 +17,9 @@
  *
  *)
 
-open Cstruct
 open Operators
 open RR
 open Trie
-open Name
 open Printf
 
 module H = Hashcons
@@ -36,9 +34,9 @@ type answer = {
   additional: Packet.rr list;
 }
 
-type filter = domain_name -> RR.rrset -> RR.rrset
+type filter = Name.t -> RR.rrset -> RR.rrset
 
-type flush = Name.domain_name -> Packet.rdata -> bool
+type flush = Name.t -> Packet.rdata -> bool
 
 let response_of_answer ?(mdns=false) query answer =
   (*let edns_rec =
@@ -78,12 +76,12 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
   let additionals =
     if dnssec then
       [ ( {
-        name=[]; cls=RR_IN; flush=false; ttl=0l;
+        name=Name.empty; cls=RR_IN; flush=false; ttl=0l;
         rdata=(EDNS0(1500, 0, true, []));} ) ]
     else
       []
   in
-  let question = { q_name; q_type; q_class; q_unicast=QM } in
+  let question = { q_name; q_type; q_class; q_unicast=Q_Normal } in
   { id; detail; questions=[question];
     answers=[]; authorities=[]; additionals;
   }
@@ -407,7 +405,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
 
   (* Call the trie lookup and assemble the RRs for a response *)
   let main_lookup qname qtype trie =
-    let key = canon2key qname in
+    let key = Name.to_key qname in
     match lookup key trie ~mdns with
       | `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
         add_answer_rrsets node.owner.H.node node.rrsets qtype;
@@ -472,7 +470,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
       add_opt_rrset o q t `Additional) !addqueue;
     let _ =
       if (dnssec) then
-      let rr = Packet.({ name = []; cls = RR_IN; flush = false;
+      let rr = Packet.({ name = Name.empty; cls = RR_IN; flush = false;
                          ttl = 0x00008000l;
                          rdata = EDNS0(1500, 0, true, [])})
       in
@@ -481,13 +479,17 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
     { rcode = rc; aa = !aa_flag;
       answer = !ans_rrs; authority = !auth_rrs; additional = !add_rrs }
   with
-      BadDomainName _ -> { rcode = Packet.FormErr; aa = false;
-                    answer = []; authority = []; additional=[] }
-  | TrieCorrupt ->
-    { rcode = Packet.ServFail; aa = false; answer = []; authority = []; additional=[] }
+  | Name.BadDomainName _ -> {
+    rcode = Packet.FormErr; aa = false;
+    answer = []; authority = []; additional=[];
+  }
+  | TrieCorrupt -> {
+    rcode = Packet.ServFail; aa = false;
+    answer = []; authority = []; additional=[];
+  }
 
 let answer ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=flush_false) qname qtype trie =
   answer_multiple ~dnssec ~mdns ~filter
-    [{Packet.q_name=qname; Packet.q_type=qtype; Packet.q_class=Packet.Q_IN; Packet.q_unicast=Packet.QM}]
+    [{Packet.q_name=qname; Packet.q_type=qtype; Packet.q_class=Packet.Q_IN; Packet.q_unicast=Packet.Q_Normal}]
     trie
 

@@ -14,28 +14,33 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Core.Std
-open Async.Std
-open Dns.Name
-open Dns.Operators
-open Dns.Protocol
+open Core_kernel.Std
+open Async_kernel.Std
 
-module DP = Dns.Packet
+open Dns
+open Operators
+open Protocol
 
-type result = Answer of DP.t | Error of exn
+module DP = Packet
+
+type result = Answer of DP.t | Err of exn
 
 type commfn = {
-  txfn    : Dns.Buf.t -> unit Deferred.t;
-  rxfn    : (Dns.Buf.t -> Dns.Packet.t option) -> DP.t Deferred.t;
+  txfn    : Buf.t -> unit Deferred.t;
+  rxfn    : (Buf.t -> Packet.t option) -> DP.t Deferred.t;
   timerfn : unit -> unit Deferred.t;
   cleanfn : unit -> unit Deferred.t;
 }
 
+(*
+TODO: move to a Unix module, since library should not write to stdout
+    
 let stdout_writer () = Lazy.force Writer.stdout
 let stderr_writer () = Lazy.force Writer.stderr
 
 let message s = Writer.write (stdout_writer ()) s
 let warn s = Writer.write (stderr_writer ()) (Printf.sprintf "WARN: %s\n%!" s)
+*)
 
 let nchoose_split l = 
   let fold_f (rs, ts) cur =
@@ -51,7 +56,6 @@ let rec send_req txfn timerfn q =
   | count -> begin
       txfn q >>= fun _ ->
       timerfn () >>= fun () ->
-      message (Printf.sprintf "retry query for %d times\n" (4 - count));
       send_req txfn timerfn q (count - 1)
     end
 
@@ -61,11 +65,11 @@ let send_pkt client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
   let resl = List.map cqpl ~f:(fun (ctxt, q) ->
     Deferred.any [
       ((send_req txfn timerfn q 4) >>= fun () -> 
-        return (Error (R.timeout ctxt)));
+        return (Err (R.timeout ctxt)));
       (try_with (fun () -> rxfn (R.parse ctxt))
         >>| function
         | Ok r -> (Answer r)
-        | Error exn -> (Error exn))
+        | Error exn -> (Err exn))
       ]) in
   let rec select errors = function
     | [] -> raise (Dns_resolve_error errors)
@@ -75,7 +79,7 @@ let send_pkt client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
       let rec find_answer errors = function
         | [] -> select errors ts
         | (Answer a) ::  _ -> return a
-        | (Error e) :: r -> find_answer (e :: errors) r
+        | (Err e) :: r -> find_answer (e :: errors) r
       in
       find_answer errors rs
   in select [] resl
@@ -84,7 +88,7 @@ let resolve client
     ?(dnssec = false)
     (commfn : commfn)
     (q_class : DP.q_class) (q_type : DP.q_type)
-    (q_name : domain_name) = 
+    (q_name : Name.t) =
   (try_with (fun () ->
     let id = (let module R = (val client: CLIENT ) in R.get_id ()) in
     let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
@@ -99,7 +103,7 @@ let gethostbyname
     commfn
     name =
   let open DP in
-  let domain = string_to_domain_name name in
+  let domain = Name.of_string name in
   resolve (module Dns.Protocol.Client) commfn q_class q_type domain
   >>| fun r ->
   List.fold_left r.answers ~f:(fun a x ->

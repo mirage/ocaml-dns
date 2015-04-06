@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/mirage/ocaml-dns.svg?branch=master)](https://travis-ci.org/mirage/ocaml-dns)
+
 This is a pure OCaml implementation of the DNS protocol.  It is intended to be
 a reasonably high-performance implementation, but clarity is preferred rather
 than low-level performance hacks.

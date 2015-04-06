@@ -59,7 +59,9 @@ let hexdump ibuf =
   let n = Dns.Buf.length ibuf in
   let obuf = Buffer.create (3 * n) in
   let rec acc i =
-    Buffer.add_string obuf (sprintf "%.2x " (int_of_char ibuf.{i}));
+    let ch = (int_of_char ibuf.{i}) in
+    Buffer.add_char obuf (if ch < 32 || ch >= 127 then '.' else ibuf.{i});
+    Buffer.add_string obuf (sprintf "%.2x " ch);
     if i mod 16 = 15 then Buffer.add_char obuf '\n';
     if i < n - 1 then acc (i + 1);
   in
@@ -67,8 +69,8 @@ let hexdump ibuf =
   if n mod 16 != 15 then Buffer.add_char obuf '\n';
   Buffer.contents obuf
 
-open Dns.Packet
-open Dns.Name
+open Dns
+open Packet
 
 let tests =
   "Packet" >:::
@@ -90,10 +92,10 @@ let tests =
         assert_equal ~msg:"#ad" 0 (List.length packet.additionals);
 
         let q = List.hd packet.questions in
-        assert_equal ~msg:"q_name" "www.google.com" (domain_name_to_string q.q_name);
+        assert_equal ~msg:"q_name" "www.google.com" (Name.to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
-        assert_equal ~msg:"q_unicast" QM q.q_unicast;
+        assert_equal ~msg:"q_unicast" Q_Normal q.q_unicast;
     );
 
     "marshal-dns-q-A" >:: (fun test_ctxt ->
@@ -103,10 +105,7 @@ let tests =
             qr=Query; opcode=Standard; aa=false;
             tc=false; rd=true; ra=false; rcode=NoError
           } in
-          let q = {
-            q_name=(string_to_domain_name "www.google.com");
-            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
-          } in
+          let q = make_question Q_A (Name.of_string "www.google.com") in
           {
             id=0x930b; detail; questions=[q];
             answers=[]; authorities=[]; additionals=[];
@@ -132,15 +131,15 @@ let tests =
         assert_equal ~msg:"#ad" 0 (List.length packet.additionals);
 
         let q = List.hd packet.questions in
-        assert_equal ~msg:"q_name" "www.google.com" (domain_name_to_string q.q_name);
+        assert_equal ~msg:"q_name" "www.google.com" (Name.to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
-        assert_equal ~msg:"q_unicast" QM q.q_unicast;
+        assert_equal ~msg:"q_unicast" Q_Normal q.q_unicast;
 
         let rev_answers = List.rev packet.answers in
         let expected_fourth = [208; 211; 209; 212; 210] in
         List.iter2 (fun fourth a ->
-            assert_equal ~msg:"name" "www.google.com" (domain_name_to_string a.name);
+            assert_equal ~msg:"name" "www.google.com" (Name.to_string a.name);
             assert_equal ~msg:"cls" RR_IN a.cls;
             assert_equal ~msg:"flush" false a.flush;
             assert_equal ~msg:"ttl" (Int32.of_int 220) a.ttl;
@@ -158,10 +157,7 @@ let tests =
             qr=Response; opcode=Standard; aa=false;
             tc=false; rd=true; ra=true; rcode=NoError
           } in
-          let q = {
-            q_name=(string_to_domain_name "www.google.com");
-            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
-          } in
+          let q = make_question ~q_class:Q_IN ~q_unicast:Q_Normal Q_A (Name.of_string "www.google.com") in
           let answers = List.map (fun fourth -> {
                 name=q.q_name; cls=RR_IN; flush=false; ttl=Int32.of_int 220;
                 rdata=A (Ipaddr.V4.of_string_exn (sprintf "74.125.237.%d" fourth));
@@ -192,10 +188,10 @@ let tests =
         assert_equal ~msg:"#ad" 0 (List.length packet.additionals);
 
         let q = List.hd packet.questions in
-        assert_equal ~msg:"q_name" "cubieboard2.local" (domain_name_to_string q.q_name);
+        assert_equal ~msg:"q_name" "cubieboard2.local" (Name.to_string q.q_name);
         assert_equal ~msg:"q_type" Q_A q.q_type;
         assert_equal ~msg:"q_class" Q_IN q.q_class;
-        assert_equal ~msg:"q_unicast" QM q.q_unicast;
+        assert_equal ~msg:"q_unicast" Q_Normal q.q_unicast;
     );
 
     "marshal-mdns-q-A" >:: (fun test_ctxt ->
@@ -206,8 +202,8 @@ let tests =
             tc=false; rd=false; ra=false; rcode=NoError
           } in
           let q = {
-            q_name=(string_to_domain_name "cubieboard2.local");
-            q_type=Q_A; q_class=Q_IN; q_unicast=QM;
+            q_name=(Name.of_string "cubieboard2.local");
+            q_type=Q_A; q_class=Q_IN; q_unicast=Q_Normal;
           } in
           {
             id=0; detail; questions=[q];
@@ -234,7 +230,7 @@ let tests =
         assert_equal ~msg:"#ad" 0 (List.length packet.additionals);
 
         let a = List.hd packet.answers in
-        assert_equal ~msg:"name" "cubieboard2.local" (domain_name_to_string a.name);
+        assert_equal ~msg:"name" "cubieboard2.local" (Name.to_string a.name);
         assert_equal ~msg:"cls" RR_IN a.cls;
         assert_equal ~msg:"flush" true a.flush;
         assert_equal ~msg:"ttl" (Int32.of_int 120) a.ttl;
@@ -251,7 +247,7 @@ let tests =
             tc=false; rd=false; ra=false; rcode=NoError
           } in
           let a = {
-            name=(string_to_domain_name "cubieboard2.local"); cls=RR_IN; flush=true; ttl=Int32.of_int 120;
+            name=(Name.of_string "cubieboard2.local"); cls=RR_IN; flush=true; ttl=Int32.of_int 120;
             rdata=A (Ipaddr.V4.of_string_exn "192.168.2.106");
           } in
           {
@@ -263,15 +259,15 @@ let tests =
     );
 
     "q_unicast" >:: (fun test_ctxt ->
-        (* Verify that q_unicast=QU can be marshalled and then parsed *)
+        (* Verify that q_unicast=Q_mDNS_Unicast can be marshalled and then parsed *)
         let packet =
           let detail = {
             qr=Query; opcode=Standard; aa=false;
             tc=false; rd=false; ra=false; rcode=NoError
           } in
           let q = {
-            q_name=(string_to_domain_name "cubieboard2.local");
-            q_type=Q_A; q_class=Q_IN; q_unicast=QU;
+            q_name=(Name.of_string "cubieboard2.local");
+            q_type=Q_A; q_class=Q_IN; q_unicast=Q_mDNS_Unicast;
           } in
           {
             id=0; detail; questions=[q];
@@ -280,7 +276,7 @@ let tests =
         let buf = marshal (Dns.Buf.create 512) packet in
         let parsed = parse buf in
         let q = List.hd parsed.questions in
-        assert_equal QU q.q_unicast
+        assert_equal Q_mDNS_Unicast q.q_unicast
       );
 
     "parse-mdns-r-SD" >:: (fun test_ctxt ->
@@ -292,7 +288,8 @@ let tests =
 
         let a = List.nth packet.answers 3 in
         begin
-          assert_equal ~msg:"TXT name" ~printer:(fun s -> s) srv_inst (domain_name_to_string a.name);
+          assert_equal ~msg:"TXT name" ~printer:(fun s -> s) srv_inst
+                       (Name.to_string a.name);
           assert_equal ~msg:"TXT cls" RR_IN a.cls;
           assert_equal ~msg:"TXT flush" true a.flush;
           assert_equal ~msg:"TXT ttl" (Int32.of_int 4500) a.ttl;
@@ -305,18 +302,18 @@ let tests =
 
         let a = List.nth packet.answers 2 in
         begin
-          assert_equal ~msg:"PTR name" ~printer:(fun s -> s) srv_name (domain_name_to_string a.name);
+          assert_equal ~msg:"PTR name" ~printer:(fun s -> s) srv_name (Name.to_string a.name);
           assert_equal ~msg:"PTR cls" RR_IN a.cls;
           assert_equal ~msg:"PTR flush" false a.flush;
           assert_equal ~msg:"PTR ttl" (Int32.of_int 4500) a.ttl;
           match a.rdata with
-          | PTR ptr -> assert_equal ~msg:"PTR" ~printer:(fun s -> s) srv_inst (domain_name_to_string ptr)
+          | PTR ptr -> assert_equal ~msg:"PTR" ~printer:(fun s -> s) srv_inst (Name.to_string ptr)
           | _ -> assert_failure "not PTR";
         end;
 
         let a = List.nth packet.answers 1 in
         begin
-          assert_equal ~msg:"SRV name" ~printer:(fun s -> s) srv_inst (domain_name_to_string a.name);
+          assert_equal ~msg:"SRV name" ~printer:(fun s -> s) srv_inst (Name.to_string a.name);
           assert_equal ~msg:"SRV cls" RR_IN a.cls;
           assert_equal ~msg:"SRV flush" true a.flush;
           assert_equal ~msg:"SRV ttl" (Int32.of_int 120) a.ttl;
@@ -325,18 +322,18 @@ let tests =
             assert_equal 0 priority;
             assert_equal 0 weight;
             assert_equal 22 port;
-            assert_equal ~msg:"SRV" ~printer:(fun s -> s) "luke-xps.local" (domain_name_to_string srv)
+            assert_equal ~msg:"SRV" ~printer:(fun s -> s) "luke-xps.local" (Name.to_string srv)
           | _ -> assert_failure "not SRV";
         end;
 
         let a = List.nth packet.answers 0 in
         begin
-          assert_equal ~msg:"PTR2 name" ~printer:(fun s -> s) "_services._dns-sd._udp.local" (domain_name_to_string a.name);
+          assert_equal ~msg:"PTR2 name" ~printer:(fun s -> s) "_services._dns-sd._udp.local" (Name.to_string a.name);
           assert_equal ~msg:"PTR2 cls" RR_IN a.cls;
           assert_equal ~msg:"PTR2 flush" false a.flush;
           assert_equal ~msg:"PTR2 ttl" (Int32.of_int 4500) a.ttl;
           match a.rdata with
-          | PTR ptr -> assert_equal ~msg:"PTR2" ~printer:(fun s -> s) srv_name (domain_name_to_string ptr)
+          | PTR ptr -> assert_equal ~msg:"PTR2" ~printer:(fun s -> s) srv_name (Name.to_string ptr)
           | _ -> assert_failure "not PTR2";
         end;
       );

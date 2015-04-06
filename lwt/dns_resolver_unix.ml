@@ -18,12 +18,12 @@
 
 open Lwt
 open Printf
-open Dns.Name
-open Dns.Operators
-open Dns.Protocol
+open Dns
+open Operators
+open Protocol
 open Dns_resolver
 
-module DP = Dns.Packet
+module DP = Packet
 
 let log_warn s = eprintf "WARN: %s\n%!" s
 
@@ -72,7 +72,7 @@ let resolve client
     ?(dnssec=false)
     server dns_port
     (q_class:DP.q_class) (q_type:DP.q_type)
-    (q_name:domain_name) =
+    (q_name:Name.t) =
    let commfn = connect_to_resolver server dns_port in
    resolve client ~dnssec commfn q_class q_type q_name
 

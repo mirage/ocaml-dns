@@ -20,6 +20,7 @@ open Printf
 
 module DR = Dns.RR
 module DP = Dns.Packet
+module DQ = Dns.Query
 
 type ip_endpoint = Ipaddr.t * int
 
@@ -31,6 +32,17 @@ module type PROCESSOR = sig
 end
 
 type 'a processor = (module PROCESSOR with type context = 'a)
+
+let compose process backup ~src ~dst packet =
+  process ~src ~dst packet
+  >>= fun result ->
+  match result with
+  | Some a ->
+      let open DQ in
+      (match a.rcode with
+      | DP.NoError -> return result
+      | _ -> backup ~src ~dst packet)
+  | None -> backup ~src ~dst packet
 
 let process_query buf len obuf src dst processor =
   let module Processor = (val processor : PROCESSOR) in
@@ -59,7 +71,6 @@ let process_of_zonebufs zonebufs =
     (Dns.Loader.new_db ()) zonebufs in
   let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =
-    let qname = List.map String.lowercase qname in
     Dns.Query.answer ~dnssec:true qname qtype dnstrie
   in
   fun ~src ~dst d ->

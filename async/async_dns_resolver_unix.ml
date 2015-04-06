@@ -1,11 +1,12 @@
 open Core.Std
 open Async.Std
-open Dns.Name
-open Dns.Operators
-open Dns.Protocol
+
+open Dns
+open Operators
+open Protocol
 open Async_dns_resolver
 
-module DP = Dns.Packet
+module DP = Packet
 
 let buflen = 4096
 let ns = "8.8.8.8"
@@ -50,7 +51,7 @@ let connect_to_resolver server_addr port =
     | Ok (`Ok ac_sock) -> begin
         let txfn buf =
           let w = Writer.create (Socket.fd ac_sock) in
-          Writer.write_bigstring ~pos:0 ~len:(Dns.Buf.length buf) w buf;
+          Writer.write_bigstring ~pos:0 ~len:(Buf.length buf) w buf;
           Writer.flushed w in
         let rec rxfn f =
           let buf = String.create buflen in
@@ -70,7 +71,7 @@ let resolve client
     ?(dnssec=false)
     server dns_port
     (q_class:DP.q_class) (q_type:DP.q_type)
-    (q_name:domain_name) =
+    (q_name:Name.t) =
    connect_to_resolver server dns_port >>= (fun commfn ->
    resolve client ~dnssec commfn q_class q_type q_name)
 

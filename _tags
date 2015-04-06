@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: eefda97a7a038bffab19720f0d34747f)
+# DO NOT EDIT (digest: 39c08c21616ab2eea529cd5a2a56ff44)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -49,6 +49,7 @@ true: annot, bin_annot
 <mirage/*.ml{,i,y}>: pkg_ipaddr
 <mirage/*.ml{,i,y}>: pkg_lwt
 <mirage/*.ml{,i,y}>: pkg_lwt.syntax
+<mirage/*.ml{,i,y}>: pkg_mirage-profile
 <mirage/*.ml{,i,y}>: pkg_mirage-types
 <mirage/*.ml{,i,y}>: pkg_re
 <mirage/*.ml{,i,y}>: pkg_re.str
@@ -58,7 +59,10 @@ true: annot, bin_annot
 "lwt/dns-lwt.cmxs": use_dns-lwt
 # Library dns-async
 "async/dns-async.cmxs": use_dns-async
+# Library dns-async-unix
+"async/dns-async-unix.cmxs": use_dns-async-unix
 <async/*.ml{,i,y}>: pkg_async
+<async/*.ml{,i,y}>: pkg_async_kernel
 <async/*.ml{,i,y}>: pkg_base64
 <async/*.ml{,i,y}>: pkg_bytes
 <async/*.ml{,i,y}>: pkg_core.syntax
@@ -69,6 +73,7 @@ true: annot, bin_annot
 <async/*.ml{,i,y}>: pkg_re.str
 <async/*.ml{,i,y}>: pkg_threads
 <async/*.ml{,i,y}>: use_dns
+<async/*.ml{,i,y}>: use_dns-async
 # Executable lwt_server
 <lib_test/unix/lwt_server.{native,byte}>: pkg_base64
 <lib_test/unix/lwt_server.{native,byte}>: pkg_bytes
@@ -80,6 +85,7 @@ true: annot, bin_annot
 <lib_test/unix/lwt_server.{native,byte}>: pkg_lwt
 <lib_test/unix/lwt_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/unix/lwt_server.{native,byte}>: pkg_lwt.unix
+<lib_test/unix/lwt_server.{native,byte}>: pkg_mirage-profile
 <lib_test/unix/lwt_server.{native,byte}>: pkg_re
 <lib_test/unix/lwt_server.{native,byte}>: pkg_re.str
 <lib_test/unix/lwt_server.{native,byte}>: use_dns
@@ -97,6 +103,7 @@ true: annot, bin_annot
 <lib_test/unix/time_server.{native,byte}>: pkg_lwt
 <lib_test/unix/time_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/unix/time_server.{native,byte}>: pkg_lwt.unix
+<lib_test/unix/time_server.{native,byte}>: pkg_mirage-profile
 <lib_test/unix/time_server.{native,byte}>: pkg_re
 <lib_test/unix/time_server.{native,byte}>: pkg_re.str
 <lib_test/unix/time_server.{native,byte}>: use_dns
@@ -112,6 +119,7 @@ true: annot, bin_annot
 <lib_test/unix/*.ml{,i,y}>: pkg_lwt
 <lib_test/unix/*.ml{,i,y}>: pkg_lwt.syntax
 <lib_test/unix/*.ml{,i,y}>: pkg_lwt.unix
+<lib_test/unix/*.ml{,i,y}>: pkg_mirage-profile
 <lib_test/unix/*.ml{,i,y}>: pkg_re
 <lib_test/unix/*.ml{,i,y}>: pkg_re.str
 <lib_test/unix/*.ml{,i,y}>: use_dns
@@ -130,6 +138,7 @@ true: annot, bin_annot
 <lwt/mldig.{native,byte}>: pkg_lwt
 <lwt/mldig.{native,byte}>: pkg_lwt.syntax
 <lwt/mldig.{native,byte}>: pkg_lwt.unix
+<lwt/mldig.{native,byte}>: pkg_mirage-profile
 <lwt/mldig.{native,byte}>: pkg_re
 <lwt/mldig.{native,byte}>: pkg_re.str
 <lwt/mldig.{native,byte}>: use_dns
@@ -146,6 +155,7 @@ true: annot, bin_annot
 <lwt/*.ml{,i,y}>: pkg_lwt
 <lwt/*.ml{,i,y}>: pkg_lwt.syntax
 <lwt/*.ml{,i,y}>: pkg_lwt.unix
+<lwt/*.ml{,i,y}>: pkg_mirage-profile
 <lwt/*.ml{,i,y}>: pkg_re
 <lwt/*.ml{,i,y}>: pkg_re.str
 <lwt/*.ml{,i,y}>: use_dns
@@ -154,6 +164,7 @@ true: annot, bin_annot
 <lwt/mldig.{native,byte}>: custom
 # Executable async_resolver
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_async
+<lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_async_kernel
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_base64
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_bytes
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_core.syntax
@@ -165,7 +176,9 @@ true: annot, bin_annot
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_threads
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: use_dns
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: use_dns-async
+<lib_test/async/test_async_dns_resolver_unix.{native,byte}>: use_dns-async-unix
 <lib_test/async/*.ml{,i,y}>: pkg_async
+<lib_test/async/*.ml{,i,y}>: pkg_async_kernel
 <lib_test/async/*.ml{,i,y}>: pkg_base64
 <lib_test/async/*.ml{,i,y}>: pkg_bytes
 <lib_test/async/*.ml{,i,y}>: pkg_core.syntax
@@ -177,30 +190,50 @@ true: annot, bin_annot
 <lib_test/async/*.ml{,i,y}>: pkg_threads
 <lib_test/async/*.ml{,i,y}>: use_dns
 <lib_test/async/*.ml{,i,y}>: use_dns-async
+<lib_test/async/*.ml{,i,y}>: use_dns-async-unix
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: custom
 # Executable test
 <lib_test/ounit/test.{native,byte}>: pkg_base64
 <lib_test/ounit/test.{native,byte}>: pkg_bytes
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct.syntax
+<lib_test/ounit/test.{native,byte}>: pkg_io-page
+<lib_test/ounit/test.{native,byte}>: pkg_io-page.unix
 <lib_test/ounit/test.{native,byte}>: pkg_ipaddr
+<lib_test/ounit/test.{native,byte}>: pkg_lwt
+<lib_test/ounit/test.{native,byte}>: pkg_lwt.syntax
+<lib_test/ounit/test.{native,byte}>: pkg_lwt.unix
+<lib_test/ounit/test.{native,byte}>: pkg_mirage-profile
+<lib_test/ounit/test.{native,byte}>: pkg_mirage-types
 <lib_test/ounit/test.{native,byte}>: pkg_oUnit
 <lib_test/ounit/test.{native,byte}>: pkg_pcap-format
 <lib_test/ounit/test.{native,byte}>: pkg_re
 <lib_test/ounit/test.{native,byte}>: pkg_re.str
 <lib_test/ounit/test.{native,byte}>: pkg_unix
 <lib_test/ounit/test.{native,byte}>: use_dns
+<lib_test/ounit/test.{native,byte}>: use_dns-lwt-core
+<lib_test/ounit/test.{native,byte}>: use_dns-lwt-mirage
 <lib_test/ounit/*.ml{,i,y}>: pkg_base64
 <lib_test/ounit/*.ml{,i,y}>: pkg_bytes
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct.syntax
+<lib_test/ounit/*.ml{,i,y}>: pkg_io-page
+<lib_test/ounit/*.ml{,i,y}>: pkg_io-page.unix
 <lib_test/ounit/*.ml{,i,y}>: pkg_ipaddr
+<lib_test/ounit/*.ml{,i,y}>: pkg_lwt
+<lib_test/ounit/*.ml{,i,y}>: pkg_lwt.syntax
+<lib_test/ounit/*.ml{,i,y}>: pkg_lwt.unix
+<lib_test/ounit/*.ml{,i,y}>: pkg_mirage-profile
+<lib_test/ounit/*.ml{,i,y}>: pkg_mirage-types
 <lib_test/ounit/*.ml{,i,y}>: pkg_oUnit
 <lib_test/ounit/*.ml{,i,y}>: pkg_pcap-format
 <lib_test/ounit/*.ml{,i,y}>: pkg_re
 <lib_test/ounit/*.ml{,i,y}>: pkg_re.str
 <lib_test/ounit/*.ml{,i,y}>: pkg_unix
 <lib_test/ounit/*.ml{,i,y}>: use_dns
+<lib_test/ounit/*.ml{,i,y}>: use_dns-lwt-core
+<lib_test/ounit/*.ml{,i,y}>: use_dns-lwt-mirage
 <lib_test/ounit/test.{native,byte}>: custom
 # OASIS_STOP
 <lib_test/*>: not_hygienic
+true: annot, principal, bin_annot, debug, short_paths

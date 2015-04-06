@@ -1,6 +1,6 @@
-OASISFormat: 0.3
+OASISFormat: 0.4
 Name:        dns
-Version:     0.13.0
+Version:     0.14.1
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire, Luke Dunstan
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC
@@ -9,7 +9,7 @@ Description: This is a pure OCaml implementation of the DNS protocol.
   It is intended to be a reasonably high-performance implementation,
   but clarity is preferred rather than low-level performance hacks.
 Homepage:    https://github.com/mirage/ocaml-dns
-Plugins:     META (0.3)
+Plugins:     META (0.4)
 BuildTools:  ocamlbuild
 
 Flag lwt
@@ -25,7 +25,7 @@ Flag mirage
   Default: false
 
 Flag async
-  Description: build the Async library
+  Description: build the Async_kernel library
   Default: false
 
 Library dns
@@ -53,7 +53,7 @@ Library "dns-lwt-mirage"
   Build$: flag(mirage)
   Install$: flag(mirage)
   Findlibname: mirage
-  Modules: Dns_resolver_mirage
+  Modules: Dns_server_mirage, Dns_resolver_mirage, Mdns_resolver_mirage
   BuildDepends: cstruct, lwt.syntax, dns, dns.lwt-core, mirage-types, io-page
   XMetaRequires: cstruct, dns, dns.lwt-core, tcpip, mirage-types, io-page
   FindlibParent: dns
@@ -63,9 +63,9 @@ Library "dns-lwt-core"
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt-core
-  Modules: Dns_server, Dns_resolver
-  BuildDepends: lwt, cstruct, lwt.syntax, dns
-  XMetaRequires: lwt, cstruct, dns
+  Modules: Dns_server, Dns_resolver, Mdns_responder
+  BuildDepends: lwt, cstruct, lwt.syntax, dns, mirage-profile
+  XMetaRequires: lwt, cstruct, dns, mirage-profile
   FindlibParent: dns
 
 Library "dns-async"
@@ -73,9 +73,19 @@ Library "dns-async"
   Build$: flag(async)
   Install$: flag(async)
   Findlibname: async
-  Modules: Async_dns_resolver, Async_dns_resolver_unix
-  BuildDepends: async, ipaddr, dns, core.syntax, threads
-  XMetaRequires: async, ipaddr, dns, threads
+  Modules: Async_dns_resolver
+  BuildDepends: async_kernel, ipaddr, dns, core.syntax
+  XMetaRequires: async_kernel, ipaddr, dns
+  FindlibParent: dns
+
+Library "dns-async-unix"
+  Path: async
+  Build$: flag(async)
+  Install$: flag(async)
+  Findlibname: async-unix
+  Modules: Async_dns_resolver_unix
+  BuildDepends: async, dns.async, threads
+  XMetaRequires: async, dns.async, threads
   FindlibParent: dns
 
 Document dns
@@ -93,7 +103,7 @@ Document dns_lwt
   BuildTools+:          ocamldoc
   Build$:               flag(lwt)
   XOCamlbuildPath:      lwt
-  XOCamlbuildModules:   Dns_resolver, Dns_server
+  XOCamlbuildModules:   Dns_resolver, Dns_server, Mdns_responder
 
 Executable lwt_server
   Path:               lib_test/unix
@@ -129,7 +139,7 @@ Executable async_resolver
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       async, dns.async
+  BuildDepends:       async, dns.async-unix
 
 Executable test
   Path:               lib_test/ounit
@@ -138,7 +148,7 @@ Executable test
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       dns, unix, oUnit, pcap-format
+  BuildDepends:       dns, dns.lwt-core, dns.mirage, io-page.unix, unix, oUnit, pcap-format, lwt.unix
 
 Test test
   Run$:               flag(tests)

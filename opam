@@ -30,10 +30,11 @@ depends: [
   "ocamlfind"
   "re"
   "cmdliner"
-  "ipaddr" {>= "2.2.0"}
+  "ipaddr" {>= "2.6.0"}
   "base64" {>= "2.0.0"}
   "ounit"
   "pcap-format" {test}
+  "mirage-profile"
 ]
 depopts: [
   "tcpip"
@@ -41,6 +42,6 @@ depopts: [
 ]
 conflicts: [
   "mirage-types" {<"1.2.0"}
-  "async" {<"109.21.00"}
+  "async" {<"112.24.00"}
 ]
 ocaml-version: [>= "4.00.0"]
