@@ -286,15 +286,9 @@ module Make (Transport : TRANSPORT) = struct
       Some obuf
 
 
-  exception RestartProbe
-
   let probe_restart t =
     t.probe_restart <- true;
     Lwt_condition.signal t.probe_condition ()
-
-  let check_probe_restart t =
-    if t.probe_restart then
-      raise RestartProbe
 
   let sleep t f =
     Transport.sleep f >>= fun () ->
@@ -305,91 +299,79 @@ module Make (Transport : TRANSPORT) = struct
     return_unit
 
   let probe_cycle t packet =
+    let dest = (multicast_ip,5353) in
     let delay f =
-      check_probe_restart t;
-      Lwt.pick [
-        sleep t f;
-        wait_cond t
-      ] >>= fun () ->
-      check_probe_restart t;
-      return_unit
+      if t.probe_restart then
+        return_unit
+      else
+        Lwt.pick [
+          sleep t f;
+          wait_cond t
+        ]
+    in
+    let probe_and_delay step =
+      if t.probe_restart then
+        return_unit
+      else begin
+        label ("probe.w" ^ step);
+        Transport.write dest packet >>= fun () ->
+        (* Fixed delay of 250 ms *)
+        label ("probe.d" ^ step);
+        delay 0.25
+      end
     in
     (* First probe *)
-    let dest = (multicast_ip,5353) in
-    label "probe.w1";
-    Transport.write dest packet >>= fun () ->
-    (* Fixed delay of 250 ms *)
-    label "probe.d1";
-    delay 0.25 >>= fun () ->
+    probe_and_delay "1" >>= fun () ->
     (* Second probe *)
-    label "probe.w2";
-    Transport.write dest packet >>= fun () ->
-    (* Fixed delay of 250 ms *)
-    label "probe.d2";
-    delay 0.25 >>= fun () ->
+    probe_and_delay "2" >>= fun () ->
     (* Third probe *)
-    label "probe.w3";
-    Transport.write dest packet >>= fun () ->
-    (* Fixed delay of 250 ms *)
-    label "probe.d3";
-    delay 0.25 >>= fun () ->
-    (* Build a list of names that have probed successfully *)
-    let names = Hashtbl.fold (
-      fun name state l ->
-        if state = Probing then begin
-          name :: l
-        end else begin
-          l
-        end
-      ) t.unique []
-    in
-    (* Mark them as confirmed *)
-    List.iter (fun name -> Hashtbl.replace t.unique name Confirmed) names;
+    probe_and_delay "3" >>= fun () ->
+    if not t.probe_restart then begin
+      (* Build a list of names that have probed successfully *)
+      let names = Hashtbl.fold (
+          fun name state l ->
+            if state = Probing then
+              name :: l
+            else
+              l
+        ) t.unique []
+      in
+      (* Mark them as confirmed *)
+      List.iter (fun name -> Hashtbl.replace t.unique name Confirmed) names
+    end;
     return_unit
-
-  let try_probe t =
-    (* TODO: probes should be per-link if there are multiple NICs *)
-    t.probe_restart <- false;
-    match prepare_probe t with
-    | None ->
-      return false
-    | Some packet ->
-      probe_cycle t packet >>= fun () ->
-      return true
 
   let rec probe_forever t first first_wakener =
     begin
-      try_lwt
-        (* If we lose a simultaneous probe tie-break then we have to delay 1 second *)
-        (* TODO: if there are more than 15 conflicts in 10 seconds then we are
-           supposed to wait 5 seconds *)
-        (if t.probe_tiebreak then
-          Transport.sleep 1.0
-        else
-          return_unit) >>= fun () ->
-        try_probe t >>= fun done_probe ->
-        (* We will only reach this point if the probe cycle has completed *)
-        if !first then begin
+      (* If we lose a simultaneous probe tie-break then we have to delay 1 second *)
+      (* TODO: if there are more than 15 conflicts in 10 seconds then we are
+         supposed to wait 5 seconds *)
+      (if t.probe_tiebreak then
+         Transport.sleep 1.0
+      else
+         return_unit) >>= fun () ->
+      (* Clear the restart flag *)
+      t.probe_restart <- false;
+      (* TODO: probes should be per-link if there are multiple NICs *)
+      match prepare_probe t with
+      | None ->
+        (* If there is nothing to do, block until we get a signal *)
+        label "probe_idle";
+        Lwt_condition.wait t.probe_condition
+      | Some packet ->
+        probe_cycle t packet >>= fun () ->
+        (* If the restart flag wasn't set then the cycle completed *)
+        if not t.probe_restart && !first then begin
           (* Only once, because a thread can only be woken once *)
           first := false;
           Lwt.wakeup first_wakener ()
         end;
-        if done_probe then
-          return_unit
-        else begin
-          (* If there is nothing to do, block until we get a signal *)
-          label "probe_idle";
-          Lwt_condition.wait t.probe_condition
-        end
-      with
-      | RestartProbe -> return_unit
-      | _ -> return_unit
+        return_unit
     end >>= fun () ->
-    if t.probe_end then begin
+    if t.probe_end then
       return_unit
-    end else begin
+    else
       probe_forever t first first_wakener
-    end
 
   let first_probe t =
     label "first_probe";
