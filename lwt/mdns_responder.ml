@@ -228,7 +228,7 @@ module Make (Transport : TRANSPORT) = struct
   let of_zonebuf zonebuf = of_zonebufs [zonebuf]
 
 
-  let add_unique_hostname t name ?(ttl=120l) ip =
+  let add_unique_hostname t name ?(ttl=120_l) ip =
     (* TODO: support IPv6 with AAAA *)
     (* Add it to the trie *)
     Dns.Loader.add_a_rr ip ttl name t.db;

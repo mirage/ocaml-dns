@@ -297,10 +297,10 @@ let good_query_str = "valid.local"
 let good_query_name = Dns.Name.of_string good_query_str
 let good_response_ip = Ipaddr.V4.of_string_exn "10.0.0.3"
 let good_detail = { qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError }
-let good_answer = { name=good_query_name; cls=RR_IN; flush=true; ttl=120l; rdata=A good_response_ip }
+let good_answer = { name=good_query_name; cls=RR_IN; flush=true; ttl=120_l; rdata=A good_response_ip }
 
 let bad_response_ip = Ipaddr.V4.of_string_exn "10.0.0.4"
-let bad_answer = { name=good_query_name; cls=RR_IN; flush=true; ttl=120l; rdata=A bad_response_ip }
+let bad_answer = { name=good_query_name; cls=RR_IN; flush=true; ttl=120_l; rdata=A bad_response_ip }
 
 let assert_ip ?msg expected ip =
   assert_equal ?msg ~printer:Ipaddr.V4.to_string expected ip
@@ -373,7 +373,7 @@ let tests =
         (*
         let response_ip = Ipaddr.V4.of_string_exn "10.0.0.3" in
         let response_name = Dns.Name.of_string query_str in
-        let answer = { name=response_name; cls=RR_IN; flush=true; ttl=120l; rdata=A response_ip } in
+        let answer = { name=response_name; cls=RR_IN; flush=true; ttl=120_l; rdata=A response_ip } in
         let response = {
           id=0;
           detail= {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError};
