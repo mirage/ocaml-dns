@@ -1,5 +1,6 @@
 # OASIS_START
-# DO NOT EDIT (digest: d831dea991e6477a0d9462e7baaf0dea)
+# DO NOT EDIT (digest: 373fc0a4fc51b2b111bed294a075b250)
 Dns_server_mirage
 Dns_resolver_mirage
+Mdns_resolver_mirage
 # OASIS_STOP

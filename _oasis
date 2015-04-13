@@ -53,7 +53,7 @@ Library "dns-lwt-mirage"
   Build$: flag(mirage)
   Install$: flag(mirage)
   Findlibname: mirage
-  Modules: Dns_server_mirage, Dns_resolver_mirage
+  Modules: Dns_server_mirage, Dns_resolver_mirage, Mdns_resolver_mirage
   BuildDepends: cstruct, lwt.syntax, dns, dns.lwt-core, mirage-types, io-page
   XMetaRequires: cstruct, dns, dns.lwt-core, tcpip, mirage-types, io-page
   FindlibParent: dns
@@ -63,9 +63,9 @@ Library "dns-lwt-core"
   Build$: flag(lwt)
   Install$: flag(lwt)
   Findlibname: lwt-core
-  Modules: Dns_server, Dns_resolver
-  BuildDepends: lwt, cstruct, lwt.syntax, dns
-  XMetaRequires: lwt, cstruct, dns
+  Modules: Dns_server, Dns_resolver, Mdns_responder
+  BuildDepends: lwt, cstruct, lwt.syntax, dns, mirage-profile
+  XMetaRequires: lwt, cstruct, dns, mirage-profile
   FindlibParent: dns
 
 Library "dns-async"
@@ -103,7 +103,7 @@ Document dns_lwt
   BuildTools+:          ocamldoc
   Build$:               flag(lwt)
   XOCamlbuildPath:      lwt
-  XOCamlbuildModules:   Dns_resolver, Dns_server
+  XOCamlbuildModules:   Dns_resolver, Dns_server, Mdns_responder
 
 Executable lwt_server
   Path:               lib_test/unix
@@ -148,7 +148,7 @@ Executable test
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       dns, unix, oUnit, pcap-format
+  BuildDepends:       dns, dns.lwt-core, dns.mirage, io-page.unix, unix, oUnit, pcap-format, lwt.unix
 
 Test test
   Run$:               flag(tests)

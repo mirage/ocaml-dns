@@ -71,7 +71,6 @@ let process_of_zonebufs zonebufs =
     (Dns.Loader.new_db ()) zonebufs in
   let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =
-    let qname = List.map String.lowercase qname in
     Dns.Query.answer ~dnssec:true qname qtype dnstrie
   in
   fun ~src ~dst d ->

@@ -362,19 +362,19 @@ hexword: charstring
    assume the owner field was omitted */
 owner:
    /* nothing */ { state.owner }
- | domain { state.owner <- $1 ; $1 }
+ | domain { state.owner <- $1 ; state.owner }
 
 domain:
-   DOT { [] }
+   DOT { Name.empty }
  | AT { state.origin }
- | label_except_at { (Bytes.lowercase $1) :: state.origin }
- | label DOT { [ (Bytes.lowercase $1) ] }
- | label DOT domain_labels { ((Bytes.lowercase $1) :: $3) @ state.origin }
- | label DOT domain_labels DOT { (Bytes.lowercase $1) :: $3 }
+ | label_except_at { Name.cons $1 state.origin }
+ | label DOT { Name.of_string_list ([$1]) }
+ | label DOT domain_labels { Name.cons $1 (Name.append (Name.of_string_list $3) state.origin) }
+ | label DOT domain_labels DOT { Name.of_string_list ($1 :: $3) }
 
 domain_labels:
-   label { [(Bytes.lowercase $1)] }
- | domain_labels DOT label { $1 @ [(Bytes.lowercase $3)] }
+   label { [$1] }
+ | domain_labels DOT label { $1 @ [$3] }
 
 /* It's acceptable to re-use numbers and keywords as character-strings.
    This is pretty ugly: we need special cases to distinguish a domain

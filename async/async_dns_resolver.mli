@@ -19,24 +19,26 @@
 open Core_kernel.Std
 open Async_kernel.Std
 
+open Dns
+
 type commfn = {
-  txfn : Dns.Buf.t -> unit Deferred.t;
-  rxfn : (Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Deferred.t;
+  txfn : Buf.t -> unit Deferred.t;
+  rxfn : (Buf.t -> Packet.t option) -> Packet.t Deferred.t;
   timerfn : unit -> unit Deferred.t;
   cleanfn : unit -> unit Deferred.t;
 }
 
 val resolve :
-  (module Dns.Protocol.CLIENT) ->
+  (module Protocol.CLIENT) ->
   ?dnssec:bool ->
   commfn ->
-  Dns.Packet.q_class ->
-  Dns.Packet.q_type ->
-  Dns.Name.domain_name -> Dns.Packet.t Deferred.t
+  Packet.q_class ->
+  Packet.q_type ->
+  Name.t -> Packet.t Deferred.t
 
 val gethostbyname :
-  ?q_class:Dns.Packet.q_class ->
-  ?q_type:Dns.Packet.q_type ->
+  ?q_class:Packet.q_class ->
+  ?q_type:Packet.q_type ->
   commfn ->
   string ->
   Ipaddr.t list Deferred.t

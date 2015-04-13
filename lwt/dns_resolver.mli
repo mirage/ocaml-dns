@@ -35,7 +35,7 @@ val resolve :
   ?dnssec:bool ->
   commfn -> Dns.Packet.q_class -> 
   Dns.Packet.q_type -> 
-  Dns.Name.domain_name -> 
+  Dns.Name.t ->
   Dns.Packet.t Lwt.t
 
 val gethostbyname :

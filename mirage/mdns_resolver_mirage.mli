@@ -1,5 +1,5 @@
 (*
- * Copyright (c) 2014 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2015 Luke Dunstan <LukeDunstan81@gmail.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,39 +17,8 @@
 val default_ns : Ipaddr.V4.t
 val default_port : int
 
-module type S = sig
-  type t
-  type stack
+module type S = Dns_resolver_mirage.S
 
-  val create : stack -> t
-
-  val resolve :
-    (module Dns.Protocol.CLIENT) ->
-    t -> Ipaddr.V4.t -> int ->
-    Dns.Packet.q_class ->
-    Dns.Packet.q_type ->
-    Dns.Name.t ->
-    Dns.Packet.t Lwt.t
-
-  val gethostbyname : t ->
-    ?server:Ipaddr.V4.t -> ?dns_port:int ->
-    ?q_class:Dns.Packet.q_class ->
-    ?q_type:Dns.Packet.q_type ->
-    string -> Ipaddr.t list Lwt.t
-
-  val gethostbyaddr : t ->
-    ?server:Ipaddr.V4.t -> ?dns_port:int ->
-    ?q_class:Dns.Packet.q_class ->
-    ?q_type:Dns.Packet.q_type ->
-    Ipaddr.V4.t -> string list Lwt.t
-end
-
-type static_dns = 
-{
-  names: (string, Ipaddr.t) Hashtbl.t;
-  rev: (Ipaddr.V4.t, string) Hashtbl.t;
-}
-
-module Static : S with type stack = static_dns
+module Client : Dns.Protocol.CLIENT
 
 module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) : S with type stack = S.t

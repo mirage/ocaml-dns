@@ -1,6 +1,8 @@
 (*
  * Copyright (c) 2011 Richard Mortier <mort@cantab.net>
  * Copyright (c) 2011 Anil Madhavapeddy <anil@recoil.org>
+ * Copyright (c) 2015 Heidi Howard <hh360@cam.ac.uk>
+ * Copyright (c) 2015 David Sheets <sheets@alum.mit.edu>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,43 +23,67 @@
     @author Richard Mortier <mort\@cantab.net> (documentation)
 *)
 
-open Cstruct
-
 (** DNS label, including pointer and zero. *)
 type label
 
-(** Domain name, as a list of strings. *)
-type domain_name = string list
+(** Domain name, as a list of labels ordered from the leaf to the root. *)
+type t
+
+(** Lookup key for the {! Trie}. *)
+type key = string
 
 (** Domain name map *)
-module Map: Map.S with type key = domain_name
+module Map: Map.S with type key = t
 
-(** Render a {! domain_name} to a simple string. *)
-val domain_name_to_string : domain_name -> string
+(** [empty] is the empty {! t}. *)
+val empty: t
 
-(** Convert a standard domain {! string} to a {! domain_name}. *)
-val string_to_domain_name : string -> domain_name
+(** [to_string_list name] is the label list corresponding to [name]. *)
+val to_string_list : t -> string list
 
-(** Construct name for reverse lookup given an IPv4 address. *)
-val for_reverse : Ipaddr.V4.t -> domain_name
+(** [of_string_list slist] is the domain name corresponding to label
+    list [slist]. *)
+val of_string_list : string list -> t
 
-(** Parse a {! domain_name} out of a {! Cstruct.t} given a set of already
+(** [append a b] is the domain name of the concatenation of [a] and [b]. *)
+val append: t -> t -> t
+
+(** [cons label name] is the domain name with subdomain [label] under [name]. *)
+val cons: string -> t -> t
+
+(** [to_string name] is the normal, human-readable string
+    serialization of [name] without the trailing dot. *)
+val to_string : t -> string
+
+(** [of_string name] is the domain name parsed out of the normal,
+    human-readable serialization [name]. *)
+val of_string : string -> t
+
+(** [string_to_domain_name] is {! of_string } but retained for
+    backward compatibility.
+    @deprecated since 0.15.0; use {! of_string } in new developments *)
+val string_to_domain_name : string -> t
+
+(** [of_ipaddr ip] is the name used for reverse lookup of IP address [ip]. *)
+val of_ipaddr : Ipaddr.t -> t
+
+(** Parse a {! t} out of a {! Cstruct.t} given a set of already
     observed names from the packet, and the offset we are into the packet.
 
-    @return {! domain_name} and the remainder
+    @return {! t} and the remainder
 *)
-val parse_name :
-  (int, label) Hashtbl.t -> int -> t -> domain_name * (int * t)
+val parse :
+  (int, label) Hashtbl.t -> int -> Cstruct.t -> t * (int * Cstruct.t)
 
-val marshal_name : ?compress:bool ->
-  int Map.t -> int -> t -> domain_name -> int Map.t * int * t
+val marshal : ?compress:bool ->
+  int Map.t -> int -> Cstruct.t -> t -> int Map.t * int * Cstruct.t
 
 (** Construct a {! Hashcons} character-string from a string. *)
-val hashcons_charstring : string -> string Hashcons.hash_consed
+val hashcons_string : string -> string Hashcons.hash_consed
 
 (** Construct a {! Hashcons} domain name (list of labels) from a {!
-    domain_name}. *)
-val hashcons_domainname : domain_name -> domain_name Hashcons.hash_consed
+    t}. *)
+val hashcons : t -> t Hashcons.hash_consed
 
 (** Clear the {! Hashcons} tables. *)
 val clear_cons_tables : unit -> unit
@@ -65,12 +91,8 @@ val clear_cons_tables : unit -> unit
 (** Malformed input to {! canon2key}. *)
 exception BadDomainName of string
 
-(** Lookup key for the {! Trie}. *)
-type key = string
+(** Convert a canonical [[ "www"; "example"; "com" ]] domain name into a key. *)
+val to_key : t -> key
 
-(** Convert a canonical [[ "www"; "example"; "com" ]] domain name into a key.
-    N.B. Requires that the input is already lower-case!
-*)
-val canon2key : domain_name -> key
-
-val dnssec_compare : domain_name -> domain_name -> int
+val dnssec_compare : t -> t -> int
+val dnssec_compare_str : string list -> string list -> int

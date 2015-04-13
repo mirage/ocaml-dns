@@ -23,9 +23,6 @@
     @author Haris Rotsos
 *)
 
-open Name
-open Cstruct
-
 cenum digest_alg {
   SHA1 = 1;
   SHA256 = 2
@@ -199,36 +196,37 @@ type type_bit_maps
 type rdata =
 | A of Ipaddr.V4.t
 | AAAA of Ipaddr.V6.t
-| AFSDB of uint16 * domain_name
-| CNAME of domain_name
-| DNSKEY of uint16 * dnssec_alg * string
-| DS of uint16 * dnssec_alg * digest_alg * string
+| AFSDB of Cstruct.uint16 * Name.t
+| CNAME of Name.t
+| DNSKEY of Cstruct.uint16 * dnssec_alg * string
+| DS of Cstruct.uint16 * dnssec_alg * digest_alg * string
 | HINFO of string * string
-| IPSECKEY of byte * gateway_tc * ipseckey_alg * gateway * string
+| IPSECKEY of Cstruct.byte * gateway_tc * ipseckey_alg * gateway * string
 | ISDN of string * string option
-| MB of domain_name
-| MD of domain_name
-| MF of domain_name
-| MG of domain_name
-| MINFO of domain_name * domain_name
-| MR of domain_name
-| MX of uint16 * domain_name
-| NS of domain_name
-| NSEC of domain_name (* uncompressed *) * type_bit_maps
-| NSEC3 of hash_alg * byte * uint16 * byte * string * byte * string * type_bit_maps
-| NSEC3PARAM of hash_alg * byte * uint16 * byte * string
-| PTR of domain_name
-| RP of domain_name * domain_name
-| RRSIG of rr_type * dnssec_alg * byte * int32 * int32 * int32 * uint16 *
-    domain_name (* uncompressed *) * string
-| SIG of dnssec_alg * int32 * int32 * uint16 * domain_name * string
-| RT of uint16 * domain_name
-| SOA of domain_name * domain_name * int32 * int32 * int32 * int32 * int32
-| SRV of uint16 * uint16 * uint16 * domain_name
+| MB of Name.t
+| MD of Name.t
+| MF of Name.t
+| MG of Name.t
+| MINFO of Name.t * Name.t
+| MR of Name.t
+| MX of Cstruct.uint16 * Name.t
+| NS of Name.t
+| NSEC of Name.t (* uncompressed *) * type_bit_maps
+| NSEC3 of hash_alg * Cstruct.byte * Cstruct.uint16 * Cstruct.byte *
+             string * Cstruct.byte * string * type_bit_maps
+| NSEC3PARAM of hash_alg * Cstruct.byte * Cstruct.uint16 * Cstruct.byte * string
+| PTR of Name.t
+| RP of Name.t * Name.t
+| RRSIG of rr_type * dnssec_alg * Cstruct.byte * int32 * int32 * int32 *
+             Cstruct.uint16 * Name.t (* uncompressed *) * string
+| SIG of dnssec_alg * int32 * int32 * Cstruct.uint16 * Name.t * string
+| RT of Cstruct.uint16 * Name.t
+| SOA of Name.t * Name.t * int32 * int32 * int32 * int32 * int32
+| SRV of Cstruct.uint16 * Cstruct.uint16 * Cstruct.uint16 * Name.t
 | SSHFP of pubkey_alg * fp_type * string
 | TXT of string list
 | UNKNOWN of int * string
-| WKS of Ipaddr.V4.t * byte * string
+| WKS of Ipaddr.V4.t * Cstruct.byte * string
 | X25 of string
            (* udp size, rcode, do bit, options *)
 | EDNS0 of (int * int * bool * ((int * string) list))
@@ -238,7 +236,7 @@ val rdata_to_string : rdata -> string
 val rdata_to_rr_type : rdata -> rr_type
 
 val marshal_rdata: int Name.Map.t ->
-  ?compress:bool -> int -> t -> rdata -> rr_type *  int Name.Map.t * int
+  ?compress:bool -> int -> Cstruct.t -> rdata -> rr_type *  int Name.Map.t * int
 (** Marshal the RR data into the DNS binary format.  Raises [Not_implemented]
     if the RR type is known but the logic is not implemented in the library
     yet. *)
@@ -251,7 +249,8 @@ exception Not_implemented
     names, a starting index, and the type of the RDATA. Raises [Not_implemented]
     if the RR type is not recognized. *)
 val parse_rdata :
-  (int, label) Hashtbl.t -> int -> rr_type -> int -> int32 -> t -> rdata
+  (int, Name.label) Hashtbl.t -> int -> rr_type -> int -> int32 -> Cstruct.t ->
+  rdata
 
 (** The class of a {! rr}, and usual conversion functions. *)
 type rr_class = RR_IN | RR_CS | RR_CH | RR_HS | RR_ANY
@@ -259,7 +258,7 @@ val rr_class_to_string : rr_class -> string
 
 (** A [resource record], with usual conversion and parsing functions. *)
 type rr = {
-  name  : domain_name;
+  name  : Name.t;
   cls   : rr_class;
   flush : bool;  (* mDNS cache flush bit *)
   ttl   : int32;
@@ -267,11 +266,11 @@ type rr = {
 }
 val rr_to_string : rr -> string
 val marshal_rr : ?compress:bool ->
-  int Name.Map.t * int * t -> rr ->
-  int Name.Map.t * int * t
+  int Name.Map.t * int * Cstruct.t -> rr ->
+  int Name.Map.t * int * Cstruct.t
 
 val parse_rr :
-  (int, label) Hashtbl.t -> int -> t -> rr * (int * t)
+  (int, Name.label) Hashtbl.t -> int -> Cstruct.t -> rr * (int * Cstruct.t)
 
 (** A predicate to test if a {! q_type } applies to an {! rr_type }. *)
 val q_type_matches_rr_type : q_type -> rr_type -> bool
@@ -299,7 +298,7 @@ val q_unicast_to_string : q_unicast -> string
 (** A question, with the usual conversion functions.
     Use {! make_question} if you want to take advantage of default values. *)
 type question = {
-  q_name    : domain_name;
+  q_name    : Name.t;
   q_type    : q_type;
   q_class   : q_class;
   q_unicast : q_unicast;
@@ -307,11 +306,11 @@ type question = {
 (** A convenience function to create a question record with default
     values for q_class (Q_IN) and q_unicast (Q_Normal). *)
 val make_question : ?q_class:q_class -> ?q_unicast:q_unicast ->
-  q_type -> domain_name -> question
+  q_type -> Name.t -> question
 
 val question_to_string : question -> string
 val parse_question :
-  (int, label) Hashtbl.t -> int -> t -> question * (int * t)
+  (int, Name.label) Hashtbl.t -> int -> Cstruct.t -> question * (int * Cstruct.t)
 
 (** The [qr] field from the DNS header {! detail}. *)
 type qr = Query | Response

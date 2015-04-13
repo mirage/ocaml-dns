@@ -19,7 +19,7 @@ open Printf
 
 let time_rsrc_record () =
   Dns.Packet.(
-    let name = ["time"; "com"] in
+    let name = Dns.Name.of_string_list ["time"; "com"] in
     let cls = RR_IN in
     let flush = false in
     let ttl = 100l in

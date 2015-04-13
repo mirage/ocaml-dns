@@ -16,7 +16,6 @@
  *)
 
 open RR
-open Name
 
 (* A "compressed" 256-way radix trie, with edge information provided
    explicitly in the trie nodes rather than with forward pointers. 
@@ -47,7 +46,9 @@ let bad_node = { data = None; edge = ""; byte = -1;
 		 children = [||]; ch_key = ""; least_child = '\255';
 		 flags = Nothing; }
 
-let local_dnsnode = { owner = hashcons_domainname (string_to_domain_name "local."); rrsets = [] }
+let local_dnsnode = {
+  owner = Name.hashcons (Name.of_string "local."); rrsets = [];
+}
 let local_dnstrie = {
   data = Some local_dnsnode; edge = ""; byte = 0;
   children = [||]; ch_key = ""; least_child = '\255';

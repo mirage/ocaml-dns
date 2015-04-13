@@ -16,17 +16,18 @@
 
 open Core_kernel.Std
 open Async_kernel.Std
-open Dns.Name
-open Dns.Operators
-open Dns.Protocol
 
-module DP = Dns.Packet
+open Dns
+open Operators
+open Protocol
+
+module DP = Packet
 
 type result = Answer of DP.t | Err of exn
 
 type commfn = {
-  txfn    : Dns.Buf.t -> unit Deferred.t;
-  rxfn    : (Dns.Buf.t -> Dns.Packet.t option) -> DP.t Deferred.t;
+  txfn    : Buf.t -> unit Deferred.t;
+  rxfn    : (Buf.t -> Packet.t option) -> DP.t Deferred.t;
   timerfn : unit -> unit Deferred.t;
   cleanfn : unit -> unit Deferred.t;
 }
@@ -87,7 +88,7 @@ let resolve client
     ?(dnssec = false)
     (commfn : commfn)
     (q_class : DP.q_class) (q_type : DP.q_type)
-    (q_name : domain_name) = 
+    (q_name : Name.t) =
   (try_with (fun () ->
     let id = (let module R = (val client: CLIENT ) in R.get_id ()) in
     let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
@@ -102,7 +103,7 @@ let gethostbyname
     commfn
     name =
   let open DP in
-  let domain = string_to_domain_name name in
+  let domain = Name.of_string name in
   resolve (module Dns.Protocol.Client) commfn q_class q_type domain
   >>| fun r ->
   List.fold_left r.answers ~f:(fun a x ->
