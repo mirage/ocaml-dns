@@ -421,7 +421,7 @@ let tests =
         (* Simulate a conflicting response *)
         let response_src_ip = Ipaddr.V4.of_string_exn "10.0.0.3" in
         let unique_name = Name.of_string unique_str in
-        let answer = { name=unique_name; cls=RR_IN; flush=true; ttl=120l; rdata=A response_src_ip } in
+        let answer = { name=unique_name; cls=RR_IN; flush=true; ttl=120_l; rdata=A response_src_ip } in
         let response = {
           id=0;
           detail= {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError};
@@ -501,7 +501,7 @@ let tests =
         let conflict_src_ip = Ipaddr.V4.of_string_exn "10.0.0.3" in
         let unique_name = Name.of_string unique_str in
         let question = { q_name=unique_name; q_type=Q_ANY_TYP; q_class=Q_IN; q_unicast=Q_mDNS_Unicast } in
-        let auth = { name=unique_name; cls=RR_IN; flush=true; ttl=120l; rdata=A conflict_src_ip } in
+        let auth = { name=unique_name; cls=RR_IN; flush=true; ttl=120_l; rdata=A conflict_src_ip } in
         let query = {
           id=0;
           detail= {qr=Query; opcode=Standard; aa=false; tc=false; rd=false; ra=false; rcode=NoError};

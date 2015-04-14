@@ -75,7 +75,7 @@ module Make : functor (Transport : TRANSPORT) -> sig
       it has been confirmed as unique by probing, which is initiated by
       calling "first_probe".
   *)
-  val add_unique_hostname : t -> Dns.Name.t -> Ipaddr.V4.t -> unit
+  val add_unique_hostname : t -> Dns.Name.t -> ?ttl:int32 -> Ipaddr.V4.t -> unit
 
   (** Initiates the first probe sequence to verify ownership of any unique records.
       If no unique records have been added then this function will do nothing.

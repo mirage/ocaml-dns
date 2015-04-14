@@ -1165,20 +1165,16 @@ let parse_rdata names base t cls ttl buf =
     | SOA (mn,rn, serial, refresh, retry, expire, minimum) ->
         let names, offset, rdbuf = Name.marshal ~compress names base rdbuf mn in
         let names, offset, rdbuf = Name.marshal ~compress names offset rdbuf rn in
-        Cstruct.BE.(
-        set_uint32 rdbuf 0 serial;
-        set_uint32 rdbuf 4 refresh;
-        set_uint32 rdbuf 8 retry;
-        set_uint32 rdbuf 12 expire;
-        set_uint32 rdbuf 16 minimum;
-        );
+        Cstruct.BE.set_uint32 rdbuf 0 serial;
+        Cstruct.BE.set_uint32 rdbuf 4 refresh;
+        Cstruct.BE.set_uint32 rdbuf 8 retry;
+        Cstruct.BE.set_uint32 rdbuf 12 expire;
+        Cstruct.BE.set_uint32 rdbuf 16 minimum;
         RR_SOA, names, 20+offset-base
     | SRV (prio, weight, port, name) ->
-        Cstruct.BE.(
-        set_uint16 rdbuf 0 prio;
-        set_uint16 rdbuf 2 weight;
-        set_uint16 rdbuf 4 port;
-        );
+        Cstruct.BE.set_uint16 rdbuf 0 prio;
+        Cstruct.BE.set_uint16 rdbuf 2 weight;
+        Cstruct.BE.set_uint16 rdbuf 4 port;
         let names, offset, _ =
           Name.marshal ~compress names (base+6) (Cstruct.shift rdbuf 6) name
         in
