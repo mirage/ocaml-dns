@@ -13,11 +13,12 @@
 
 0.14.1 (2015-03-29):
 * Reduce namespace pollution in `name.ml` to avoid breaking with Cstruct 1.6.0+.
-* Add a `Dns_server.compose` function to make it easier to build resolution pipelines (#58).
+* Add a `Dns_server.compose` function to make it easier to build
+  resolution pipelines (#58).
 * Add a `Dns_server_mirage` functor (#55).
 * Add `Dns_resolver.resolve_pkt` to support custom query packets (#49).
-* Split out the experimental Async_resolver into a `Async_kernel` and Unix libraries.
-  This introduces the `dns.async-unix` library.
+* Split out the experimental Async_resolver into a `Async_kernel` and
+  Unix libraries. This introduces the `dns.async-unix` library.
  
 0.14.0 (2015-01-29):
 * Renamed `Packet.QM` to `Packet.Q_Normal` and `QU` to `Q_mDNS_Unicast` for
@@ -27,27 +28,30 @@
 
 0.13.0 (2015-01-26):
 * Add support for multicast DNS (RFC6762) in the trie. (#35 from Luke Dunstan)
-  * mDNS doesn't use SOA nor delegation (RFC 6762 section 12), so some minor changes
-    to Trie are required to handle this.
-  * mDNS doesn't echo the questions in the response (RFC 6762 section 6), except
-    in legacy mode, so a `bool` argument was added to `Query.response_of_answer`.
-  * `Query.answer` still exists but now `Query.answer_multiple` is also available
-    for answering multiple questions in one query to produce a single answer 
-    (RFC 6762 section 5.3). One caveat is that responses may exceed the maximum
-    message length, but that is not really specific to mDNS. Also, in theory multiple
-    questions might require multiple separate response messages in unusual cases,
-    but that is complicated and the library does not deal with that yet.
-  * `Query.answer_multiple` takes an optional function to allow the caller to control
-    the `cache-flush` bit. This bit is only set for records that have been "confirmed
-    as unique". Using a callback requires minimal changes here but puts the burden of
-    maintaining uniqueness state elsewhere.
-  * `Query.answer_multiple` takes an optional function to filter the answer, in order
-    to support "known answer suppression" (RFC 6762 section 7.1). Again, using a callback
-    requires minimal change to the core, but later on the mDNS-specific known answer
-    suppression logic could move into the `Query` module if that turns out to be simpler.
-  * A query for `PTR` returns additional records for `SRV` and `TXT`, to support efficient
-    service discovery.
-  * `Trie.iter` was added to support mDNS announcements.
+* mDNS doesn't use SOA nor delegation (RFC 6762 section 12), so some minor changes
+  to Trie are required to handle this.
+* mDNS doesn't echo the questions in the response (RFC 6762 section 6), except
+  in legacy mode, so a `bool` argument was added to `Query.response_of_answer`.
+* `Query.answer` still exists but now `Query.answer_multiple` is also available
+  for answering multiple questions in one query to produce a single answer 
+  (RFC 6762 section 5.3). One caveat is that responses may exceed the maximum
+  message length, but that is not really specific to mDNS. Also, in
+  theory multiple questions might require multiple separate response
+  messages in unusual cases, but that is complicated and the library
+  does not deal with that yet.
+* `Query.answer_multiple` takes an optional function to allow the caller
+  to control the `cache-flush` bit. This bit is only set for records
+  that have been "confirmed as unique". Using a callback requires
+  minimal changes here but puts the burden of maintaining uniqueness
+  state elsewhere.
+* `Query.answer_multiple` takes an optional function to filter the
+  answer, in order to support "known answer suppression" (RFC 6762
+  section 7.1). Again, using a callback requires minimal change to the
+  core, but later on the mDNS-specific known answer suppression logic
+  could move into the `Query` module if that turns out to be simpler.
+* A query for `PTR` returns additional records for `SRV` and `TXT`, to
+  support efficient service discovery.
+* `Trie.iter` was added to support mDNS announcements.
 * Switch to `Bytes` instead of `String` for eventual `-safe-string` support.
 * Partially remove some error printing to stderr. (#36)
 
