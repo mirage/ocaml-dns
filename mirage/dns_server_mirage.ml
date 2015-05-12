@@ -40,8 +40,7 @@ module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) = struct
   let create s k = {s;k}
 
   let eventual_process_of_zonefiles t filenames = 
-    Lwt_list.fold_left_s 
-      (fun acc filename ->
+    Lwt_list.map_s (fun filename ->
       K.size t.k filename
       >>= function
       | `Error _ -> fail (Failure "not found")
@@ -49,10 +48,11 @@ module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) = struct
         K.read t.k filename 0 (Int64.to_int sz) 
         >>= function 
         | `Error _ -> fail (Failure "error reading")
-        | `Ok pages -> return (String.concat acc (List.map Cstruct.to_string pages))) 
-      "" filenames
-    >>= fun zonebuf ->
-    return (process_of_zonebuf zonebuf)
+        | `Ok pages ->
+          return (Cstruct.copyv pages)
+      ) filenames
+    >>= fun zonebufs ->
+    return (process_of_zonebufs zonebufs)
     
   let serve_with_processor t ~port ~processor =
   	let udp = S.udpv4 t.s in
