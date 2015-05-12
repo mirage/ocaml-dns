@@ -10,6 +10,7 @@
 * Name.for_reverse has been replaced by Name.of_ipaddr
 * Name.of_ipaddr accepts a Ipaddr.t and produces a name suitable for reverse DNS
 * We now require >= ipaddr.2.6.0 to support Name.of_ipaddr
+* Uri 1.9.0+ is now required for its uri.services_full service registry
 
 0.14.1 (2015-03-29):
 * Reduce namespace pollution in `name.ml` to avoid breaking with Cstruct 1.6.0+.

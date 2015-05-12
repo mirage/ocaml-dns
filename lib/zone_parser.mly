@@ -85,11 +85,16 @@ let parse_wks proto services =
 (*
 	try (getservbyname s (getprotobynumber proto).p_name).s_port
 *)
-        try raise Not_found
-	with Not_found ->
-	  parse_error ("unknown service \"" ^ s ^ "\" for protocol "
-		           ^ (string_of_int (Cstruct.byte_to_int proto)));
-	  raise Parsing.Parse_error
+      let proto, ports = match Cstruct.byte_to_int proto with
+        | 6 -> "tcp", Uri_services_full.tcp_port_of_service s
+        | 17 -> "udp", Uri_services_full.udp_port_of_service s
+        | n -> string_of_int n, []
+      in
+      match ports with
+      | port::_ -> port
+      | [] ->
+        parse_error ("unknown service \"" ^ s ^ "\" for protocol " ^ proto);
+        raise Parsing.Parse_error
   in let addport bitmap n =
     let byte = n/8 in
     let bit = 128 lsr (n mod 8) in
@@ -303,8 +308,8 @@ proto: charstring
 /*
      { try (getprotobyname $1).p_proto
 */
-     { try raise Not_found
-       with Not_found -> try parse_byte $1
+     { match $1 with "tcp" -> char_of_int 6 | "udp" -> char_of_int 17 | _ ->
+       try parse_byte $1
        with Parsing.Parse_error ->
 	 parse_error ($1 ^ " is not a known IP protocol");
 	 raise Parsing.Parse_error }
