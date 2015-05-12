@@ -55,20 +55,24 @@ module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) = struct
     >|= process_of_zonebufs
     
   let serve_with_processor t ~port ~processor =
-  	let udp = S.udpv4 t.s in
-  	let listener ~src ~dst ~src_port buf =
-	    let ba = Cstruct.to_bigarray buf in
-	    let src' = (Ipaddr.V4 dst), port in
-	    let dst' = (Ipaddr.V4 src), src_port in
-	    let obuf = (Io_page.get 1 :> Dns.Buf.t) in
-	    process_query ba (Dns.Buf.length ba) obuf src' dst' processor
-	    >>= function
-	    | None -> return ()
-	    | Some rba ->
-	      let rbuf = Cstruct.of_bigarray rba in
-	      S.UDPV4.write ~source_port:port ~dest_ip:src ~dest_port:src_port udp rbuf in
-	S.listen_udpv4 t.s port listener;
-  S.listen t.s
+    let udp = S.udpv4 t.s in
+    let listener ~src ~dst ~src_port buf =
+      let ba = Cstruct.to_bigarray buf in
+      let src' = (Ipaddr.V4 dst), port in
+      let dst' = (Ipaddr.V4 src), src_port in
+      let obuf = (Io_page.get 1 :> Dns.Buf.t) in
+      process_query ba (Dns.Buf.length ba) obuf src' dst' processor
+      >>= function
+      | None -> return ()
+      | Some rba ->
+        let rbuf = Cstruct.of_bigarray rba in
+        let dest_port = src_port in
+        let source_port = port in
+        let dest_ip = src in
+        S.UDPV4.write ~source_port ~dest_ip ~dest_port udp rbuf
+    in
+    S.listen_udpv4 t.s port listener;
+    S.listen t.s
 
   let serve_with_zonebufs t ~port ~zonebufs =
     let process = process_of_zonebufs zonebufs in
