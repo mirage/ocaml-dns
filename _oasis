@@ -34,8 +34,8 @@ Library dns
   Pack: true
   Modules:
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
-    Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
-  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.2.0), base64 (>= 2.0.0), bytes, uri.services_full
+    Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol, Dig
+  BuildDepends:	cstruct (>= 0.7.1), cstruct.syntax, re, re.str, ipaddr (>= 2.6.0), base64 (>= 2.0.0), bytes, uri.services_full
   XMetaRequires: cstruct, re, re.str, ipaddr, base64, bytes, uri.services_full
 
 Library "dns-lwt"
@@ -125,7 +125,7 @@ Executable time_server
 
 Executable mldig
   Path:               lwt
-  MainIs:             mldig.ml
+  MainIs:             dig_unix.ml
   Build$:             flag(tests) && flag(lwt)
   Custom:             true
   CompiledObject:     best

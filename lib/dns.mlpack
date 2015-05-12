@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: cb594728b20def3b2937c01587b9ff91)
+# DO NOT EDIT (digest: 423ab41f6083df490c8fc07c4d96aa4f)
 Hashcons
 Loader
 Name
@@ -14,4 +14,5 @@ Zone_parser
 Resolvconf
 Buf
 Protocol
+Dig
 # OASIS_STOP
