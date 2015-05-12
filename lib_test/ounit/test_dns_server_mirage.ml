@@ -119,7 +119,7 @@ let assert_rrlist msg expected_strs actual_rrlist =
 let tests =
   "Dns_server_mirage" >:::
   [
-    "serve_with_zonebufs" >:: (fun test_ctxt ->
+    "serve_with_zonefiles" >:: (fun test_ctxt ->
         let stack = create_stack () in
         let u = MockStack.udpv4 stack in
         let module S = Dns_server_mirage.Make(MockKV)(MockStack) in
