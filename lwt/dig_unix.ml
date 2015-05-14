@@ -29,60 +29,6 @@ let print_timeout () =
   exit 1
 
 let print_error e = printf ";; read error: %s\n" (Unix.error_message e)
-let print_section s = printf ";; %s SECTION:\n" (String.uppercase s)
-
-(* TODO: Should Name do this? *)
-let string_of_name n = (Name.to_string n)^"."
-
-let print_answers p =
-    printf ";; global options: \n";
-    let { detail; id; questions; answers; authorities; additionals } = p in
-    let if_flag a b = if a then None else Some b in
-    let flags = [
-      (match detail.qr with |Query -> None |Response -> Some "qr");
-      (if_flag detail.aa "aa");
-      (if_flag detail.tc "tc");
-      (if_flag detail.rd "rd");
-      (if_flag detail.ra "ra");
-    ] in
-    let flags = String.concat " " (List.fold_left (fun a ->
-      function |None -> a |Some x -> x :: a) [] flags) in
-    printf ";; ->>HEADER<<- opcode: %s, status: %s, id: %u\n"
-      (String.uppercase (opcode_to_string detail.opcode))
-      (String.uppercase (rcode_to_string detail.rcode)) id;
-    let al = List.length in
-    printf ";; flags: %s; QUERY: %d, ANSWER: %d, AUTHORITY: %d, ADDITIONAL: %d\n\n"
-      flags (al questions) (al answers) (al authorities) (al additionals);
-    if al questions > 0 then begin
-      print_section "question";
-      List.iter (fun q -> printf ";%-23s %-8s %-8s %s\n"
-        (string_of_name q.q_name) ""
-        (q_class_to_string q.q_class)
-        (q_type_to_string q.q_type)
-      ) questions;
-      print_newline ();
-    end;
-    let print_rr rr = printf "%-24s %-8lu %-8s %-8s %s\n"
-        (string_of_name rr.name) rr.ttl (rr_class_to_string rr.cls) in
-    List.iter (fun (nm,ob) ->
-      if al ob > 0 then print_section nm;
-      List.iter (fun rr ->
-        match rr.rdata with
-        |A ip -> print_rr rr "A" (Ipaddr.V4.to_string ip);
-        |AAAA ip -> print_rr rr "AAAA" (Ipaddr.V6.to_string ip)
-        |SOA (n1,n2,a1,a2,a3,a4,a5) ->
-          print_rr rr "SOA"
-            (sprintf "%s %s %lu %lu %lu %lu %lu" (string_of_name n1)
-              (string_of_name n2) a1 a2 a3 a4 a5);
-        |MX (pref,host) ->
-          print_rr rr "MX" (sprintf "%d %s" pref (string_of_name host));
-        |CNAME a -> print_rr rr "CNAME" (string_of_name a)
-        |NS a -> print_rr rr "NS" (string_of_name a)
-        |TXT s -> print_rr rr "TXT" (sprintf "%S" (String.concat "" s))
-        |_ -> printf "unknown\n"
-      ) ob;
-      if al ob > 0 then print_newline ()
-    ) ["answer",answers; "authority",authorities; "additional",additionals]
 
 open Lwt
 open Cmdliner
@@ -90,7 +36,8 @@ open Cmdliner
 let dns_port = 53
 
 let dig source_ip opt_dest_port q_class q_type args =
-  lwt res = Dns_resolver_unix.create () in
+  Dns_resolver_unix.create ()
+  >>= fun res ->
   let timeout = 5 (* matches dig *) in
   (* Fold over args to determine overrides for q_class/type *)
   let (server, q_class, q_type, domains) = List.fold_left (
@@ -112,11 +59,11 @@ let dig source_ip opt_dest_port q_class q_type args =
         |Some q_type, Some q_class -> (server, q_class, q_type, domains)
       end
   ) (begin
-     match res.Dns_resolver_unix.servers with
-     | [] -> None
-     | (s,p)::_ -> Some (Ipaddr.to_string s, Some p) 
-     end,
-    q_class, q_type, []) args in
+    match res.Dns_resolver_unix.servers with
+    | [] -> None
+    | (s,p)::_ -> Some (Ipaddr.to_string s, Some p) 
+  end, q_class, q_type, []) args
+  in
   let domains = match domains with |[] -> ["."] |_ -> domains in
   printf ";; <<>> MLDiG 1.0 <<>>\n"; (* TODO put query domains from Sys.argv here *)
   match server with
@@ -125,18 +72,18 @@ let dig source_ip opt_dest_port q_class q_type args =
     debug (sprintf "Querying DNS server %s" x);
     let domain = Name.of_string (List.hd domains) in
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
-    lwt addr =
-      try return (Ipaddr.of_string_exn x)
-      with Ipaddr.Parse_error _ ->
-        lwt addrs = Dns_resolver_unix.gethostbyname res x in
-        match addrs with
-        | [] -> error "dig" ("Could not resolve nameserver '"^x^"'")
-        | addr::_ -> return addr
-    in
+    (try return (Ipaddr.of_string_exn x)
+     with Ipaddr.Parse_error _ ->
+       Dns_resolver_unix.gethostbyname res x
+       >>= function
+       | [] -> error "dig" ("Could not resolve nameserver '"^x^"'")
+       | addr::_ -> return addr
+    ) >>= fun addr ->
     let port = match opt_port with None -> dns_port | Some p -> p in
-    Dns_resolver_unix.(resolve
-                    {res with servers = [addr,port]}
-                    q_class q_type domain >|= print_answers)
+    Dns_resolver_unix.(
+      resolve {res with servers = [addr,port]} q_class q_type domain 
+      >|= fun ans -> printf "%s" (Dig.string_of_answers ans)
+    )
 
 let t =
   let source_ip =
