@@ -20,6 +20,8 @@ tags: [
 build: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix "--%{base-unix:enable}%-lwt" "--%{mirage-types:enable}%-mirage"]
   ["ocaml" "setup.ml" "-build"]
+]
+install: [
   ["ocaml" "setup.ml" "-install"]
 ]
 remove: [["ocamlfind" "remove" "dns"]]
@@ -45,4 +47,4 @@ conflicts: [
   "mirage-types" {<"1.2.0"}
   "async" {<"112.24.00"}
 ]
-ocaml-version: [>= "4.00.0"]
+available: [ ocaml-version >= "4.00.0" ]
