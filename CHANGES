@@ -11,6 +11,7 @@
 * Name.of_ipaddr accepts a Ipaddr.t and produces a name suitable for reverse DNS
 * We now require >= ipaddr.2.6.0 to support Name.of_ipaddr
 * uri 1.7.0+ is now required for its uri.services service registry
+* Named service lookups are now supported in zone files
 * Dig string serializations are now in Dns.Dig (#61 from Heidi Howard)
 
 0.14.1 (2015-03-29):
