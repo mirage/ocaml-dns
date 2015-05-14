@@ -1,4 +1,4 @@
-0.15.0 (2015-05-12):
+0.15.0 (2015-05-14):
 * Name.domain_name has been renamed to Name.t and is now abstract
 * Name.domain_name_to_string has been renamed to Name.to_string
 * Name.string_to_domain_name has been deprecated for Name.of_string
@@ -10,7 +10,7 @@
 * Name.for_reverse has been replaced by Name.of_ipaddr
 * Name.of_ipaddr accepts a Ipaddr.t and produces a name suitable for reverse DNS
 * We now require >= ipaddr.2.6.0 to support Name.of_ipaddr
-* Uri 1.9.0+ is now required for its uri.services_full service registry
+* uri 1.7.0+ is now required for its uri.services service registry
 * Dig string serializations are now in Dns.Dig (#61 from Heidi Howard)
 
 0.14.1 (2015-03-29):

@@ -86,8 +86,8 @@ let parse_wks proto services =
 	try (getservbyname s (getprotobynumber proto).p_name).s_port
 *)
       let proto, ports = match Cstruct.byte_to_int proto with
-        | 6 -> "tcp", Uri_services_full.tcp_port_of_service s
-        | 17 -> "udp", Uri_services_full.udp_port_of_service s
+        | 6 -> "tcp", Uri_services.tcp_port_of_service s
+        | 17 -> "udp", Uri_services.udp_port_of_service s
         | n -> string_of_int n, []
       in
       match ports with
