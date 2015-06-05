@@ -1049,6 +1049,7 @@ let parse_rdata names base t cls ttl buf =
         let x25,_ = parse_charstr buf in
         X25 x25
     | _ -> raise Not_implemented
+    [@ref mdns "s18.14_p6_c1"]
 
   let marshal_rdata names ?(compress=true) base rdbuf = function
     | A ip ->
@@ -1177,6 +1178,7 @@ let parse_rdata names base t cls ttl buf =
         Cstruct.BE.set_uint16 rdbuf 4 port;
         let names, offset, _ =
           Name.marshal ~compress names (base+6) (Cstruct.shift rdbuf 6) name
+            [@ref mdns "s18.14_p8_c1"]
         in
         RR_SRV, names, offset-base
     | TXT strings ->
@@ -1201,6 +1203,7 @@ let parse_rdata names base t cls ttl buf =
         Cstruct.blit_from_string data 0 rdbuf 0 (String.length data);
         RR_UNSPEC, names, (String.length data)
     | _ -> raise Not_implemented
+    [@ref mdns "s18.14_p4_c1"]
 
   let compare_rdata a_rdata b_rdata =
     match (a_rdata, b_rdata) with
@@ -1240,7 +1243,7 @@ let parse_rdata names base t cls ttl buf =
   | _ -> failwith (sprintf "unsported rdata compare : %s - %s"
                     (rdata_to_string a_rdata) (rdata_to_string b_rdata))
 let parse_rr names base buf =
-  let name, (base,buf) = Name.parse names base buf in
+  let name, (base,buf) = Name.parse names base buf [@ref mdns "s18.14_p5_c1"] in
   let t = get_rr_typ buf in
   match int_to_rr_type t with
     | None ->
@@ -1374,6 +1377,7 @@ let marshal_detail d =
         lor (if d.rd then 1 lsl 8 else 0)
           lor (if d.ra then 1 lsl 7 else 0)
             lor (rcode_to_int d.rcode)
+              [@ref mdns "s18.8_p1_c1"] [@ref mdns "s18.9_p1_c1"] [@ref mdns "s18.10_p1_c1"]
 
 let detail_to_string d =
   sprintf "%s:%d %s:%s:%s:%s %d"
@@ -1407,6 +1411,7 @@ let parse_detail d =
     | None -> failwith "bad rcode"
   in
   { qr; opcode; aa; tc; rd; ra; rcode }
+  [@ref mdns "s18.8_p1_c1"] [@ref mdns "s18.9_p1_c1"] [@ref mdns "s18.10_p1_c1"]
 
 type t = {
   id          : int;

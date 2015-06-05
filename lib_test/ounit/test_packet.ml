@@ -112,6 +112,7 @@ let tests =
           } in
         let buf = marshal (Dns.Buf.create 512) packet in
         assert_equal ~printer:hexdump raw buf
+          [@ref mdns "s18.8_p1_c1"] [@ref mdns "s18.9_p1_c1"] [@ref mdns "s18.10_p1_c1"]
     );
 
     "parse-dns-r-A" >:: (fun test_ctxt ->
@@ -358,6 +359,7 @@ let tests =
            dugite._snake._tcp.local <IN|120> [SRV (0,0,33333, fake2.local)]\
            >" in
         assert_equal ~msg:"Packet.to_string" ~printer:(fun s -> s) expected_str (to_string packet)
+          [@ref mdns "s18.14_p5_c1"] [@ref mdns "s18.14_p6_c1"]
       );
 
   ]

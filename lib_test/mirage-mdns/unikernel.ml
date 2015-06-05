@@ -30,7 +30,7 @@ module Main (C:CONSOLE) (K:KV_RO) (S:STACKV4) = struct
     let module Responder = Make(struct
         let alloc () = (Io_page.get 1 :> Dns.Buf.t)
         let write (dest_ip,dest_port) txbuf =
-          U.write ~source_port:listening_port ~dest_ip:dest_ip ~dest_port udp (Cstruct.of_bigarray txbuf)
+          U.write ~source_port:listening_port ~dest_ip:dest_ip ~dest_port udp (Cstruct.of_bigarray txbuf) [@ref mdns "s6_p11_c1"]
         let sleep t = OS.Time.sleep t
       end)
     in

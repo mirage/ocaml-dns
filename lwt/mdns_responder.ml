@@ -266,7 +266,7 @@ module Make (Transport : TRANSPORT) = struct
     (* Build a list of questions *)
     let questions = List.map (fun name -> DP.({
         q_name = name;
-        q_type = Q_ANY_TYP;
+        q_type = Q_ANY_TYP [@ref mdns "s8.1_p1_c3"];
         q_class = Q_IN;
         q_unicast = Q_mDNS_Unicast;  (* request unicast response as per RFC 6762 section 8.1 para 6 *)
       })) names
@@ -313,7 +313,7 @@ module Make (Transport : TRANSPORT) = struct
       if t.probe_restart then
         return_unit
       else begin
-        label ("probe.w" ^ step);
+        label ("probe.w" ^ step) [@ref mdns "s5_p2_c1"];
         Transport.write dest packet >>= fun () ->
         (* Fixed delay of 250 ms *)
         label ("probe.d" ^ step);
@@ -353,7 +353,7 @@ module Make (Transport : TRANSPORT) = struct
       (* Clear the restart flag *)
       t.probe_restart <- false;
       (* TODO: probes should be per-link if there are multiple NICs *)
-      match prepare_probe t with
+      match prepare_probe t [@ref mdns "s8.1_p1_c1"] with
       | None ->
         (* If there is nothing to do, block until we get a signal *)
         label "probe_idle";
@@ -379,12 +379,13 @@ module Make (Transport : TRANSPORT) = struct
     Transport.sleep (Random.float 0.25) >>= fun () ->
     let first = ref true in
     let first_wait, first_wakener = Lwt.wait () in
-    t.probe_forever <- probe_forever t first first_wakener;
+    t.probe_forever <- probe_forever t first first_wakener
+        [@ref mdns "s8_p2_c1"];
     (* The caller may wait for the first complete probe cycle *)
     first_wait
 
   let announce t ~repeat =
-    label "announce";
+    label "announce" [@ref mdns "s8.3_p5_c1"] [@ref mdns "s8.3_p5_c2"];
     let questions = ref [] in
     let build_questions node =
       let q = DP.({
@@ -421,12 +422,14 @@ module Make (Transport : TRANSPORT) = struct
         Transport.sleep sleept >>= fun () ->
         write_repeat dest obuf (repeat - 1) (sleept *. 2.0)
     in
-    Dns.Trie.iter build_questions t.dnstrie;
+    Dns.Trie.iter build_questions t.dnstrie [@ref mdns "s8.3_p1_c1"];
     (* TODO: if the data for a shared record has changed, we should send 'goodbye'.
        See RFC 6762 section 8.4 *)
-    let answer = DQ.answer_multiple ~dnssec:false ~mdns:true ~flush:(is_confirmed_unique t) !questions t.dnstrie in
+    let answer = DQ.answer_multiple ~dnssec:false ~mdns:true
+        ~flush:(is_confirmed_unique t) [@ref mdns "s10.2_p11_c1"]
+        !questions t.dnstrie in
     let answer = dedup_answer answer in
-    let dest_host = multicast_ip in
+    let dest_host = multicast_ip [@ref mdns "s6_p12_c1"] in
     let dest_port = 5353 in
     (* TODO: refactor Dns.Query to avoid the need for this fake query *)
     let fake_detail = DP.({ qr=Query; opcode=Standard; aa=false; tc=false; rd=false; ra=false; rcode=NoError}) in
@@ -443,7 +446,8 @@ module Make (Transport : TRANSPORT) = struct
       let obuf = Transport.alloc () in
       match DS.marshal obuf fake_query response with
       | None -> return_unit
-      | Some obuf -> write_repeat (dest_host,dest_port) obuf repeat 1.0
+      | Some obuf ->
+        write_repeat (dest_host,dest_port) obuf repeat 1.0 [@ref mdns "s8.3_p4_c1"]
 
 
   let get_answer t query =
@@ -452,6 +456,7 @@ module Make (Transport : TRANSPORT) = struct
       (* First match on owner name and check TTL *)
       let relevant_known = List.filter (fun known ->
           (name = known.DP.name) && (known.DP.ttl >= Int32.div rrset.DR.ttl 2l)
+            [@ref mdns "s7.1_p3_c1"] [@ref mdns "s7.1_p3_c2"]
         ) query.DP.answers
       in
       (* Now suppress known records based on RR type *)
@@ -462,7 +467,10 @@ module Make (Transport : TRANSPORT) = struct
       }
     in
     (* DNSSEC disabled for testing *)
-    DQ.answer_multiple ~dnssec:false ~mdns:true ~filter ~flush:(is_confirmed_unique t) query.DP.questions t.dnstrie
+    DQ.answer_multiple ~dnssec:false ~mdns:true ~filter
+      ~flush:(is_confirmed_unique t) [@ref mdns "s6.7_p1_c4"] [@ref mdns "s10.2_p5_c2"] [@ref mdns "s10.2_p11_c1"]
+      query.DP.questions t.dnstrie
+      [@ref mdns "s18.4_p1_c1"] [@ref mdns "s18.6_p1_c1"] [@ref mdns "s18.7_p1_c1"]
 
   let process_query t src dst query =
     let check_unique query response =
@@ -507,14 +515,14 @@ module Make (Transport : TRANSPORT) = struct
       else if List.exists (fun a -> a.DP.flush) response.DP.answers then
         (* No delay for records that have been verified as unique *)
         (* TODO: send separate unique and non-unique responses if applicable *)
-        return_unit
+        return_unit [@ref mdns "s6.3_p1_c4"]
       else
         (* Delay response for 20-120 ms *)
-        Transport.sleep (0.02 +. Random.float 0.1)
+        Transport.sleep (0.02 +. Random.float 0.1) [@ref mdns "s6.3_p1_c2"]
     in
     match Dns.Protocol.contain_exc "answer" (fun () -> get_answer t query) with
     | None -> return_unit
-    | Some answer when answer.DQ.answer = [] -> return_unit
+    | Some answer when answer.DQ.answer = [] -> return_unit [@ref mdns "s6_p3_c1"]
     | Some answer ->
       let src_host, src_port = src in
       let legacy = (src_port != 5353) in
@@ -526,12 +534,20 @@ module Make (Transport : TRANSPORT) = struct
         else
           List.for_all (fun q -> q.DP.q_unicast = DP.Q_mDNS_Unicast) query.DP.questions
       in
-      let reply_host = if legacy || unicast then src_host else multicast_ip in
+      let reply_host =
+        if legacy || unicast then
+          src_host [@ref mdns "s6.7_p1_c2"]
+        else
+          multicast_ip [@ref mdns "s6_p12_c1"]
+      in
       let reply_port = src_port in
       (* RFC 6762 section 18.5 - TODO: check tc bit *)
       label "post delay";
       (* NOTE: echoing of questions is still required for legacy mode *)
-      let response = DQ.response_of_answer ~mdns:(not legacy) query answer in
+      let response = DQ.response_of_answer
+          ~mdns:(not legacy) [@ref mdns "s18.1_p5_c1"]
+          query answer [@ref mdns "s6.7_p1_c3"]
+      in
       let response = check_unique query response in
       if response.DP.answers = [] then
         return_unit
@@ -573,7 +589,7 @@ module Make (Transport : TRANSPORT) = struct
         rrsets
     in
     (* Create a new name *)
-    let new_name = increment_name old_name in
+    let new_name = increment_name old_name [@ref mdns "s9_p3_c2"] in
     (* Add the new RR to the trie *)
     (* TODO: Dns.Loader doesn't support a simple rename operation *)
     List.iter (fun rrset -> match rrset.DR.rdata with
@@ -592,19 +608,21 @@ module Make (Transport : TRANSPORT) = struct
           | Some state ->
             let exists = List.exists (fun our ->
                 our.DP.name = name && DP.compare_rdata rr.DP.rdata our.DP.rdata = 0
+                  [@ref mdns "s8.1_p7_c3"] [@ref mdns "s8.2_p5_c1"]
+                  [@ref mdns "s18.4_p2_c1"] [@ref mdns "s18.5_p2_c1"] [@ref mdns "s18.6_p1_c1"] [@ref mdns "s18.7_p1_c1"]
               ) t.probe_rrs in
             if not exists then begin
               (* If we are currently probing then we must defer to the existing host *)
               (* In any case we must then re-probe *)
               if state = Probing then begin
-                rename_unique t name PreProbe;
+                rename_unique t name PreProbe [@ref mdns "s8.1_p7_c1"];
               end else begin
-                Hashtbl.replace t.unique name PreProbe
-              end;
+                Hashtbl.replace t.unique name PreProbe [@ref mdns "s8.1_p7_c2"] [@ref mdns "s9_p3_c1"]
+              end [@ref mdns "s6.6_p3_c1"];
               true
             end else
               (* if compare = 0 then there is no conflict *)
-              false
+              false [@ref mdns "s2_p8_c3"]
         ) l
     in
     (* Check for conflicts with our unique records *)
@@ -612,7 +630,7 @@ module Make (Transport : TRANSPORT) = struct
     if conflict_exists response.DP.answers || conflict_exists response.DP.authorities || conflict_exists response.DP.additionals then
       probe_restart t;
     (* RFC 6762 section 10.5 - TODO: passive observation of failures *)
-    return_unit
+    return_unit [@ref mdns "s6_p4_c2"]
 
 
   let process t ~src ~dst ibuf =
@@ -621,13 +639,13 @@ module Make (Transport : TRANSPORT) = struct
     match DS.parse ibuf with
     | None -> return_unit
     | Some dp when dp.detail.opcode != Standard ->
-      (* RFC 6762 section 18.3 *)
-      return_unit
+      return_unit [@ref mdns "s18.3_p1_c2"]
     | Some dp when dp.detail.rcode != NoError ->
-      (* RFC 6762 section 18.11 *)
-      return_unit
-    | Some dp when dp.detail.qr = Query -> process_query t src dst dp
-    | Some dp -> process_response t dp
+      return_unit [@ref mdns "s18.11_p1_c2"]
+    | Some dp when dp.detail.qr = Query ->
+      process_query t src dst dp
+    | Some dp ->
+      process_response t dp [@ref mdns "s6_p11_c2"]
 
   let stop_probe t =
     (* TODO: send 'goodbye' for all names *)

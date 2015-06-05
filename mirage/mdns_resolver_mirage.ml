@@ -54,9 +54,12 @@ module Client : Dns.Protocol.CLIENT = struct
       | q :: tl -> rrlist_answers_question q rrlist || rrlist_answers_questions tl rrlist
     in
     packet.detail.qr = Response &&
-      packet.detail.opcode = Standard &&
-      packet.detail.rcode = NoError &&
-      rrlist_answers_questions query.questions packet.answers
+    packet.detail.opcode = Standard [@ref mdns "s18.3_p1_c2"] &&
+    packet.detail.rcode = NoError [@ref mdns "s18.11_p1_c2"] &&
+    rrlist_answers_questions query.questions packet.answers
+      [@ref mdns "s6_p4_c2"]
+      [@ref mdns "s18.1_p4_c1"] [@ref mdns "s18.4_p2_c1"] [@ref mdns "s18.5_p2_c1"]
+      [@ref mdns "s18.6_p1_c1"] [@ref mdns "s18.7_p1_c1"]
 
   let parse q buf =
     let pkt = DP.parse buf in
@@ -86,14 +89,15 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
     with Not_found ->
       let timerfn () = Time.sleep 5.0 in
       let mvar = Lwt_mvar.create_empty () in
-      let source_port = default_port in
+      let source_port = default_port [@ref mdns "s5.2_p9_c1"] in
       let callback ~src ~dst ~src_port buf =
         (* TODO: ignore responses that are not from the local link *)
         (* Ignore responses that are not from port 5353 *)
         if src_port == dest_port then
           Lwt_mvar.put mvar buf
+            [@ref mdns "s6_p14_c3"] [@ref mdns "s11_p2_c1"]
         else
-          return_unit
+          return_unit [@ref mdns "s6_p11_c2"]
       in
       let cleanfn () = return () in
       (* FIXME: can't coexist with server yet because both listen on port 5353 *)
@@ -117,8 +121,13 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
   let create_packet q_class q_type q_name =
     let open Dns.Packet in
     let detail = {
-      qr=Query; opcode=Standard;
-      aa=false; tc=false; rd=false; ra=false; rcode=NoError;
+      qr=Query [@ref mdns "s18.2_p1_c1"];
+      opcode=Standard [@ref mdns "s18.3_p1_c1"];
+      aa=false [@ref mdns "s18.4_p1_c1"];
+      tc=false [@ref mdns "s18.5_p1_c3"];
+      rd=false [@ref mdns "s18.6_p1_c1"];
+      ra=false [@ref mdns "s18.7_p1_c1"];
+      rcode=NoError [@ref mdns "s18.11_p1_c1"];
     } in
     let question = { q_name; q_type; q_class; q_unicast=Q_Normal } in
     { id=0; detail; questions=[question];
