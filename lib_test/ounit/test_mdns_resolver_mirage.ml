@@ -365,7 +365,10 @@ let tests =
         assert_equal ~printer:string_of_int 5353 w.dest_port;
         let packet = parse (Dns.Buf.of_cstruct w.buf) in
         (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)
-        let expected = "0000 Query:0 na:c:nr:rn 0 <qs:valid.local. <A|IN>> <an:> <au:> <ad:>" in
+        let expected = "0000 Query:0 na:c:nr:rn 0 <qs:valid.local. <A|IN>> <an:> <au:> <ad:>"
+            [@ref mdns "s18.2_p1_c1"] [@ref mdns "s18.3_p1_c1"] [@ref mdns "s18.4_p1_c1"]
+            [@ref mdns "s18.6_p1_c1"] [@ref mdns "s18.7_p1_c1"] [@ref mdns "s18.11_p1_c1"]
+        in
         assert_equal ~msg:"packet" ~printer:(fun s -> s) expected (to_string packet);
 
         (* Simulate a response *)
@@ -415,9 +418,9 @@ let tests =
         (* Not a response *)
         simulate_response ~detail:{ good_detail with qr=Query } stack;
         (* Wrong opcode *)
-        simulate_response ~detail:{ good_detail with opcode=Inverse } stack;
+        simulate_response ~detail:{ good_detail with opcode=Inverse } stack [@ref mdns "s18.3_p1_c2"];
         (* Wrong rcode *)
-        simulate_response ~detail:{ good_detail with rcode=NXDomain } stack;
+        simulate_response ~detail:{ good_detail with rcode=NXDomain } stack [@ref mdns "s18.11_p1_c2"];
         (* Wrong name *)
         simulate_response ~answers:[{ good_answer with name=Dns.Name.of_string "wrong.local" }] stack;
         (* Wrong class *)
@@ -437,7 +440,7 @@ let tests =
         assert_equal ~msg:"query_packet" ~printer:(fun s -> s) expected (to_string query_packet);
 
         (* Simulate a valid response, but with a bad ID that should be ignored *)
-        simulate_response ~id:1234 ~answers:[good_answer] stack;
+        simulate_response ~id:1234 ~answers:[good_answer] stack [@ref mdns "s18.1_p4_c1"];
 
         (* Verify that the result corresponds to the valid response *)
         let result = run_timeout thread in

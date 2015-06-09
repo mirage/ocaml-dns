@@ -45,14 +45,19 @@ let response_of_answer ?(mdns=false) query answer =
     with Not_found -> []
     in *)
   let detail = {
-    Packet.qr=Packet.Response; opcode=Packet.Standard; aa=answer.aa;
-    tc=false; rd=Packet.(query.detail.rd); ra=false; rcode=answer.rcode
+    Packet.qr=Packet.Response [@ref mdns "s18.2_p1_c2"];
+    opcode=Packet.Standard [@ref mdns "s18.3_p1_c1"];
+    aa=answer.aa;
+    tc=false [@ref mdns "s18.5_p2_c1"];
+    rd=Packet.(query.detail.rd) [@ref mdns "s18.6_p1_c1"];
+    ra=false [@ref mdns "s18.7_p1_c1"];
+    rcode=answer.rcode [@ref mdns "s18.11_p1_c1"]
   } in
   Packet.({
-      id=(if mdns then 0 else query.id);
+      id=(if mdns then 0 else query.id) [@ref mdns "s18.1_p4_c1"];
       detail;
       (* mDNS does not echo questions in the response *)
-      questions=(if mdns then [] else query.questions);
+      questions=(if mdns then [] else query.questions) [@ref mdns "s6_p4_c1"];
       answers=answer.answer;
       authorities=answer.authority;
       additionals=answer.additional;
@@ -92,7 +97,7 @@ let flush_false owner rdata = false
 
 let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=flush_false) questions trie =
 
-  let aa_flag = ref true in
+  let aa_flag = ref true [@ref mdns "s18.4_p2_c1"] in
   let ans_rrs = ref [] in
   let auth_rrs = ref [] in
   let add_rrs = ref [] in
@@ -331,7 +336,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
         | (Packet.Q_MAILB,  MB _)
         | (Packet.Q_MAILB,  MG _)
         | (Packet.Q_MAILB,  MR _)
-        | (Packet.Q_ANY_TYP,_) -> Some set
+        | (Packet.Q_ANY_TYP,_) -> Some set [@ref mdns "s6.5_p1_c1"]
         | (_, CNAME _) when cnames_ok -> Some set
         | (_, RRSIG rrsigl) when dnssec ->
           Some ({ set with rdata =
@@ -454,12 +459,13 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
     match qs with
     | [] -> rc
     | hd::tl ->
-      let next_rc = main_lookup hd.q_name hd.q_type trie in
+      let next_rc = main_lookup hd.q_name hd.q_type trie [@ref mdns "s6_p2_c2"]
+      in
       match next_rc with
       (* If all questions result in NXDomain then return NXDomain,
          or if any question results in another kind of error then abort,
          else return NoError *)
-      | NoError -> lookup_multiple tl trie NoError
+      | NoError -> lookup_multiple tl trie NoError [@ref mdns "s6.3_p1_c1"]
       | NXDomain -> lookup_multiple tl trie rc
       | _ -> next_rc
   in

@@ -51,7 +51,7 @@ let tests =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
           let sleep t =
-            assert_range 0.02 0.12 t;
+            assert_range 0.02 0.12 t [@ref mdns "s6.3_p1_c2"];
             Lwt.return ()
         end in
         let module Responder = Mdns_responder.Make(MockTransport) in
@@ -70,7 +70,17 @@ let tests =
         assert_equal ~printer:(fun s -> s) "224.0.0.251" (Ipaddr.V4.to_string txip);
         assert_equal ~printer:string_of_int 5353 txport;
         let packet = parse txbuf in
-        assert_packet packet {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError} 0 1 0 0;
+        assert_packet packet {
+          qr=Response [@ref mdns "s18.2_p1_c2"];
+          opcode=Standard [@ref mdns "s18.3_p1_c1"];
+          aa=true [@ref mdns "s18.4_p2_c1"];
+          tc=false [@ref mdns "s18.5_p2_c1"];
+          rd=false [@ref mdns "s18.6_p1_c1"];
+          ra=false [@ref mdns "s18.7_p1_c1"];
+          rcode=NoError [@ref mdns "s18.11_p1_c1"];
+        }
+          0 [@ref mdns "s6_p4_c1"]
+          1 0 0;
 
         let a = List.hd packet.answers in
         assert_equal ~msg:"name" "mirage1.local" (Name.to_string a.name);
@@ -110,7 +120,11 @@ let tests =
         assert_equal ~printer:(fun s -> s) "10.0.0.1" (Ipaddr.V4.to_string txip);
         assert_equal ~printer:string_of_int 12345 txport;
         let packet = parse txbuf in
-        assert_packet ~id:0x1df9 packet {qr=Response; opcode=Standard; aa=true; tc=false; rd=true; ra=false; rcode=NoError} 1 1 0 0;
+        assert_packet
+          ~id:0x1df9 [@ref mdns "s6.7_p1_c3"] [@ref mdns "s18.1_p5_c1"]
+          packet { qr=Response; opcode=Standard; aa=true; tc=false; rd=true; ra=false; rcode=NoError; }
+          1 1 0 0
+          [@ref mdns "s6.7_p1_c2"];
 
         let q = List.hd packet.questions in
         assert_equal ~msg:"q_name" "mirage1.local" (Name.to_string q.q_name);
@@ -226,7 +240,7 @@ let tests =
         (* Given that the query already contains known answers for
            all relevant records, there should be no reply at all. *)
         let thread = Responder.process responder ~src ~dst raw in
-        run_timeout thread;
+        run_timeout thread [@ref mdns "s7.1_p3_c1"];
       );
 
     "unique" >:: (fun test_ctxt ->
@@ -311,7 +325,9 @@ let tests =
         assert_equal ~printer:(fun s -> s) "224.0.0.251" (Ipaddr.V4.to_string txip);
         assert_equal ~printer:string_of_int 5353 txport;
         let packet = parse txbuf in
-        let expected = "0000 Query:0 na:c:nr:rn 0 <qs:unique.local. <ANY_TYP|IN|QU>> <an:> <au:unique.local <IN,flush|120> [A (1.2.3.4)]> <ad:>" in
+        let expected = "0000 Query:0 na:c:nr:rn 0 <qs:unique.local. <ANY_TYP|IN|QU>> <an:> <au:unique.local <IN,flush|120> [A (1.2.3.4)]> <ad:>"
+            [@ref mdns "s8.1_p1_c1"] [@ref mdns "s8.1_p1_c3"]
+        in
         assert_equal ~msg:"rr" ~printer:(fun s -> s) expected (to_string packet);
         (* Verify the sleep duration *)
         assert_equal ~msg:"second sleep should be 250 ms" ~printer:string_of_float 0.25 (List.hd !sleepl);
@@ -421,7 +437,10 @@ let tests =
         (* Simulate a conflicting response *)
         let response_src_ip = Ipaddr.V4.of_string_exn "10.0.0.3" in
         let unique_name = Name.of_string unique_str in
-        let answer = { name=unique_name; cls=RR_IN; flush=true; ttl=120_l; rdata=A response_src_ip } in
+        let answer = {
+          name=unique_name [@ref mdns "s6.6_p3_c1"] [@ref mdns "s8.1_p7_c1"] [@ref mdns "s8.1_p7_c3"];
+          cls=RR_IN; flush=true; ttl=120_l; rdata=A response_src_ip
+        } in
         let response = {
           id=0;
           detail= {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError};
@@ -431,7 +450,7 @@ let tests =
         let _ = Responder.process responder ~src:(response_src_ip, 5353) ~dst:txaddr response_buf in
 
         (* A new probe cycle begins *)
-        assert_equal ~msg:"#sleepl second2" ~printer:string_of_int 3 (List.length !sleepl);
+        assert_equal ~msg:"#sleepl second2" ~printer:string_of_int 3 (List.length !sleepl) [@ref mdns "s9_p3_c1"];
         assert_equal ~msg:"#txlist second2" ~printer:string_of_int 2 (List.length !txlist);
         (* Verify the probe *)
         let (txaddr, txbuf) = List.hd !txlist in
@@ -439,7 +458,9 @@ let tests =
         assert_equal ~printer:(fun s -> s) "224.0.0.251" (Ipaddr.V4.to_string txip);
         assert_equal ~printer:string_of_int 5353 txport;
         let packet = parse txbuf in
-        let expected = "0000 Query:0 na:c:nr:rn 0 <qs:unique2.local. <ANY_TYP|IN|QU>> <an:> <au:unique2.local <IN,flush|120> [A (1.2.3.4)]> <ad:>" in
+        let expected = "0000 Query:0 na:c:nr:rn 0 <qs:unique2.local. <ANY_TYP|IN|QU>> <an:> <au:unique2.local <IN,flush|120> [A (1.2.3.4)]> <ad:>"
+            [@ref mdns "s9_p3_c2"]
+        in
         assert_equal ~msg:"rr" ~printer:(fun s -> s) expected (to_string packet);
         (* Verify the sleep duration *)
         assert_equal ~msg:"second sleep should be 250 ms" ~printer:string_of_float 0.25 (List.hd !sleepl);
@@ -569,7 +590,8 @@ let tests =
         assert_equal ~printer:string_of_int 5353 txport;
         assert_equal ~msg:"first sleep should be 1 second" ~printer:string_of_float 1.0 (List.nth !sleepl 1);
         let packet = parse txbuf in
-        assert_packet packet {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError} 0 17 0 0;
+        assert_packet packet {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError} 0 17 0 0
+          [@ref mdns "s8.3_p1_c1"];
 
         let sorted = packet.answers |> List.map rr_to_string |> List.sort String.compare in
         let expected_rrs = [
@@ -599,7 +621,8 @@ let tests =
         let (txaddr2, txbuf2) = List.nth !txlist 1 in
         assert_equal ~msg:"txaddr2" txaddr txaddr2;
         assert_equal ~msg:"txbuf2" txbuf txbuf2;
-        assert_equal ~msg:"second sleep should be 2 seconds" ~printer:string_of_float 2.0 (List.nth !sleepl 0);
+        assert_equal ~msg:"second sleep should be 2 seconds" ~printer:string_of_float 2.0 (List.nth !sleepl 0)
+          [@ref mdns "s8.3_p4_c1"];
 
         (* The third packet should be exactly the same *)
         let (txaddr3, txbuf3) = List.nth !txlist 0 in

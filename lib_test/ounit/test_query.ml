@@ -132,9 +132,9 @@ let tests =
         end;
 
         let response = Q.response_of_answer ~mdns:true query answer in
-        assert_equal ~msg:"id" ~printer:string_of_int 0 response.id;
+        assert_equal ~msg:"id" ~printer:string_of_int 0 response.id [@ref mdns "s18.1_p4_c1"];
         assert_equal ~msg:"qr" Response response.detail.qr;
-        assert_equal ~msg:"#qu" ~printer:string_of_int 0 (List.length response.questions);
+        assert_equal ~msg:"#qu" ~printer:string_of_int 0 (List.length response.questions) [@ref mdns "s6_p4_c1"];
         assert_equal ~msg:"an" answer.Q.answer response.answers;
         assert_equal ~msg:"au" answer.Q.authority response.authorities;
         assert_equal ~msg:"ad" answer.Q.additional response.additionals;
@@ -209,7 +209,7 @@ let tests =
         let names = List.map Name.of_string ["fake1.local"; "fake2.local"] in
         let questions = List.map
             (fun name -> {q_name=name; q_type=Q_A; q_class=Q_IN; q_unicast=Q_Normal})
-            names
+            names [@ref mdns "s6.3_p1_c1"]
         in
         let answer = Q.answer_multiple ~dnssec:false ~mdns:true questions trie in
         assert_equal NoError answer.Q.rcode;
