@@ -24,7 +24,7 @@ build: [
 build-test: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix "--%{base-unix:enable}%-lwt" "--%{mirage-types:enable}%-mirage" "--enable-tests"]
   ["ocaml" "setup.ml" "-build"]
-  ["ocaml" "setup.ml" "-test"]
+  ["ocaml" "setup.ml" "-test" "-runner" "sequential"]
 ]
 install: [
   ["ocaml" "setup.ml" "-install"]
