@@ -144,7 +144,7 @@ Executable async_resolver
 Executable test
   Path:               lib_test/ounit
   MainIs:             test.ml
-  Build$:             flag(tests)
+  Build$:             flag(tests) && flag(lwt) && flag(mirage)
   Custom:             true
   CompiledObject:     best
   Install:            false
