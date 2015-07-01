@@ -1,6 +1,6 @@
 (*
  * Copyright (c) 2012 Richard Mortier <mort@cantab.net>
- * Copyright (c) 2013-2014 David Sheets <sheets@alum.mit.edu>
+ * Copyright (c) 2013-2015 David Sheets <sheets@alum.mit.edu>
  * Copyright (c) 2014 Anil Madhavapeddy <anil@recoil.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -45,22 +45,18 @@ let send_pkt ?alloc client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
   let module R = (val client : CLIENT) in
   let cqpl = R.marshal ?alloc pkt in
   let resl = List.map (fun (ctxt,q) ->
-      (* make a new socket for each request flavor *)
-      (* start the requests in parallel and run them until success or timeout*)
-      let t, w = Lwt.wait () in
-      async (fun () -> pick [
-          (send_req txfn timerfn q 4
-           >>= fun () -> return (wakeup w (Error (R.timeout ctxt))));
-          (catch
-             (fun () ->
-                rxfn (R.parse ctxt)
-                >>= fun r -> return (wakeup w (Answer r))
-             )
-             (fun exn -> return (wakeup w (Error exn)))
-          )
-        ]);
-      t
-    ) cqpl in
+    (* make a new socket for each request flavor *)
+    (* start the requests in parallel and run them until success or timeout*)
+    let t, w = Lwt.wait () in
+    async (fun () -> pick [
+      (send_req txfn timerfn q 4 >|= fun () -> Error (R.timeout ctxt));
+      (catch
+         (fun () -> rxfn (R.parse ctxt) >|= fun r -> Answer r)
+         (fun exn -> return (Error exn))
+      )
+    ] >|= wakeup w);
+    t
+  ) cqpl in
   (* return an answer or all the errors if no request succeeded *)
   let rec select errors = function
     | [] -> fail (Dns_resolve_error errors)
