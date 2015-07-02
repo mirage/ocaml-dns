@@ -1,3 +1,6 @@
+0.15.1 (trunk):
+* Fix critical DNS resolver timeout bug causing unexpected exceptions
+
 0.15.0 (2015-05-14):
 * Name.domain_name has been renamed to Name.t and is now abstract
 * Name.domain_name_to_string has been renamed to Name.to_string

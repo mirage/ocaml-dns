@@ -19,7 +19,9 @@ Packages:
 
 Areas that need work:
 
-* We need a Lwt-based client resolver, preferably both recursive
-  and iterative. Patches for this are highly welcome!
-* EDNS0 extensions.
-* DNSSEC extensions (using Cryptokit).
+* We need an Lwt-based client iterative resolver
+  Patches for this are highly welcome!
+* EDNS0 extensions
+* DNSSEC extensions (using [nocrypto](https://github.com/mirleft/ocaml-nocrypto/))
+* TC bit and TCP fallback
+* mDNS resolver
