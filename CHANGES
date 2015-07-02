@@ -1,4 +1,4 @@
-0.15.1 (trunk):
+0.15.1 (2015-07-02):
 * Fix critical DNS resolver timeout bug causing unexpected exceptions
 
 0.15.0 (2015-05-14):
