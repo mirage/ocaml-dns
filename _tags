@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: f147c8ae8aec6c723b4465dc137841e4)
+# DO NOT EDIT (digest: 7458c4e0af61535fc68ec85950ac6ad8)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -211,6 +211,7 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: pkg_io-page
 <lib_test/ounit/test.{native,byte}>: pkg_io-page.unix
 <lib_test/ounit/test.{native,byte}>: pkg_ipaddr
+<lib_test/ounit/test.{native,byte}>: pkg_ipaddr.unix
 <lib_test/ounit/test.{native,byte}>: pkg_lwt
 <lib_test/ounit/test.{native,byte}>: pkg_lwt.syntax
 <lib_test/ounit/test.{native,byte}>: pkg_lwt.unix
@@ -232,6 +233,7 @@ true: annot, bin_annot
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page.unix
 <lib_test/ounit/*.ml{,i,y}>: pkg_ipaddr
+<lib_test/ounit/*.ml{,i,y}>: pkg_ipaddr.unix
 <lib_test/ounit/*.ml{,i,y}>: pkg_lwt
 <lib_test/ounit/*.ml{,i,y}>: pkg_lwt.syntax
 <lib_test/ounit/*.ml{,i,y}>: pkg_lwt.unix
