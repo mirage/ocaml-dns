@@ -32,7 +32,7 @@ install: [
 remove: [["ocamlfind" "remove" "dns"]]
 depends: [
   "base-bytes"
-  "lwt" {>= "2.4.3"}
+  "lwt" {>= "2.4.7"}
   "cstruct" {>= "1.0.1"}
   "ocamlfind"
   "re"

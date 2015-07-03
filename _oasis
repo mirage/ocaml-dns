@@ -35,8 +35,8 @@ Library dns
   Modules:
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol, Dig
-  BuildDepends: cstruct (>= 1.0.1), re, re.str, ipaddr (>= 2.6.0), base64 (>= 2.0.0), bytes,
-    uri.services (>= 1.7.0)
+  BuildDepends: cstruct (>= 1.0.1), re, re.str, ipaddr (>= 2.6.0),
+                base64 (>= 2.0.0), bytes, uri.services (>= 1.7.0)
 
 Library "dns-lwt"
   Path: lwt
@@ -44,7 +44,7 @@ Library "dns-lwt"
   Install$: flag(lwt)
   Findlibname: lwt
   Modules: Dns_server_unix, Dns_resolver_unix
-  BuildDepends: lwt.unix (>= 2.4.3), cstruct.lwt, dns, dns.lwt-core, ipaddr.unix
+  BuildDepends: lwt.unix (>= 2.4.7), cstruct.lwt, dns, dns.lwt-core, ipaddr.unix
   FindlibParent: dns
 
 Library "dns-lwt-mirage"
