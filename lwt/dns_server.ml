@@ -48,20 +48,17 @@ let process_query buf len obuf src dst processor =
   let module Processor = (val processor : PROCESSOR) in
   match Processor.parse (Dns.Buf.sub buf 0 len) with
   |None -> Lwt.return None
-  |Some ctxt -> begin
-    Processor.process ~src ~dst ctxt >>= fun answer ->
-    match answer with
-    |None -> Lwt.return None
+  |Some ctxt ->
+    Processor.process ~src ~dst ctxt >|= function
+    |None -> None
     |Some answer ->
       let query = Processor.query_of_context ctxt in
       let response = Dns.Query.response_of_answer query answer in
-      Lwt.return (Processor.marshal obuf ctxt response)
- end
+      Processor.marshal obuf ctxt response
 
 let processor_of_process process : Dns.Packet.t processor =
   let module P = struct
     include Dns.Protocol.Server
-
     let process = process
   end in
   (module P)

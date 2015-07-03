@@ -124,12 +124,10 @@ module Resolv_conf = struct
     )
 
   let create client ?(file=default_file) () =
-    get_resolvers ~file () >>= fun t ->
-    Lwt.return {
-      client;
-      servers = all_servers t;
-      search_domains = search_domains t;
-    }
+    get_resolvers ~file ()
+    >|= fun t ->
+    { client; servers = all_servers t; search_domains = search_domains t }
+
 end
 
 module Static = struct
