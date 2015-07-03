@@ -45,8 +45,9 @@ depends: [
   "mirage-profile"
 ]
 depopts: [
-  "tcpip"
   "async"
+  "base-unix"
+  "mirage-types"
 ]
 conflicts: [
   "mirage-types" {<"1.2.0"}
