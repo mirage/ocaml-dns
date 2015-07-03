@@ -221,7 +221,7 @@ module Make (Transport : TRANSPORT) = struct
     }
 
   let of_zonebufs zonebufs =
-    let db = List.fold_left (fun db -> Dns.Zone.load ~db []) 
+    let db = List.fold_left (fun db -> Dns.Zone.load ~db [])
         (Dns.Loader.new_db ()) zonebufs in
     of_db db
 
