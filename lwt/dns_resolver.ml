@@ -73,9 +73,9 @@ let send_pkt ?alloc client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
 
 let resolve_pkt client ?alloc (commfn:commfn) pkt =
   Lwt.catch (fun () ->
-      send_pkt ?alloc client commfn pkt >>= fun r ->
-      commfn.cleanfn () >>= fun () ->
-      Lwt.return r)
+      send_pkt ?alloc client commfn pkt
+      >>= fun r -> commfn.cleanfn ()
+      >>= fun () -> Lwt.return r)
     (function exn ->
       commfn.cleanfn () >>= fun () ->
       Lwt.fail exn)
