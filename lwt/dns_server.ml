@@ -47,7 +47,7 @@ let compose process backup ~src ~dst packet =
 let process_query buf len obuf src dst processor =
   let module Processor = (val processor : PROCESSOR) in
   match Processor.parse (Dns.Buf.sub buf 0 len) with
-  |None -> Lwt.return None
+  |None -> Lwt.return_none
   |Some ctxt ->
     Processor.process ~src ~dst ctxt >|= function
     |None -> None

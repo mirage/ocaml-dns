@@ -52,7 +52,7 @@ let connect_to_resolver server port =
         Lwt_unix.close ofd
       ) (fun e ->
         log_warn (sprintf "%s\n%!" (Printexc.to_string e));
-        Lwt.return ()
+        Lwt.return_unit
       ) in
   let timerfn () = Lwt_unix.sleep 5.0 in
   let txfn buf =
