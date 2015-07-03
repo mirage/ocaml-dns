@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Lwt 
+open Lwt
 open Printf
 
 module DL = Loader
@@ -24,19 +24,19 @@ module DP = Packet
 
 (*
 let get_answer qname qtype id =
-  let qname = List.map String.lowercase qname in  
+  let qname = List.map String.lowercase qname in
   let ans = DQ.answer_query qname qtype dnstrie in
-  let detail = 
-    DP.(build_detail { qr=`Answer; opcode=`Query; 
-                       aa=ans.DQ.aa; tc=false; rd=false; ra=false; 
-                       rcode=ans.DQ.rcode;  
-                     })      
+  let detail =
+    DP.(build_detail { qr=`Answer; opcode=`Query;
+                       aa=ans.DQ.aa; tc=false; rd=false; ra=false;
+                       rcode=ans.DQ.rcode;
+                     })
   in
   let questions = [ DP.({ q_name=qname; q_type=qtype; q_class=`IN }) ] in
   DP.({ id; detail; questions;
-        answers=ans.DQ.answer; 
-        authorities=ans.DQ.authority; 
-        additionals=ans.DQ.additional; 
+        answers=ans.DQ.answer;
+        authorities=ans.DQ.authority;
+        additionals=ans.DQ.additional;
       })
 
 
