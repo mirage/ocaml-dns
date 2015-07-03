@@ -43,11 +43,10 @@ let eventual_process_of_zonefiles zonefiles =
     Lwt_stream.iter (fun l ->
       Buffer.add_string buf l;
       Buffer.add_char buf '\n') lines
-    >>= fun () ->
-    Lwt.return (Buffer.contents buf)
+    >|= fun () ->
+    Buffer.contents buf
   ) zonefiles
-  >>= fun zonebufs ->
-  Lwt.return (process_of_zonebufs zonebufs)
+  >|= process_of_zonebufs
 
 let bufsz = 4096
 
@@ -58,8 +57,7 @@ let ipaddr_of_sockaddr =
 
 let listen ~fd ~src ~processor =
   let cont = ref true in
-  let bufs = Lwt_pool.create 64
-      (fun () -> Lwt.return (Dns.Buf.create bufsz)) in
+  let bufs = Lwt_pool.create 64 (fun () -> Lwt.return (Dns.Buf.create bufsz)) in
   ipaddr_of_sockaddr src >>= fun src ->
   let loop () =
     if not !cont then Lwt.return_unit
