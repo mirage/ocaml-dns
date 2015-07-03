@@ -18,6 +18,7 @@
 open Printf
 open Dns
 open Packet
+open Lwt.Infix
 
 let debug_active = ref false
 let debug x = if !debug_active then prerr_endline (sprintf "[debug] %s" x)
@@ -30,7 +31,6 @@ let print_timeout () =
 
 let print_error e = printf ";; read error: %s\n" (Unix.error_message e)
 
-open Lwt
 open Cmdliner
 
 let dns_port = 53
@@ -61,7 +61,7 @@ let dig source_ip opt_dest_port q_class q_type args =
   ) (begin
     match res.Dns_resolver_unix.servers with
     | [] -> None
-    | (s,p)::_ -> Some (Ipaddr.to_string s, Some p) 
+    | (s,p)::_ -> Some (Ipaddr.to_string s, Some p)
   end, q_class, q_type, []) args
   in
   let domains = match domains with |[] -> ["."] |_ -> domains in
@@ -72,16 +72,16 @@ let dig source_ip opt_dest_port q_class q_type args =
     debug (sprintf "Querying DNS server %s" x);
     let domain = Name.of_string (List.hd domains) in
     let _ = Lwt_unix.sleep (float_of_int timeout) >|= print_timeout in
-    (try return (Ipaddr.of_string_exn x)
+    (try Lwt.return (Ipaddr.of_string_exn x)
      with Ipaddr.Parse_error _ ->
        Dns_resolver_unix.gethostbyname res x
        >>= function
        | [] -> error "dig" ("Could not resolve nameserver '"^x^"'")
-       | addr::_ -> return addr
+       | addr::_ -> Lwt.return addr
     ) >>= fun addr ->
     let port = match opt_port with None -> dns_port | Some p -> p in
     Dns_resolver_unix.(
-      resolve {res with servers = [addr,port]} q_class q_type domain 
+      resolve {res with servers = [addr,port]} q_class q_type domain
       >|= fun ans -> printf "%s" (Dig.string_of_answers ans)
     )
 
