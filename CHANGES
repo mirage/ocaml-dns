@@ -1,3 +1,9 @@
+0.15.2 (2015-07-04):
+* Fix incorrect mirage dependency on tcpip
+* Improve clarity and formatting of Lwt use
+* Remove camlp4 dependency
+* Now requires lwt >2.4.7
+
 0.15.1 (2015-07-02):
 * Fix critical DNS resolver timeout bug causing unexpected exceptions
 
