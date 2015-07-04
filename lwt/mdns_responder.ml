@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Lwt
+open Lwt.Infix
 
 module DR = Dns.RR
 module DP = Dns.Packet
@@ -215,13 +215,13 @@ module Make (Transport : TRANSPORT) = struct
       db; dnstrie;
       probe_condition = Lwt_condition.create ();
       unique = Hashtbl.create 10;
-      probe_forever=return_unit;
+      probe_forever=Lwt.return_unit;
       probe_restart=false; probe_tiebreak=false; probe_end=false;
       probe_rrs=[];
     }
 
   let of_zonebufs zonebufs =
-    let db = List.fold_left (fun db -> Dns.Zone.load ~db []) 
+    let db = List.fold_left (fun db -> Dns.Zone.load ~db [])
         (Dns.Loader.new_db ()) zonebufs in
     of_db db
 
@@ -291,18 +291,16 @@ module Make (Transport : TRANSPORT) = struct
     Lwt_condition.signal t.probe_condition ()
 
   let sleep t f =
-    Transport.sleep f >>= fun () ->
-    return_unit
+    Transport.sleep f
 
   let wait_cond t =
-    Lwt_condition.wait t.probe_condition >>= fun () ->
-    return_unit
+    Lwt_condition.wait t.probe_condition
 
   let probe_cycle t packet =
     let dest = (multicast_ip,5353) in
     let delay f =
       if t.probe_restart then
-        return_unit
+        Lwt.return_unit
       else
         Lwt.pick [
           sleep t f;
@@ -311,7 +309,7 @@ module Make (Transport : TRANSPORT) = struct
     in
     let probe_and_delay step =
       if t.probe_restart then
-        return_unit
+        Lwt.return_unit
       else begin
         label ("probe.w" ^ step);
         Transport.write dest packet >>= fun () ->
@@ -339,7 +337,7 @@ module Make (Transport : TRANSPORT) = struct
       (* Mark them as confirmed *)
       List.iter (fun name -> Hashtbl.replace t.unique name Confirmed) names
     end;
-    return_unit
+    Lwt.return_unit
 
   let rec probe_forever t first first_wakener =
     begin
@@ -349,7 +347,7 @@ module Make (Transport : TRANSPORT) = struct
       (if t.probe_tiebreak then
          Transport.sleep 1.0
       else
-         return_unit) >>= fun () ->
+         Lwt.return_unit) >>= fun () ->
       (* Clear the restart flag *)
       t.probe_restart <- false;
       (* TODO: probes should be per-link if there are multiple NICs *)
@@ -366,10 +364,10 @@ module Make (Transport : TRANSPORT) = struct
           first := false;
           Lwt.wakeup first_wakener ()
         end;
-        return_unit
+        Lwt.return_unit
     end >>= fun () ->
     if t.probe_end then
-      return_unit
+      Lwt.return_unit
     else
       probe_forever t first first_wakener
 
@@ -416,7 +414,7 @@ module Make (Transport : TRANSPORT) = struct
       (* RFC 6762 section 11 - TODO: send with IP TTL = 255 *)
       Transport.write dest obuf >>= fun () ->
       if repeat = 1 then
-        return_unit
+        Lwt.return_unit
       else
         Transport.sleep sleept >>= fun () ->
         write_repeat dest obuf (repeat - 1) (sleept *. 2.0)
@@ -437,12 +435,12 @@ module Make (Transport : TRANSPORT) = struct
     }) in
     let response = DQ.response_of_answer ~mdns:true fake_query answer in
     if response.DP.answers = [] then
-      return_unit
+      Lwt.return_unit
     else
       (* TODO: limit the response packet size *)
       let obuf = Transport.alloc () in
       match DS.marshal obuf fake_query response with
-      | None -> return_unit
+      | None -> Lwt.return_unit
       | Some obuf -> write_repeat (dest_host,dest_port) obuf repeat 1.0
 
 
@@ -503,18 +501,18 @@ module Make (Transport : TRANSPORT) = struct
     let get_delay legacy response =
       if legacy then
         (* No delay for legacy mode *)
-        return_unit
+        Lwt.return_unit
       else if List.exists (fun a -> a.DP.flush) response.DP.answers then
         (* No delay for records that have been verified as unique *)
         (* TODO: send separate unique and non-unique responses if applicable *)
-        return_unit
+        Lwt.return_unit
       else
         (* Delay response for 20-120 ms *)
         Transport.sleep (0.02 +. Random.float 0.1)
     in
     match Dns.Protocol.contain_exc "answer" (fun () -> get_answer t query) with
-    | None -> return_unit
-    | Some answer when answer.DQ.answer = [] -> return_unit
+    | None -> Lwt.return_unit
+    | Some answer when answer.DQ.answer = [] -> Lwt.return_unit
     | Some answer ->
       let src_host, src_port = src in
       let legacy = (src_port != 5353) in
@@ -534,7 +532,7 @@ module Make (Transport : TRANSPORT) = struct
       let response = DQ.response_of_answer ~mdns:(not legacy) query answer in
       let response = check_unique query response in
       if response.DP.answers = [] then
-        return_unit
+        Lwt.return_unit
       else
         begin
           (* Possible delay before responding *)
@@ -542,7 +540,7 @@ module Make (Transport : TRANSPORT) = struct
           (* TODO: limit the response packet size *)
           let obuf = Transport.alloc () in
           match DS.marshal obuf query response with
-          | None -> return_unit
+          | None -> Lwt.return_unit
           | Some obuf ->
             (* RFC 6762 section 11 - TODO: send with IP TTL = 255 *)
             Transport.write (reply_host,reply_port) obuf
@@ -612,20 +610,20 @@ module Make (Transport : TRANSPORT) = struct
     if conflict_exists response.DP.answers || conflict_exists response.DP.authorities || conflict_exists response.DP.additionals then
       probe_restart t;
     (* RFC 6762 section 10.5 - TODO: passive observation of failures *)
-    return_unit
+    Lwt.return_unit
 
 
   let process t ~src ~dst ibuf =
     label "mDNS process";
     let open DP in
     match DS.parse ibuf with
-    | None -> return_unit
+    | None -> Lwt.return_unit
     | Some dp when dp.detail.opcode != Standard ->
       (* RFC 6762 section 18.3 *)
-      return_unit
+      Lwt.return_unit
     | Some dp when dp.detail.rcode != NoError ->
       (* RFC 6762 section 18.11 *)
-      return_unit
+      Lwt.return_unit
     | Some dp when dp.detail.qr = Query -> process_query t src dst dp
     | Some dp -> process_response t dp
 

@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 7458c4e0af61535fc68ec85950ac6ad8)
+# DO NOT EDIT (digest: 6ca2613117d05ca02842a0d90689a099)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -34,7 +34,6 @@ true: annot, bin_annot
 <lib/*.ml{,i,y}>: pkg_base64
 <lib/*.ml{,i,y}>: pkg_bytes
 <lib/*.ml{,i,y}>: pkg_cstruct
-<lib/*.ml{,i,y}>: pkg_cstruct.syntax
 <lib/*.ml{,i,y}>: pkg_ipaddr
 <lib/*.ml{,i,y}>: pkg_re
 <lib/*.ml{,i,y}>: pkg_re.str
@@ -46,11 +45,9 @@ true: annot, bin_annot
 <mirage/*.ml{,i,y}>: pkg_base64
 <mirage/*.ml{,i,y}>: pkg_bytes
 <mirage/*.ml{,i,y}>: pkg_cstruct
-<mirage/*.ml{,i,y}>: pkg_cstruct.syntax
 <mirage/*.ml{,i,y}>: pkg_io-page
 <mirage/*.ml{,i,y}>: pkg_ipaddr
 <mirage/*.ml{,i,y}>: pkg_lwt
-<mirage/*.ml{,i,y}>: pkg_lwt.syntax
 <mirage/*.ml{,i,y}>: pkg_mirage-profile
 <mirage/*.ml{,i,y}>: pkg_mirage-types
 <mirage/*.ml{,i,y}>: pkg_re
@@ -70,7 +67,6 @@ true: annot, bin_annot
 <async/*.ml{,i,y}>: pkg_bytes
 <async/*.ml{,i,y}>: pkg_core.syntax
 <async/*.ml{,i,y}>: pkg_cstruct
-<async/*.ml{,i,y}>: pkg_cstruct.syntax
 <async/*.ml{,i,y}>: pkg_ipaddr
 <async/*.ml{,i,y}>: pkg_re
 <async/*.ml{,i,y}>: pkg_re.str
@@ -83,11 +79,9 @@ true: annot, bin_annot
 <lib_test/unix/lwt_server.{native,byte}>: pkg_bytes
 <lib_test/unix/lwt_server.{native,byte}>: pkg_cstruct
 <lib_test/unix/lwt_server.{native,byte}>: pkg_cstruct.lwt
-<lib_test/unix/lwt_server.{native,byte}>: pkg_cstruct.syntax
 <lib_test/unix/lwt_server.{native,byte}>: pkg_ipaddr
 <lib_test/unix/lwt_server.{native,byte}>: pkg_ipaddr.unix
 <lib_test/unix/lwt_server.{native,byte}>: pkg_lwt
-<lib_test/unix/lwt_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/unix/lwt_server.{native,byte}>: pkg_lwt.unix
 <lib_test/unix/lwt_server.{native,byte}>: pkg_mirage-profile
 <lib_test/unix/lwt_server.{native,byte}>: pkg_re
@@ -102,11 +96,9 @@ true: annot, bin_annot
 <lib_test/unix/time_server.{native,byte}>: pkg_bytes
 <lib_test/unix/time_server.{native,byte}>: pkg_cstruct
 <lib_test/unix/time_server.{native,byte}>: pkg_cstruct.lwt
-<lib_test/unix/time_server.{native,byte}>: pkg_cstruct.syntax
 <lib_test/unix/time_server.{native,byte}>: pkg_ipaddr
 <lib_test/unix/time_server.{native,byte}>: pkg_ipaddr.unix
 <lib_test/unix/time_server.{native,byte}>: pkg_lwt
-<lib_test/unix/time_server.{native,byte}>: pkg_lwt.syntax
 <lib_test/unix/time_server.{native,byte}>: pkg_lwt.unix
 <lib_test/unix/time_server.{native,byte}>: pkg_mirage-profile
 <lib_test/unix/time_server.{native,byte}>: pkg_re
@@ -119,11 +111,9 @@ true: annot, bin_annot
 <lib_test/unix/*.ml{,i,y}>: pkg_bytes
 <lib_test/unix/*.ml{,i,y}>: pkg_cstruct
 <lib_test/unix/*.ml{,i,y}>: pkg_cstruct.lwt
-<lib_test/unix/*.ml{,i,y}>: pkg_cstruct.syntax
 <lib_test/unix/*.ml{,i,y}>: pkg_ipaddr
 <lib_test/unix/*.ml{,i,y}>: pkg_ipaddr.unix
 <lib_test/unix/*.ml{,i,y}>: pkg_lwt
-<lib_test/unix/*.ml{,i,y}>: pkg_lwt.syntax
 <lib_test/unix/*.ml{,i,y}>: pkg_lwt.unix
 <lib_test/unix/*.ml{,i,y}>: pkg_mirage-profile
 <lib_test/unix/*.ml{,i,y}>: pkg_re
@@ -139,11 +129,9 @@ true: annot, bin_annot
 <lwt/dig_unix.{native,byte}>: pkg_cmdliner
 <lwt/dig_unix.{native,byte}>: pkg_cstruct
 <lwt/dig_unix.{native,byte}>: pkg_cstruct.lwt
-<lwt/dig_unix.{native,byte}>: pkg_cstruct.syntax
 <lwt/dig_unix.{native,byte}>: pkg_ipaddr
 <lwt/dig_unix.{native,byte}>: pkg_ipaddr.unix
 <lwt/dig_unix.{native,byte}>: pkg_lwt
-<lwt/dig_unix.{native,byte}>: pkg_lwt.syntax
 <lwt/dig_unix.{native,byte}>: pkg_lwt.unix
 <lwt/dig_unix.{native,byte}>: pkg_mirage-profile
 <lwt/dig_unix.{native,byte}>: pkg_re
@@ -157,11 +145,9 @@ true: annot, bin_annot
 <lwt/*.ml{,i,y}>: pkg_cmdliner
 <lwt/*.ml{,i,y}>: pkg_cstruct
 <lwt/*.ml{,i,y}>: pkg_cstruct.lwt
-<lwt/*.ml{,i,y}>: pkg_cstruct.syntax
 <lwt/*.ml{,i,y}>: pkg_ipaddr
 <lwt/*.ml{,i,y}>: pkg_ipaddr.unix
 <lwt/*.ml{,i,y}>: pkg_lwt
-<lwt/*.ml{,i,y}>: pkg_lwt.syntax
 <lwt/*.ml{,i,y}>: pkg_lwt.unix
 <lwt/*.ml{,i,y}>: pkg_mirage-profile
 <lwt/*.ml{,i,y}>: pkg_re
@@ -178,7 +164,6 @@ true: annot, bin_annot
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_bytes
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_core.syntax
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_cstruct
-<lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_cstruct.syntax
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_ipaddr
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_re
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_re.str
@@ -193,7 +178,6 @@ true: annot, bin_annot
 <lib_test/async/*.ml{,i,y}>: pkg_bytes
 <lib_test/async/*.ml{,i,y}>: pkg_core.syntax
 <lib_test/async/*.ml{,i,y}>: pkg_cstruct
-<lib_test/async/*.ml{,i,y}>: pkg_cstruct.syntax
 <lib_test/async/*.ml{,i,y}>: pkg_ipaddr
 <lib_test/async/*.ml{,i,y}>: pkg_re
 <lib_test/async/*.ml{,i,y}>: pkg_re.str
@@ -207,13 +191,11 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: pkg_base64
 <lib_test/ounit/test.{native,byte}>: pkg_bytes
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct
-<lib_test/ounit/test.{native,byte}>: pkg_cstruct.syntax
 <lib_test/ounit/test.{native,byte}>: pkg_io-page
 <lib_test/ounit/test.{native,byte}>: pkg_io-page.unix
 <lib_test/ounit/test.{native,byte}>: pkg_ipaddr
 <lib_test/ounit/test.{native,byte}>: pkg_ipaddr.unix
 <lib_test/ounit/test.{native,byte}>: pkg_lwt
-<lib_test/ounit/test.{native,byte}>: pkg_lwt.syntax
 <lib_test/ounit/test.{native,byte}>: pkg_lwt.unix
 <lib_test/ounit/test.{native,byte}>: pkg_mirage-profile
 <lib_test/ounit/test.{native,byte}>: pkg_mirage-types
@@ -229,13 +211,11 @@ true: annot, bin_annot
 <lib_test/ounit/*.ml{,i,y}>: pkg_base64
 <lib_test/ounit/*.ml{,i,y}>: pkg_bytes
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct
-<lib_test/ounit/*.ml{,i,y}>: pkg_cstruct.syntax
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page.unix
 <lib_test/ounit/*.ml{,i,y}>: pkg_ipaddr
 <lib_test/ounit/*.ml{,i,y}>: pkg_ipaddr.unix
 <lib_test/ounit/*.ml{,i,y}>: pkg_lwt
-<lib_test/ounit/*.ml{,i,y}>: pkg_lwt.syntax
 <lib_test/ounit/*.ml{,i,y}>: pkg_lwt.unix
 <lib_test/ounit/*.ml{,i,y}>: pkg_mirage-profile
 <lib_test/ounit/*.ml{,i,y}>: pkg_mirage-types
@@ -252,3 +232,5 @@ true: annot, bin_annot
 # OASIS_STOP
 <lib_test/*>: not_hygienic
 true: annot, principal, bin_annot, debug, short_paths
+<lib/packet.*>: pkg_cstruct.syntax
+<lib_test/ounit/test_packet.*>: pkg_cstruct.syntax

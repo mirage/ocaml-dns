@@ -15,7 +15,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Lwt
+open Lwt.Infix
 open Printf
 
 module DR = Dns.RR
@@ -40,34 +40,31 @@ let compose process backup ~src ~dst packet =
   | Some a ->
       let open DQ in
       (match a.rcode with
-      | DP.NoError -> return result
+      | DP.NoError -> Lwt.return result
       | _ -> backup ~src ~dst packet)
   | None -> backup ~src ~dst packet
 
 let process_query buf len obuf src dst processor =
   let module Processor = (val processor : PROCESSOR) in
   match Processor.parse (Dns.Buf.sub buf 0 len) with
-  |None -> return None
-  |Some ctxt -> begin
-    lwt answer = Processor.process ~src ~dst ctxt in
-    match answer with
-    |None -> return None
+  |None -> Lwt.return_none
+  |Some ctxt ->
+    Processor.process ~src ~dst ctxt >|= function
+    |None -> None
     |Some answer ->
       let query = Processor.query_of_context ctxt in
       let response = Dns.Query.response_of_answer query answer in
-      return (Processor.marshal obuf ctxt response)
- end
+      Processor.marshal obuf ctxt response
 
 let processor_of_process process : Dns.Packet.t processor =
   let module P = struct
     include Dns.Protocol.Server
-
     let process = process
   end in
   (module P)
 
 let process_of_zonebufs zonebufs =
-  let db = List.fold_left (fun db -> Dns.Zone.load ~db []) 
+  let db = List.fold_left (fun db -> Dns.Zone.load ~db [])
     (Dns.Loader.new_db ()) zonebufs in
   let dnstrie = db.Dns.Loader.trie in
   let get_answer qname qtype id =
@@ -81,7 +78,7 @@ let process_of_zonebufs zonebufs =
       Dns.Protocol.contain_exc "answer"
         (fun () -> get_answer q.q_name q.q_type d.id)
     in
-    return r
+    Lwt.return r
 
 let process_of_zonebuf zonebuf =
-  process_of_zonebufs [zonebuf] 
+  process_of_zonebufs [zonebuf]

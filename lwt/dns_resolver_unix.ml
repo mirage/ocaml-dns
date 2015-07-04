@@ -16,7 +16,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Lwt
+open Lwt.Infix
 open Printf
 open Dns
 open Operators
@@ -47,16 +47,17 @@ let outfd addr port =
 let connect_to_resolver server port =
   let dst = sockaddr server port in
   let ofd = outfd Ipaddr.(V4 V4.any) 0 in
-  let cleanfn () = catch (fun () ->
-    Lwt_unix.close ofd
-  ) (fun e ->
-    log_warn (sprintf "%s\n%!" (Printexc.to_string e));
-    return ()
-  ) in
+  let cleanfn () =
+    Lwt.catch (fun () ->
+        Lwt_unix.close ofd
+      ) (fun e ->
+        log_warn (sprintf "%s\n%!" (Printexc.to_string e));
+        Lwt.return_unit
+      ) in
   let timerfn () = Lwt_unix.sleep 5.0 in
   let txfn buf =
-    Lwt_bytes.sendto ofd buf 0 (Dns.Buf.length buf) [] dst 
-    >>= fun _ -> return_unit in
+    Lwt_bytes.sendto ofd buf 0 (Dns.Buf.length buf) [] dst
+    >>= fun _ -> Lwt.return_unit in
   let rec rxfn f =
     let buf = Dns.Buf.create buflen in
     Lwt_bytes.recvfrom ofd buf 0 buflen []
@@ -64,7 +65,7 @@ let connect_to_resolver server port =
     let buf = Dns.Buf.sub buf 0 len in
     match f buf with
     | None -> rxfn f
-    | Some r -> return r
+    | Some r -> Lwt.return r
   in
   { txfn; rxfn; timerfn; cleanfn }
 
@@ -123,12 +124,10 @@ module Resolv_conf = struct
     )
 
   let create client ?(file=default_file) () =
-    lwt t = get_resolvers ~file () in
-    return {
-      client;
-      servers = all_servers t;
-      search_domains = search_domains t;
-    }
+    get_resolvers ~file ()
+    >|= fun t ->
+    { client; servers = all_servers t; search_domains = search_domains t }
+
 end
 
 module Static = struct
@@ -141,23 +140,23 @@ let create
     ?(config=`Resolv_conf Resolv_conf.default_file) () =
   match config with
   |`Static (servers, search_domains) ->
-     return (Static.create client ~servers ~search_domains ())
+     Lwt.return (Static.create client ~servers ~search_domains ())
   |`Resolv_conf file -> Resolv_conf.create client ~file ()
 
 let gethostbyname t ?q_class ?q_type q_name =
   match t.servers with
-  |[] -> fail (Failure "No resolvers available")
+  |[] -> Lwt.fail (Failure "No resolvers available")
   |(server,dns_port)::_ ->
     gethostbyname ~server ~dns_port ?q_class ?q_type q_name
 
 let gethostbyaddr t ?q_class ?q_type q_name =
   match t.servers with
-  |[] -> fail (Failure "No resolvers available")
+  |[] -> Lwt.fail (Failure "No resolvers available")
   |(server,dns_port)::_ ->
     gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
 
 let resolve t ?(dnssec=false) q_class q_type q_name =
   match t.servers with
-  |[] -> fail (Failure "No resolvers available")
+  |[] -> Lwt.fail (Failure "No resolvers available")
   |(server,dns_port)::_ ->
     resolve t.client ~dnssec server dns_port q_class q_type q_name

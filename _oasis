@@ -35,9 +35,8 @@ Library dns
   Modules:
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol, Dig
-  BuildDepends:	cstruct (>= 1.0.1), cstruct.syntax, re, re.str, ipaddr (>= 2.6.0), base64 (>= 2.0.0), bytes, 
-    uri.services (>= 1.7.0)
-  XMetaRequires: cstruct, re, re.str, ipaddr, base64, bytes, uri.services
+  BuildDepends: cstruct (>= 1.0.1), re, re.str, ipaddr (>= 2.6.0),
+                base64 (>= 2.0.0), bytes, uri.services (>= 1.7.0)
 
 Library "dns-lwt"
   Path: lwt
@@ -45,8 +44,7 @@ Library "dns-lwt"
   Install$: flag(lwt)
   Findlibname: lwt
   Modules: Dns_server_unix, Dns_resolver_unix
-  BuildDepends: lwt.unix (>= 2.4.3), cstruct.lwt, lwt.syntax, dns, dns.lwt-core, ipaddr.unix
-  XMetaRequires: lwt.unix, cstruct.lwt, dns, dns.lwt-core, ipaddr.unix
+  BuildDepends: lwt.unix (>= 2.4.7), cstruct.lwt, dns, dns.lwt-core, ipaddr.unix
   FindlibParent: dns
 
 Library "dns-lwt-mirage"
@@ -55,8 +53,7 @@ Library "dns-lwt-mirage"
   Install$: flag(mirage)
   Findlibname: mirage
   Modules: Dns_server_mirage, Dns_resolver_mirage, Mdns_resolver_mirage
-  BuildDepends: cstruct, lwt.syntax, dns, dns.lwt-core, mirage-types, io-page
-  XMetaRequires: cstruct, dns, dns.lwt-core, tcpip, mirage-types, io-page
+  BuildDepends: cstruct, lwt, dns, dns.lwt-core, mirage-types, io-page
   FindlibParent: dns
 
 Library "dns-lwt-core"
@@ -65,8 +62,7 @@ Library "dns-lwt-core"
   Install$: flag(lwt)
   Findlibname: lwt-core
   Modules: Dns_server, Dns_resolver, Mdns_responder
-  BuildDepends: lwt, cstruct, lwt.syntax, dns, mirage-profile
-  XMetaRequires: lwt, cstruct, dns, mirage-profile
+  BuildDepends: lwt, cstruct, dns, mirage-profile
   FindlibParent: dns
 
 Library "dns-async"
@@ -131,7 +127,7 @@ Executable mldig
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       lwt, lwt.unix, lwt.syntax, dns, dns.lwt, re, re.str, ipaddr, cmdliner
+  BuildDepends:       lwt, lwt.unix, dns, dns.lwt, re, re.str, ipaddr, cmdliner
 
 Executable async_resolver
   Path:               lib_test/async
@@ -149,10 +145,10 @@ Executable test
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       dns, dns.lwt-core, dns.mirage, io-page.unix, unix, oUnit, pcap-format, lwt.unix, ipaddr.unix
+  BuildDepends:       dns, dns.lwt-core, dns.mirage, io-page.unix, unix, oUnit,
+                      pcap-format, lwt.unix, ipaddr.unix
 
 Test test
   Run$:               flag(tests) && flag(lwt) && flag(mirage)
   Command:            $test
   WorkingDirectory:   lib_test/ounit
-

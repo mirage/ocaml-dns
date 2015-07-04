@@ -16,7 +16,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Lwt
+open Lwt.Infix
 open Printf
 open Dns
 open Operators
@@ -35,7 +35,7 @@ type commfn = {
 
 let rec send_req txfn timerfn q =
   function
-  | 0 -> return_unit
+  | 0 -> Lwt.return_unit
   | count ->
     txfn q >>= fun () ->
     timerfn () >>= fun () ->
@@ -48,40 +48,37 @@ let send_pkt ?alloc client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
     (* make a new socket for each request flavor *)
     (* start the requests in parallel and run them until success or timeout*)
     let t, w = Lwt.wait () in
-    async (fun () -> pick [
+    Lwt.async (fun () -> Lwt.pick [
       (send_req txfn timerfn q 4 >|= fun () -> Error (R.timeout ctxt));
-      (catch
+      (Lwt.catch
          (fun () -> rxfn (R.parse ctxt) >|= fun r -> Answer r)
-         (fun exn -> return (Error exn))
+         (fun exn -> Lwt.return (Error exn))
       )
-    ] >|= wakeup w);
+    ] >|= Lwt.wakeup w);
     t
   ) cqpl in
   (* return an answer or all the errors if no request succeeded *)
   let rec select errors = function
-    | [] -> fail (Dns_resolve_error errors)
+    | [] -> Lwt.fail (Dns_resolve_error errors)
     | ts ->
-      nchoose_split ts
+      Lwt.nchoose_split ts
       >>= fun (rs, ts) ->
       let rec find_answer errors = function
         | [] -> select errors ts
-        | (Answer a)::_ -> return a
+        | (Answer a)::_ -> Lwt.return a
         | (Error e)::r -> find_answer (e::errors) r
       in
       find_answer errors rs
   in select [] resl
 
 let resolve_pkt client ?alloc (commfn:commfn) pkt =
-  try_lwt
-    send_pkt ?alloc client commfn pkt
-    >>= fun r ->
-    commfn.cleanfn ()
-    >>= fun () ->
-    return r
-  with exn ->
-    commfn.cleanfn ()
-    >>= fun () ->
-    fail exn
+  Lwt.catch (fun () ->
+      send_pkt ?alloc client commfn pkt
+      >>= fun r -> commfn.cleanfn ()
+      >>= fun () -> Lwt.return r)
+    (function exn ->
+      commfn.cleanfn () >>= fun () ->
+      Lwt.fail exn)
 
 let resolve client
     ?alloc
