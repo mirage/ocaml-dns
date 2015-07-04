@@ -145,7 +145,8 @@ Executable test
   Custom:             true
   CompiledObject:     best
   Install:            false
-  BuildDepends:       dns, dns.lwt-core, dns.mirage, io-page.unix, unix, oUnit, pcap-format, lwt.unix, ipaddr.unix
+  BuildDepends:       dns, dns.lwt-core, dns.mirage, io-page.unix, unix, oUnit,
+                      pcap-format, lwt.unix, ipaddr.unix
 
 Test test
   Run$:               flag(tests) && flag(lwt) && flag(mirage)
