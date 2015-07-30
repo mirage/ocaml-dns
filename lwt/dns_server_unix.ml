@@ -60,7 +60,7 @@ let listen ~fd ~src ~processor =
   let bufs = Lwt_pool.create 64 (fun () -> Lwt.return (Dns.Buf.create bufsz)) in
   ipaddr_of_sockaddr src
   >>= fun src ->
-  let loop () =
+  let rec loop () =
     if not !cont then Lwt.return_unit
     else
       Lwt_pool.use bufs
@@ -77,8 +77,10 @@ let listen ~fd ~src ~processor =
                    Lwt_bytes.sendto fd buf 0 (Dns.Buf.length buf) [] dst
                    >>= fun _ -> Lwt.return_unit);
            Lwt.return_unit)
+      >>= fun () ->
+      loop ()
   in
-  loop () >>= fun () ->
+  Lwt.async loop;
   let t, u = Lwt.task () in
   Lwt.on_cancel t (fun () -> cont := false);
   t
