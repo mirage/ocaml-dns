@@ -1,3 +1,7 @@
+0.15.3 (2015-07-30):
+* Fix regression in 0.15.2 which prevented Dns_server_unix.listen from
+  answering more than one query (#80 from Magnus Skjegstad)
+
 0.15.2 (2015-07-04):
 * Fix incorrect mirage dependency on tcpip
 * Improve clarity and formatting of Lwt use
