@@ -273,17 +273,17 @@ module Make (Transport : TRANSPORT) = struct
     in
     (* Reuse Query.answer_multiple to get the records that we need for the authority section *)
     let answer = DQ.answer_multiple ~dnssec:false ~mdns:true questions t.dnstrie in
-    let authorities = List.filter (fun answer -> Hashtbl.mem t.unique answer.DP.name) answer.DQ.answer in
-    if authorities = [] then
+    let rrs = List.filter (fun answer -> Hashtbl.mem t.unique answer.DP.name) answer.DQ.answer in
+    if rrs = [] then
       (* There are no unique records to probe for *)
       None
     else
       (* I don't know whether the cache flush bit needs to be set in the authority RRs, but seems logical *)
-      let authorities = List.map (fun rr -> { rr with DP.flush = true }) authorities in
+      let authorities = List.map (fun rr -> { rr with DP.flush = true }) rrs in
       let detail = DP.({ qr=Query; opcode=Standard; aa=false; tc=false; rd=false; ra=false; rcode=NoError; }) in
       let query = DP.({ id=0; detail; questions; answers=[]; authorities; additionals=[]; }) in
       let obuf = DP.marshal (Transport.alloc ()) query in
-      Some obuf
+      Some (obuf, rrs)
 
 
   let probe_restart t =
@@ -356,7 +356,9 @@ module Make (Transport : TRANSPORT) = struct
         (* If there is nothing to do, block until we get a signal *)
         label "probe_idle";
         Lwt_condition.wait t.probe_condition
-      | Some packet ->
+      | Some (packet, rrs) ->
+        (* Stash the RRs for use by process_response *)
+        t.probe_rrs <- rrs;
         probe_cycle t packet >>= fun () ->
         (* If the restart flag wasn't set then the cycle completed *)
         if not t.probe_restart && !first then begin
