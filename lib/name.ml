@@ -24,7 +24,7 @@ type t = string list
 
 type key = string
 
-module Map = Map.Make(struct
+module Ordered = struct
   type x = t
   type t = x
   let eq x y = x = y
@@ -36,7 +36,10 @@ module Map = Map.Make(struct
       match String.compare h1 h2 with
       | 0 -> compare t1 t2
       | i -> i
-end)
+end
+
+module Map = Map.Make(Ordered)
+module Set = Set.Make(Ordered)
 
 let empty = []
 let append = (@)
