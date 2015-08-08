@@ -31,7 +31,7 @@ type probing_state = {
   rrs : Packet.rr list;
 }
 
-type restart_after = AfterSend | AfterDelay
+type restart_after = AfterSend | AfterDelay | DoProbe
 
 type probe_stage =
   | ProbeIdle
@@ -115,25 +115,45 @@ let do_probe state =
       (* Send the probe *)
       (* TODO: probes should be per-link if there are multiple NICs *)
       let datagram = (packet,multicast_ip,5353) in
-      ({ state with stage = SendingProbe { datagram; num=FirstProbe; rrs }; }, ToSend datagram)
+      ({
+        state with
+        stage = SendingProbe { datagram; num=FirstProbe; rrs };
+        names_pending = UniqueSet.empty;
+        names_probing = state.names_pending;
+      }, ToSend datagram)
   in
   match state.stage with
   | ProbeIdle
     ->
     begin_probe ()
+  | NeedRestart (DoProbe, delay) ->
+    if delay = 0.0 then
+      begin_probe ()
+    else
+      ({ state with stage = DelayBeforeRestart }, Delay delay)
   | SendingProbe _
   | DelayAfterSendingProbe _
-  | NeedRestart _
+  | NeedRestart (AfterSend, _)
+  | NeedRestart (AfterDelay, _)
   | DelayBeforeRestart
   | ProbeStopped
     ->
     (state, NotReady)
 
-let do_restart state delay =
-  if delay = 0.0 then
-    do_probe { state with stage = ProbeIdle }
-  else
-    ({ state with stage = DelayBeforeRestart }, Delay delay)
+let restart_later state delay =
+  match state.stage with
+  | SendingProbe _ ->
+    { state with stage = NeedRestart (AfterSend, delay) }
+  | DelayAfterSendingProbe _ ->
+    (* Delays a bit longer than needed *)
+    { state with stage = NeedRestart (AfterDelay, delay) }
+  | ProbeIdle ->
+    { state with stage = NeedRestart (DoProbe, delay) }
+  | NeedRestart _
+  | DelayBeforeRestart
+  | ProbeStopped ->
+    (* No change *)
+    state
 
 let on_send_complete state =
   match state.stage with
@@ -144,10 +164,11 @@ let on_send_complete state =
     (* Continues in on_delay_complete *)
   | NeedRestart (AfterSend, delay)
     ->
-    do_restart state delay
+    ({ state with stage = NeedRestart (DoProbe, delay) }, NoAction)
   | DelayAfterSendingProbe _
   | ProbeIdle
   | NeedRestart (AfterDelay, _)
+  | NeedRestart (DoProbe, _)
   | DelayBeforeRestart
   | ProbeStopped
     ->
@@ -157,7 +178,7 @@ let on_send_complete state =
 let on_delay_complete state =
   let probe_success state =
     { state with
-      stage = ProbeIdle; 
+      stage = ProbeIdle;
       first_done = true;
       names_probing = UniqueSet.empty;
       names_confirmed = UniqueSet.union state.names_confirmed state.names_probing;
@@ -180,13 +201,14 @@ let on_delay_complete state =
     after_delay state probing
   | NeedRestart (AfterDelay, delay)
     ->
-    do_restart state delay
+    ({ state with stage = NeedRestart (DoProbe, delay) }, NoAction)
   | DelayBeforeRestart
     ->
-    do_restart state 0.0
+    do_probe { state with stage = ProbeIdle }
   | ProbeIdle
   | SendingProbe _
   | NeedRestart (AfterSend, _)
+  | NeedRestart (DoProbe, _)
   | ProbeStopped
     ->
     (* Unexpected event *)
@@ -229,6 +251,8 @@ let rename_unique state old_name =
     ) rrsets;
   new_name
 
+type conflict = NoConflict | ConflictRestart
+
 let on_response_received state response =
   (* Check for conflicts *)
   let probing_rrs =
@@ -264,15 +288,61 @@ let on_response_received state response =
   let other_conflicts = UniqueSet.inter response_names state.names_confirmed in
   if UniqueSet.is_empty renamed && UniqueSet.is_empty other_conflicts then
     (* No conflicts *)
-    (state, NoAction)
+    (state, NoConflict)
   else begin
     (* At least one conflict *)
     let now_pending = UniqueSet.union not_renamed new_names in
-    do_restart {
+    (restart_later {
         state with
         (* Reset probing names back to pending *)
         names_pending = UniqueSet.union state.names_pending now_pending;
         names_probing = UniqueSet.empty;
-      } 0.0
+      } 0.0, ConflictRestart)
   end
 
+let on_query_received state query response =
+  (* A "simultaneous probe conflict" occurs if we see a (probe) request
+     that contains a question matching one of our unique records,
+     and the authority section contains different data. *)
+  let theirs = List.filter (fun rr -> UniqueSet.mem rr.Packet.name state.names_probing) query.Packet.authorities in
+  let result = List.fold_left (fun result auth ->
+      match result with
+      | ConflictRestart -> result
+      | NoConflict ->
+        try
+          (* For this step we only care about records that are part of the current probe cycle. *)
+          let our_rr = List.find (fun rr -> UniqueSet.mem rr.Packet.name state.names_probing) response.Packet.answers in
+          (* TODO: proper lexicographical comparison *)
+          let compare = Packet.compare_rdata our_rr.Packet.rdata auth.Packet.rdata in
+          if compare < 0 then
+            (* Our data is less than the requester's data, so restart the probe sequence *)
+            ConflictRestart
+          else
+            NoConflict
+        (* else if compare > 0 then the requester will restart its own probe sequence *)
+        (* else if compare = 0 then there is no conflict *)
+        (* TODO: if compare = 0 and the peer is sending a TTL less than half of our record
+           then we are supposed to announce our record to avoid premature expiry *)
+        with
+        | Not_found -> NoConflict
+    ) NoConflict theirs
+  in
+  (* Now filter out answers that are unique but unconfirmed *)
+  let answers = List.filter (fun rr ->
+      not (UniqueSet.mem rr.Packet.name state.names_pending) && not (UniqueSet.mem rr.Packet.name state.names_probing)
+    ) response.Packet.answers in
+  let response = { response with Packet.answers = answers } in
+  if result = ConflictRestart then
+    (* If we lose a simultaneous probe tie-break then we have to delay 1 second *)
+    (* TODO: if there are more than 15 conflicts in 10 seconds then we are
+       supposed to wait 5 seconds *)
+    (response,
+     restart_later {
+       state with
+       (* Reset probing names back to pending *)
+       names_pending = UniqueSet.union state.names_pending state.names_probing;
+       names_probing = UniqueSet.empty;
+     } 1.0,
+     ConflictRestart)
+  else
+    (response, state, NoConflict)
