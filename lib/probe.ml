@@ -6,12 +6,12 @@
    - Event: application initiates first probe
    - Event: delay complete
    - Event: send complete
-   - Event: send fail or network down?
-   - Event: db changed?
+   - (To Do: send fail or network down? trie changed?)
 
    Outputs (actions):
    - Packets to be sent
    - Delay time
+   - Idle/finished indications
 *)
 
 let multicast_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
@@ -52,10 +52,12 @@ type state = {
 }
 
 type action =
-  | NoAction
+  | Nothing
   | ToSend of datagram
   | Delay of float
+  | Continue
   | NotReady
+  | Stop
 
 let new_state db =
   {
@@ -77,8 +79,6 @@ let is_confirmed state name =
 
 let stop state =
   { state with stage = ProbeStopped }
-
-let is_stopped state = state.stage = ProbeStopped
 
 let is_first_complete state = state.first_done
 
@@ -110,7 +110,7 @@ let do_probe state =
     match prepare_probe (UniqueSet.elements state.names_pending) state.db with
     | None ->
       (* Nothing to do right now *)
-      ({ state with stage = ProbeIdle }, NoAction)
+      ({ state with stage = ProbeIdle }, Nothing)
     | Some (packet, rrs) ->
       (* Send the probe *)
       (* TODO: probes should be per-link if there are multiple NICs *)
@@ -126,7 +126,8 @@ let do_probe state =
   | ProbeIdle
     ->
     begin_probe ()
-  | NeedRestart (DoProbe, delay) ->
+  | NeedRestart (DoProbe, delay)
+    ->
     if delay = 0.0 then
       begin_probe ()
     else
@@ -136,9 +137,11 @@ let do_probe state =
   | NeedRestart (AfterSend, _)
   | NeedRestart (AfterDelay, _)
   | DelayBeforeRestart
-  | ProbeStopped
     ->
     (state, NotReady)
+  | ProbeStopped
+    ->
+    (state, Stop)
 
 let restart_later state delay =
   match state.stage with
@@ -164,26 +167,19 @@ let on_send_complete state =
     (* Continues in on_delay_complete *)
   | NeedRestart (AfterSend, delay)
     ->
-    ({ state with stage = NeedRestart (DoProbe, delay) }, NoAction)
+    ({ state with stage = NeedRestart (DoProbe, delay) }, Continue)
   | DelayAfterSendingProbe _
   | ProbeIdle
   | NeedRestart (AfterDelay, _)
   | NeedRestart (DoProbe, _)
   | DelayBeforeRestart
-  | ProbeStopped
     ->
     (* Unexpected event *)
     (state, NotReady)
+  | ProbeStopped ->
+    (state, Stop)
 
 let on_delay_complete state =
-  let probe_success state =
-    { state with
-      stage = ProbeIdle;
-      first_done = true;
-      names_probing = UniqueSet.empty;
-      names_confirmed = UniqueSet.union state.names_confirmed state.names_probing;
-    }
-  in
   let after_delay state probing =
     match probing.num with
     | FirstProbe ->
@@ -193,7 +189,13 @@ let on_delay_complete state =
       ({ state with stage = SendingProbe { probing with num = ThirdProbe } }, ToSend probing.datagram)
       (* Wait for on_send_complete *)
     | ThirdProbe ->
-      (probe_success state, NoAction)
+      ({
+        state with
+        stage = ProbeIdle;
+        first_done = true;
+        names_probing = UniqueSet.empty;
+        names_confirmed = UniqueSet.union state.names_confirmed state.names_probing;
+      }, Continue)  (* Call do_probe in case state.names_pending is not empty. *)
   in
   match state.stage with
   | DelayAfterSendingProbe probing
@@ -201,7 +203,7 @@ let on_delay_complete state =
     after_delay state probing
   | NeedRestart (AfterDelay, delay)
     ->
-    ({ state with stage = NeedRestart (DoProbe, delay) }, NoAction)
+    ({ state with stage = NeedRestart (DoProbe, delay) }, Continue)
   | DelayBeforeRestart
     ->
     do_probe { state with stage = ProbeIdle }
@@ -209,10 +211,11 @@ let on_delay_complete state =
   | SendingProbe _
   | NeedRestart (AfterSend, _)
   | NeedRestart (DoProbe, _)
-  | ProbeStopped
     ->
     (* Unexpected event *)
     (state, NotReady)
+  | ProbeStopped ->
+    (state, Stop)
 
 (* FIXME: db is mutable *)
 let rename_unique state old_name =

@@ -9,10 +9,12 @@ type datagram = Packet.t * Ipaddr.V4.t * int
 
 (** The I/O action that the caller of this module must take. *)
 type action =
-  | NoAction  (** The protocol is idle because all names have been confirmed unique. *)
+  | Nothing  (** The protocol is idle because all names have been confirmed unique. *)
   | ToSend of datagram  (** The caller shall send the specified [datagram]. *)
   | Delay of float  (** The caller shall wait for the specified duration in seconds. *)
+  | Continue  (** The caller should invoke [do_probe] again. *)
   | NotReady  (** The call was unexpected. This may indicate a bug in the caller, and should be logged. *)
+  | Stop
 
 (** Initialises a new mDNS probe protocol. *)
 val new_state : Loader.db -> state
@@ -49,6 +51,3 @@ val is_confirmed : state -> Name.t -> bool
 
 (** Stops executing the protocol. *)
 val stop : state -> state
-
-(** Returns [true] if [stop] has been invoked. *)
-val is_stopped : state -> bool

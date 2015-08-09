@@ -32,7 +32,7 @@ module type TRANSPORT = sig
 end
 
 let label str =
-  MProf.Trace.label str
+  MProf.Trace.label ("Mdns_responder:" ^ str)
 
 let multicast_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
 
@@ -228,61 +228,59 @@ module Make (Transport : TRANSPORT) = struct
   let is_confirmed_unique t owner rdata =
     Probe.is_confirmed t.probe owner
 
-  let wait_cond t =
-    Lwt_condition.wait t.probe_condition
-
-  (* Executes the actions that Probe asked us to perform *)
-  let rec probe_actions t action =
+  let rec probe_forever t action first first_wakener =
     let send_action packet ip port =
       let obuf = Transport.alloc () in
       match Dns.Protocol.contain_exc "marshal" (fun () -> DP.marshal obuf packet) with
       | None -> Lwt.return_unit
       | Some buf -> Transport.write (ip, port) buf
     in
+
     match action with
-    | Probe.NoAction ->
-      label "NoAction";
-      Lwt.return_unit
+    | Probe.Nothing ->
+      label "Nothing";
+      if (Probe.is_first_complete t.probe) && !first then begin
+        (* Only once, because a thread can only be woken once *)
+        first := false;
+        Lwt.wakeup first_wakener ()
+      end;
+      Lwt_condition.wait t.probe_condition >>= fun () ->
+      probe_forever t Probe.Continue first first_wakener
+
     | Probe.ToSend (packet, ip, port) ->
       label "ToSend";
       (* t.probe is also modified in process_response *)
       send_action packet ip port >>= fun () ->
       let state, next_action = Probe.on_send_complete t.probe in
       t.probe <- state;
-      probe_actions t next_action
+      probe_forever t next_action first first_wakener
+
     | Probe.Delay delay ->
       label "Delay";
+      (* The condition allows the sleep to be interrupted *)
       (* t.probe is also modified in process_response *)
       Lwt.pick [
         Transport.sleep delay;
-        wait_cond t
+        Lwt_condition.wait t.probe_condition
       ] >>= fun () ->
       let state, next_action = Probe.on_delay_complete t.probe in
       t.probe <- state;
-      probe_actions t next_action
+      probe_forever t next_action first first_wakener
+
+    | Probe.Continue ->
+      label "Continue";
+      let state, next_action = Probe.do_probe t.probe in
+      t.probe <- state;
+      probe_forever t next_action first first_wakener
+
     | Probe.NotReady ->
       label "NotReady";
+      (* This is a bug. There's not much we can do but return. *)
       Lwt.return_unit
 
-  let rec probe_forever t first first_wakener =
-    begin
-      let state, action = Probe.do_probe t.probe in
-      t.probe <- state;
-      if (Probe.is_first_complete t.probe) && !first then begin
-        (* Only once, because a thread can only be woken once *)
-        first := false;
-        Lwt.wakeup first_wakener ()
-      end;
-      if action = Probe.NoAction then
-        Lwt_condition.wait t.probe_condition
-      else
-        (* Just do whatever the action return value tells us to do *)
-        probe_actions t action
-    end >>= fun () ->
-    if Probe.is_stopped t.probe then
+    | Probe.Stop ->
+      label "Stop";
       Lwt.return_unit
-    else
-      probe_forever t first first_wakener
 
   let first_probe t =
     label "first_probe";
@@ -290,7 +288,7 @@ module Make (Transport : TRANSPORT) = struct
     Transport.sleep (Random.float 0.25) >>= fun () ->
     let first = ref true in
     let first_wait, first_wakener = Lwt.wait () in
-    t.probe_forever <- probe_forever t first first_wakener;
+    t.probe_forever <- probe_forever t Probe.Continue first first_wakener;
     (* The caller may wait for the first complete probe cycle *)
     first_wait
 
