@@ -14,7 +14,7 @@ type action =
   | Delay of float  (** The caller shall wait for the specified duration in seconds. *)
   | Continue  (** The caller should invoke [do_probe] again. *)
   | NotReady  (** The call was unexpected. This may indicate a bug in the caller, and should be logged. *)
-  | Stop
+  | Stop  (** [stop] has been called. *)
 
 (** Initialises a new mDNS probe protocol. *)
 val new_state : Loader.db -> state
