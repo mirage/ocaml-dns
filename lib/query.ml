@@ -129,13 +129,9 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
   in
 
   let add_rrset owner ttl rdata section =
-    let addrr ?(rrclass = Some Packet.RR_IN) rr =
-      let rrclass = match rrclass with
-        | Some x -> x
-        | None   -> failwith "unknown rrclass"
-      in
+    let addrr rr =
       let rr = Packet.({ name = owner;
-                         cls = rrclass;
+                         cls = Packet.RR_IN;
                          flush = flush owner rr;
                          ttl = ttl;
                          rdata = rr })
@@ -454,7 +450,16 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
     match qs with
     | [] -> rc
     | hd::tl ->
-      let next_rc = main_lookup hd.q_name hd.q_type trie in
+      let next_rc =
+        (* main_lookup only supports RR_IN *)
+        match hd.q_class with
+        | Q_IN
+        | Q_ANY_CLS -> main_lookup hd.q_name hd.q_type trie
+        | Q_CS
+        | Q_CH
+        | Q_HS
+        | Q_NONE -> NXDomain
+      in
       match next_rc with
       (* If all questions result in NXDomain then return NXDomain,
          or if any question results in another kind of error then abort,
