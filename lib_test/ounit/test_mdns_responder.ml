@@ -164,7 +164,7 @@ let tests =
         assert_equal ~msg:"name" "mirage1.local" (Name.to_string a.name);
         assert_equal ~msg:"cls" RR_IN a.cls;
         assert_equal ~msg:"flush" false a.flush;
-        assert_equal ~msg:"ttl" (Int32.of_int 120) a.ttl;
+        assert_equal ~msg:"ttl" (Int32.of_int 10) a.ttl;  (* rfc6762 s6.7_p2_c1 *)
         match a.rdata with
         | A addr -> assert_equal ~msg:"A" "10.0.0.2" (Ipaddr.V4.to_string addr)
         | _ -> assert_failure "RR type";
