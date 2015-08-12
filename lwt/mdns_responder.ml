@@ -386,6 +386,17 @@ module Make (Transport : TRANSPORT) = struct
         (* Delay response for 20-120 ms *)
         Transport.sleep (0.02 +. Random.float 0.1)
     in
+    (* rfc6762 s6.7_p2_c1 - legacy TTL must be <= 10 sec *)
+    let limit_rrs_ttl ~limit rrs =
+      List.map DP.(fun rr -> { rr with DP.ttl = (min rr.DP.ttl limit) }) rrs
+    in
+    let limit_answer_ttl ~limit answer =
+      { answer with
+        DQ.answer = limit_rrs_ttl ~limit answer.DQ.answer;
+        DQ.authority = limit_rrs_ttl ~limit answer.DQ.authority;
+        DQ.additional = limit_rrs_ttl ~limit answer.DQ.additional;
+      }
+    in
     match Dns.Protocol.contain_exc "answer" (fun () -> get_answer t query) with
     | None -> Lwt.return_unit
     | Some answer when answer.DQ.answer = [] -> Lwt.return_unit
@@ -402,8 +413,9 @@ module Make (Transport : TRANSPORT) = struct
       in
       let reply_host = if legacy || unicast then src_host else multicast_ip in
       let reply_port = src_port in
+      (* rfc6762 s6.7_p2_c1 - legacy TTL must be <= 10 sec *)
+      let answer = if legacy then limit_answer_ttl ~limit:10_l answer else answer in
       (* RFC 6762 section 18.5 - TODO: check tc bit *)
-      label "post delay";
       (* NOTE: echoing of questions is still required for legacy mode *)
       let response = DQ.response_of_answer ~mdns:(not legacy) query answer in
       let response, new_state, conflict = Probe.on_query_received t.probe query response in
