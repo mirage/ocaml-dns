@@ -46,7 +46,9 @@ let response_of_answer ?(mdns=false) query answer =
     in *)
   let detail = {
     Packet.qr=Packet.Response; opcode=Packet.Standard; aa=answer.aa;
-    tc=false; rd=Packet.(query.detail.rd); ra=false; rcode=answer.rcode
+    tc=false;
+    rd=(if mdns then false else Packet.(query.detail.rd));  (* rfc6762 s18.6_p1_c1 *)
+    ra=false; rcode=answer.rcode
   } in
   Packet.({
       id=(if mdns then 0 else query.id);
