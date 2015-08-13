@@ -268,6 +268,7 @@ let on_response_received state response =
     | ProbeStopped
       -> []
   in
+  let set_of_list l = List.fold_left (fun s e -> UniqueSet.add e s) UniqueSet.empty l in
   (* RFC 6762 section 9 - need to check all sections *)
   let response_rrs = List.flatten [response.Packet.answers; response.Packet.authorities; response.Packet.additionals] in
   (* Identical records do not count as conflicts, so ignore those *)
@@ -276,7 +277,7 @@ let on_response_received state response =
           our.Packet.name = rr.Packet.name && Packet.compare_rdata rr.Packet.rdata our.Packet.rdata = 0
         ) probing_rrs)
     ) response_rrs in
-  let response_names = List.map (fun rr -> rr.Packet.name) non_identical |> UniqueSet.of_list in
+  let response_names = List.map (fun rr -> rr.Packet.name) non_identical |> set_of_list in
   (* There was a probe conflict: defer to the existing host *)
   let renamed = UniqueSet.inter response_names state.names_probing in
   let not_renamed = UniqueSet.diff state.names_probing renamed in
