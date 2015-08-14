@@ -105,7 +105,7 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
       let timerfn () = Time.sleep 5.0 in
       let mvar = Lwt_mvar.create_empty () in
       (* TODO: test that port is free. Needs more functions exposed in tcpip *)
-      let source_port = Random.int 65300 + 1024 in
+      let source_port = (Random.int 64511) + 1024 in
       let callback ~src ~dst ~src_port buf = Lwt_mvar.put mvar buf in
       let cleanfn () = return () in
       S.listen_udpv4 s ~port:source_port callback;
