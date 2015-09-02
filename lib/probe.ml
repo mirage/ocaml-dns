@@ -14,7 +14,7 @@
    - Idle/finished indications
 *)
 
-let multicast_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
+let multicast_dns_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
 type datagram = Packet.t * Ipaddr.V4.t * int
 
 (* RFC 6762 section 10.2 implies that uniqueness is based on name/rrtype/rrclass,
@@ -114,7 +114,7 @@ let do_probe state =
     | Some (packet, rrs) ->
       (* Send the probe *)
       (* TODO: probes should be per-link if there are multiple NICs *)
-      let datagram = (packet,multicast_ip,5353) in
+      let datagram = (packet,multicast_dns_ip,5353) in
       ({
         state with
         stage = SendingProbe { datagram; num=FirstProbe; rrs };
