@@ -123,11 +123,9 @@ let do_probe state =
       }, ToSend datagram)
   in
   match state.stage with
-  | ProbeIdle
-    ->
+  | ProbeIdle ->
     begin_probe ()
-  | NeedRestart (DoProbe, delay)
-    ->
+  | NeedRestart (DoProbe, delay) ->
     if delay = 0.0 then
       begin_probe ()
     else
@@ -136,11 +134,9 @@ let do_probe state =
   | DelayAfterSendingProbe _
   | NeedRestart (AfterSend, _)
   | NeedRestart (AfterDelay, _)
-  | DelayBeforeRestart
-    ->
+  | DelayBeforeRestart ->
     (state, NotReady)
-  | ProbeStopped
-    ->
+  | ProbeStopped ->
     (state, Stop)
 
 let restart_later state delay =
@@ -160,20 +156,17 @@ let restart_later state delay =
 
 let on_send_complete state =
   match state.stage with
-  | SendingProbe probing
-    ->
+  | SendingProbe probing ->
     (* Fixed delay of 250 ms *)
     ({ state with stage = DelayAfterSendingProbe probing }, Delay 0.25)
     (* Continues in on_delay_complete *)
-  | NeedRestart (AfterSend, delay)
-    ->
+  | NeedRestart (AfterSend, delay) ->
     ({ state with stage = NeedRestart (DoProbe, delay) }, Continue)
   | DelayAfterSendingProbe _
   | ProbeIdle
   | NeedRestart (AfterDelay, _)
   | NeedRestart (DoProbe, _)
-  | DelayBeforeRestart
-    ->
+  | DelayBeforeRestart ->
     (* Unexpected event *)
     (state, NotReady)
   | ProbeStopped ->
@@ -198,20 +191,16 @@ let on_delay_complete state =
       }, Continue)  (* Call do_probe in case state.names_pending is not empty. *)
   in
   match state.stage with
-  | DelayAfterSendingProbe probing
-    ->
+  | DelayAfterSendingProbe probing ->
     after_delay state probing
-  | NeedRestart (AfterDelay, delay)
-    ->
+  | NeedRestart (AfterDelay, delay) ->
     ({ state with stage = NeedRestart (DoProbe, delay) }, Continue)
-  | DelayBeforeRestart
-    ->
+  | DelayBeforeRestart ->
     do_probe { state with stage = ProbeIdle }
   | ProbeIdle
   | SendingProbe _
   | NeedRestart (AfterSend, _)
-  | NeedRestart (DoProbe, _)
-    ->
+  | NeedRestart (DoProbe, _) ->
     (* Unexpected event *)
     (state, NotReady)
   | ProbeStopped ->
@@ -265,8 +254,7 @@ let on_response_received state response =
     | ProbeIdle
     | NeedRestart _
     | DelayBeforeRestart
-    | ProbeStopped
-      -> []
+    | ProbeStopped -> []
   in
   let set_of_list l = List.fold_left (fun s e -> UniqueSet.add e s) UniqueSet.empty l in
   (* RFC 6762 section 9 - need to check all sections *)
