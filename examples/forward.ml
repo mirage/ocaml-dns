@@ -11,7 +11,7 @@ let process db resolver ~src ~dst packet =
           let answer = Query.(answer q.q_name q.q_type db.Loader.trie) in (* query local db *)
           match answer.Query.rcode with
           | Packet.NoError ->  (* local match *)
-            Lwt_io.printf "Local match for %s\n" (Name.domain_name_to_string q.q_name)
+            Lwt_io.printf "Local match for %s\n" (Name.to_string q.q_name)
             >>= fun() ->
             return (Some answer)
           | _ -> (* no match, forward *)
