@@ -21,6 +21,7 @@ module DP = Dns.Packet
 module DS = Dns.Protocol.Server
 module DQ = Dns.Query
 module H = Dns.Hashcons
+module Probe = Dns.Probe
 
 type ip_endpoint = Ipaddr.V4.t * int
 
@@ -31,7 +32,7 @@ module type TRANSPORT = sig
 end
 
 let label str =
-  MProf.Trace.label str
+  MProf.Trace.label ("Mdns_responder:" ^ str)
 
 let multicast_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
 
@@ -190,22 +191,12 @@ let rec filter_known_list rr knownl =
 module Make (Transport : TRANSPORT) = struct
   type timestamp = int
 
-  (* RFC 6762 section 10.2 implies that uniqueness is based on name/rrtype/rrclass,
-     but section 8.1 implies that a domain name is enough. *)
-  type unique_key = Dns.Name.t
-  type unique_state = PreProbe | Probing | Confirmed
-  type unique_assoc = unique_key * unique_state
-
   type t = {
     db : Dns.Loader.db;
     dnstrie : Dns.Trie.dnstrie;
     probe_condition : unit Lwt_condition.t;
-    unique : (unique_key, unique_state) Hashtbl.t;
     mutable probe_forever : unit Lwt.t;
-    mutable probe_restart : bool;
-    mutable probe_tiebreak : bool;
-    mutable probe_end : bool;
-    mutable probe_rrs : DP.rr list;
+    mutable probe : Probe.state;
   }
 
 
@@ -214,10 +205,8 @@ module Make (Transport : TRANSPORT) = struct
     {
       db; dnstrie;
       probe_condition = Lwt_condition.create ();
-      unique = Hashtbl.create 10;
       probe_forever=Lwt.return_unit;
-      probe_restart=false; probe_tiebreak=false; probe_end=false;
-      probe_rrs=[];
+      probe = Probe.new_state db;
     }
 
   let of_zonebufs zonebufs =
@@ -233,143 +222,65 @@ module Make (Transport : TRANSPORT) = struct
     (* Add it to the trie *)
     Dns.Loader.add_a_rr ip ttl name t.db;
     (* Add an entry to our own table of unique records *)
-    Hashtbl.add t.unique name PreProbe
-
-
-  let unique_of_key t name =
-    try
-      let state = Hashtbl.find t.unique name in
-      Some state
-    with
-    | Not_found -> None
+    t.probe <- Probe.add_name t.probe name
 
   (* This predicate controls the cache-flush bit *)
   let is_confirmed_unique t owner rdata =
-    (* FIXME: O(N) *)
-    match unique_of_key t owner with
-    | Some state -> state = Confirmed
-    | None -> false
+    Probe.is_confirmed t.probe owner
 
-
-  let prepare_probe t =
-    (* Build a list of names that need to be probed *)
-    let names = Hashtbl.fold (
-      fun name state l ->
-        if state <> Confirmed then begin
-          name :: l
-        end else
-          l
-      ) t.unique []
+  let rec probe_forever t action first first_wakener =
+    let send_action packet ip port =
+      let obuf = Transport.alloc () in
+      match Dns.Protocol.contain_exc "marshal" (fun () -> DP.marshal obuf packet) with
+      | None -> Lwt.return_unit
+      | Some buf -> Transport.write (ip, port) buf
     in
-    (* Mark the names as state Probing *)
-    List.iter (fun name -> Hashtbl.replace t.unique name Probing) names;
-    (* Build a list of questions *)
-    let questions = List.map (fun name -> DP.({
-        q_name = name;
-        q_type = Q_ANY_TYP;
-        q_class = Q_IN;
-        q_unicast = Q_mDNS_Unicast;  (* request unicast response as per RFC 6762 section 8.1 para 6 *)
-      })) names
-    in
-    (* Reuse Query.answer_multiple to get the records that we need for the authority section *)
-    let answer = DQ.answer_multiple ~dnssec:false ~mdns:true questions t.dnstrie in
-    let authorities = List.filter (fun answer -> Hashtbl.mem t.unique answer.DP.name) answer.DQ.answer in
-    if authorities = [] then
-      (* There are no unique records to probe for *)
-      None
-    else
-      (* I don't know whether the cache flush bit needs to be set in the authority RRs, but seems logical *)
-      let authorities = List.map (fun rr -> { rr with DP.flush = true }) authorities in
-      let detail = DP.({ qr=Query; opcode=Standard; aa=false; tc=false; rd=false; ra=false; rcode=NoError; }) in
-      let query = DP.({ id=0; detail; questions; answers=[]; authorities; additionals=[]; }) in
-      let obuf = DP.marshal (Transport.alloc ()) query in
-      Some obuf
 
+    match action with
+    | Probe.Nothing ->
+      label "Nothing";
+      if (Probe.is_first_complete t.probe) && !first then begin
+        (* Only once, because a thread can only be woken once *)
+        first := false;
+        Lwt.wakeup first_wakener ()
+      end;
+      Lwt_condition.wait t.probe_condition >>= fun () ->
+      probe_forever t Probe.Continue first first_wakener
 
-  let probe_restart t =
-    t.probe_restart <- true;
-    Lwt_condition.signal t.probe_condition ()
+    | Probe.ToSend (packet, ip, port) ->
+      label "ToSend";
+      (* t.probe is also modified in process_response *)
+      send_action packet ip port >>= fun () ->
+      let state, next_action = Probe.on_send_complete t.probe in
+      t.probe <- state;
+      probe_forever t next_action first first_wakener
 
-  let sleep t f =
-    Transport.sleep f
-
-  let wait_cond t =
-    Lwt_condition.wait t.probe_condition
-
-  let probe_cycle t packet =
-    let dest = (multicast_ip,5353) in
-    let delay f =
-      if t.probe_restart then
-        Lwt.return_unit
-      else
-        Lwt.pick [
-          sleep t f;
-          wait_cond t
-        ]
-    in
-    let probe_and_delay step =
-      if t.probe_restart then
-        Lwt.return_unit
-      else begin
-        label ("probe.w" ^ step);
-        Transport.write dest packet >>= fun () ->
-        (* Fixed delay of 250 ms *)
-        label ("probe.d" ^ step);
-        delay 0.25
-      end
-    in
-    (* First probe *)
-    probe_and_delay "1" >>= fun () ->
-    (* Second probe *)
-    probe_and_delay "2" >>= fun () ->
-    (* Third probe *)
-    probe_and_delay "3" >>= fun () ->
-    if not t.probe_restart then begin
-      (* Build a list of names that have probed successfully *)
-      let names = Hashtbl.fold (
-          fun name state l ->
-            if state = Probing then
-              name :: l
-            else
-              l
-        ) t.unique []
-      in
-      (* Mark them as confirmed *)
-      List.iter (fun name -> Hashtbl.replace t.unique name Confirmed) names
-    end;
-    Lwt.return_unit
-
-  let rec probe_forever t first first_wakener =
-    begin
-      (* If we lose a simultaneous probe tie-break then we have to delay 1 second *)
-      (* TODO: if there are more than 15 conflicts in 10 seconds then we are
-         supposed to wait 5 seconds *)
-      (if t.probe_tiebreak then
-         Transport.sleep 1.0
-      else
-         Lwt.return_unit) >>= fun () ->
-      (* Clear the restart flag *)
-      t.probe_restart <- false;
-      (* TODO: probes should be per-link if there are multiple NICs *)
-      match prepare_probe t with
-      | None ->
-        (* If there is nothing to do, block until we get a signal *)
-        label "probe_idle";
+    | Probe.Delay delay ->
+      label "Delay";
+      (* The condition allows the sleep to be interrupted *)
+      (* t.probe is also modified in process_response *)
+      Lwt.pick [
+        Transport.sleep delay;
         Lwt_condition.wait t.probe_condition
-      | Some packet ->
-        probe_cycle t packet >>= fun () ->
-        (* If the restart flag wasn't set then the cycle completed *)
-        if not t.probe_restart && !first then begin
-          (* Only once, because a thread can only be woken once *)
-          first := false;
-          Lwt.wakeup first_wakener ()
-        end;
-        Lwt.return_unit
-    end >>= fun () ->
-    if t.probe_end then
+      ] >>= fun () ->
+      let state, next_action = Probe.on_delay_complete t.probe in
+      t.probe <- state;
+      probe_forever t next_action first first_wakener
+
+    | Probe.Continue ->
+      label "Continue";
+      let state, next_action = Probe.do_probe t.probe in
+      t.probe <- state;
+      probe_forever t next_action first first_wakener
+
+    | Probe.NotReady ->
+      label "NotReady";
+      (* This is a bug. There's not much we can do but return. *)
       Lwt.return_unit
-    else
-      probe_forever t first first_wakener
+
+    | Probe.Stop ->
+      label "Stop";
+      Lwt.return_unit
 
   let first_probe t =
     label "first_probe";
@@ -377,7 +288,7 @@ module Make (Transport : TRANSPORT) = struct
     Transport.sleep (Random.float 0.25) >>= fun () ->
     let first = ref true in
     let first_wait, first_wakener = Lwt.wait () in
-    t.probe_forever <- probe_forever t first first_wakener;
+    t.probe_forever <- probe_forever t Probe.Continue first first_wakener;
     (* The caller may wait for the first complete probe cycle *)
     first_wait
 
@@ -463,41 +374,6 @@ module Make (Transport : TRANSPORT) = struct
     DQ.answer_multiple ~dnssec:false ~mdns:true ~filter ~flush:(is_confirmed_unique t) query.DP.questions t.dnstrie
 
   let process_query t src dst query =
-    let check_unique query response =
-      (* A "simultaneous probe conflict" occurs if we see a (probe) request
-         that contains a question matching one of our unique records,
-         and the authority section contains different data. *)
-      (* let unique_qs = List.filter (fun q -> Hashtbl.mem t.unique q.DP.q_name) query.DP.questions in *)
-      let theirs = List.filter (fun rr -> Hashtbl.mem t.unique rr.DP.name) query.DP.authorities in
-      List.iter (fun auth ->
-          let state = Hashtbl.find t.unique auth.DP.name in
-          (* For this step we only care aboue records that are part of the current probe cycle. *)
-          if state = Probing then
-            try
-              let ours = List.find (fun rr -> Hashtbl.mem t.unique rr.DP.name) response.DP.answers in
-              (* TODO: proper lexicographical comparison *)
-              let compare = DP.compare_rdata ours.DP.rdata auth.DP.rdata in
-              if compare < 0 then begin
-                (* Our data is less than the requester's data, so restart the probe sequence *)
-                Hashtbl.replace t.unique auth.DP.name PreProbe;
-                t.probe_tiebreak <- true;
-                probe_restart t
-              end
-            (* else if compare > 0 then the requester will restart its own probe sequence *)
-            (* else if compare = 0 then there is no conflict *)
-            (* TODO: if compare = 0 and the peer is sending a TTL less than half of our record
-               then we are supposed to announce our record to avoid premature expiry *)
-            with
-            | Not_found -> ()
-        ) theirs;
-      (* Now filter out answers that are unique but unconfirmed *)
-      let answers = List.filter (fun rr ->
-          match unique_of_key t rr.DP.name with
-          | Some state -> state = Confirmed  (* Exclude if unconfirmed *)
-          | None -> true  (* OK, not unique *)
-        ) response.DP.answers in
-      { response with DP.answers = answers }
-    in
     let get_delay legacy response =
       if legacy then
         (* No delay for legacy mode *)
@@ -509,6 +385,17 @@ module Make (Transport : TRANSPORT) = struct
       else
         (* Delay response for 20-120 ms *)
         Transport.sleep (0.02 +. Random.float 0.1)
+    in
+    (* rfc6762 s6.7_p2_c1 - legacy TTL must be <= 10 sec *)
+    let limit_rrs_ttl ~limit rrs =
+      List.map DP.(fun rr -> { rr with DP.ttl = (min rr.DP.ttl limit) }) rrs
+    in
+    let limit_answer_ttl ~limit answer =
+      { answer with
+        DQ.answer = limit_rrs_ttl ~limit answer.DQ.answer;
+        DQ.authority = limit_rrs_ttl ~limit answer.DQ.authority;
+        DQ.additional = limit_rrs_ttl ~limit answer.DQ.additional;
+      }
     in
     match Dns.Protocol.contain_exc "answer" (fun () -> get_answer t query) with
     | None -> Lwt.return_unit
@@ -526,11 +413,15 @@ module Make (Transport : TRANSPORT) = struct
       in
       let reply_host = if legacy || unicast then src_host else multicast_ip in
       let reply_port = src_port in
+      (* rfc6762 s6.7_p2_c1 - legacy TTL must be <= 10 sec *)
+      let answer = if legacy then limit_answer_ttl ~limit:10_l answer else answer in
       (* RFC 6762 section 18.5 - TODO: check tc bit *)
-      label "post delay";
       (* NOTE: echoing of questions is still required for legacy mode *)
       let response = DQ.response_of_answer ~mdns:(not legacy) query answer in
-      let response = check_unique query response in
+      let response, new_state, conflict = Probe.on_query_received t.probe query response in
+      t.probe <- new_state;
+      if conflict = Probe.ConflictRestart then
+        Lwt_condition.signal t.probe_condition ();
       if response.DP.answers = [] then
         Lwt.return_unit
       else
@@ -547,71 +438,13 @@ module Make (Transport : TRANSPORT) = struct
         end
 
 
-  let rename_unique t old_name state =
-    let increment_name name = match Dns.Name.to_string_list name with
-      | head :: tail ->
-        let re = Re_str.regexp "\\(.*\\)\\([0-9]+\\)" in
-        let new_head = if Re_str.string_match re head 0 then begin
-          let num = int_of_string (Re_str.matched_group 2 head) in
-          (Re_str.matched_group 1 head) ^ (string_of_int (num + 1))
-        end else
-          head ^ "2"
-        in
-        Dns.Name.of_string_list (new_head :: tail)
-      | [] -> failwith "can't offer the DNS root"
-    in
-    (* Find the old RR from the trie *)
-    let rrsets = match Dns.Trie.simple_lookup (Dns.Name.to_key old_name) t.dnstrie with
-      | None -> failwith "rename_unique: old not not found"
-      | Some node ->
-        let rrsets = node.DR.rrsets in
-        (* Remove the rrsets from the old node *)
-        (* TODO: remove the node itself *)
-        node.DR.rrsets <- [];
-        rrsets
-    in
-    (* Create a new name *)
-    let new_name = increment_name old_name in
-    (* Add the new RR to the trie *)
-    (* TODO: Dns.Loader doesn't support a simple rename operation *)
-    List.iter (fun rrset -> match rrset.DR.rdata with
-        | DR.A l -> List.iter (fun ip -> Dns.Loader.add_a_rr ip rrset.DR.ttl new_name t.db) l
-        | _ -> failwith "Only A records are supported") rrsets;
-    (* Remove the old entry from the hash table and add the new one *)
-    Hashtbl.remove t.unique old_name;
-    Hashtbl.replace t.unique new_name state
-
   let process_response t response =
-    let conflict_exists l =
-      List.exists (fun rr ->
-          let name = rr.DP.name in
-          match unique_of_key t name with
-          | None -> false
-          | Some state ->
-            let exists = List.exists (fun our ->
-                our.DP.name = name && DP.compare_rdata rr.DP.rdata our.DP.rdata = 0
-              ) t.probe_rrs in
-            if not exists then begin
-              (* If we are currently probing then we must defer to the existing host *)
-              (* In any case we must then re-probe *)
-              if state = Probing then begin
-                rename_unique t name PreProbe;
-              end else begin
-                Hashtbl.replace t.unique name PreProbe
-              end;
-              true
-            end else
-              (* if compare = 0 then there is no conflict *)
-              false
-        ) l
-    in
-    (* Check for conflicts with our unique records *)
-    (* RFC 6762 section 9 - need to check all sections *)
-    if conflict_exists response.DP.answers || conflict_exists response.DP.authorities || conflict_exists response.DP.additionals then
-      probe_restart t;
+    let state, conflict = Probe.on_response_received t.probe response in
+    t.probe <- state;
+    if conflict = Probe.ConflictRestart then
+      Lwt_condition.signal t.probe_condition ();
     (* RFC 6762 section 10.5 - TODO: passive observation of failures *)
     Lwt.return_unit
-
 
   let process t ~src ~dst ibuf =
     label "mDNS process";
@@ -629,7 +462,7 @@ module Make (Transport : TRANSPORT) = struct
 
   let stop_probe t =
     (* TODO: send 'goodbye' for all names *)
-    t.probe_end <- true;
+    t.probe <- Probe.stop t.probe;
     Lwt_condition.signal t.probe_condition ();
     t.probe_forever
 

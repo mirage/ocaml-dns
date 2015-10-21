@@ -370,22 +370,6 @@ let tests =
 
         (* Simulate a response *)
         simulate_good_response stack;
-        (*
-        let response_ip = Ipaddr.V4.of_string_exn "10.0.0.3" in
-        let response_name = Dns.Name.of_string query_str in
-        let answer = { name=response_name; cls=RR_IN; flush=true; ttl=120_l; rdata=A response_ip } in
-        let response = {
-          id=0;
-          detail= {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError};
-          questions=[]; answers=[answer]; authorities=[]; additionals=[];
-        } in
-        let response_buf = marshal (Dns.Buf.create 512) response |> Cstruct.of_bigarray in
-        let listener_thread = match MockStack.udpv4_listeners stack 5353 with
-        | None -> assert_failure "missing listener"
-        | Some listener -> listener ~src:response_ip ~dst:w.dest_ip ~src_port:5353 response_buf
-        in
-        run_timeout listener_thread;
-        *)
 
         let result = run_timeout thread in
         assert_equal ~msg:"#result" ~printer:string_of_int 1 (List.length result);
@@ -448,5 +432,80 @@ let tests =
         in
         assert_equal ~msg:"result" ~printer:Ipaddr.V4.to_string good_response_ip result_ip
       );
+
+    "chain-local" >:: (fun test_ctxt ->
+        let stack = create_stack () in
+        let u = MockStack.udpv4 stack in
+        let cond = Lwt_condition.create () in
+        let module T : V1_LWT.TIME = struct
+          type 'a io = 'a Lwt.t
+          let sleep t = Lwt_condition.wait cond
+        end in
+        let module DR = Dns_resolver_mirage.Make(T)(MockStack) in
+        let module MR = Mdns_resolver_mirage.Make(T)(MockStack) in
+        let module CR = Mdns_resolver_mirage.Chain(MR)(DR) in
+        let r = CR.create stack in
+
+        (* Verify the query *)
+        let thread = CR.gethostbyname r good_query_str in
+        let w = MockUdpv4.pop_write u in
+        assert_equal ~printer:string_of_int 5353 w.src_port;
+        assert_ip mdns_ip w.dest_ip;
+        assert_equal ~printer:string_of_int 5353 w.dest_port;
+        let packet = parse (Dns.Buf.of_cstruct w.buf) in
+        (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)
+        let expected = "0000 Query:0 na:c:nr:rn 0 <qs:valid.local. <A|IN>> <an:> <au:> <ad:>" in
+        assert_equal ~msg:"packet" ~printer:(fun s -> s) expected (to_string packet);
+
+        (* Simulate a response *)
+        simulate_good_response stack;
+
+        let result = run_timeout thread in
+        assert_equal ~msg:"#result" ~printer:string_of_int 1 (List.length result);
+        let result_ip = match List.hd result with
+          | Ipaddr.V4 ip -> ip
+          | _ -> assert_failure "not IPv4"
+        in
+        assert_equal ~msg:"result" ~printer:Ipaddr.V4.to_string good_response_ip result_ip
+      );
+
+    (* Awaiting https://github.com/mirage/ocaml-ipaddr/issues/53
+    "chain-local-link" >:: (fun test_ctxt ->
+        let stack = create_stack () in
+        let u = MockStack.udpv4 stack in
+        let cond = Lwt_condition.create () in
+        let module T : V1_LWT.TIME = struct
+          type 'a io = 'a Lwt.t
+          let sleep t = Lwt_condition.wait cond
+        end in
+        let module DR = Dns_resolver_mirage.Make(T)(MockStack) in
+        let module MR = Mdns_resolver_mirage.Chain(T)(MockStack)(DR) in
+        let r = MR.create stack in
+
+        (* Verify the query *)
+        let ip = Ipaddr.V4.of_string_exn "169.254.111.222" in
+        let thread = MR.gethostbyaddr r ip in
+        let w = MockUdpv4.pop_write u in
+        assert_equal ~printer:string_of_int 5353 w.src_port;
+        assert_ip mdns_ip w.dest_ip;
+        assert_equal ~printer:string_of_int 5353 w.dest_port;
+        Cstruct.hexdump w.buf;
+        let packet = parse (Dns.Buf.of_cstruct w.buf) in
+        (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)
+        let expected = "0000 Query:0 na:c:nr:rn 0 <qs:222.111.254.169.in-addr.arpa. <PTR|IN>> <an:> <au:> <ad:>" in
+        assert_equal ~msg:"packet" ~printer:(fun s -> s) expected (to_string packet);
+
+        (* Simulate a response *)
+        let ptr_from = Dns.Name.of_string "222.111.254.169.in-addr.arpa" in
+        let ptr_to = Dns.Name.of_string "reverse.local" in
+        simulate_response ~answers:[{ name=ptr_from; cls=RR_IN; flush=true; ttl=120_l; rdata=PTR ptr_to }] stack;
+
+        let result = run_timeout thread in
+        assert_equal ~msg:"#result" ~printer:string_of_int 1 (List.length result);
+        let result_str = List.hd result in
+        assert_equal ~msg:"result" ~printer:(fun s -> s) "reverse.local" result_str
+      );
+    *)
+
   ]
 

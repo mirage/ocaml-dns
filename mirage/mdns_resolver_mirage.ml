@@ -165,3 +165,62 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
     |> List.rev
 
 end
+
+module Chain(Local:S)(Next:S with type stack = Local.stack) = struct
+  type t = {
+    local: Local.t;
+    next: Next.t;
+  }
+  type stack = Local.stack
+
+  let create stack =
+    { local = Local.create stack; next = Next.create stack }
+
+  let rec starts_with labels prefix =
+    match labels, prefix with
+    | (l, []) -> true
+    | ([], ph :: pt) -> false
+    | (lh :: lt, ph :: pt) ->
+      if lh = ph then
+        starts_with lt pt
+      else
+        false
+
+  let ends_with labels suffix =
+    starts_with (List.rev labels) (List.rev suffix)
+
+  let is_local name =
+    ends_with (Name.to_string_list name) ["local"]
+
+  let is_link_local name =
+    ends_with (Name.to_string_list name) ["254"; "169"; "in-addr"; "arpa"]
+
+  let resolve client
+      t server dns_port
+      (q_class:DP.q_class) (q_type:DP.q_type)
+      (q_name:Name.t) =
+    if is_local q_name || is_link_local q_name then
+      Local.resolve client t.local server dns_port q_class q_type q_name
+    else
+      Next.resolve client t.next server dns_port q_class q_type q_name
+
+  let gethostbyname
+      t ?(server = default_ns) ?(dns_port = default_port)
+      ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
+      name =
+    let domain = Name.of_string name in
+    if is_local domain then
+      Local.gethostbyname t.local ~server ~dns_port ~q_class ~q_type name
+    else
+      Next.gethostbyname t.next ~server ~dns_port ~q_class ~q_type name
+
+  let gethostbyaddr
+      t ?(server = default_ns) ?(dns_port = default_port)
+      ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
+      addr =
+    let domain = Name.of_ipaddr (Ipaddr.V4 addr) in
+    if is_link_local domain then
+      Local.gethostbyaddr t.local ~server ~dns_port ~q_class ~q_type addr
+    else
+      Next.gethostbyaddr t.next ~server ~dns_port ~q_class ~q_type addr
+end

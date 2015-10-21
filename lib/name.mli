@@ -35,6 +35,9 @@ type key = string
 (** Domain name map *)
 module Map: Map.S with type key = t
 
+(** Domain name set *)
+module Set: Set.S with type elt = t
+
 (** [empty] is the empty {! t}. *)
 val empty: t
 

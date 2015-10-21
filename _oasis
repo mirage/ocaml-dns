@@ -34,7 +34,8 @@ Library dns
   Pack: true
   Modules:
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
-    Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol, Dig
+    Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol, Dig,
+    Probe
   BuildDepends: cstruct (>= 1.0.1), re, re.str, ipaddr (>= 2.6.0),
                 base64 (>= 2.0.0), bytes, uri.services (>= 1.7.0)
 
@@ -92,7 +93,7 @@ Document dns
   XOCamlbuildPath:      lib
   XOCamlbuildModules:
     Hashcons, Loader, Name, Operators, Packet, Query, RR, Trie,
-    Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol
+    Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol, Probe
 
 Document dns_lwt
   Title:                DNS Lwt docs

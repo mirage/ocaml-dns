@@ -207,9 +207,11 @@ let tests =
         (* mDNS supports multiple questions in one query *)
         let trie = Test_trie.load_test_zone "test_mdns.zone" in
         let names = List.map Name.of_string ["fake1.local"; "fake2.local"] in
-        let questions = List.map
-            (fun name -> {q_name=name; q_type=Q_A; q_class=Q_IN; q_unicast=Q_Normal})
-            names
+        (* Class IN or ANY is allowed *)
+        let classes = [Q_IN; Q_ANY_CLS] in
+        let questions = List.map2
+            (fun q_name q_class -> {q_name; q_type=Q_A; q_class; q_unicast=Q_Normal})
+            names classes
         in
         let answer = Q.answer_multiple ~dnssec:false ~mdns:true questions trie in
         assert_equal NoError answer.Q.rcode;
@@ -227,6 +229,23 @@ let tests =
             assert_equal ~printer:(fun s -> s) (List.assoc rr.name a_assoc) (Ipaddr.V4.to_string ip)
           | _ -> assert_failure "Not A"
           ) answer.Q.answer
+      );
+
+    "answer_multiple-bad-class" >:: (fun test_ctxt ->
+        let trie = Test_trie.load_test_zone "test_mdns.zone" in
+        let names = List.map Name.of_string ["fake1.local"; "fake2.local"] in
+        (* Q_CH, etc. are not supported *)
+        let classes = [Q_CH; Q_HS] in
+        let questions = List.map2
+            (fun q_name q_class -> {q_name; q_type=Q_A; q_class; q_unicast=Q_Normal})
+            names classes
+        in
+        let answer = Q.answer_multiple ~dnssec:false ~mdns:true questions trie in
+        assert_equal NXDomain answer.Q.rcode;
+        assert_equal true answer.Q.aa;
+        assert_equal 0 (List.length answer.Q.answer);
+        assert_equal ~printer:string_of_int 0 (List.length answer.Q.authority);
+        assert_equal ~printer:string_of_int 0 (List.length answer.Q.additional);
       );
 
   ]

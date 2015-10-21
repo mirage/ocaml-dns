@@ -21,4 +21,10 @@ module type S = Dns_resolver_mirage.S
 
 module Client : Dns.Protocol.CLIENT
 
+(** Resolves queries using mDNS *)
 module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) : S with type stack = S.t
+
+(** Resolves queries for *.local and 169.254.x.x using Local
+    (which is intended to be the result of [Make] above),
+    and resolves any other names using the [Next] resolver *)
+module Chain(Local:S)(Next:S with type stack = Local.stack) : S with type stack = Local.stack
