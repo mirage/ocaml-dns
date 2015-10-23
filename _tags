@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 16d063bcae0b0ce1a0345f46677040eb)
+# DO NOT EDIT (digest: c100e09f6b93e12aea1cdedaaac83593)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -108,21 +108,6 @@ true: annot, bin_annot
 <lib_test/unix/time_server.{native,byte}>: use_dns
 <lib_test/unix/time_server.{native,byte}>: use_dns-lwt
 <lib_test/unix/time_server.{native,byte}>: use_dns-lwt-core
-<lib_test/unix/*.ml{,i,y}>: pkg_base64
-<lib_test/unix/*.ml{,i,y}>: pkg_bytes
-<lib_test/unix/*.ml{,i,y}>: pkg_cstruct
-<lib_test/unix/*.ml{,i,y}>: pkg_cstruct.lwt
-<lib_test/unix/*.ml{,i,y}>: pkg_ipaddr
-<lib_test/unix/*.ml{,i,y}>: pkg_ipaddr.unix
-<lib_test/unix/*.ml{,i,y}>: pkg_lwt
-<lib_test/unix/*.ml{,i,y}>: pkg_lwt.unix
-<lib_test/unix/*.ml{,i,y}>: pkg_mirage-profile
-<lib_test/unix/*.ml{,i,y}>: pkg_re
-<lib_test/unix/*.ml{,i,y}>: pkg_re.str
-<lib_test/unix/*.ml{,i,y}>: pkg_uri.services
-<lib_test/unix/*.ml{,i,y}>: use_dns
-<lib_test/unix/*.ml{,i,y}>: use_dns-lwt
-<lib_test/unix/*.ml{,i,y}>: use_dns-lwt-core
 <lib_test/unix/time_server.{native,byte}>: custom
 # Executable mldig
 <lwt/dig_unix.{native,byte}>: pkg_base64
@@ -158,6 +143,38 @@ true: annot, bin_annot
 <lwt/*.ml{,i,y}>: use_dns-lwt
 <lwt/*.ml{,i,y}>: use_dns-lwt-core
 <lwt/dig_unix.{native,byte}>: custom
+# Executable mdns_server
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_base64
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_bytes
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_cstruct
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_cstruct.lwt
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_ipaddr
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_ipaddr.unix
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_lwt
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_lwt.unix
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_mirage-profile
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_re
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_re.str
+<lib_test/unix/mdns_lwt_server.{native,byte}>: pkg_uri.services
+<lib_test/unix/mdns_lwt_server.{native,byte}>: use_dns
+<lib_test/unix/mdns_lwt_server.{native,byte}>: use_dns-lwt
+<lib_test/unix/mdns_lwt_server.{native,byte}>: use_dns-lwt-core
+<lib_test/unix/*.ml{,i,y}>: pkg_base64
+<lib_test/unix/*.ml{,i,y}>: pkg_bytes
+<lib_test/unix/*.ml{,i,y}>: pkg_cstruct
+<lib_test/unix/*.ml{,i,y}>: pkg_cstruct.lwt
+<lib_test/unix/*.ml{,i,y}>: pkg_ipaddr
+<lib_test/unix/*.ml{,i,y}>: pkg_ipaddr.unix
+<lib_test/unix/*.ml{,i,y}>: pkg_lwt
+<lib_test/unix/*.ml{,i,y}>: pkg_lwt.unix
+<lib_test/unix/*.ml{,i,y}>: pkg_mirage-profile
+<lib_test/unix/*.ml{,i,y}>: pkg_re
+<lib_test/unix/*.ml{,i,y}>: pkg_re.str
+<lib_test/unix/*.ml{,i,y}>: pkg_uri.services
+<lib_test/unix/*.ml{,i,y}>: use_dns
+<lib_test/unix/*.ml{,i,y}>: use_dns-lwt
+<lib_test/unix/*.ml{,i,y}>: use_dns-lwt-core
+<lib_test/unix/mdns_lwt_server.{native,byte}>: custom
 # Executable async_resolver
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_async
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_async_kernel

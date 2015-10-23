@@ -56,8 +56,7 @@ module type TRANSPORT = sig
   val sleep : float -> unit Lwt.t
 end
 
-(** Creates an mDNS responder module given a module that provides I/O functions. *)
-module Make : functor (Transport : TRANSPORT) -> sig
+module type RESPONDER = sig
   (** The type of an mDNS responder instance. *)
   type t
 
@@ -102,4 +101,7 @@ module Make : functor (Transport : TRANSPORT) -> sig
   (** Returns the trie that the responder uses internally to store RRs. *)
   val trie : t -> Dns.Trie.dnstrie
 end
+
+(** Creates an mDNS responder module given a module that provides I/O functions. *)
+module Make : functor (Transport : TRANSPORT) -> RESPONDER
 

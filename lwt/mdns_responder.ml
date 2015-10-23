@@ -187,6 +187,51 @@ let rec filter_known_list rr knownl =
       match frr with DR.Unknown _ -> frr | _ -> filter_known_list frr tl
     end
 
+module type RESPONDER = sig
+  (** The type of an mDNS responder instance. *)
+  type t
+
+  (** Creates a responder by parsing a list of zone buffer strings. *)
+  val of_zonebufs : string list -> t
+
+  (** Creates a responder by parsing a zone buffer string, which is typically loaded from a zone file. *)
+  val of_zonebuf : string -> t
+
+  (** Creates a responder from a previously loaded DNS database. *)
+  val of_db : Dns.Loader.db -> t
+
+  (** Adds an A resource record that is intended to be unique on the local link.
+      The responder will only include this record in responses after
+      it has been confirmed as unique by probing, which is initiated by
+      calling "first_probe".
+  *)
+  val add_unique_hostname : t -> Dns.Name.t -> ?ttl:int32 -> Ipaddr.V4.t -> unit
+
+  (** Initiates the first probe sequence to verify ownership of any unique records.
+      If no unique records have been added then this function will do nothing.
+  *)
+  val first_probe : t -> unit Lwt.t
+
+  (** Initiates the announcement sequence which sends unsolicited responses
+      for confirmed unique records and for shared records.
+  *)
+  val announce : t -> repeat:int -> unit Lwt.t
+
+  (** Processes a received mDNS UDP datagram.
+      The main purpose of this function is to send responses to
+      mDNS queries, but it also parses responses to detect
+      conflicts with unique records.
+  *)
+  val process : t -> src:ip_endpoint -> dst:ip_endpoint -> Dns.Buf.t -> unit Lwt.t
+
+  (** Call this function to permanently stop the probe thread,
+      to shut down the responder.
+  *)
+  val stop_probe : t -> unit Lwt.t
+
+  (** Returns the trie that the responder uses internally to store RRs. *)
+  val trie : t -> Dns.Trie.dnstrie
+end
 
 module Make (Transport : TRANSPORT) = struct
   type timestamp = int
