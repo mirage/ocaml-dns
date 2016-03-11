@@ -2,7 +2,7 @@
 open OUnit2
 open Printf
 
-module H = Dns.Hashcons
+module H = Hashcons
 open Dns
 open Trie
 open RR
