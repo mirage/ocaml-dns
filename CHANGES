@@ -1,3 +1,10 @@
+0.17.0 (2016-03-11):
+* This library now depends on the `hashcons` package rather than
+  containing a fork of it. Now that there is no LGPL (+ linking exception)
+  code left, clarify that the license is ISC. Previously the `opam`
+  file claimed a mixture of licenses (#86 via @djs55).
+* Add multi-distro Travis testing support.
+
 0.16.0 (2015-10-21):
 * Change source port randomization to avoid overflow in the port range
   (#83 from @yomimono).
