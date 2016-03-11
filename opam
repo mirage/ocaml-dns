@@ -11,6 +11,7 @@ authors: [
   "David Sheets"
   "Thomas Gazagnaire"
   "Luke Dunstan"
+  "David Scott"
 ]
 license: "LGPL-2.0 &\n   LGPL-2.1 with OCaml linking exception &\n   ISC"
 tags: [
