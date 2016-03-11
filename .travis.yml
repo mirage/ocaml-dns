@@ -1,9 +1,22 @@
 language: c
-install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/master/.travis-opam.sh
-script: bash -ex .travis-opam.sh
+sudo: false
+services:
+  - docker
+install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/master/.travis-docker.sh
+script: bash ./.travis-docker.sh
 env:
-  - PACKAGE="dns" OCAML_VERSION=4.02 REVDEPS=true
-  - PACKAGE="dns" OCAML_VERSION=4.01 POST_INSTALL_HOOK="./.travis-ci-post.sh"
-  - PACKAGE="dns" OCAML_VERSION=4.02 DEPOPTS="tcpip" POST_INSTALL_HOOK="./.travis-ci-post.sh"
-  - PACKAGE="dns" OCAML_VERSION=4.02 DEPOPTS="async"
-  - PACKAGE="dns" OCAML_VERSION=4.01 DEPOPTS="tcpip lwt" REVDEPS=true
+ global:
+   - PACKAGE="dns"
+   - DEPOPTS="tcpip lwt async"
+   - REVDEPS="true"
+ matrix:
+   - DISTRO=debian-stable OCAML_VERSION=4.02.3
+   - DISTRO=debian-testing OCAML_VERSION=4.02.3
+   - DISTRO=debian-unstable OCAML_VERSION=4.02.3
+   - DISTRO=ubuntu-12.04 OCAML_VERSION=4.02.3
+   - DISTRO=ubuntu-15.10 OCAML_VERSION=4.02.3
+   - DISTRO=ubuntu-16.04 OCAML_VERSION=4.02.3
+   - DISTRO=centos-6 OCAML_VERSION=4.02.3
+   - DISTRO=centos-7 OCAML_VERSION=4.02.3
+   - DISTRO=fedora-23 OCAML_VERSION=4.02.3
+   - DISTRO=alpine-3.3 OCAML_VERSION=4.02.3

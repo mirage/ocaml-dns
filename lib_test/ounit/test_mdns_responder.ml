@@ -288,7 +288,7 @@ let tests =
         let responder = Responder.of_zonebufs [zonebuf] in
 
         let module DR = Dns.RR in
-        let module H = Dns.Hashcons in
+        let module H = Hashcons in
         let name = Name.of_string "mirage1.local" in
         begin
           let key = Name.to_key name in

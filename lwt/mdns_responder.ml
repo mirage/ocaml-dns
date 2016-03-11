@@ -20,7 +20,7 @@ module DR = Dns.RR
 module DP = Dns.Packet
 module DS = Dns.Protocol.Server
 module DQ = Dns.Query
-module H = Dns.Hashcons
+module H = Hashcons
 module Probe = Dns.Probe
 
 type ip_endpoint = Ipaddr.V4.t * int
