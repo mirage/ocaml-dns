@@ -4,6 +4,7 @@
   code left, clarify that the license is ISC. Previously the `opam`
   file claimed a mixture of licenses (#86 via @djs55).
 * Add multi-distro Travis testing support.
+* Library now depends on OCaml 4.02+
 
 0.16.0 (2015-10-21):
 * Change source port randomization to avoid overflow in the port range
