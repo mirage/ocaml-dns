@@ -7,14 +7,16 @@ script: bash ./.travis-docker.sh
 env:
  global:
    - PACKAGE="dns"
+   - DEPOPTS="tcpip lwt async"
+   - REVDEPS="true"
  matrix:
-   - DISTRO=debian-stable OCAML_VERSION=4.02.3 DEPOPTS="tcpip lwt async" REVDEPS="true"
-   - DISTRO=debian-testing OCAML_VERSION=4.02.3 DEPOPTS="tcpip lwt async"
-   - DISTRO=debian-unstable OCAML_VERSION=4.02.3 DEPOPTS="tcpip lwt async"
-   - DISTRO=ubuntu-12.04 OCAML_VERSION=4.01.0 DEPOPTS="tcpip lwt" REVDEPS="true"
-   - DISTRO=ubuntu-15.10 OCAML_VERSION=4.02.3 DEPOPTS="tcpip lwt async"
-   - DISTRO=ubuntu-16.04 OCAML_VERSION=4.02.3 DEPOPTS="tcpip lwt async"
-   - DISTRO=centos-6 OCAML_VERSION=4.01.0 DEPOPTS="tcpip lwt"
-   - DISTRO=centos-7 OCAML_VERSION=4.02.3 DEPOPTS="tcpip lwt async"
-   - DISTRO=fedora-23 OCAML_VERSION=4.02.3 DEPOPTS="tcpip lwt async"
-   - DISTRO=alpine-3.3 OCAML_VERSION=4.02.3 DEPOPTS="tcpip lwt"
+   - DISTRO=debian-stable OCAML_VERSION=4.02.3
+   - DISTRO=debian-testing OCAML_VERSION=4.02.3
+   - DISTRO=debian-unstable OCAML_VERSION=4.02.3
+   - DISTRO=ubuntu-12.04 OCAML_VERSION=4.02.3
+   - DISTRO=ubuntu-15.10 OCAML_VERSION=4.02.3
+   - DISTRO=ubuntu-16.04 OCAML_VERSION=4.02.3
+   - DISTRO=centos-6 OCAML_VERSION=4.02.3
+   - DISTRO=centos-7 OCAML_VERSION=4.02.3
+   - DISTRO=fedora-23 OCAML_VERSION=4.02.3
+   - DISTRO=alpine-3.3 OCAML_VERSION=4.02.3
