@@ -23,10 +23,12 @@
     @author Haris Rotsos
 *)
 
-cenum digest_alg {
-  SHA1 = 1;
-  SHA256 = 2
-} as uint8_t
+[%%cenum
+type digest_alg =
+  | SHA1   [@id 1]
+  | SHA256 [@id 2]
+  [@@uint8_t]
+]
 
 val digest_alg_to_int : digest_alg -> int
 val int_to_digest_alg : int -> digest_alg option
@@ -40,19 +42,22 @@ type fp_type
 
 (** Represent a DNSSEC algorithm, with the usual conversion functions. *)
 
-cenum dnssec_alg {
-  RSAMD5     = 1;
-  DH         = 2;
-  DSA        = 3;
-  ECC        = 4;
-  RSASHA1    = 5;
-  RSANSEC3   = 7;
-  RSASHA256  = 8;
-  RSASHA512  = 10;
-  INDIRECT   = 252;
-  PRIVATEDNS = 253;
-  PRIVATEOID = 254
-} as uint8_t
+[%%cenum
+type dnssec_alg =
+  | RSAMD5     [@id 1]
+  | DH         [@id 2]
+  | DSA        [@id 3]
+  | ECC        [@id 4]
+  | RSASHA1    [@id 5]
+  | RSANSEC3   [@id 7]
+  | RSASHA256  [@id 8]
+  | RSASHA512  [@id 10]
+  | INDIRECT   [@id 252]
+  | PRIVATEDNS [@id 253]
+  | PRIVATEOID [@id 254]
+  [@@uint8_t]
+]
+
 val int_to_dnssec_alg : int -> dnssec_alg option
 val dnssec_alg_to_int : dnssec_alg -> int
 

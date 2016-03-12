@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: a0867a659f6565e6250a04efd08e1a0d)
+# DO NOT EDIT (digest: 2c3507179b4c2192c7b83dc308f3ad2f)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -34,6 +34,7 @@ true: annot, bin_annot
 <lib/*.ml{,i,y}>: pkg_base64
 <lib/*.ml{,i,y}>: pkg_bytes
 <lib/*.ml{,i,y}>: pkg_cstruct
+<lib/*.ml{,i,y}>: pkg_cstruct.ppx
 <lib/*.ml{,i,y}>: pkg_hashcons
 <lib/*.ml{,i,y}>: pkg_ipaddr
 <lib/*.ml{,i,y}>: pkg_re
@@ -46,6 +47,7 @@ true: annot, bin_annot
 <mirage/*.ml{,i,y}>: pkg_base64
 <mirage/*.ml{,i,y}>: pkg_bytes
 <mirage/*.ml{,i,y}>: pkg_cstruct
+<mirage/*.ml{,i,y}>: pkg_cstruct.ppx
 <mirage/*.ml{,i,y}>: pkg_hashcons
 <mirage/*.ml{,i,y}>: pkg_io-page
 <mirage/*.ml{,i,y}>: pkg_ipaddr
@@ -69,6 +71,7 @@ true: annot, bin_annot
 <async/*.ml{,i,y}>: pkg_bytes
 <async/*.ml{,i,y}>: pkg_core.syntax
 <async/*.ml{,i,y}>: pkg_cstruct
+<async/*.ml{,i,y}>: pkg_cstruct.ppx
 <async/*.ml{,i,y}>: pkg_hashcons
 <async/*.ml{,i,y}>: pkg_ipaddr
 <async/*.ml{,i,y}>: pkg_re
@@ -82,6 +85,7 @@ true: annot, bin_annot
 <lib_test/unix/lwt_server.{native,byte}>: pkg_bytes
 <lib_test/unix/lwt_server.{native,byte}>: pkg_cstruct
 <lib_test/unix/lwt_server.{native,byte}>: pkg_cstruct.lwt
+<lib_test/unix/lwt_server.{native,byte}>: pkg_cstruct.ppx
 <lib_test/unix/lwt_server.{native,byte}>: pkg_hashcons
 <lib_test/unix/lwt_server.{native,byte}>: pkg_ipaddr
 <lib_test/unix/lwt_server.{native,byte}>: pkg_ipaddr.unix
@@ -100,6 +104,7 @@ true: annot, bin_annot
 <lib_test/unix/time_server.{native,byte}>: pkg_bytes
 <lib_test/unix/time_server.{native,byte}>: pkg_cstruct
 <lib_test/unix/time_server.{native,byte}>: pkg_cstruct.lwt
+<lib_test/unix/time_server.{native,byte}>: pkg_cstruct.ppx
 <lib_test/unix/time_server.{native,byte}>: pkg_hashcons
 <lib_test/unix/time_server.{native,byte}>: pkg_ipaddr
 <lib_test/unix/time_server.{native,byte}>: pkg_ipaddr.unix
@@ -116,6 +121,7 @@ true: annot, bin_annot
 <lib_test/unix/*.ml{,i,y}>: pkg_bytes
 <lib_test/unix/*.ml{,i,y}>: pkg_cstruct
 <lib_test/unix/*.ml{,i,y}>: pkg_cstruct.lwt
+<lib_test/unix/*.ml{,i,y}>: pkg_cstruct.ppx
 <lib_test/unix/*.ml{,i,y}>: pkg_hashcons
 <lib_test/unix/*.ml{,i,y}>: pkg_ipaddr
 <lib_test/unix/*.ml{,i,y}>: pkg_ipaddr.unix
@@ -135,6 +141,7 @@ true: annot, bin_annot
 <lwt/dig_unix.{native,byte}>: pkg_cmdliner
 <lwt/dig_unix.{native,byte}>: pkg_cstruct
 <lwt/dig_unix.{native,byte}>: pkg_cstruct.lwt
+<lwt/dig_unix.{native,byte}>: pkg_cstruct.ppx
 <lwt/dig_unix.{native,byte}>: pkg_hashcons
 <lwt/dig_unix.{native,byte}>: pkg_ipaddr
 <lwt/dig_unix.{native,byte}>: pkg_ipaddr.unix
@@ -152,6 +159,7 @@ true: annot, bin_annot
 <lwt/*.ml{,i,y}>: pkg_cmdliner
 <lwt/*.ml{,i,y}>: pkg_cstruct
 <lwt/*.ml{,i,y}>: pkg_cstruct.lwt
+<lwt/*.ml{,i,y}>: pkg_cstruct.ppx
 <lwt/*.ml{,i,y}>: pkg_hashcons
 <lwt/*.ml{,i,y}>: pkg_ipaddr
 <lwt/*.ml{,i,y}>: pkg_ipaddr.unix
@@ -172,6 +180,7 @@ true: annot, bin_annot
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_bytes
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_core.syntax
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_cstruct
+<lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_cstruct.ppx
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_hashcons
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_ipaddr
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_re
@@ -187,6 +196,7 @@ true: annot, bin_annot
 <lib_test/async/*.ml{,i,y}>: pkg_bytes
 <lib_test/async/*.ml{,i,y}>: pkg_core.syntax
 <lib_test/async/*.ml{,i,y}>: pkg_cstruct
+<lib_test/async/*.ml{,i,y}>: pkg_cstruct.ppx
 <lib_test/async/*.ml{,i,y}>: pkg_hashcons
 <lib_test/async/*.ml{,i,y}>: pkg_ipaddr
 <lib_test/async/*.ml{,i,y}>: pkg_re
@@ -201,6 +211,7 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: pkg_base64
 <lib_test/ounit/test.{native,byte}>: pkg_bytes
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct
+<lib_test/ounit/test.{native,byte}>: pkg_cstruct.ppx
 <lib_test/ounit/test.{native,byte}>: pkg_hashcons
 <lib_test/ounit/test.{native,byte}>: pkg_io-page
 <lib_test/ounit/test.{native,byte}>: pkg_io-page.unix
@@ -222,6 +233,7 @@ true: annot, bin_annot
 <lib_test/ounit/*.ml{,i,y}>: pkg_base64
 <lib_test/ounit/*.ml{,i,y}>: pkg_bytes
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct
+<lib_test/ounit/*.ml{,i,y}>: pkg_cstruct.ppx
 <lib_test/ounit/*.ml{,i,y}>: pkg_hashcons
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page.unix
@@ -244,5 +256,3 @@ true: annot, bin_annot
 # OASIS_STOP
 <lib_test/*>: not_hygienic
 true: annot, principal, bin_annot, debug, short_paths
-<lib/packet.*>: pkg_cstruct.syntax
-<lib_test/ounit/test_packet.*>: pkg_cstruct.syntax

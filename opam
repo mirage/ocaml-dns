@@ -41,6 +41,7 @@ depends: [
   "base-bytes"
   "lwt" {>= "2.4.7"}
   "cstruct" {>= "1.0.1"}
+  "ppx_tools"
   "re"
   "cmdliner"
   "ipaddr" {>= "2.6.0"}

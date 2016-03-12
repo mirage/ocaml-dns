@@ -19,17 +19,22 @@
 open Printf
 open Operators
 
-cenum digest_alg {
-  SHA1 = 1;
-  SHA256 = 2
-} as uint8_t
 
-cenum gateway_tc {
-  NONE  = 0;
-  IPv4 = 1;
-  IPv6 = 2;
-  NAME = 3
-} as uint8_t
+[%%cenum
+type digest_alg =
+  | SHA1   [@id 1]
+  | SHA256 [@id 2]
+  [@@uint8_t]
+]
+
+[%%cenum
+type gateway_tc =
+  | NONE  [@id 0]
+  | IPv4  [@id 1]
+  | IPv6  [@id 2]
+  | NAME  [@id 3]
+  [@@ uint8_t]
+]
 
 type gateway =
   | IPv4 of Ipaddr.V4.t
@@ -40,97 +45,109 @@ let gateway_to_string = function
   | IPv6 i -> Ipaddr.V6.to_string i
   | NAME n -> Name.to_string n
 
-cenum pubkey_alg {
-  RESERVED = 0;
-  RSA = 1;
-  DSS = 2
-} as uint8_t
+[%%cenum
+type pubkey_alg =
+  | RESERVED [@id 0]
+  | RSA      [@id 1]
+  | DSS      [@id 2]
+  [@@uint8_t]
+]
 
-cenum ipseckey_alg {
-  DSA = 1;
-  RSA = 2
-} as uint8_t
+[%%cenum
+type ipseckey_alg =
+  | DSA  [@id 1]
+  | RSA  [@id 2]
+  [@@uint8_t]
+]
 
-cenum hash_alg {
-  SHA1 = 1
-} as uint8_t
+[%%cenum
+type hash_alg =
+  | SHA1 [@id 1]
+  [@@uint8_t]
+]
 
-cenum fp_type {
-  SHA1 = 1
-} as uint8_t
+[%%cenum
+type fp_type =
+  | SHA1 [@id 1]
+  [@@uint8_t]
+]
 
-cenum dnssec_alg {
-  RSAMD5     = 1;
-  DH         = 2;
-  DSA        = 3;
-  ECC        = 4;
-  RSASHA1    = 5;
-  RSANSEC3   = 7;
-  RSASHA256  = 8;
-  RSASHA512  = 10;
-  INDIRECT   = 252;
-  PRIVATEDNS = 253;
-  PRIVATEOID = 254
-} as uint8_t
+[%%cenum
+type dnssec_alg =
+  | RSAMD5     [@id 1]
+  | DH         [@id 2]
+  | DSA        [@id 3]
+  | ECC        [@id 4]
+  | RSASHA1    [@id 5]
+  | RSANSEC3   [@id 7]
+  | RSASHA256  [@id 8]
+  | RSASHA512  [@id 10]
+  | INDIRECT   [@id 252]
+  | PRIVATEDNS [@id 253]
+  | PRIVATEOID [@id 254]
+  [@@uint8_t]
+]
 
-cenum rr_type {
-  RR_UNUSED     = 0;
-  RR_A          = 1;
-  RR_NS         = 2;
-  RR_MD         = 3;
-  RR_MF         = 4;
-  RR_CNAME      = 5;
-  RR_SOA        = 6;
-  RR_MB         = 7;
-  RR_MG         = 8;
-  RR_MR         = 9;
-  RR_NULL       = 10;
-  RR_WKS        = 11;
-  RR_PTR        = 12;
-  RR_HINFO      = 13;
-  RR_MINFO      = 14;
-  RR_MX         = 15;
-  RR_TXT        = 16;
-  RR_RP         = 17;
-  RR_AFSDB      = 18;
-  RR_X25        = 19;
-  RR_ISDN       = 20;
-  RR_RT         = 21;
-  RR_NSAP       = 22;
-  RR_NSAPPTR    = 23;
-  RR_SIG        = 24;
-  RR_KEY        = 25;
-  RR_PX         = 26;
-  RR_GPOS       = 27;
-  RR_AAAA       = 28;
-  RR_LOC        = 29;
-  RR_NXT        = 30;
-  RR_EID        = 31;
-  RR_NIMLOC     = 32;
-  RR_SRV        = 33;
-  RR_ATMA       = 34;
-  RR_NAPTR      = 35;
-  RR_KM         = 36;
-  RR_CERT       = 37;
-  RR_A6         = 38;
-  RR_DNAME      = 39;
-  RR_SINK       = 40;
-  RR_OPT        = 41;
-  RR_APL        = 42;
-  RR_DS         = 43;
-  RR_SSHFP      = 44;
-  RR_IPSECKEY   = 45;
-  RR_RRSIG      = 46;
-  RR_NSEC       = 47;
-  RR_DNSKEY     = 48;
-  RR_NSEC3      = 50;
-  RR_NSEC3PARAM = 51;
-  RR_SPF        = 99;
-  RR_UINFO      = 100;
-  RR_UID        = 101;
-  RR_GID        = 102;
-  RR_UNSPEC     = 103
-} as uint8_t
+[%%cenum
+type rr_type =
+  | RR_UNUSED     [@id 0]
+  | RR_A          [@id 1]
+  | RR_NS         [@id 2]
+  | RR_MD         [@id 3]
+  | RR_MF         [@id 4]
+  | RR_CNAME      [@id 5]
+  | RR_SOA        [@id 6]
+  | RR_MB         [@id 7]
+  | RR_MG         [@id 8]
+  | RR_MR         [@id 9]
+  | RR_NULL       [@id 10]
+  | RR_WKS        [@id 11]
+  | RR_PTR        [@id 12]
+  | RR_HINFO      [@id 13]
+  | RR_MINFO      [@id 14]
+  | RR_MX         [@id 15]
+  | RR_TXT        [@id 16]
+  | RR_RP         [@id 17]
+  | RR_AFSDB      [@id 18]
+  | RR_X25        [@id 19]
+  | RR_ISDN       [@id 20]
+  | RR_RT         [@id 21]
+  | RR_NSAP       [@id 22]
+  | RR_NSAPPTR    [@id 23]
+  | RR_SIG        [@id 24]
+  | RR_KEY        [@id 25]
+  | RR_PX         [@id 26]
+  | RR_GPOS       [@id 27]
+  | RR_AAAA       [@id 28]
+  | RR_LOC        [@id 29]
+  | RR_NXT        [@id 30]
+  | RR_EID        [@id 31]
+  | RR_NIMLOC     [@id 32]
+  | RR_SRV        [@id 33]
+  | RR_ATMA       [@id 34]
+  | RR_NAPTR      [@id 35]
+  | RR_KM         [@id 36]
+  | RR_CERT       [@id 37]
+  | RR_A6         [@id 38]
+  | RR_DNAME      [@id 39]
+  | RR_SINK       [@id 40]
+  | RR_OPT        [@id 41]
+  | RR_APL        [@id 42]
+  | RR_DS         [@id 43]
+  | RR_SSHFP      [@id 44]
+  | RR_IPSECKEY   [@id 45]
+  | RR_RRSIG      [@id 46]
+  | RR_NSEC       [@id 47]
+  | RR_DNSKEY     [@id 48]
+  | RR_NSEC3      [@id 50]
+  | RR_NSEC3PARAM [@id 51]
+  | RR_SPF        [@id 99]
+  | RR_UINFO      [@id 100]
+  | RR_UID        [@id 101]
+  | RR_GID        [@id 102]
+  | RR_UNSPEC     [@id 103]
+  [@@uint8_t]
+]
 
 (*
    The Type Bit Maps field identifies the RRset types that exist at the
@@ -354,13 +371,15 @@ let rdata_to_rr_type = function
  | X25 _       -> RR_X25
  | EDNS0 _     -> RR_OPT
 
-cenum rr_class {
-  RR_IN = 1;
-  RR_CS = 2;
-  RR_CH = 3;
-  RR_HS = 4;
-  RR_ANY = 0xff
-} as uint8_t
+[%%cenum
+type rr_class =
+  | RR_IN  [@id 1]
+  | RR_CS  [@id 2]
+  | RR_CH  [@id 3]
+  | RR_HS  [@id 4]
+  | RR_ANY [@id 0xff]
+  [@@uint8_t]
+]
 
 let rr_class_to_string =
   function
@@ -379,12 +398,14 @@ let string_to_rr_class =
   | "ANY" -> Some RR_ANY
   |_ -> None
 
-cstruct rr {
-  uint16_t typ;
-  uint16_t cls;
-  uint32_t ttl;
-  uint16_t rdlen
-} as big_endian
+[%%cstruct
+type rr = {
+  typ: uint16_t;
+  cls: uint16_t;
+  ttl: uint32_t;
+  rdlen: uint16_t;
+} [@@big_endian]
+]
 
 type rr = {
   name  : Name.t;
@@ -808,14 +829,16 @@ let string_to_q_type x =
   string_to_q_type ("Q_"^x) *)
 
 
-cenum q_class {
-  Q_IN   = 1;
-  Q_CS   = 2;
-  Q_CH   = 3;
-  Q_HS   = 4;
-  Q_NONE = 254;
-  Q_ANY_CLS = 255
-} as uint8_t
+[%%cenum
+type q_class =
+  | Q_IN      [@id 1]
+  | Q_CS      [@id 2]
+  | Q_CH      [@id 3]
+  | Q_HS      [@id 4]
+  | Q_NONE    [@id 254]
+  | Q_ANY_CLS [@id 255]
+  [@@uint8_t]
+]
 
 let q_class_to_string x =
   let x = q_class_to_string x in
@@ -831,10 +854,12 @@ let q_unicast_to_string x =
   | Q_Normal -> "Q_Normal"
   | Q_mDNS_Unicast -> "Q_mDNS_Unicast"
 
-cstruct q {
-  uint16_t typ;
-  uint16_t cls
-} as big_endian
+[%%cstruct
+type q = {
+  typ: uint16_t;
+  cls: uint16_t;
+} [@@big_endian]
+]
 
 type question = {
   q_name    : Name.t;
@@ -1312,49 +1337,57 @@ let marshal_rr ?(compress=true) (names, base, buf) rr =
   in
   names, base+rdlen, Cstruct.shift buf (sizeof_rr+rdlen)
 
-cenum qr {
-  Query = 0;
-  Response = 1
-} as uint8_t
+[%%cenum
+type qr =
+  | Query    [@id 0]
+  | Response [@id 1]
+  [@@uint8_t]
+]
 
-cenum opcode {
-  Standard = 0;
-  Inverse = 1;
-  Status = 2;
-  Reserved = 3;
-  Notify = 4;
-  Update = 5
-} as uint8_t
+[%%cenum
+type opcode =
+  | Standard [@id 0]
+  | Inverse  [@id 1]
+  | Status   [@id 2]
+  | Reserved [@id 3]
+  | Notify   [@id 4]
+  | Update   [@id 5]
+  [@@uint8_t]
+]
 
-cenum rcode {
-  NoError = 0;
-  FormErr = 1;
-  ServFail = 2;
-  NXDomain = 3;
-  NotImp = 4;
-  Refused = 5;
-  YXDomain = 6;
-  YXRRSet = 7;
-  NXRRSet = 8;
-  NotAuth = 9;
-  NotZone = 10;
+[%%cenum
+type rcode =
+  | NoError  [@id 0]
+  | FormErr  [@id 1]
+  | ServFail [@id 2]
+  | NXDomain [@id 3]
+  | NotImp   [@id 4]
+  | Refused  [@id 5]
+  | YXDomain [@id 6]
+  | YXRRSet  [@id 7]
+  | NXRRSet  [@id 8]
+  | NotAuth  [@id 9]
+  | NotZone  [@id 10]
 
-  BadVers = 16;
-  BadKey = 17;
-  BadTime = 18;
-  BadMode = 19;
-  BadName = 20;
-  BadAlg = 21
-} as uint8_t
+  | BadVers  [@id 16]
+  | BadKey   [@id 17]
+  | BadTime  [@id 18]
+  | BadMode  [@id 19]
+  | BadName  [@id 20]
+  | BadAlg   [@id 21]
+  [@@uint8_t]
+]
 
-cstruct h {
-  uint16_t id;
-  uint16_t detail;
-  uint16_t qdcount;
-  uint16_t ancount;
-  uint16_t nscount;
-  uint16_t arcount
-} as big_endian
+[%%cstruct
+type h = {
+  id: uint16_t;
+  detail: uint16_t;
+  qdcount: uint16_t;
+  ancount: uint16_t;
+  nscount: uint16_t;
+  arcount: uint16_t;
+} [@@big_endian]
+]
 
 type detail = {
   qr: qr;
