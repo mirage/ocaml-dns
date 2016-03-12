@@ -4,31 +4,37 @@ open Printf
 
 (* Adapted from ocaml-pcap/print/print.ml *)
 
-cstruct ethernet {
-    uint8_t        dst[6];
-    uint8_t        src[6];
-    uint16_t       ethertype
-  } as big_endian
+[%%cstruct
+type ethernet = {
+    dst: uint8_t [@len 6];
+    src: uint8_t [@len 6];
+    ethertype: uint16_t;
+  } [@@big_endian]
+]
 
-cstruct ipv4 {
-    uint8_t        hlen_version;
-    uint8_t        tos;
-    uint16_t       len;
-    uint16_t       id;
-    uint16_t       off;
-    uint8_t        ttl;
-    uint8_t        proto;
-    uint16_t       csum;
-    uint8_t        src[4];
-    uint8_t        dst[4]
-  } as big_endian
+[%%cstruct
+type ipv4 = {
+    hlen_version: uint8_t;
+    tos: uint8_t;
+    len: uint16_t;
+    id: uint16_t;
+    off: uint16_t;
+    ttl: uint8_t;
+    proto: uint8_t;
+    csum: uint16_t;
+    src: uint8_t [@len 4];
+    dst: uint8_t [@len 4];
+  } [@@big_endian]
+]
 
-cstruct udpv4 {
-    uint16_t source_port;
-    uint16_t dest_port;
-    uint16_t length;
-    uint16_t checksum
-  } as big_endian
+[%%cstruct
+type udpv4 = {
+    srouce_port: uint16_t;
+    dest_port: uint16_t;
+    length: uint16_t;
+    checksum: uint16_t;
+  } [@@big_endian]
+]
 
 let load_pcap path =
   let fd = Unix.(openfile path [O_RDONLY] 0) in

@@ -244,5 +244,3 @@ true: annot, bin_annot
 # OASIS_STOP
 <lib_test/*>: not_hygienic
 true: annot, principal, bin_annot, debug, short_paths
-<lib/packet.*>: pkg_cstruct.syntax
-<lib_test/ounit/test_packet.*>: pkg_cstruct.syntax

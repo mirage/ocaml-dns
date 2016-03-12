@@ -36,7 +36,7 @@ Library dns
     Loader, Name, Operators, Packet, Query, RR, Trie,
     Zone, Zone_lexer, Zone_parser, Resolvconf, Buf, Protocol, Dig,
     Probe
-  BuildDepends: cstruct (>= 1.0.1), re, re.str, ipaddr (>= 2.6.0),
+  BuildDepends: cstruct (>= 1.9.0), cstruct.ppx, re, re.str, ipaddr (>= 2.6.0),
                 base64 (>= 2.0.0), bytes, uri.services (>= 1.7.0),
                 hashcons
 
