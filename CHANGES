@@ -1,3 +1,6 @@
+0.18.0 (2016-03-12):
+* Remove dependency on camlp4, switch to ppx
+
 0.17.0 (2016-03-11):
 * This library now depends on the `hashcons` package rather than
   containing a fork of it. Now that there is no LGPL (+ linking exception)
