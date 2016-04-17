@@ -1,6 +1,6 @@
 OASISFormat: 0.4
 Name:        dns
-Version:     0.18.0
+Version:     0.18.1
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire, Luke Dunstan, David Scott
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC

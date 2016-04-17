@@ -1,3 +1,6 @@
+0.18.1 (2016-04-17):
+* Clear AA bit on requests, as some servers will drop these otherwise
+
 0.18.0 (2016-03-12):
 * Remove dependency on camlp4, switch to ppx
 
