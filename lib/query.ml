@@ -73,7 +73,7 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
   let open Packet in
   let detail = {
     qr=Query; opcode=Standard;
-    aa=true; tc=false; rd=true; ra=false; rcode=NoError;
+    aa=false; tc=false; rd=true; ra=false; rcode=NoError;
   } in
   let additionals =
     if dnssec then
