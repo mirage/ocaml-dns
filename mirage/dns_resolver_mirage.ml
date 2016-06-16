@@ -102,7 +102,7 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
     try
       Hashtbl.find res endp
     with Not_found ->
-      let timerfn () = Time.sleep 5.0 in
+      let timerfn () = Time.sleep_ns (Duration.of_sec 5) in
       let mvar = Lwt_mvar.create_empty () in
       (* TODO: test that port is free. Needs more functions exposed in tcpip *)
       let src_port = (Random.int 64511) + 1024 in

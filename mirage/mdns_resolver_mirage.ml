@@ -84,7 +84,7 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
     try
       Hashtbl.find res endp
     with Not_found ->
-      let timerfn () = Time.sleep 5.0 in
+      let timerfn () = Time.sleep_ns (Duration.of_sec 5) in
       let mvar = Lwt_mvar.create_empty () in
       let src_port = default_port in
       let callback ~src:_ ~dst:_ ~src_port buf =
