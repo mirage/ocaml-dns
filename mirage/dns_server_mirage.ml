@@ -66,10 +66,7 @@ module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) = struct
       | None -> return ()
       | Some rba ->
         let rbuf = Cstruct.of_bigarray rba in
-        let dest_port = src_port in
-        let source_port = port in
-        let dest_ip = src in
-        S.UDPV4.write ~source_port ~dest_ip ~dest_port udp rbuf
+        S.UDPV4.write ~src_port:port ~dst:src ~dst_port:src_port udp rbuf
     in
     S.listen_udpv4 t.s port listener;
     S.listen t.s
