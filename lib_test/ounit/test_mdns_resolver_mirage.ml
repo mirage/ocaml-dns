@@ -79,6 +79,9 @@ module StubIpv4 (*: V1_LWT.IPV4 with type ethif = unit*) = struct
   let checksum buf bufl =
     0
 
+  let pseudoheader t ~dst ~proto len =
+    Cstruct.create 0
+
   let get_source t ~dst:_ =
     t.ip
 
