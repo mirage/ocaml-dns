@@ -97,21 +97,21 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
     let res = Hashtbl.create 3 in
     { s; res }
 
-  let connect_to_resolver {s; res} ((dest_ip,dest_port) as endp) =
+  let connect_to_resolver {s; res} ((dst,dst_port) as endp) =
     let udp = S.udpv4 s in
     try
       Hashtbl.find res endp
     with Not_found ->
-      let timerfn () = Time.sleep 5.0 in
+      let timerfn () = Time.sleep_ns (Duration.of_sec 5) in
       let mvar = Lwt_mvar.create_empty () in
       (* TODO: test that port is free. Needs more functions exposed in tcpip *)
-      let source_port = (Random.int 64511) + 1024 in
+      let src_port = (Random.int 64511) + 1024 in
       let callback ~src ~dst ~src_port buf = Lwt_mvar.put mvar buf in
       let cleanfn () = return () in
-      S.listen_udpv4 s ~port:source_port callback;
+      S.listen_udpv4 s ~port:src_port callback;
       let rec txfn buf =
         Cstruct.of_bigarray buf |>
-        S.UDPV4.write ~source_port ~dest_ip ~dest_port udp in
+        S.UDPV4.write ~src_port ~dst ~dst_port udp in
       let rec rxfn f =
         Lwt_mvar.take mvar
         >>= fun buf ->
