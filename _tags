@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 2c3507179b4c2192c7b83dc308f3ad2f)
+# DO NOT EDIT (digest: 48beb06817f31ff7db87cf3411f79a54)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -48,6 +48,7 @@ true: annot, bin_annot
 <mirage/*.ml{,i,y}>: pkg_bytes
 <mirage/*.ml{,i,y}>: pkg_cstruct
 <mirage/*.ml{,i,y}>: pkg_cstruct.ppx
+<mirage/*.ml{,i,y}>: pkg_duration
 <mirage/*.ml{,i,y}>: pkg_hashcons
 <mirage/*.ml{,i,y}>: pkg_io-page
 <mirage/*.ml{,i,y}>: pkg_ipaddr
@@ -212,6 +213,7 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: pkg_bytes
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct.ppx
+<lib_test/ounit/test.{native,byte}>: pkg_duration
 <lib_test/ounit/test.{native,byte}>: pkg_hashcons
 <lib_test/ounit/test.{native,byte}>: pkg_io-page
 <lib_test/ounit/test.{native,byte}>: pkg_io-page.unix
@@ -234,6 +236,7 @@ true: annot, bin_annot
 <lib_test/ounit/*.ml{,i,y}>: pkg_bytes
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct.ppx
+<lib_test/ounit/*.ml{,i,y}>: pkg_duration
 <lib_test/ounit/*.ml{,i,y}>: pkg_hashcons
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page.unix

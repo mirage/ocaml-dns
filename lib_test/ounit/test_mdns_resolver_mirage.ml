@@ -286,7 +286,7 @@ let create_stack () =
 
 module MockTime : V1_LWT.TIME = struct
   type 'a io = 'a Lwt.t
-  let sleep t = return_unit
+  let sleep_ns _t = return_unit
 end
 
 let mdns_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
@@ -330,7 +330,7 @@ let tests =
         (* This mock Time module simulates a time-out *)
         let module T : V1_LWT.TIME = struct
           type 'a io = 'a Lwt.t
-          let sleep t = return_unit
+          let sleep_ns _t = return_unit
         end in
         let module R = Mdns_resolver_mirage.Make(T)(MockStack) in
         let r = R.create stack in
@@ -349,7 +349,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let module T : V1_LWT.TIME = struct
           type 'a io = 'a Lwt.t
-          let sleep t = Lwt_condition.wait cond
+          let sleep_ns t = Lwt_condition.wait cond
         end in
         let module R = Mdns_resolver_mirage.Make(T)(MockStack) in
         let r = R.create stack in
@@ -383,7 +383,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let module T : V1_LWT.TIME = struct
           type 'a io = 'a Lwt.t
-          let sleep t = Lwt_condition.wait cond
+          let sleep_ns t = Lwt_condition.wait cond
         end in
         let module R = Mdns_resolver_mirage.Make(T)(MockStack) in
         let r = R.create stack in
@@ -436,7 +436,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let module T : V1_LWT.TIME = struct
           type 'a io = 'a Lwt.t
-          let sleep t = Lwt_condition.wait cond
+          let sleep_ns t = Lwt_condition.wait cond
         end in
         let module DR = Dns_resolver_mirage.Make(T)(MockStack) in
         let module MR = Mdns_resolver_mirage.Make(T)(MockStack) in
