@@ -39,7 +39,7 @@ let sockaddr_to_string = Lwt_unix.(function
   | ADDR_UNIX s -> s ^ "/UNIX"
   )
 
-let connect_to_resolver server port =
+let udp_commfn server port =
   let dst = sockaddr server port in
   let ofd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in
   Lwt_unix.(bind ofd (sockaddr Ipaddr.(V4 V4.any) 0));
@@ -70,14 +70,14 @@ let resolve client
     server dns_port
     (q_class:DP.q_class) (q_type:DP.q_type)
     (q_name:Name.t) =
-   let commfn = connect_to_resolver server dns_port in
+   let commfn = udp_commfn server dns_port in
    resolve client ~dnssec commfn q_class q_type q_name
 
 let gethostbyname
     ?(server = ns) ?(dns_port = port)
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
     name =
-   let commfn = connect_to_resolver server dns_port in
+   let commfn = udp_commfn server dns_port in
    gethostbyname ~q_class ~q_type commfn name
 
 let gethostbyaddr
@@ -85,7 +85,7 @@ let gethostbyaddr
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
     addr
     =
-   let commfn = connect_to_resolver server dns_port in
+   let commfn = udp_commfn server dns_port in
    gethostbyaddr ~q_class ~q_type commfn addr
 
 open Dns.Resolvconf
