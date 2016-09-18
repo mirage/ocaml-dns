@@ -39,14 +39,10 @@ let sockaddr_to_string = Lwt_unix.(function
   | ADDR_UNIX s -> s ^ "/UNIX"
   )
 
-let outfd addr port =
-  let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in
-  Lwt_unix.(bind fd (sockaddr addr port));
-  fd
-
 let connect_to_resolver server port =
   let dst = sockaddr server port in
-  let ofd = outfd Ipaddr.(V4 V4.any) 0 in
+  let ofd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in
+  Lwt_unix.(bind ofd (sockaddr Ipaddr.(V4 V4.any) 0));
   let cleanfn () =
     Lwt.catch (fun () ->
         Lwt_unix.close ofd
