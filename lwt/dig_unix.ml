@@ -35,7 +35,7 @@ open Cmdliner
 
 let dns_port = 53
 
-let dig source_ip opt_dest_port q_class q_type args =
+let dig source_ip opt_dest_port q_class q_type _proto args =
   Dns_resolver_unix.create ()
   >>= fun res ->
   let timeout = 5 (* matches dig *) in
@@ -85,6 +85,10 @@ let dig source_ip opt_dest_port q_class q_type args =
       >|= fun ans -> printf "%s" (Dig.string_of_answers ans)
     )
 
+let proto_to_string = function
+  | `Tcp -> "tcp"
+  | `Udp -> "udp"
+
 let t =
   let source_ip =
     Arg.(value & opt string "0.0.0.0" & info ["b"] ~docv:"SOURCE_IP"
@@ -100,6 +104,11 @@ let t =
     (fun x -> match string_to_q_type x with |None -> `Error "" |Some x -> `Ok x),
     (fun f a -> Format.pp_print_string f (q_type_to_string a)) in
   let q_type = Arg.(value & opt q_type Q_A &  info ["t";"qtype"] ~docv:"QTYPE") in
+  let proto =
+    (fun x -> match String.lowercase x with | "tcp" -> `Ok `Tcp | "udp" -> `Ok `Udp | x -> `Error ("Unknown protocol " ^ x)),
+    (fun f a -> Format.pp_print_string f (proto_to_string a)) in
+  let proto = Arg.(value & opt (some proto) None & info ["proto"] ~docv:"PROTO"
+    ~doc:"Force the use of either UDP or TCP.") in
   let args = Arg.(non_empty & pos_all string [] & info [] ~docv:"ARGS") in
   let info =
     let doc = "DNS lookup utility" in
@@ -111,7 +120,8 @@ let t =
                       source_ip $
                       dest_port $
                       q_class $
-                      q_type $ args) in
+                      q_type $
+                      proto $ args) in
   match Term.eval (cmd_t, info) with `Ok x -> x |_ -> exit 1
 
 let _ = Lwt_main.run t
