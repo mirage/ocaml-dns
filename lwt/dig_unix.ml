@@ -35,8 +35,9 @@ open Cmdliner
 
 let dns_port = 53
 
-let dig source_ip opt_dest_port q_class q_type _proto args =
-  Dns_resolver_unix.create ()
+let dig source_ip opt_dest_port q_class q_type proto args =
+  let protocol = match proto with None -> `Automatic | Some `Tcp -> `Tcp | Some `Udp -> `Udp in
+  Dns_resolver_unix.create ~protocol ()
   >>= fun res ->
   let timeout = 5 (* matches dig *) in
   (* Fold over args to determine overrides for q_class/type *)
