@@ -255,4 +255,4 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: custom
 # OASIS_STOP
 <lib_test/*>: not_hygienic
-true: annot, principal, bin_annot, debug, short_paths
+true: principal, debug, short_paths

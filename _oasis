@@ -73,7 +73,7 @@ Library "dns-async"
   Install$: flag(async)
   Findlibname: async
   Modules: Async_dns_resolver
-  BuildDepends: async_kernel, ipaddr, dns, core.syntax
+  BuildDepends: async_kernel, ipaddr, dns
   XMetaRequires: async_kernel, ipaddr, dns
   FindlibParent: dns
 
