@@ -1,5 +1,6 @@
 (*
  * Copyright (c) 2014 marklrh <marklrh@gmail.com>
+ * Copyright (c) 2016 Vincent Bernardoff <vb@luminar.eu.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -20,9 +21,10 @@ open Core.Std
 open Async.Std
 
 val gethostbyname :
+  ?log:Log.t ->
   ?server:string ->
-  ?dns_port:int ->
+  ?port:int ->
   ?q_class:Dns.Packet.q_class ->
   ?q_type:Dns.Packet.q_type ->
   string ->
-  Ipaddr.t list Deferred.t
+  Ipaddr.t list Deferred.Or_error.t
