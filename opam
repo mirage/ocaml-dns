@@ -49,6 +49,7 @@ depends: [
   "base64" {>= "2.0.0"}
   "mirage-profile"
   "hashcons"
+  "duration"
   "ounit"       {test}
   "pcap-format" {test}
 ]
