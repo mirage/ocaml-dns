@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 2c3507179b4c2192c7b83dc308f3ad2f)
+# DO NOT EDIT (digest: 3519c9d29216c801c9f49b636c00e546)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -69,7 +69,6 @@ true: annot, bin_annot
 <async/*.ml{,i,y}>: pkg_async_kernel
 <async/*.ml{,i,y}>: pkg_base64
 <async/*.ml{,i,y}>: pkg_bytes
-<async/*.ml{,i,y}>: pkg_core.syntax
 <async/*.ml{,i,y}>: pkg_cstruct
 <async/*.ml{,i,y}>: pkg_cstruct.ppx
 <async/*.ml{,i,y}>: pkg_hashcons
@@ -178,7 +177,6 @@ true: annot, bin_annot
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_async_kernel
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_base64
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_bytes
-<lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_core.syntax
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_cstruct
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_cstruct.ppx
 <lib_test/async/test_async_dns_resolver_unix.{native,byte}>: pkg_hashcons
@@ -194,7 +192,6 @@ true: annot, bin_annot
 <lib_test/async/*.ml{,i,y}>: pkg_async_kernel
 <lib_test/async/*.ml{,i,y}>: pkg_base64
 <lib_test/async/*.ml{,i,y}>: pkg_bytes
-<lib_test/async/*.ml{,i,y}>: pkg_core.syntax
 <lib_test/async/*.ml{,i,y}>: pkg_cstruct
 <lib_test/async/*.ml{,i,y}>: pkg_cstruct.ppx
 <lib_test/async/*.ml{,i,y}>: pkg_hashcons
@@ -255,4 +252,4 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: custom
 # OASIS_STOP
 <lib_test/*>: not_hygienic
-true: annot, principal, bin_annot, debug, short_paths
+true: principal, debug, short_paths

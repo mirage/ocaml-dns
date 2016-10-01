@@ -1,5 +1,6 @@
 (*
  * Copyright (c) 2014 marklrh <marklrh@gmail.com>
+ * Copyright (c) 2016 Vincent Bernardoff <vb@luminar.eu.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,11 +18,12 @@
 (** Async DNS resolution logic *)
 
 open Core_kernel.Std
-open Async_kernel.Std
+open Async.Std
 
 open Dns
 
 type commfn = {
+  log : Log.t option;
   txfn : Buf.t -> unit Deferred.t;
   rxfn : (Buf.t -> Packet.t option) -> Packet.t Deferred.t;
   timerfn : unit -> unit Deferred.t;
@@ -29,16 +31,16 @@ type commfn = {
 }
 
 val resolve :
-  (module Protocol.CLIENT) ->
   ?dnssec:bool ->
+  (module Protocol.CLIENT) ->
   commfn ->
   Packet.q_class ->
   Packet.q_type ->
-  Name.t -> Packet.t Deferred.t
+  Name.t -> Packet.t Deferred.Or_error.t
 
 val gethostbyname :
   ?q_class:Packet.q_class ->
   ?q_type:Packet.q_type ->
   commfn ->
   string ->
-  Ipaddr.t list Deferred.t
+  Ipaddr.t list Deferred.Or_error.t
