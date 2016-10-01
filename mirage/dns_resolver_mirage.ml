@@ -97,14 +97,12 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
     let res = Hashtbl.create 3 in
     { s; res }
 
-  let default_wait_time = Duration.of_sec 5
-
   let connect_to_resolver {s; res} ((dst,dst_port) as endp) =
     let udp = S.udpv4 s in
     try
       Hashtbl.find res endp
     with Not_found ->
-      let timerfn () = Time.sleep_ns default_wait_time in
+      let timerfn () = Time.sleep_ns (Duration.of_sec 5) in
       let mvar = Lwt_mvar.create_empty () in
       (* TODO: test that port is free. Needs more functions exposed in tcpip *)
       let src_port = (Random.int 64511) + 1024 in

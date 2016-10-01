@@ -263,12 +263,6 @@ module MockStack (*:
     let _ = listen t in
     configure t t.mode
     >>= fun () ->
-    (* TODO: this is fine for now, because the DHCP state machine isn't fully
-       implemented and its thread will terminate after one successful lease
-       transaction.  For a DHCP thread that runs forever, `configure` will need
-       to spawn a background thread, but we need to consider how to inform the
-       application stack that the IP address has changed (perhaps via a control
-       Lwt_stream that the application can ignore if it doesn't care). *)
     return (`Ok t)
 
   let disconnect t = return_unit
@@ -292,7 +286,7 @@ let create_stack () =
 
 module MockTime : V1_LWT.TIME = struct
   type 'a io = 'a Lwt.t
-  let sleep_ns t = return_unit
+  let sleep_ns _t = return_unit
 end
 
 let mdns_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
@@ -336,7 +330,7 @@ let tests =
         (* This mock Time module simulates a time-out *)
         let module T : V1_LWT.TIME = struct
           type 'a io = 'a Lwt.t
-          let sleep_ns t = return_unit
+          let sleep_ns _t = return_unit
         end in
         let module R = Mdns_resolver_mirage.Make(T)(MockStack) in
         let r = R.create stack in
