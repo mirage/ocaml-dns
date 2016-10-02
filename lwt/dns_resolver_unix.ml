@@ -27,6 +27,12 @@ module DP = Packet
 
 let log_warn s = eprintf "WARN: %s\n%!" s
 
+type protocol = [
+  | `Tcp
+  | `Udp
+  | `Automatic
+]
+
 let buflen = 4096
 let ns = Ipaddr.of_string_exn "8.8.8.8"
 let port = 53
@@ -39,21 +45,19 @@ let sockaddr_to_string = Lwt_unix.(function
   | ADDR_UNIX s -> s ^ "/UNIX"
   )
 
-let outfd addr port =
-  let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in
-  Lwt_unix.(bind fd (sockaddr addr port));
-  fd
+let cleanfn ofd () =
+  Lwt.catch (fun () ->
+      Lwt_unix.close ofd
+    ) (fun e ->
+      log_warn (sprintf "%s\n%!" (Printexc.to_string e));
+      Lwt.return_unit
+    )
 
-let connect_to_resolver server port =
+let udp_commfn server port =
   let dst = sockaddr server port in
-  let ofd = outfd Ipaddr.(V4 V4.any) 0 in
-  let cleanfn () =
-    Lwt.catch (fun () ->
-        Lwt_unix.close ofd
-      ) (fun e ->
-        log_warn (sprintf "%s\n%!" (Printexc.to_string e));
-        Lwt.return_unit
-      ) in
+  let ofd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in
+  Lwt_unix.(bind ofd (sockaddr Ipaddr.(V4 V4.any) 0));
+  let cleanfn = cleanfn ofd in
   let timerfn () = Lwt_unix.sleep 5.0 in
   let txfn buf =
     Lwt_bytes.sendto ofd buf 0 (Dns.Buf.length buf) [] dst
@@ -67,30 +71,76 @@ let connect_to_resolver server port =
     | None -> rxfn f
     | Some r -> Lwt.return r
   in
-  { txfn; rxfn; timerfn; cleanfn }
+  Lwt.return { txfn; rxfn; timerfn; cleanfn }
+
+let tcp_commfn server port =
+  let dst = sockaddr server port in
+  let ofd = Lwt_unix.(socket PF_INET SOCK_STREAM 0) in
+  Lwt.catch
+    (fun () ->
+      Lwt_unix.connect ofd dst
+    ) (fun e ->
+      Lwt_unix.close ofd
+      >>= fun () ->
+      Lwt.fail e
+    )
+  >>= fun () ->
+  let cleanfn = cleanfn ofd in
+  let timerfn () = Lwt_unix.sleep 5.0 in
+  (* RFC 1035 4.2.2 TCP Usage: 2 byte length field *)
+  let header = Cstruct.create 2 in
+  let txfn buf =
+    Cstruct.BE.set_uint16 header 0 (Dns.Buf.length buf);
+    Lwt_cstruct.(complete (write ofd) header)
+    >>= fun () ->
+    let payload = Cstruct.of_bigarray buf in
+    Lwt_cstruct.(complete (write ofd) payload)
+    >>= fun () ->
+    Lwt.return_unit in
+  let rec rxfn f =
+    Lwt_cstruct.(complete (read ofd) header)
+    >>= fun () ->
+    let length = Cstruct.BE.get_uint16 header 0 in
+    let buf = Dns.Buf.create length in
+    let payload = Cstruct.of_bigarray buf in
+    Lwt_cstruct.(complete (read ofd) payload)
+    >>= fun () ->
+    match f buf with
+    | None -> rxfn f
+    | Some r -> Lwt.return r
+  in
+  Lwt.return { txfn; rxfn; timerfn; cleanfn }
+
+let commfn = function
+  | `Tcp -> tcp_commfn
+  | `Udp -> udp_commfn
+  | `Automatic -> udp_commfn (* FIXME: need to switch between UDP and TCP *)
 
 let resolve client
     ?(dnssec=false)
-    server dns_port
+    protocol server dns_port
     (q_class:DP.q_class) (q_type:DP.q_type)
     (q_name:Name.t) =
-   let commfn = connect_to_resolver server dns_port in
+   commfn protocol server dns_port
+   >>= fun commfn ->
    resolve client ~dnssec commfn q_class q_type q_name
 
 let gethostbyname
-    ?(server = ns) ?(dns_port = port)
+    ?(protocol = `Automatic) ?(server = ns) ?(dns_port = port)
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
     name =
-   let commfn = connect_to_resolver server dns_port in
-   gethostbyname ~q_class ~q_type commfn name
+  commfn protocol server dns_port
+  >>= fun commfn ->
+  gethostbyname ~q_class ~q_type commfn name
 
 let gethostbyaddr
-    ?(server = ns) ?(dns_port = port)
+    ?(protocol = `Automatic) ?(server = ns) ?(dns_port = port)
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
     addr
     =
-   let commfn = connect_to_resolver server dns_port in
-   gethostbyaddr ~q_class ~q_type commfn addr
+  commfn protocol server dns_port
+  >>= fun commfn ->
+  gethostbyaddr ~q_class ~q_type commfn addr
 
 open Dns.Resolvconf
 
@@ -98,6 +148,7 @@ type t = {
   client : (module CLIENT);
   servers : (Ipaddr.t * int) list;
   search_domains : string list;
+  protocol: protocol;
 }
 
 type config = [
@@ -123,40 +174,41 @@ module Resolv_conf = struct
       ) lines))
     )
 
-  let create client ?(file=default_file) () =
+  let create client protocol ?(file=default_file) () =
     get_resolvers ~file ()
     >|= fun t ->
-    { client; servers = all_servers t; search_domains = search_domains t }
+    { client; servers = all_servers t; search_domains = search_domains t; protocol }
 
 end
 
 module Static = struct
-  let create client ?(servers=[ns,port]) ?(search_domains=[]) () =
-    { client; servers; search_domains }
+  let create client protocol ?(servers=[ns,port]) ?(search_domains=[]) () =
+    { client; servers; search_domains; protocol }
 end
 
 let create
     ?(client=(module Dns.Protocol.Client : CLIENT))
-    ?(config=`Resolv_conf Resolv_conf.default_file) () =
+    ?(config=`Resolv_conf Resolv_conf.default_file)
+    ?(protocol=`Automatic) () =
   match config with
   |`Static (servers, search_domains) ->
-     Lwt.return (Static.create client ~servers ~search_domains ())
-  |`Resolv_conf file -> Resolv_conf.create client ~file ()
+     Lwt.return (Static.create client protocol ~servers ~search_domains ())
+  |`Resolv_conf file -> Resolv_conf.create client protocol ~file ()
 
 let gethostbyname t ?q_class ?q_type q_name =
   match t.servers with
   |[] -> Lwt.fail (Failure "No resolvers available")
   |(server,dns_port)::_ ->
-    gethostbyname ~server ~dns_port ?q_class ?q_type q_name
+    gethostbyname ~protocol:t.protocol ~server ~dns_port ?q_class ?q_type q_name
 
 let gethostbyaddr t ?q_class ?q_type q_name =
   match t.servers with
   |[] -> Lwt.fail (Failure "No resolvers available")
   |(server,dns_port)::_ ->
-    gethostbyaddr ~server ~dns_port ?q_class ?q_type q_name
+    gethostbyaddr ~protocol:t.protocol ~server ~dns_port ?q_class ?q_type q_name
 
 let resolve t ?(dnssec=false) q_class q_type q_name =
   match t.servers with
   |[] -> Lwt.fail (Failure "No resolvers available")
   |(server,dns_port)::_ ->
-    resolve t.client ~dnssec server dns_port q_class q_type q_name
+    resolve t.client ~dnssec t.protocol server dns_port q_class q_type q_name

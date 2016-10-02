@@ -17,10 +17,17 @@
 
 open Dns
 
+type protocol = [
+  | `Tcp (** force the use of TCP only *)
+  | `Udp (** force the use of UDP only *)
+  | `Automatic (** choose automatically depending on query type and size *)
+]
+
 type t = {
   client : (module Protocol.CLIENT);
   servers : (Ipaddr.t * int) list;
   search_domains : string list;
+  protocol : protocol;
 }
 
 (** Defines the location of the stub resolvers to use for
@@ -33,8 +40,8 @@ type config = [
 (** Create a resolver instance that either uses the system
     [/etc/resolv.conf], or a statically specified preference
   *)
-val create : ?client:(module Protocol.CLIENT) -> ?config:config -> unit ->
-             t Lwt.t
+val create : ?client:(module Protocol.CLIENT) -> ?config:config
+  -> ?protocol:protocol -> unit -> t Lwt.t
 
 (** Lookup a {! Name.t }.
     @return the corresponding IPv4/6 addresses.
