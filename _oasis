@@ -39,6 +39,7 @@ Library dns
   BuildDepends: cstruct (>= 1.9.0), cstruct.ppx, re, re.str, ipaddr (>= 2.6.0),
                 base64 (>= 2.0.0), bytes, uri.services (>= 1.7.0),
                 hashcons
+  XMetaRequires: cstruct, re, re.str, ipaddr, base64, bytes, uri.services, hashcons
 
 Library "dns-lwt"
   Path: lwt
