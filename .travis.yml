@@ -10,6 +10,7 @@ env:
    - PACKAGE="dns"
    - DEPOPTS="tcpip lwt async"
    - REVDEPS="true"
+   - PRE_INSTALL_HOOK="cd /home/opam/opam-repository && git pull origin master && opam update -u -y"
    - POST_BUILD_HOOKS="./.travis-ci-post.sh"
  matrix:
    - DISTRO=debian-stable OCAML_VERSION=4.03.0
