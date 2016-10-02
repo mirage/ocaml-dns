@@ -10,6 +10,7 @@ env:
    - PACKAGE="dns"
    - DEPOPTS="tcpip lwt async"
    - REVDEPS="true"
+   - POST_BUILD_HOOKS="./.travis-ci-post.sh"
  matrix:
    - DISTRO=debian-stable OCAML_VERSION=4.03.0
    - DISTRO=debian-testing OCAML_VERSION=4.02.3
