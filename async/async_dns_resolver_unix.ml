@@ -76,4 +76,4 @@ let resolve ?log ?(dnssec=false) ?port client server q_class q_type q_name =
 let gethostbyname ?log ?(server="127.0.0.1") ?port ?(q_class=Dns.Packet.Q_IN) ?(q_type=Dns.Packet.Q_A) name =
   Deferred.Or_error.bind
     (connect_to_resolver ?log ?port server)
-    ~f:(fun commfn -> gethostbyname ~q_class ~q_type commfn name)
+    (fun commfn -> gethostbyname ~q_class ~q_type commfn name)

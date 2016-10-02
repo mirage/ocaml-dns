@@ -1,6 +1,6 @@
 OASISFormat: 0.4
 Name:        dns
-Version:     0.18.1
+Version:     0.19.0
 Authors:     Anil Madhavapeddy, Tim Deegan, Richard Mortier, Haris Rotsos, David Sheets, Thomas Gazagnaire, Luke Dunstan, David Scott
 Maintainers: Anil Madhavapeddy <anil@recoil.org>
 License:     ISC
@@ -39,6 +39,7 @@ Library dns
   BuildDepends: cstruct (>= 1.9.0), cstruct.ppx, re, re.str, ipaddr (>= 2.6.0),
                 base64 (>= 2.0.0), bytes, uri.services (>= 1.7.0),
                 hashcons
+  XMetaRequires: cstruct, re, re.str, ipaddr, base64, bytes, uri.services, hashcons
 
 Library "dns-lwt"
   Path: lwt
@@ -55,7 +56,7 @@ Library "dns-lwt-mirage"
   Install$: flag(mirage)
   Findlibname: mirage
   Modules: Dns_server_mirage, Dns_resolver_mirage, Mdns_resolver_mirage
-  BuildDepends: cstruct, lwt, dns, dns.lwt-core, mirage-types, io-page
+  BuildDepends: cstruct, lwt, dns, dns.lwt-core, mirage-types, io-page, duration
   FindlibParent: dns
 
 Library "dns-lwt-core"

@@ -79,28 +79,28 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
     let res = Hashtbl.create 3 in
     { s; res }
 
-  let connect_to_resolver {s; res} ((dest_ip,dest_port) as endp) =
+  let connect_to_resolver {s; res} ((dst,dst_port) as endp) =
     let udp = S.udpv4 s in
     try
       Hashtbl.find res endp
     with Not_found ->
-      let timerfn () = Time.sleep 5.0 in
+      let timerfn () = Time.sleep_ns (Duration.of_sec 5) in
       let mvar = Lwt_mvar.create_empty () in
-      let source_port = default_port in
+      let src_port = default_port in
       let callback ~src ~dst ~src_port buf =
         (* TODO: ignore responses that are not from the local link *)
         (* Ignore responses that are not from port 5353 *)
-        if src_port == dest_port then
+        if src_port = dst_port then
           Lwt_mvar.put mvar buf
         else
           return_unit
       in
       let cleanfn () = return () in
       (* FIXME: can't coexist with server yet because both listen on port 5353 *)
-      S.listen_udpv4 s ~port:source_port callback;
+      S.listen_udpv4 s ~port:src_port callback;
       let rec txfn buf =
         Cstruct.of_bigarray buf |>
-        S.UDPV4.write ~source_port ~dest_ip ~dest_port udp in
+        S.UDPV4.write ~src_port ~dst ~dst_port udp in
       let rec rxfn f =
         Lwt_mvar.take mvar
         >>= fun buf ->

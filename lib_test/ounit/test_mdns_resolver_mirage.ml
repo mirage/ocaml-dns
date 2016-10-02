@@ -82,7 +82,7 @@ module StubIpv4 (*: V1_LWT.IPV4 with type ethif = unit*) = struct
   let pseudoheader t ~dst ~proto len =
     Cstruct.create 0
 
-  let get_source t ~dst:_ =
+  let src t ~dst:_ =
     t.ip
 
   type uipaddr = Ipaddr.t
@@ -93,8 +93,8 @@ end
 
 type write_call = {
   src_port : int;
-  dest_ip : Ipaddr.V4.t;
-  dest_port : int;
+  dst : Ipaddr.V4.t;
+  dst_port : int;
   buf : Cstruct.t;
 }
 
@@ -119,16 +119,16 @@ module MockUdpv4 (*: V1_LWT.UDPV4 with type ip = StubIpv4.t*) = struct
 
   let input ~listeners _t ~src ~dst buf = return_unit
 
-  let writev ?source_port ~dest_ip ~dest_port t bufs =
-    let src_port = begin match source_port with
-      | None -> assert_failure "source_port missing"
+  let writev ?src_port ~dst ~dst_port t bufs =
+    let src_port = begin match src_port with
+      | None -> assert_failure "src_port missing"
       | Some p -> p
     end in
-    List.iter (fun buf -> t.writes <- { src_port; dest_ip; dest_port; buf; } :: t.writes) bufs;
+    List.iter (fun buf -> t.writes <- { src_port; dst; dst_port; buf; } :: t.writes) bufs;
     return_unit
 
-  let write ?source_port ~dest_ip ~dest_port t buf =
-    writev ?source_port ~dest_ip ~dest_port t [buf]
+  let write ?src_port ~dst ~dst_port t buf =
+    writev ?src_port ~dst ~dst_port t [buf]
 
   let connect ip =
     return (`Ok { ip; writes=[] })
@@ -167,7 +167,7 @@ module StubTcpv4 (*: V1_LWT.TCPV4 with type ip = StubIpv4.t*) = struct
     | `Refused -> "Connection refused"
 
   let id t = t
-  let get_dest t = (Ipaddr.V4.unspecified, 0)
+  let dst t = (Ipaddr.V4.unspecified, 0)
   let read t = return `Eof
   let write t view = return (`Ok ())
   let writev t views = return (`Ok ())
@@ -185,11 +185,11 @@ module MockStack (*:
   (V1_LWT.STACKV4 with type console = unit and type netif = unit and type mode = unit)*)
 = struct
   type +'a io = 'a Lwt.t
-  type ('a,'b,'c) config = ('a,'b,'c) V1_LWT.stackv4_config
+  type ('a,'b) config = ('a,'b) V1_LWT.stackv4_config
   type console = unit
   type netif = unit
   type mode = unit
-  type id = (console, netif, mode) config
+  type id = (netif, mode) config
   type buffer = Cstruct.t
   type ipv4addr = Ipaddr.V4.t
   type tcpv4 = StubTcpv4.t
@@ -246,7 +246,7 @@ module MockStack (*:
   let listen t = return_unit
 
   let connect id =
-    let { V1_LWT.console = c; interface = netif; mode; _ } = id in
+    let { V1_LWT.interface = netif; mode; _ } = id in
     let udpv4_listeners = Hashtbl.create 7 in
     let ethif = () in
     StubIpv4.connect ethif >>= function
@@ -263,12 +263,6 @@ module MockStack (*:
     let _ = listen t in
     configure t t.mode
     >>= fun () ->
-    (* TODO: this is fine for now, because the DHCP state machine isn't fully
-       implemented and its thread will terminate after one successful lease
-       transaction.  For a DHCP thread that runs forever, `configure` will need
-       to spawn a background thread, but we need to consider how to inform the
-       application stack that the IP address has changed (perhaps via a control
-       Lwt_stream that the application can ignore if it doesn't care). *)
     return (`Ok t)
 
   let disconnect t = return_unit
@@ -280,7 +274,7 @@ let create_stack_lwt () =
   let mode = () in
   let config = {
     V1_LWT.name = "mockstack";
-    console; interface;
+    interface;
     mode (*= `IPv4 (Ipaddr.V4.of_string_exn "10.0.0.2", Ipaddr.V4.of_string_exn "255.255.255.0", [Ipaddr.V4.of_string_exn "10.0.0.1"])*);
   } in
   MockStack.connect config
@@ -292,7 +286,7 @@ let create_stack () =
 
 module MockTime : V1_LWT.TIME = struct
   type 'a io = 'a Lwt.t
-  let sleep t = return_unit
+  let sleep_ns _t = return_unit
 end
 
 let mdns_ip = Ipaddr.V4.of_string_exn "224.0.0.251"
@@ -336,7 +330,7 @@ let tests =
         (* This mock Time module simulates a time-out *)
         let module T : V1_LWT.TIME = struct
           type 'a io = 'a Lwt.t
-          let sleep t = return_unit
+          let sleep_ns _t = return_unit
         end in
         let module R = Mdns_resolver_mirage.Make(T)(MockStack) in
         let r = R.create stack in
@@ -355,7 +349,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let module T : V1_LWT.TIME = struct
           type 'a io = 'a Lwt.t
-          let sleep t = Lwt_condition.wait cond
+          let sleep_ns t = Lwt_condition.wait cond
         end in
         let module R = Mdns_resolver_mirage.Make(T)(MockStack) in
         let r = R.create stack in
@@ -364,8 +358,8 @@ let tests =
         let thread = R.gethostbyname r good_query_str in
         let w = MockUdpv4.pop_write u in
         assert_equal ~printer:string_of_int 5353 w.src_port;
-        assert_ip mdns_ip w.dest_ip;
-        assert_equal ~printer:string_of_int 5353 w.dest_port;
+        assert_ip mdns_ip w.dst;
+        assert_equal ~printer:string_of_int 5353 w.dst_port;
         let packet = parse (Dns.Buf.of_cstruct w.buf) in
         (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)
         let expected = "0000 Query:0 na:c:nr:rn 0 <qs:valid.local. <A|IN>> <an:> <au:> <ad:>" in
@@ -389,7 +383,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let module T : V1_LWT.TIME = struct
           type 'a io = 'a Lwt.t
-          let sleep t = Lwt_condition.wait cond
+          let sleep_ns t = Lwt_condition.wait cond
         end in
         let module R = Mdns_resolver_mirage.Make(T)(MockStack) in
         let r = R.create stack in
@@ -416,8 +410,8 @@ let tests =
         Lwt_condition.signal cond ();
         let w2 = MockUdpv4.pop_write u in
         assert_equal ~printer:string_of_int 5353 w2.src_port;
-        assert_ip mdns_ip w2.dest_ip;
-        assert_equal ~printer:string_of_int 5353 w2.dest_port;
+        assert_ip mdns_ip w2.dst;
+        assert_equal ~printer:string_of_int 5353 w2.dst_port;
         let query_packet = parse (Dns.Buf.of_cstruct w2.buf) in
         (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)
         let expected = "0000 Query:0 na:c:nr:rn 0 <qs:valid.local. <A|IN>> <an:> <au:> <ad:>" in
@@ -442,7 +436,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let module T : V1_LWT.TIME = struct
           type 'a io = 'a Lwt.t
-          let sleep t = Lwt_condition.wait cond
+          let sleep_ns t = Lwt_condition.wait cond
         end in
         let module DR = Dns_resolver_mirage.Make(T)(MockStack) in
         let module MR = Mdns_resolver_mirage.Make(T)(MockStack) in
@@ -453,8 +447,8 @@ let tests =
         let thread = CR.gethostbyname r good_query_str in
         let w = MockUdpv4.pop_write u in
         assert_equal ~printer:string_of_int 5353 w.src_port;
-        assert_ip mdns_ip w.dest_ip;
-        assert_equal ~printer:string_of_int 5353 w.dest_port;
+        assert_ip mdns_ip w.dst;
+        assert_equal ~printer:string_of_int 5353 w.dst_port;
         let packet = parse (Dns.Buf.of_cstruct w.buf) in
         (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)
         let expected = "0000 Query:0 na:c:nr:rn 0 <qs:valid.local. <A|IN>> <an:> <au:> <ad:>" in
@@ -490,8 +484,8 @@ let tests =
         let thread = MR.gethostbyaddr r ip in
         let w = MockUdpv4.pop_write u in
         assert_equal ~printer:string_of_int 5353 w.src_port;
-        assert_ip mdns_ip w.dest_ip;
-        assert_equal ~printer:string_of_int 5353 w.dest_port;
+        assert_ip mdns_ip w.dst;
+        assert_equal ~printer:string_of_int 5353 w.dst_port;
         Cstruct.hexdump w.buf;
         let packet = parse (Dns.Buf.of_cstruct w.buf) in
         (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)

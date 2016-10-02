@@ -1,18 +1,17 @@
 # OASIS_START
-# DO NOT EDIT (digest: 841b51fbc39963466506cc025136c170)
-version = "0.18.1"
+# DO NOT EDIT (digest: 4e225cec06e190239fb9c6dbc7681f08)
+version = "0.19.0"
 description = "DNS client and server implementation"
-requires =
-"cstruct cstruct.ppx re re.str ipaddr base64 bytes uri.services hashcons"
+requires = "cstruct re re.str ipaddr base64 bytes uri.services hashcons"
 archive(byte) = "dns.cma"
 archive(byte, plugin) = "dns.cma"
 archive(native) = "dns.cmxa"
 archive(native, plugin) = "dns.cmxs"
 exists_if = "dns.cma"
 package "mirage" (
- version = "0.18.1"
+ version = "0.19.0"
  description = "DNS client and server implementation"
- requires = "cstruct lwt dns dns.lwt-core mirage-types io-page"
+ requires = "cstruct lwt dns dns.lwt-core mirage-types io-page duration"
  archive(byte) = "dns-lwt-mirage.cma"
  archive(byte, plugin) = "dns-lwt-mirage.cma"
  archive(native) = "dns-lwt-mirage.cmxa"
@@ -21,7 +20,7 @@ package "mirage" (
 )
 
 package "lwt-core" (
- version = "0.18.1"
+ version = "0.19.0"
  description = "DNS client and server implementation"
  requires = "lwt cstruct dns mirage-profile"
  archive(byte) = "dns-lwt-core.cma"
@@ -32,7 +31,7 @@ package "lwt-core" (
 )
 
 package "lwt" (
- version = "0.18.1"
+ version = "0.19.0"
  description = "DNS client and server implementation"
  requires = "lwt.unix cstruct.lwt dns dns.lwt-core ipaddr.unix"
  archive(byte) = "dns-lwt.cma"
@@ -43,7 +42,7 @@ package "lwt" (
 )
 
 package "async-unix" (
- version = "0.18.1"
+ version = "0.19.0"
  description = "DNS client and server implementation"
  requires = "async dns.async threads"
  archive(byte) = "dns-async-unix.cma"
@@ -54,7 +53,7 @@ package "async-unix" (
 )
 
 package "async" (
- version = "0.18.1"
+ version = "0.19.0"
  description = "DNS client and server implementation"
  requires = "async_kernel ipaddr dns"
  archive(byte) = "dns-async.cma"

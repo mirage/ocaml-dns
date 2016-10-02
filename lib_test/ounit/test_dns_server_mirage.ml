@@ -135,8 +135,8 @@ let tests =
           (* Verify that the response is correct *)
           let w = MockUdpv4.pop_write u in
           assert_equal ~printer:string_of_int 53 w.src_port;
-          assert_ip client_ip w.dest_ip;
-          assert_equal ~printer:string_of_int 12345 w.dest_port;
+          assert_ip client_ip w.dst;
+          assert_equal ~printer:string_of_int 12345 w.dst_port;
           let packet = parse (Dns.Buf.of_cstruct w.buf) in
           assert_packet ~prefix:"1" ~id:3848 packet
             {qr=Response; opcode=Standard; aa=true; tc=false; rd=true; ra=false; rcode=NoError}
@@ -165,8 +165,8 @@ let tests =
           (* Verify that the response is correct *)
           let w = MockUdpv4.pop_write u in
           assert_equal ~printer:string_of_int 53 w.src_port;
-          assert_ip client_ip w.dest_ip;
-          assert_equal ~printer:string_of_int 12345 w.dest_port;
+          assert_ip client_ip w.dst;
+          assert_equal ~printer:string_of_int 12345 w.dst_port;
           let packet = parse (Dns.Buf.of_cstruct w.buf) in
           assert_packet ~prefix:"2" ~id:19560 packet
             {qr=Response; opcode=Standard; aa=true; tc=false; rd=true; ra=false; rcode=NoError}
