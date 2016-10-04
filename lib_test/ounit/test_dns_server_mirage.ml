@@ -83,6 +83,7 @@ module MockKV = struct
   type +'a io = 'a Lwt.t
   type error =
   | Unknown_key of string
+  | Failure of string
   type id = string
   type page_aligned_buffer = Cstruct.t
   type t = unit
@@ -107,6 +108,10 @@ module MockKV = struct
       with exn ->
         `Error (Unknown_key name)
     )
+
+  let mem t name =
+    try let _ = List.assoc name zones in `Ok true
+    with exn -> `Ok false
 end
 
 let assert_rrlist msg expected_strs actual_rrlist =
