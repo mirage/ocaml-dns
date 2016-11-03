@@ -182,14 +182,13 @@ end
 
 
 module MockStack (*:
-  (V1_LWT.STACKV4 with type console = unit and type netif = unit and type mode = unit)*)
+  (V1_LWT.STACKV4 with type console = unit and type netif = unit *)
 = struct
   type +'a io = 'a Lwt.t
-  type ('a,'b) config = ('a,'b) V1_LWT.stackv4_config
   type console = unit
+  type 'a config = 'a V1_LWT.stackv4_config
   type netif = unit
-  type mode = unit
-  type id = (netif, mode) config
+  type id = netif config
   type buffer = Cstruct.t
   type ipv4addr = Ipaddr.V4.t
   type tcpv4 = StubTcpv4.t
@@ -202,7 +201,6 @@ module MockStack (*:
 
   type t = {
     id    : id;
-    mode  : mode;
     (*
     c     : Console.t;
     netif : Netif.t;
@@ -246,7 +244,7 @@ module MockStack (*:
   let listen t = return_unit
 
   let connect id =
-    let { V1_LWT.interface = netif; mode; _ } = id in
+    let { V1_LWT.interface = netif; _ } = id in
     let udpv4_listeners = Hashtbl.create 7 in
     let ethif = () in
     StubIpv4.connect ethif >>= function
@@ -258,11 +256,9 @@ module MockStack (*:
     StubTcpv4.connect ipv4 >>= function
     | `Error _ -> fail (Failure "StubTcpv4")
     | `Ok tcpv4 ->
-      let t = { id; (*c;*) mode; (*netif; ethif;*) ipv4; tcpv4; udpv4;
+      let t = { id; (*netif; ethif;*) ipv4; tcpv4; udpv4;
                 udpv4_listeners; (*tcpv4_listeners*) } in
     let _ = listen t in
-    configure t t.mode
-    >>= fun () ->
     return (`Ok t)
 
   let disconnect t = return_unit
@@ -271,11 +267,9 @@ end
 let create_stack_lwt () =
   let console = () in
   let interface = () in
-  let mode = () in
   let config = {
     V1_LWT.name = "mockstack";
     interface;
-    mode (*= `IPv4 (Ipaddr.V4.of_string_exn "10.0.0.2", Ipaddr.V4.of_string_exn "255.255.255.0", [Ipaddr.V4.of_string_exn "10.0.0.1"])*);
   } in
   MockStack.connect config
 
