@@ -111,7 +111,10 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
       S.listen_udpv4 s ~port:src_port callback;
       let rec txfn buf =
         Cstruct.of_bigarray buf |>
-        S.UDPV4.write ~src_port ~dst ~dst_port udp in
+        S.UDPV4.write ~src_port ~dst ~dst_port udp >>= function
+        | Error (`Msg s) -> fail (Failure ("Attempting to communicate with remote resolver: " ^ s))
+        | Ok () -> Lwt.return_unit
+      in
       let rec rxfn f =
         Lwt_mvar.take mvar
         >>= fun buf ->

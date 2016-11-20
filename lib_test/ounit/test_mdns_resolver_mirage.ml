@@ -12,10 +12,7 @@ let run_timeout thread =
     ])
 
 module StubIpv4 (*: V1_LWT.IPV4 with type ethif = unit*) = struct
-  type error = [
-    | `Unknown of string (** an undiagnosed error *)
-    | `Unimplemented     (** operation not yet implemented in the code *)
-  ]
+  type error = V1.Ip.error
 
   type ethif = unit (*StubEthif.t*)
   type 'a io = 'a Lwt.t
@@ -41,10 +38,10 @@ module StubIpv4 (*: V1_LWT.IPV4 with type ethif = unit*) = struct
     (ethernet_frame, len)
 
   let write t frame data =
-    return_unit
+    return @@ Ok ()
 
   let writev t ethernet_frame bufs =
-    return_unit
+    return @@ Ok ()
 
   let input t ~tcp ~udp ~default buf =
     return_unit
@@ -54,7 +51,7 @@ module StubIpv4 (*: V1_LWT.IPV4 with type ethif = unit*) = struct
     let netmask = Ipaddr.V4.any in
     let gateways = [] in
     let t = { ethif; ip; netmask; gateways } in
-    return (`Ok t)
+    return t
 
   let disconnect _ = return_unit
 
@@ -106,9 +103,7 @@ module MockUdpv4 (*: V1_LWT.UDPV4 with type ip = StubIpv4.t*) = struct
   type ipinput = src:ipaddr -> dst:ipaddr -> buffer -> unit io
   type callback = src:Ipaddr.V4.t -> dst:Ipaddr.V4.t -> src_port:int -> Cstruct.t -> unit Lwt.t
 
-  type error = [
-    | `Unknown of string (** an undiagnosed error *)
-  ]
+  type error = V1.Udp.error
 
   type t = {
     ip : ip;
@@ -125,13 +120,13 @@ module MockUdpv4 (*: V1_LWT.UDPV4 with type ip = StubIpv4.t*) = struct
       | Some p -> p
     end in
     List.iter (fun buf -> t.writes <- { src_port; dst; dst_port; buf; } :: t.writes) bufs;
-    return_unit
+    return @@ Ok ()
 
   let write ?src_port ~dst ~dst_port t buf =
     writev ?src_port ~dst ~dst_port t [buf]
 
   let connect ip =
-    return (`Ok { ip; writes=[] })
+    return ({ ip; writes=[] })
 
   let disconnect _ = return_unit
 
@@ -155,28 +150,19 @@ module StubTcpv4 (*: V1_LWT.TCPV4 with type ip = StubIpv4.t*) = struct
   type t = ip (*Pcb.t*)
   type callback = flow -> unit Lwt.t
 
-  type error = [
-    | `Unknown of string
-    | `Timeout
-    | `Refused
-  ]
-
-  let error_message = function
-    | `Unknown msg -> msg
-    | `Timeout -> "Timeout while attempting to connect"
-    | `Refused -> "Connection refused"
+  type error = V1.Tcp.error
 
   let id t = t
   let dst t = (Ipaddr.V4.unspecified, 0)
-  let read t = return `Eof
-  let write t view = return (`Ok ())
-  let writev t views = return (`Ok ())
-  let write_nodelay t view = return_unit
-  let writev_nodelay t views = return_unit
+  let read t = return (Ok `Eof)
+  let write t view = return (Ok ())
+  let writev t views = return (Ok ())
+  let write_nodelay t view = return (Ok ())
+  let writev_nodelay t views = return (Ok ())
   let close t = return_unit
-  let create_connection tcp (daddr, dport) = return (`Error `Refused)
+  let create_connection tcp (daddr, dport) = return (Error `Refused)
   let input t ~listeners ~src ~dst buf = return_unit
-  let connect ipv4 = return (`Ok ipv4)
+  let connect ipv4 = return ipv4
   let disconnect _ = return_unit
 end
 
@@ -247,19 +233,13 @@ module MockStack (*:
     let { V1_LWT.interface = netif; _ } = id in
     let udpv4_listeners = Hashtbl.create 7 in
     let ethif = () in
-    StubIpv4.connect ethif >>= function
-    | `Error _ -> fail (Failure "StubIpv4")
-    | `Ok ipv4 ->
-    MockUdpv4.connect ipv4 >>= function
-    | `Error _ -> fail (Failure "MockUdpv4")
-    | `Ok udpv4 ->
-    StubTcpv4.connect ipv4 >>= function
-    | `Error _ -> fail (Failure "StubTcpv4")
-    | `Ok tcpv4 ->
+    StubIpv4.connect ethif >>= fun ipv4 ->
+    MockUdpv4.connect ipv4 >>= fun udpv4 ->
+    StubTcpv4.connect ipv4 >>= fun tcpv4 ->
       let t = { id; (*netif; ethif;*) ipv4; tcpv4; udpv4;
                 udpv4_listeners; (*tcpv4_listeners*) } in
     let _ = listen t in
-    return (`Ok t)
+    return t
 
   let disconnect t = return_unit
 end
@@ -274,9 +254,7 @@ let create_stack_lwt () =
   MockStack.connect config
 
 let create_stack () =
-  match Lwt_main.run (create_stack_lwt ()) with
-  | `Error e -> assert_failure "create_stack"
-  | `Ok stackv41 -> stackv41
+  Lwt_main.run (create_stack_lwt ())
 
 module MockTime : V1_LWT.TIME = struct
   type 'a io = 'a Lwt.t
