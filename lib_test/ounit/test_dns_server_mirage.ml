@@ -81,9 +81,7 @@ let zones = [(filename1, Cstruct.of_string zone1); (filename2, Cstruct.of_string
 
 module MockKV = struct
   type +'a io = 'a Lwt.t
-  type error =
-  | Unknown_key of string
-  | Failure of string
+  type error = V1.Kv_ro.error
   type page_aligned_buffer = Cstruct.t
   type t = unit
 
@@ -95,23 +93,23 @@ module MockKV = struct
     return (
       try
         let buf = List.assoc name zones in
-        `Ok [Cstruct.sub buf off len]
+        Ok Int64.([Cstruct.sub buf (to_int off) (to_int len)])
       with exn ->
-        `Error (Unknown_key name)
+        Error `Unknown_key
     )
 
   let size t name =
     return (
       try
-        `Ok (List.assoc name zones |> Cstruct.len |> Int64.of_int)
+        Ok (List.assoc name zones |> Cstruct.len |> Int64.of_int)
       with exn ->
-        `Error (Unknown_key name)
+        Error `Unknown_key
     )
 
   let mem t name =
     return
-      (try let _ = List.assoc name zones in `Ok true
-       with exn -> `Ok false)
+      (try let _ = List.assoc name zones in Ok true
+       with exn -> Ok false)
 end
 
 let assert_rrlist msg expected_strs actual_rrlist =
