@@ -45,12 +45,12 @@ module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) = struct
     Lwt_list.map_s (fun filename ->
       K.size t.k filename
       >>= function
-      | `Error _ -> fail_load ("zonefile "^filename^" not found")
-      | `Ok sz ->
-        K.read t.k filename 0 (Int64.to_int sz) 
+      | Error _ -> fail_load ("zonefile "^filename^" not found")
+      | Ok sz ->
+        K.read t.k filename 0L sz
         >>= function 
-        | `Error _  -> fail_load ("error reading zonefile "^filename)
-        | `Ok pages -> return (Cstruct.copyv pages)
+        | Error _  -> fail_load ("error reading zonefile "^filename)
+        | Ok pages -> return (Cstruct.copyv pages)
     ) filenames
     >|= process_of_zonebufs
     
