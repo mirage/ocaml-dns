@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 4e225cec06e190239fb9c6dbc7681f08)
+# DO NOT EDIT (digest: b55e5e48d6a15602d933b1064be5e547)
 version = "0.19.0"
 description = "DNS client and server implementation"
 requires = "cstruct re re.str ipaddr base64 bytes uri.services hashcons"
@@ -11,7 +11,8 @@ exists_if = "dns.cma"
 package "mirage" (
  version = "0.19.0"
  description = "DNS client and server implementation"
- requires = "cstruct lwt dns dns.lwt-core mirage-types io-page duration"
+ requires =
+ "cstruct lwt dns dns.lwt-core mirage-types mirage-types-lwt io-page duration"
  archive(byte) = "dns-lwt-mirage.cma"
  archive(byte, plugin) = "dns-lwt-mirage.cma"
  archive(native) = "dns-lwt-mirage.cmxa"
