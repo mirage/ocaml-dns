@@ -22,13 +22,13 @@ tags: [
 build: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix
     "--%{base-unix:enable}%-lwt"
-    "--%{mirage-types:enable}%-mirage"]
+    "--%{mirage-types-lwt:enable}%-mirage"]
   ["ocaml" "setup.ml" "-build"]
 ]
 build-test: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix
     "--%{base-unix:enable}%-lwt"
-    "--%{mirage-types:enable}%-mirage"
+    "--%{mirage-types-lwt:enable}%-mirage"
     "--enable-tests"]
   ["ocaml" "setup.ml" "-build"]
   ["ocaml" "setup.ml" "-test" "-runner" "sequential"]
@@ -56,10 +56,10 @@ depends: [
 depopts: [
   "async"
   "base-unix"
-  "mirage-types"
+  "mirage-types-lwt"
 ]
 conflicts: [
-  "mirage-types" {<"3.0"}
-  "async" {<"112.24.00"}
+  "mirage-types-lwt" {<"3.0.0"}
+  "async"            {<"112.24.00"}
 ]
 available: [ocaml-version >= "4.02.0"]
