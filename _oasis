@@ -149,7 +149,7 @@ Executable test
   CompiledObject:     best
   Install:            false
   BuildDepends:       dns, dns.lwt-core, dns.mirage, io-page.unix, unix, oUnit,
-                      pcap-format, lwt.unix, ipaddr.unix
+                      pcap-format, lwt.unix, ipaddr.unix, mirage-runtime
 
 Test test
   Run$:               flag(tests) && flag(lwt) && flag(mirage)

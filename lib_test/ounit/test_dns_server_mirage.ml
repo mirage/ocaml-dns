@@ -86,7 +86,7 @@ module MockKV = struct
   type t = unit
 
   let instance = ()
-
+  let pp_error = Mirage_pp.pp_kv_ro_error
   let disconnect t = Lwt.return_unit
 
   let read t name off len =
@@ -95,7 +95,7 @@ module MockKV = struct
         let buf = List.assoc name zones in
         Ok Int64.([Cstruct.sub buf (to_int off) (to_int len)])
       with exn ->
-        Error `Unknown_key
+        Error (`Unknown_key name)
     )
 
   let size t name =
@@ -103,7 +103,7 @@ module MockKV = struct
       try
         Ok (List.assoc name zones |> Cstruct.len |> Int64.of_int)
       with exn ->
-        Error `Unknown_key
+        Error (`Unknown_key name)
     )
 
   let mem t name =
