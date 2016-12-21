@@ -49,7 +49,7 @@ $ORIGIN example1.com.
 $TTL    3600 ; 24 hours could have been written as 24h or 1d
 example1.com. 3600 IN  SOA (
     ns1.example1.com. username.example1.com. 1136975101 ; hello!
-    3600 1800 3024000 1800  
+    3600 1800 3024000 1800
                  )
 example1.com.       3600 IN  NS     ns1
 example1.com.       3600 IN  NS     ns2
@@ -67,7 +67,7 @@ $ORIGIN example2.net.
 $TTL    3600 ; 24 hours could have been written as 24h or 1d
 example2.net. 3600 IN  SOA (
     ns1.example2.net. username.example2.net. 1136975101 ; hello!
-    3600 1800 3024000 1800  
+    3600 1800 3024000 1800
                  )
 example2.net.       3600 IN  NS     ns1
 example2.net.       3600 IN  NS     ns2
@@ -192,4 +192,3 @@ let tests =
         run_timeout thread
       );
   ]
-
