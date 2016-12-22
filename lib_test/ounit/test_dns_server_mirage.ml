@@ -1,4 +1,3 @@
-
 open OUnit2
 open Test_mdns_resolver_mirage
 open Lwt

@@ -41,19 +41,19 @@ module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) = struct
 
   let fail_load message = fail (Failure ("Dns_server_mirage: "^message))
 
-  let eventual_process_of_zonefiles t filenames = 
+  let eventual_process_of_zonefiles t filenames =
     Lwt_list.map_s (fun filename ->
       K.size t.k filename
       >>= function
       | Error _ -> fail_load ("zonefile "^filename^" not found")
       | Ok sz ->
         K.read t.k filename 0L sz
-        >>= function 
+        >>= function
         | Error _  -> fail_load ("error reading zonefile "^filename)
         | Ok pages -> return (Cstruct.copyv pages)
     ) filenames
     >|= process_of_zonebufs
-    
+
   let serve_with_processor t ~port ~processor =
     let udp = S.udpv4 t.s in
     let listener ~src ~dst ~src_port buf =
@@ -77,7 +77,7 @@ module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) = struct
     let processor = (processor_of_process process :> (module PROCESSOR)) in
     serve_with_processor t ~port ~processor
 
-  let serve_with_zonebuf t ~port ~zonebuf = 
+  let serve_with_zonebuf t ~port ~zonebuf =
     serve_with_zonebufs t ~port ~zonebufs:[zonebuf]
 
   let serve_with_zonefiles t ~port ~zonefiles =
@@ -86,7 +86,7 @@ module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) = struct
     let processor = (processor_of_process process :> (module PROCESSOR)) in
     serve_with_processor t ~port ~processor
 
-  let serve_with_zonefile t ~port ~zonefile =    
+  let serve_with_zonefile t ~port ~zonefile =
     serve_with_zonefiles t ~port ~zonefiles:[zonefile]
 
 end
