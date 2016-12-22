@@ -2,6 +2,7 @@ open OUnit2
 open Test_mdns_resolver_mirage
 open Lwt
 open Dns.Packet
+open Result
 
 let assert_packet = Test_mdns_responder.assert_packet
 

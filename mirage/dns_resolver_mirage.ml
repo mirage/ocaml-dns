@@ -20,6 +20,7 @@ open Dns
 open Operators
 open Protocol
 open Dns_resolver
+open Result
 
 module DP = Packet
 

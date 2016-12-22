@@ -16,6 +16,7 @@
 
 open Lwt
 open Dns_server
+open Result
 
 module type S = sig
   type t

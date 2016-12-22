@@ -2,6 +2,7 @@ open OUnit2
 open Printf
 open Lwt
 open Dns.Packet
+open Result
 
 let run_timeout thread =
   Lwt_main.run (
