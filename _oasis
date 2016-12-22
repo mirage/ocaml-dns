@@ -56,7 +56,8 @@ Library "dns-lwt-mirage"
   Install$: flag(mirage)
   Findlibname: mirage
   Modules: Dns_server_mirage, Dns_resolver_mirage, Mdns_resolver_mirage
-  BuildDepends: cstruct, lwt, dns, dns.lwt-core, mirage-types, mirage-types-lwt, io-page, duration
+  BuildDepends: cstruct, lwt, dns, dns.lwt-core, mirage-types,
+                mirage-types-lwt, io-page, duration, fmt
   FindlibParent: dns
 
 Library "dns-lwt-core"
