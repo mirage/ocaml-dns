@@ -52,6 +52,7 @@ depends: [
   "duration"
   "ounit"       {test}
   "pcap-format" {test}
+  "mirage-runtime" {test}
 ]
 depopts: [
   "async"

@@ -1,8 +1,8 @@
-
 open OUnit2
 open Printf
 open Lwt
 open Dns.Packet
+open Result
 
 let run_timeout thread =
   Lwt_main.run (
@@ -27,6 +27,8 @@ module StubIpv4 (*: V1_LWT.IPV4 with type ethif = unit*) = struct
     mutable netmask: Ipaddr.V4.t;
     mutable gateways: Ipaddr.V4.t list;
   }
+
+  let pp_error = Mirage_pp.pp_ip_error
 
   let input_arpv4 t buf = return_unit
 
@@ -103,7 +105,8 @@ module MockUdpv4 (*: V1_LWT.UDPV4 with type ip = StubIpv4.t*) = struct
   type ipinput = src:ipaddr -> dst:ipaddr -> buffer -> unit io
   type callback = src:Ipaddr.V4.t -> dst:Ipaddr.V4.t -> src_port:int -> Cstruct.t -> unit Lwt.t
 
-  type error = V1.Udp.error
+  type error
+  let pp_error _ (_:error) = assert false
 
   type t = {
     ip : ip;
@@ -151,6 +154,9 @@ module StubTcpv4 (*: V1_LWT.TCPV4 with type ip = StubIpv4.t*) = struct
   type callback = flow -> unit Lwt.t
 
   type error = V1.Tcp.error
+  type write_error = V1.Tcp.write_error
+  let pp_error = Mirage_pp.pp_tcp_error
+  let pp_write_error = Mirage_pp.pp_tcp_write_error
 
   let id t = t
   let dst t = (Ipaddr.V4.unspecified, 0)
@@ -199,9 +205,8 @@ module MockStack (*:
     (*tcpv4_listeners: (int, (Tcpv4.flow -> unit Lwt.t)) Hashtbl.t;*)
   }
 
-  type error = [
-      `Unknown of string
-  ]
+  type error
+  let pp_error _ (_:error) = assert false
 
   let id { id; _ } = id
   let tcpv4 { tcpv4; _ } = tcpv4
@@ -477,4 +482,3 @@ let tests =
     *)
 
   ]
-

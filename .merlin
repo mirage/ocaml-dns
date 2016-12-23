@@ -1,12 +1,10 @@
 PKG core async
 PKG lwt cstruct mirage-net-unix mirage
 PKG pcap-format oUnit re ipaddr base64
-PKG mirage-profile cmdliner
+PKG mirage-profile cmdliner mirage-runtime
+PKG duration
 S lib
 S lib_test
 S lwt
 S async
-B _build/lib
-B _build/lib_test
-B _build/lwt
-B _build/async
+B _build/**

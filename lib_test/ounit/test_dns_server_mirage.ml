@@ -1,8 +1,8 @@
-
 open OUnit2
 open Test_mdns_resolver_mirage
 open Lwt
 open Dns.Packet
+open Result
 
 let assert_packet = Test_mdns_responder.assert_packet
 
@@ -49,7 +49,7 @@ $ORIGIN example1.com.
 $TTL    3600 ; 24 hours could have been written as 24h or 1d
 example1.com. 3600 IN  SOA (
     ns1.example1.com. username.example1.com. 1136975101 ; hello!
-    3600 1800 3024000 1800  
+    3600 1800 3024000 1800
                  )
 example1.com.       3600 IN  NS     ns1
 example1.com.       3600 IN  NS     ns2
@@ -67,7 +67,7 @@ $ORIGIN example2.net.
 $TTL    3600 ; 24 hours could have been written as 24h or 1d
 example2.net. 3600 IN  SOA (
     ns1.example2.net. username.example2.net. 1136975101 ; hello!
-    3600 1800 3024000 1800  
+    3600 1800 3024000 1800
                  )
 example2.net.       3600 IN  NS     ns1
 example2.net.       3600 IN  NS     ns2
@@ -86,7 +86,7 @@ module MockKV = struct
   type t = unit
 
   let instance = ()
-
+  let pp_error = Mirage_pp.pp_kv_ro_error
   let disconnect t = Lwt.return_unit
 
   let read t name off len =
@@ -95,7 +95,7 @@ module MockKV = struct
         let buf = List.assoc name zones in
         Ok Int64.([Cstruct.sub buf (to_int off) (to_int len)])
       with exn ->
-        Error `Unknown_key
+        Error (`Unknown_key name)
     )
 
   let size t name =
@@ -103,7 +103,7 @@ module MockKV = struct
       try
         Ok (List.assoc name zones |> Cstruct.len |> Int64.of_int)
       with exn ->
-        Error `Unknown_key
+        Error (`Unknown_key name)
     )
 
   let mem t name =
@@ -192,4 +192,3 @@ let tests =
         run_timeout thread
       );
   ]
-

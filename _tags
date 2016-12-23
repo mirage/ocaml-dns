@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: a1a63af4116a7b80efaa84d0b8ab050d)
+# DO NOT EDIT (digest: 71ed987f0893127ef316ebac0e9d2778)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -49,6 +49,7 @@ true: annot, bin_annot
 <mirage/*.ml{,i,y}>: pkg_cstruct
 <mirage/*.ml{,i,y}>: pkg_cstruct.ppx
 <mirage/*.ml{,i,y}>: pkg_duration
+<mirage/*.ml{,i,y}>: pkg_fmt
 <mirage/*.ml{,i,y}>: pkg_hashcons
 <mirage/*.ml{,i,y}>: pkg_io-page
 <mirage/*.ml{,i,y}>: pkg_ipaddr
@@ -212,6 +213,7 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct
 <lib_test/ounit/test.{native,byte}>: pkg_cstruct.ppx
 <lib_test/ounit/test.{native,byte}>: pkg_duration
+<lib_test/ounit/test.{native,byte}>: pkg_fmt
 <lib_test/ounit/test.{native,byte}>: pkg_hashcons
 <lib_test/ounit/test.{native,byte}>: pkg_io-page
 <lib_test/ounit/test.{native,byte}>: pkg_io-page.unix
@@ -220,6 +222,7 @@ true: annot, bin_annot
 <lib_test/ounit/test.{native,byte}>: pkg_lwt
 <lib_test/ounit/test.{native,byte}>: pkg_lwt.unix
 <lib_test/ounit/test.{native,byte}>: pkg_mirage-profile
+<lib_test/ounit/test.{native,byte}>: pkg_mirage-runtime
 <lib_test/ounit/test.{native,byte}>: pkg_mirage-types
 <lib_test/ounit/test.{native,byte}>: pkg_mirage-types-lwt
 <lib_test/ounit/test.{native,byte}>: pkg_oUnit
@@ -236,6 +239,7 @@ true: annot, bin_annot
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct
 <lib_test/ounit/*.ml{,i,y}>: pkg_cstruct.ppx
 <lib_test/ounit/*.ml{,i,y}>: pkg_duration
+<lib_test/ounit/*.ml{,i,y}>: pkg_fmt
 <lib_test/ounit/*.ml{,i,y}>: pkg_hashcons
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page
 <lib_test/ounit/*.ml{,i,y}>: pkg_io-page.unix
@@ -244,6 +248,7 @@ true: annot, bin_annot
 <lib_test/ounit/*.ml{,i,y}>: pkg_lwt
 <lib_test/ounit/*.ml{,i,y}>: pkg_lwt.unix
 <lib_test/ounit/*.ml{,i,y}>: pkg_mirage-profile
+<lib_test/ounit/*.ml{,i,y}>: pkg_mirage-runtime
 <lib_test/ounit/*.ml{,i,y}>: pkg_mirage-types
 <lib_test/ounit/*.ml{,i,y}>: pkg_mirage-types-lwt
 <lib_test/ounit/*.ml{,i,y}>: pkg_oUnit
