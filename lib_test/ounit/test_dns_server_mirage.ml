@@ -81,12 +81,12 @@ let zones = [(filename1, Cstruct.of_string zone1); (filename2, Cstruct.of_string
 
 module MockKV = struct
   type +'a io = 'a Lwt.t
-  type error = V1.Kv_ro.error
+  type error = Mirage_kv.error
   type page_aligned_buffer = Cstruct.t
   type t = unit
 
   let instance = ()
-  let pp_error = Mirage_pp.pp_kv_ro_error
+  let pp_error = Mirage_kv.pp_error
   let disconnect t = Lwt.return_unit
 
   let read t name off len =
