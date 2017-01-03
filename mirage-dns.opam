@@ -20,6 +20,6 @@ depends: [
   "dns"       {>= "0.15.1"}
   "lwt"       {>= "2.4.3"}
   "cstruct"   {>= "1.0.0"}
-  "mirage-kv-lwt"
+  "mirage-types-lwt" {>= "3.0.0"}
 ]
 available: [ocaml-version >= "4.01.0"]
