@@ -52,6 +52,7 @@ depends: [
   "duration"
   "ounit"       {test}
   "pcap-format" {test}
+  "mirage-runtime" {test}
 ]
 depopts: [
   "async"
@@ -59,7 +60,7 @@ depopts: [
   "mirage-types-lwt"
 ]
 conflicts: [
-  "mirage-types-lwt" {<"3.0.0"}
-  "async"            {<"112.24.00"}
+  "mirage-types-lwt" {< "3.0.0"}
+  "async" {<"112.24.00"}
 ]
 available: [ocaml-version >= "4.02.0"]

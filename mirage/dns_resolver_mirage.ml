@@ -20,6 +20,7 @@ open Dns
 open Operators
 open Protocol
 open Dns_resolver
+open Result
 
 module DP = Packet
 
@@ -112,7 +113,10 @@ module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
       let rec txfn buf =
         Cstruct.of_bigarray buf |>
         S.UDPV4.write ~src_port ~dst ~dst_port udp >>= function
-        | Error (`Msg s) -> fail (Failure ("Attempting to communicate with remote resolver: " ^ s))
+        | Error e ->
+          Fmt.kstrf fail_with
+            "Attempting to communicate with remote resolver: %a"
+            S.UDPV4.pp_error e
         | Ok () -> Lwt.return_unit
       in
       let rec rxfn f =
