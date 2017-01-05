@@ -32,7 +32,7 @@ module type S = sig
   val serve_with_zonebufs : t-> port:int -> zonebufs:string list -> unit Lwt.t
 end
 
-module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) = struct
+module Make(K:Mirage_kv_lwt.RO)(S:Mirage_stack_lwt.V4) = struct
 
   type stack = S.t
   type kv_ro = K.t

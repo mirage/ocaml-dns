@@ -39,4 +39,6 @@ module type S = sig
 
 end
 
-module Make(K:V1_LWT.KV_RO)(S:V1_LWT.STACKV4) : S with type stack = S.t and type kv_ro = K.t
+module Make(K:Mirage_kv_lwt.RO)(Stack:Mirage_stack_lwt.V4) : sig
+  include S with type stack = Stack.t and type kv_ro = K.t
+end
