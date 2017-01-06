@@ -66,7 +66,7 @@ module Client : Dns.Protocol.CLIENT = struct
   let timeout _id = Dns.Protocol.Dns_resolve_timeout
 end
 
-module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) = struct
+module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
 
   type stack = S.t
   type endp = Ipaddr.V4.t * int

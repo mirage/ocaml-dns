@@ -22,7 +22,7 @@ module type S = Dns_resolver_mirage.S
 module Client : Dns.Protocol.CLIENT
 
 (** Resolves queries using mDNS *)
-module Make(Time:V1_LWT.TIME)(S:V1_LWT.STACKV4) : S with type stack = S.t
+module Make(TIME: Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) : S with type stack = S.t
 
 (** Resolves queries for *.local and 169.254.x.x using Local
     (which is intended to be the result of [Make] above),
