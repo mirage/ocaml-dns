@@ -11,7 +11,8 @@ let run_timeout thread =
       thread
     ])
 
-module StubIpv4 (*: V1_LWT.IPV4 with type ethif = unit*) = struct
+module StubIpv4 = struct
+>>>>>>> 68cfd9b... remove non-explanatory comments in mdns_resolver_mirage
   type error = Mirage_protocols.Ip.error
 
   type ethif = unit (*StubEthif.t*)
@@ -97,7 +98,7 @@ type write_call = {
   buf : Cstruct.t;
 }
 
-module MockUdpv4 (*: V1_LWT.UDPV4 with type ip = StubIpv4.t*) = struct
+module MockUdpv4 = struct
   type 'a io = 'a Lwt.t
   type buffer = Cstruct.t
   type ip = StubIpv4.t
@@ -143,7 +144,7 @@ module MockUdpv4 (*: V1_LWT.UDPV4 with type ip = StubIpv4.t*) = struct
 end
 
 
-module StubTcpv4 (*: V1_LWT.TCPV4 with type ip = StubIpv4.t*) = struct
+module StubTcpv4 = struct
   type flow = unit (*Pcb.pcb*)
   type ip = StubIpv4.t
   type ipaddr = StubIpv4.ipaddr
@@ -173,9 +174,7 @@ module StubTcpv4 (*: V1_LWT.TCPV4 with type ip = StubIpv4.t*) = struct
 end
 
 
-module MockStack (*:
-  (V1_LWT.STACKV4 with type console = unit and type netif = unit *)
-= struct
+module MockStack = struct
   type +'a io = 'a Lwt.t
   type console = unit
   type 'a config = 'a Mirage_stack_lwt.stackv4_config
@@ -193,16 +192,10 @@ module MockStack (*:
 
   type t = {
     id    : id;
-    (*
-    c     : Console.t;
-    netif : Netif.t;
-    ethif : Ethif.t;
-     *)
     ipv4  : ipv4;
     udpv4 : udpv4;
     tcpv4 : tcpv4;
     udpv4_listeners: (int, UDPV4.callback) Hashtbl.t;
-    (*tcpv4_listeners: (int, (Tcpv4.flow -> unit Lwt.t)) Hashtbl.t;*)
   }
 
   type error
@@ -216,21 +209,13 @@ module MockStack (*:
   let listen_udpv4 t ~port callback =
     Hashtbl.replace t.udpv4_listeners port callback
 
-  let listen_tcpv4 t ~port callback =
-    (*Hashtbl.replace t.tcpv4_listeners port callback*)
-    ()
+  let listen_tcpv4 t ~port callback = ()
 
   let configure t config = return_unit
 
   let udpv4_listeners t ~dst_port =
     try Some (Hashtbl.find t.udpv4_listeners dst_port)
     with Not_found -> None
-
-  (*
-  let tcpv4_listeners t dst_port =
-    try Some (Hashtbl.find t.tcpv4_listeners dst_port)
-    with Not_found -> None
-  *)
 
   let listen t = return_unit
 
@@ -241,8 +226,8 @@ module MockStack (*:
     StubIpv4.connect ethif >>= fun ipv4 ->
     MockUdpv4.connect ipv4 >>= fun udpv4 ->
     StubTcpv4.connect ipv4 >>= fun tcpv4 ->
-      let t = { id; (*netif; ethif;*) ipv4; tcpv4; udpv4;
-                udpv4_listeners; (*tcpv4_listeners*) } in
+      let t = { id; ipv4; tcpv4; udpv4;
+                udpv4_listeners; } in
     let _ = listen t in
     return t
 
