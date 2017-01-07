@@ -11,7 +11,7 @@ let run_timeout thread =
       thread
     ])
 
-module StubIpv4 (*: V1_LWT.IPV4 with type ethif = unit*) = struct
+module StubIpv4 (*: Mirage_types_lwt.IPV4 with type ethif = unit*) = struct
   type error = Mirage_protocols.Ip.error
 
   type ethif = unit (*StubEthif.t*)
@@ -97,7 +97,7 @@ type write_call = {
   buf : Cstruct.t;
 }
 
-module MockUdpv4 (*: V1_LWT.UDPV4 with type ip = StubIpv4.t*) = struct
+module MockUdpv4 (*: Mirage_types_lwt.UDPV4 with type ip = StubIpv4.t*) = struct
   type 'a io = 'a Lwt.t
   type buffer = Cstruct.t
   type ip = StubIpv4.t
@@ -143,7 +143,7 @@ module MockUdpv4 (*: V1_LWT.UDPV4 with type ip = StubIpv4.t*) = struct
 end
 
 
-module StubTcpv4 (*: V1_LWT.TCPV4 with type ip = StubIpv4.t*) = struct
+module StubTcpv4 (*: Mirage_types_lwt.TCPV4 with type ip = StubIpv4.t*) = struct
   type flow = unit (*Pcb.pcb*)
   type ip = StubIpv4.t
   type ipaddr = StubIpv4.ipaddr
@@ -174,7 +174,7 @@ end
 
 
 module MockStack (*:
-  (V1_LWT.STACKV4 with type console = unit and type netif = unit *)
+  (Mirage_types_lwt.STACKV4 with type console = unit and type netif = unit *)
 = struct
   type +'a io = 'a Lwt.t
   type console = unit
