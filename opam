@@ -22,13 +22,13 @@ tags: [
 build: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix
     "--%{base-unix:enable}%-lwt"
-    "--%{mirage-time-lwt+mirage-stack-lwt+mirage-protocol-lwt+mirage-kv-lwt:enable}%-mirage"]
+    "--%{mirage-time-lwt+mirage-stack-lwt+mirage-protocols+mirage-kv-lwt:enable}%-mirage"]
   ["ocaml" "setup.ml" "-build"]
 ]
 build-test: [
   ["ocaml" "setup.ml" "-configure" "--prefix" prefix
     "--%{base-unix:enable}%-lwt"
-    "--%{mirage-time-lwt+mirage-stack-lwt+mirage-protocol-lwt+mirage-kv-lwt:enable}%-mirage"
+    "--%{mirage-time-lwt+mirage-stack-lwt+mirage-protocols+mirage-kv-lwt:enable}%-mirage"
     "--enable-tests"]
   ["ocaml" "setup.ml" "-build"]
   ["ocaml" "setup.ml" "-test" "-runner" "sequential"]
@@ -57,7 +57,7 @@ depopts: [
   "async"
   "base-unix"
   "mirage-stack-lwt"
-  "mirage-protocol-lwt"
+  "mirage-protocols"
   "mirage-kv-lwt"
   "mirage-time-lwt"
 ]
