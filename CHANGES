@@ -1,6 +1,7 @@
-trunk:
+0.19.0 (unreleased):
 * Port to MirageOS 3 module types.
 * Remove runtime dependency on PPX from META file
+* Bugfixes and improvements for async backend compilation (#100 by vbmithr)
 
 0.18.1 (2016-04-17):
 * Clear AA bit on requests, as some servers will drop these otherwise
