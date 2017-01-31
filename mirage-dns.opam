@@ -17,9 +17,11 @@ authors: [
 build: ["ocamlfind" "query" "dns.mirage"]
 depends: [
   "ocamlfind"
-  "dns"              {>= "0.18.1"}
-  "mirage-types-lwt" {>= "3.0.0"}
-  "lwt"              {>= "2.4.3"}
-  "cstruct"          {>= "2.0.0"}
+  "dns"              {>= "0.19.0"}
+  "mirage-stack-lwt"
+  "mirage-kv-lwt"
+  "mirage-time-lwt"
+  "duration"
+  "io-page"
 ]
 available: [ocaml-version >= "4.01.0"]

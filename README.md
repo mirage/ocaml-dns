@@ -1,8 +1,10 @@
-[![Build Status](https://travis-ci.org/mirage/ocaml-dns.svg?branch=master)](https://travis-ci.org/mirage/ocaml-dns)
+## OCaml-DNS - DNS client and server implementation in pure OCaml
 
 This is a pure OCaml implementation of the DNS protocol.  It is intended to be
 a reasonably high-performance implementation, but clarity is preferred rather
 than low-level performance hacks.
+
+[![Build Status](https://travis-ci.org/mirage/ocaml-dns.svg?branch=master)](https://travis-ci.org/mirage/ocaml-dns)
 
 To build it, please use the [OPAM](https://opam.ocaml.org) package manager (1.2+):
 

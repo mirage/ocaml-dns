@@ -1,5 +1,3 @@
-# OASIS_START
-# DO NOT EDIT (digest: 424efe6e400b70b115832fcfa5e8727a)
 Loader
 Name
 Operators
@@ -14,4 +12,7 @@ Resolvconf
 Buf
 Protocol
 Probe
-# OASIS_STOP
+
+Dns_resolver
+Dns_server
+Mdns_responder
