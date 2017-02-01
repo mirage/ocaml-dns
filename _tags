@@ -12,7 +12,7 @@ true : package(re re.str ipaddr uri base64 hashcons cstruct result)
 <mirage/*.{ml,mli}>: package(io-page lwt duration mirage-time-lwt)
 <mirage/*.{ml,mli}>: package(mirage-stack-lwt mirage-kv-lwt)
 
-<async/*.{ml,mli}>: package(async async_kernel threads)
+<async/*.{ml,mli}>: package(async async_kernel threads), thread
 
 <examples/forward.*>: package(lwt lwt.unix uri.services ipaddr.unix)
 
@@ -23,4 +23,4 @@ true : package(re re.str ipaddr uri base64 hashcons cstruct result)
 <lib_test/ounit/*>: package(mirage-stack-lwt mirage-time-lwt mirage-kv io-page)
 <lib_test/ounit/*>: package(mirage-kv-lwt lwt.unix uri.services)
 <lib_test/ounit/*>: package(mirage-profile lwt ipaddr.unix duration io-page.unix)
-<lib_test/async/*>: package(async threads)
+<lib_test/async/*>: package(async threads), thread
