@@ -22,7 +22,7 @@ tags: [
 build: [
   ["ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false"
     "--with-lwt" "%{lwt+mirage-profile+cmdliner:installed}%"
-    "--with-mirage" "%{mirage-time-lwt+mirage-stack-lwt+mirage-kv-lwt+duration+io-page+mirage-profile:installed}%"
+    "--with-mirage" "%{mirage-time-lwt+mirage-stack-lwt+mirage-kv-lwt+lwt+duration+io-page+mirage-profile:installed}%"
     "--with-async" "%{async:installed}%" ]
 ]
 build-test: [

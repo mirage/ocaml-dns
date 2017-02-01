@@ -23,5 +23,7 @@ depends: [
   "mirage-time-lwt"
   "duration"
   "io-page"
+  "lwt"
+  "mirage-profile"
 ]
 available: [ocaml-version >= "4.01.0"]
