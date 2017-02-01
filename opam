@@ -73,4 +73,4 @@ conflicts: [
   "async" {<"112.24.00"}
   "lwt" {< "2.4.7"}
 ]
-available: [ocaml-version >= "4.02.0"]
+available: [ocaml-version >= "4.03.0"]

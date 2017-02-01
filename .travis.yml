@@ -13,8 +13,6 @@ env:
  matrix:
    - DISTRO=debian-stable OCAML_VERSION=4.03.0 REVDEPS="true"
    - DISTRO=debian-testing OCAML_VERSION=4.04.0
-   - DISTRO=debian-unstable OCAML_VERSION=4.02.3
-   - DISTRO=ubuntu-12.04 OCAML_VERSION=4.02.3
    - DISTRO=ubuntu-16.04 OCAML_VERSION=4.03.0
    - DISTRO=centos-6 OCAML_VERSION=4.04.0
    - DISTRO=centos-7 OCAML_VERSION=4.03.0
