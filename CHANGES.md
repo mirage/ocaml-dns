@@ -1,7 +1,6 @@
 ## ??
 
 * Use topkg instead of oasis #126
-* Rename dns.lwt to dns.lwt-unix #126
 
 ## 0.19.0 (2017-01-20)
 

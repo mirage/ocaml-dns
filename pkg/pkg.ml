@@ -24,7 +24,7 @@ let () =
     Pkg.lib ~exts "lib/dns" ;
     Pkg.bin ~cond:lwt "lwt/dig_unix" ~dst:"mldig" ;
     Pkg.mllib ~cond:lwt "lwt/dns-lwt-core.mllib" ;
-    Pkg.mllib ~cond:lwt "lwt/dns-lwt-unix.mllib" ;
+    Pkg.mllib ~cond:lwt "lwt/dns-lwt.mllib" ;
     Pkg.mllib ~cond:mirage "mirage/dns-lwt-mirage.mllib" ;
     Pkg.mllib ~cond:async "async/dns-async.mllib" ;
     Pkg.mllib ~cond:async "async/dns-async-unix.mllib" ;

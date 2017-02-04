@@ -17,15 +17,15 @@ package "lwt-core" (
  exists_if = "dns-lwt-core.cma"
 )
 
-package "lwt-unix" (
+package "lwt" (
  version = "%%VERSION_NUM%%"
  description = "DNS client and server implementation"
  requires = "dns dns.lwt-core lwt.unix ipaddr.unix"
- archive(byte) = "dns-lwt-unix.cma"
- plugin(byte) = "dns-lwt-unix.cma"
- archive(native) = "dns-lwt-unix.cmxa"
- plugin(native) = "dns-lwt-unix.cmxs"
- exists_if = "dns-lwt-unix.cma"
+ archive(byte) = "dns-lwt.cma"
+ plugin(byte) = "dns-lwt.cma"
+ archive(native) = "dns-lwt.cmxa"
+ plugin(native) = "dns-lwt.cmxs"
+ exists_if = "dns-lwt.cma"
 )
 
 package "mirage" (
