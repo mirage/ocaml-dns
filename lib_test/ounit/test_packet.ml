@@ -142,7 +142,6 @@ let tests =
         assert_equal ~msg:"q_class" Q_IN q.q_class;
         assert_equal ~msg:"q_unicast" Q_Normal q.q_unicast;
 
-        let rev_answers = List.rev packet.answers in
         let expected_fourth = [208; 211; 209; 212; 210] in
         List.iter2 (fun fourth a ->
             assert_equal ~msg:"name" "www.google.com" (Name.to_string a.name);
@@ -153,7 +152,7 @@ let tests =
             match a.rdata with
             | A addr -> assert_equal ~msg:"A" ~printer:(fun s -> s) expected_addr (Ipaddr.V4.to_string addr)
             | _ -> assert_failure "RR type";
-          ) expected_fourth rev_answers
+          ) expected_fourth packet.answers
     );
 
     "marshal-dns-r-A" >:: (fun test_ctxt ->
@@ -292,7 +291,7 @@ let tests =
         let srv_name = "_udisks-ssh._tcp.local" in
         let srv_inst = "luke-xps." ^ srv_name in
 
-        let a = List.nth packet.answers 3 in
+        let a = List.nth packet.answers 0 in
         begin
           assert_equal ~msg:"TXT name" ~printer:(fun s -> s) srv_inst
                        (Name.to_string a.name);
@@ -306,7 +305,7 @@ let tests =
           | _ -> assert_failure "not TXT";
         end;
 
-        let a = List.nth packet.answers 2 in
+        let a = List.nth packet.answers 1 in
         begin
           assert_equal ~msg:"PTR name" ~printer:(fun s -> s) srv_name (Name.to_string a.name);
           assert_equal ~msg:"PTR cls" RR_IN a.cls;
@@ -317,7 +316,7 @@ let tests =
           | _ -> assert_failure "not PTR";
         end;
 
-        let a = List.nth packet.answers 1 in
+        let a = List.nth packet.answers 2 in
         begin
           assert_equal ~msg:"SRV name" ~printer:(fun s -> s) srv_inst (Name.to_string a.name);
           assert_equal ~msg:"SRV cls" RR_IN a.cls;
@@ -332,7 +331,7 @@ let tests =
           | _ -> assert_failure "not SRV";
         end;
 
-        let a = List.nth packet.answers 0 in
+        let a = List.nth packet.answers 3 in
         begin
           assert_equal ~msg:"PTR2 name" ~printer:(fun s -> s) "_services._dns-sd._udp.local" (Name.to_string a.name);
           assert_equal ~msg:"PTR2 cls" RR_IN a.cls;
@@ -352,19 +351,16 @@ let tests =
         let expected_str =
           "0000 Response:0 a:c:nr:rn 0 <qs:> \
            <an:\
-           _snake._tcp.local <IN|120> [PTR (dugite._snake._tcp.local)],\
+           _snake._tcp.local <IN|120> [PTR (king brown._snake._tcp.local)],\
            _snake._tcp.local <IN|120> [PTR (tiger._snake._tcp.local)],\
-           _snake._tcp.local <IN|120> [PTR (king brown._snake._tcp.local)]> \
-           <au:> <ad:\
-           king brown._snake._tcp.local <IN|120> [TXT (txtvers=1species=Pseudechis australis)],\
-           king brown._snake._tcp.local <IN|120> [SRV (0,0,33333, fake3.local)],\
-           tiger._snake._tcp.local <IN|120> [TXT (txtvers=1species=Notechis scutatus)],\
-           tiger._snake._tcp.local <IN|120> [SRV (0,0,33333, fake1.local)],\
+           _snake._tcp.local <IN|120> [PTR (dugite._snake._tcp.local)]> <au:> <ad:\
+           dugite._snake._tcp.local <IN|120> [SRV (0,0,33333, fake2.local)],\
            dugite._snake._tcp.local <IN|120> [TXT (txtvers=1species=Pseudonaja affinis)],\
-           dugite._snake._tcp.local <IN|120> [SRV (0,0,33333, fake2.local)]\
+           tiger._snake._tcp.local <IN|120> [SRV (0,0,33333, fake1.local)],\
+           tiger._snake._tcp.local <IN|120> [TXT (txtvers=1species=Notechis scutatus)],\
+           king brown._snake._tcp.local <IN|120> [SRV (0,0,33333, fake3.local)],\
+           king brown._snake._tcp.local <IN|120> [TXT (txtvers=1species=Pseudechis australis)]\
            >" in
         assert_equal ~msg:"Packet.to_string" ~printer:(fun s -> s) expected_str (to_string packet)
       );
-
   ]
-

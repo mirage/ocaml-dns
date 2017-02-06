@@ -1464,7 +1464,7 @@ let parse buf =
   let parsen f base n buf typ =
     let rec aux acc n base buf =
       match n with
-        | 0 -> acc, (base,buf)
+        | 0 -> List.rev acc, (base,buf)
         | _ ->
             let r, (base,buf) = f names base buf in
               aux (r :: acc) (n-1) base buf
