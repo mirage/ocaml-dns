@@ -1,0 +1,62 @@
+version = "%%VERSION_NUM%%"
+description = "DNS client and server implementation"
+requires = "cstruct re re.str ipaddr uri base64 bytes uri.services hashcons result"
+archive(byte) = "dns.cma"
+plugin(byte) = "dns.cma"
+archive(native) = "dns.cmxa"
+plugin(native) = "dns.cmxs"
+
+package "lwt-core" (
+ version = "%%VERSION_NUM%%"
+ description = "DNS client and server implementation"
+ requires = "dns mirage-profile"
+ archive(byte) = "dns-lwt-core.cma"
+ plugin(byte) = "dns-lwt-core.cma"
+ archive(native) = "dns-lwt-core.cmxa"
+ plugin(native) = "dns-lwt-core.cmxs"
+ exists_if = "dns-lwt-core.cma"
+)
+
+package "lwt" (
+ version = "%%VERSION_NUM%%"
+ description = "DNS client and server implementation"
+ requires = "dns dns.lwt-core lwt.unix ipaddr.unix"
+ archive(byte) = "dns-lwt.cma"
+ plugin(byte) = "dns-lwt.cma"
+ archive(native) = "dns-lwt.cmxa"
+ plugin(native) = "dns-lwt.cmxs"
+ exists_if = "dns-lwt.cma"
+)
+
+package "mirage" (
+ version = "%%VERSION_NUM%%"
+ description = "DNS client and server implementation"
+ requires = "dns dns.lwt-core mirage-kv-lwt mirage-stack-lwt io-page duration mirage-time-lwt"
+ archive(byte) = "dns-lwt-mirage.cma"
+ plugin(byte) = "dns-lwt-mirage.cma"
+ archive(native) = "dns-lwt-mirage.cmxa"
+ plugin(native) = "dns-lwt-mirage.cmxs"
+ exists_if = "dns-lwt-mirage.cma"
+)
+
+package "async" (
+ version = "%%VERSION_NUM%%"
+ description = "DNS client and server implementation"
+ requires = "dns async_kernel"
+ archive(byte) = "dns-async.cma"
+ plugin(byte) = "dns-async.cma"
+ archive(native) = "dns-async.cmxa"
+ plugin(native) = "dns-async.cmxs"
+ exists_if = "dns-async.cma"
+)
+
+package "async-unix" (
+ version = "%%VERSION_NUM%%"
+ description = "DNS client and server implementation"
+ requires = "dns.async async threads"
+ archive(byte) = "dns-async-unix.cma"
+ plugin(byte) = "dns-async-unix.cma"
+ archive(native) = "dns-async-unix.cmxa"
+ plugin(native) = "dns-async-unix.cmxs"
+ exists_if = "dns-async-unix.cma"
+)

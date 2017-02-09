@@ -12,7 +12,6 @@ let run_timeout thread =
     ])
 
 module StubIpv4 = struct
->>>>>>> 68cfd9b... remove non-explanatory comments in mdns_resolver_mirage
   type error = Mirage_protocols.Ip.error
 
   type ethif = unit (*StubEthif.t*)

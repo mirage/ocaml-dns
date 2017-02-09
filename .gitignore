@@ -1,13 +1,3 @@
 *.swp
 _build/
-_config/
-setup.data
-setup.bin
-setup.log
-*.native
-*.byte
-*.docdir
-*.cmi
-*.cmo
-*.cmx
-*.o
+dns.install
