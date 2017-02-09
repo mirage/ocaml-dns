@@ -1,12 +1,14 @@
-## ??
+## 0.19.1 (2017-02-09)
 
-* Use topkg instead of oasis #126
+* Use topkg instead of oasis (#126)
+* Do not reverse the order of resource records in the parser (#109)
+* Restrict to OCaml 4.03.0+.
 
 ## 0.19.0 (2017-01-20)
 
 * Port to MirageOS 3 module types.
 * Remove runtime dependency on PPX from META file
-* Bugfixes and improvements for async backend compilation (#100 by vbmithr)
+* Bugfixes and improvements for async backend compilation (#100 by @vbmithr).
 
 ## 0.18.1 (2016-04-17)
 
