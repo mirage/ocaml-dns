@@ -156,6 +156,16 @@ let tests =
           ) expected_fourth packet.answers
     );
 
+    "parse-dns-pointer-to-pointer" >:: (fun test_ctxt ->
+        let raw = load_packet "dns-r-pointer-to-pointer.pcap" in
+        let packet = parse raw in
+        assert_equal ~msg:"#an" 3 (List.length packet.answers);
+
+        packet.answers |> List.iter (fun a -> (
+          assert_equal ~msg:"name" "amazonaws.com" (Name.to_string a.name)
+        ));
+    );
+
     "marshal-dns-r-A" >:: (fun test_ctxt ->
         let raw = load_packet "dns-r-A.pcap" in
         let packet =
