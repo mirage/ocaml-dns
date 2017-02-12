@@ -17,10 +17,10 @@
  *)
 
 type commfn = {
-  txfn    : Dns.Buf.t -> unit Lwt.t;
+  txfn    : Cstruct.t -> unit Lwt.t;
   (** [txfn buf] resolves when [buf] has been transmitted. *)
 
-  rxfn    : (Dns.Buf.t -> Dns.Packet.t option) -> Dns.Packet.t Lwt.t;
+  rxfn    : (Cstruct.t -> Dns.Packet.t option) -> Dns.Packet.t Lwt.t;
   (** [rxfn parse] resolves to a packet processed by [parse] after it
       has been received. *)
 
@@ -37,13 +37,11 @@ type commfn = {
 
 val resolve_pkt :
   (module Dns.Protocol.CLIENT) ->
-  ?alloc:(unit -> Dns.Buf.t) ->
   commfn -> Dns.Packet.t ->
   Dns.Packet.t Lwt.t
-(** [resolve_pkt client ?alloc commfn packet] will attempt resolution
+(** [resolve_pkt client commfn packet] will attempt resolution
     of the query contained in [packet] via the protocol client
-    [client] and using the utilities of [commfn]. [alloc] may be
-    provided to control how buffers are allocated.
+    [client] and using the utilities of [commfn].
 
     [client] may issue multiple network transactions for the same
     query simultaneously. The first received successful response will
@@ -54,24 +52,21 @@ val resolve_pkt :
 
 val resolve : 
   (module Dns.Protocol.CLIENT) ->
-  ?alloc:(unit -> Dns.Buf.t) ->
   ?dnssec:bool ->
   commfn -> Dns.Packet.q_class -> 
   Dns.Packet.q_type -> 
   Dns.Name.t ->
   Dns.Packet.t Lwt.t
-(** [resolve client ?alloc ?dnssec commfn q_class q_type name] will
+(** [resolve client ?dnssec commfn q_class q_type name] will
     construct a query packet from [dnssec], [q_class], [q_type], and
     [name] and then attempt to resolve it by calling {!resolve_pkt}. *)
 
 val gethostbyname :
-  ?alloc:(unit -> Dns.Buf.t) ->
   ?q_class:Dns.Packet.q_class ->
   ?q_type:Dns.Packet.q_type -> commfn ->
   string -> Ipaddr.t list Lwt.t
 
 val gethostbyaddr :
-  ?alloc:(unit -> Dns.Buf.t) ->
   ?q_class:Dns.Packet.q_class ->
   ?q_type:Dns.Packet.q_type -> commfn ->
   Ipaddr.V4.t -> string list Lwt.t

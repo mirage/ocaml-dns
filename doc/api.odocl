@@ -9,7 +9,6 @@ Zone
 Zone_lexer
 Zone_parser
 Resolvconf
-Buf
 Protocol
 Probe
 

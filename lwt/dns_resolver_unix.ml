@@ -56,13 +56,13 @@ let connect_to_resolver server port =
       ) in
   let timerfn () = Lwt_unix.sleep 5.0 in
   let txfn buf =
-    Lwt_bytes.sendto ofd buf 0 (Dns.Buf.length buf) [] dst
+    Cstruct.(Lwt_bytes.sendto ofd buf.buffer buf.off buf.len [] dst)
     >>= fun _ -> Lwt.return_unit in
   let rec rxfn f =
-    let buf = Dns.Buf.create buflen in
-    Lwt_bytes.recvfrom ofd buf 0 buflen []
+    let buf = Cstruct.create buflen in
+    Cstruct.(Lwt_bytes.recvfrom ofd buf.buffer buf.off buf.len [])
     >>= fun (len, sa) ->
-    let buf = Dns.Buf.sub buf 0 len in
+    let buf = Cstruct.sub buf 0 len in
     match f buf with
     | None -> rxfn f
     | Some r -> Lwt.return r

@@ -1459,7 +1459,6 @@ let to_string d =
     (d.additionals ||> rr_to_string |> String.concat ",")
 
 let parse buf =
-  let buf = Cstruct.of_bigarray buf in
   let names = Hashtbl.create 32 in
   let parsen f base n buf typ =
     let rec aux acc n base buf =
@@ -1494,7 +1493,6 @@ let marshal txbuf dns =
     List.fold_left f (names, base, buf) values
   in
 
-  let txbuf = Cstruct.of_bigarray txbuf in
   set_h_id txbuf dns.id;
   set_h_detail txbuf (marshal_detail dns.detail);
   set_h_qdcount txbuf (List.length dns.questions);
@@ -1510,7 +1508,7 @@ let marshal txbuf dns =
   let names,base,buf = marshaln marshal_rr names base buf dns.authorities in
   let _,_,buf = marshaln marshal_rr names base buf dns.additionals in
 
-  let txbuf = Buf.sub txbuf.Cstruct.buffer 0 Cstruct.(len txbuf - len buf) in
+  let txbuf = Cstruct.(sub txbuf 0 (len txbuf - len buf)) in
   (* Cstruct.hexdump txbuf;   *)
   (* eprintf "TX: %s\n%!" (txbuf |> parse (Hashtbl.create 8) |> to_string); *)
   txbuf

@@ -34,8 +34,8 @@ module Client : Dns.Protocol.CLIENT = struct
 
   let get_id () = 0
 
-  let marshal ?alloc q =
-    [q, DP.marshal (Dns.Buf.create ?alloc 4096) q]
+  let marshal q =
+    [q, DP.marshal (Cstruct.create 4096) q]
 
   let packet_matches query packet =
     let open DP in
@@ -100,8 +100,7 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       (* FIXME: can't coexist with server yet because both listen on port 5353 *)
       S.listen_udpv4 s ~port:src_port callback;
       let rec txfn buf =
-        Cstruct.of_bigarray buf |>
-        S.UDPV4.write ~src_port ~dst ~dst_port udp >>= function
+        S.UDPV4.write ~src_port ~dst ~dst_port udp buf >>= function
         | Error e ->
           Fmt.kstrf fail_with
             "Attempting to communicate with remote resolver: %a"
@@ -111,7 +110,7 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       let rec rxfn f =
         Lwt_mvar.take mvar
         >>= fun buf ->
-        match f (Dns.Buf.of_cstruct buf) with
+        match f buf with
         | None -> rxfn f
         | Some packet -> return packet
       in
@@ -119,7 +118,7 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       Hashtbl.add res endp commfn;
       commfn
 
-  let alloc () = (Io_page.get 1 :> Dns.Buf.t)
+  let alloc () = Io_page.(to_cstruct (get 1))
 
   let create_packet q_class q_type q_name =
     let open Dns.Packet in
@@ -138,7 +137,7 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       (q_name:Name.t) =
     let commfn = connect_to_resolver t (server,dns_port) in
     let q = create_packet q_class q_type q_name in
-    resolve_pkt ~alloc client commfn q
+    resolve_pkt client commfn q
 
   let gethostbyname
       t ?(server = default_ns) ?(dns_port = default_port)
