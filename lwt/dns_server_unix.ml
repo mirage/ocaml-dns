@@ -57,7 +57,7 @@ let ipaddr_of_sockaddr =
 
 let listen ~fd ~src ~processor =
   let cont = ref true in
-  let bufs = Lwt_pool.create 64 (fun () -> Lwt.return (Dns.Buf.create bufsz)) in
+  let bufs = Lwt_pool.create 64 (fun () -> Lwt.return (Cstruct.create bufsz)) in
   ipaddr_of_sockaddr src
   >>= fun src ->
   let rec loop () =
@@ -65,7 +65,7 @@ let listen ~fd ~src ~processor =
     else
       Lwt_pool.use bufs
         (fun buf ->
-           Lwt_bytes.recvfrom fd buf 0 bufsz []
+           Cstruct.(Lwt_bytes.recvfrom fd buf.buffer buf.off buf.len [])
            >>= fun (len, dst) ->
            (* TODO Process in a background thread; should be a bounded queue *)
            Lwt.async (fun () ->
@@ -74,7 +74,7 @@ let listen ~fd ~src ~processor =
                process_query buf len buf src dst' processor >>= function
                | None -> Lwt.return_unit
                | Some buf ->
-                   Lwt_bytes.sendto fd buf 0 (Dns.Buf.length buf) [] dst
+                   Cstruct.(Lwt_bytes.sendto fd buf.buffer buf.off buf.len [] dst)
                    >>= fun _ -> Lwt.return_unit);
            Lwt.return_unit)
       >>= fun () ->

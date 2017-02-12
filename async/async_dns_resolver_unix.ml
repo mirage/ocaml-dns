@@ -38,7 +38,7 @@ let cleanfn ?log sock () =
 
 let connect_to_resolver ?log ?(timeout=Time_ns.Span.of_int_sec 1) ?(port=53) addr =
   let sock = Socket.create (Socket.Type.udp) in
-  let addr = sockaddr addr port in
+  let addr = sockaddr addr ~port in
   Monitor.try_with_or_error
     (fun () -> Socket.connect_interruptible sock addr ~interrupt:(Clock_ns.after timeout)) >>= begin function
     | Error e ->
@@ -48,13 +48,13 @@ let connect_to_resolver ?log ?(timeout=Time_ns.Span.of_int_sec 1) ?(port=53) add
     | Ok (`Ok ac_sock) ->
       let txfn buf =
         let w = Writer.create (Socket.fd ac_sock) in
-        Writer.write_bigstring ~pos:0 ~len:(Buf.length buf) w buf;
+        Writer.write_bigstring ~pos:buf.Cstruct.off ~len:buf.Cstruct.len w buf.Cstruct.buffer;
         Writer.flushed w
       in
       let rec rxfn f =
         let r = Reader.create (Socket.fd ac_sock) in
         let handle_chunk (iobuf : ([ `Read | `Who_can_write of Core_kernel.Perms.me ], Iobuf.seek) Iobuf.t) =
-          match f @@ Iobuf.Consume.To_bigstring.subo (iobuf :> ([ `Read ], Iobuf.seek) Iobuf.t) with
+          match f @@ Cstruct.of_bigarray (Iobuf.Consume.To_bigstring.subo (iobuf :> ([ `Read ], Iobuf.seek) Iobuf.t)) with
           | None ->
             Option.iter log ~f:(fun log -> Log.error log "Received wrong data, retrying");
             return `Continue

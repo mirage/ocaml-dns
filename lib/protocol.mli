@@ -32,12 +32,12 @@ module type CLIENT = sig
       successful parse or timeout. With this behavior, it is easy to construct
       low-latency but network-environment-aware DNS resolvers.
   *)
-  val marshal : ?alloc:(unit -> Buf.t) -> Packet.t -> (context * Buf.t) list
+  val marshal : Packet.t -> (context * Cstruct.t) list
 
   (** [parse ctxt buf] is the potential packet extracted out of [buf]
       with [ctxt]
   *)
-  val parse : context -> Buf.t -> Packet.t option
+  val parse : context -> Cstruct.t -> Packet.t option
 
   (** [timeout ctxt] is the exception resulting from a context [ctxt] that has
       timed-out
@@ -61,7 +61,7 @@ module type SERVER = sig
       @param buf message buffer
       @return parsed packet and context
   *)
-  val parse   : Buf.t -> context option
+  val parse   : Cstruct.t -> context option
 
   (** DNS wire format marshal function.
       @param buf output resource
@@ -69,7 +69,7 @@ module type SERVER = sig
       @param response answer packet
       @return buffer to write
   *)
-  val marshal : Buf.t -> context -> Packet.t -> Buf.t option
+  val marshal : Cstruct.t -> context -> Packet.t -> Cstruct.t option
 end
 
 (** The default DNS server using the standard DNS protocol *)

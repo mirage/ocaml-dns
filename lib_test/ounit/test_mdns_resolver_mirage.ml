@@ -269,7 +269,7 @@ let simulate_response
     stack
   =
   let response = { id; detail; questions=[]; answers; authorities=[]; additionals=[]; } in
-  let buf = marshal (Dns.Buf.create 512) response |> Cstruct.of_bigarray in
+  let buf = marshal (Cstruct.create 512) response in
   let listener_thread = match MockStack.udpv4_listeners stack 5353 with
     | None -> assert_failure "missing listener"
     | Some listener -> listener ~src:from_ip ~dst:to_ip ~src_port:from_port buf
@@ -320,7 +320,7 @@ let tests =
         assert_equal ~printer:string_of_int 5353 w.src_port;
         assert_ip mdns_ip w.dst;
         assert_equal ~printer:string_of_int 5353 w.dst_port;
-        let packet = parse (Dns.Buf.of_cstruct w.buf) in
+        let packet = parse w.buf in
         (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)
         let expected = "0000 Query:0 na:c:nr:rn 0 <qs:valid.local. <A|IN>> <an:> <au:> <ad:>" in
         assert_equal ~msg:"packet" ~printer:(fun s -> s) expected (to_string packet);
@@ -372,7 +372,7 @@ let tests =
         assert_equal ~printer:string_of_int 5353 w2.src_port;
         assert_ip mdns_ip w2.dst;
         assert_equal ~printer:string_of_int 5353 w2.dst_port;
-        let query_packet = parse (Dns.Buf.of_cstruct w2.buf) in
+        let query_packet = parse w2.buf in
         (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)
         let expected = "0000 Query:0 na:c:nr:rn 0 <qs:valid.local. <A|IN>> <an:> <au:> <ad:>" in
         assert_equal ~msg:"query_packet" ~printer:(fun s -> s) expected (to_string query_packet);
@@ -409,7 +409,7 @@ let tests =
         assert_equal ~printer:string_of_int 5353 w.src_port;
         assert_ip mdns_ip w.dst;
         assert_equal ~printer:string_of_int 5353 w.dst_port;
-        let packet = parse (Dns.Buf.of_cstruct w.buf) in
+        let packet = parse w.buf in
         (* AA bit MUST be zero; RA bit MUST be zero; RD bit SHOULD be zero *)
         let expected = "0000 Query:0 na:c:nr:rn 0 <qs:valid.local. <A|IN>> <an:> <au:> <ad:>" in
         assert_equal ~msg:"packet" ~printer:(fun s -> s) expected (to_string packet);

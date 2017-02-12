@@ -26,8 +26,8 @@ module Probe = Dns.Probe
 type ip_endpoint = Ipaddr.V4.t * int
 
 module type TRANSPORT = sig
-  val alloc : unit -> Dns.Buf.t
-  val write : ip_endpoint -> Dns.Buf.t -> unit Lwt.t
+  val alloc : unit -> Cstruct.t
+  val write : ip_endpoint -> Cstruct.t -> unit Lwt.t
   val sleep : float -> unit Lwt.t
 end
 
