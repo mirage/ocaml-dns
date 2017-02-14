@@ -93,19 +93,20 @@ let parse names base buf = (* what. a. mess. *)
           aux (o :: offsets) (n :: name) (base+offset) (Cstruct.shift buf offset)
 
       | (P (p, _), offset) ->
-          let all = Hashtbl.find_all names p in
-          if ((List.length all) == 0) then
-            failwith (sprintf "Name.parse_pointer: Cannot dereference pointer to (%n) at position (%n)" p base);
-          let labels = (all |> List.filter (function L _ -> true | _ -> false)) in
-          (* update the list of offsets-so-far to include current label *)
-          (base :: offsets) |> List.iter (fun o ->
-            (List.rev labels) |> List.iter (fun n -> Hashtbl.add names o n)
-          );
-          (* convert label list into string list *)
-          (labels ||> (function
-            | L (nm,_) -> nm
-            | _ -> failwith "Name.parse")
-          ) @ name, base+offset, Cstruct.shift buf offset
+          (match Hashtbl.find_all names p with
+           | [] -> failwith (sprintf "Name.parse_pointer: Cannot dereference pointer to (%n) at position (%n)" p base);
+           | all ->
+             let labels = (all |> List.filter (function L _ -> true | _ -> false)) in
+             (* update the list of offsets-so-far to include current label *)
+             (base :: offsets) |> List.iter (fun o ->
+               (List.rev labels) |> List.iter (fun n -> Hashtbl.add names o n)
+             );
+             (* convert label list into string list *)
+             (labels ||> (function
+               | L (nm,_) -> nm
+               | _ -> failwith "Name.parse")
+             ) @ name, base+offset, Cstruct.shift buf offset
+          )
 
   in
   let name, base, buf = aux [] [] base buf in
