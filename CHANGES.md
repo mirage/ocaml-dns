@@ -1,8 +1,9 @@
-## 0.19.1 (2017-02-09)
+## 0.19.1 (2017-02-15)
 
 * Use topkg instead of oasis (#126)
 * Do not reverse the order of resource records in the parser (#109)
 * Restrict to OCaml 4.03.0+.
+* Fix bug parsing pointers to pointers to DNS name labels (#129)
 
 ## 0.19.0 (2017-01-20)
 
