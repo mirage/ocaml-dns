@@ -28,8 +28,8 @@ type result = Answer of DP.t | Err of exn
 
 type commfn = {
   log : Log.t option;
-  txfn    : Buf.t -> unit Deferred.t;
-  rxfn    : (Buf.t -> Packet.t option) -> DP.t Deferred.t;
+  txfn    : Cstruct.t -> unit Deferred.t;
+  rxfn    : (Cstruct.t -> Packet.t option) -> DP.t Deferred.t;
   timerfn : unit -> unit Deferred.t;
   cleanfn : unit -> unit Deferred.t;
 }

@@ -58,19 +58,17 @@ module Make(K:Mirage_kv_lwt.RO)(S:Mirage_stack_lwt.V4) = struct
   let serve_with_processor t ~port ~processor =
     let udp = S.udpv4 t.s in
     let listener ~src ~dst ~src_port buf =
-      let ba = Cstruct.to_bigarray buf in
       let src' = (Ipaddr.V4 dst), port in
       let dst' = (Ipaddr.V4 src), src_port in
-      let obuf = (Io_page.get 1 :> Dns.Buf.t) in
-      process_query ba (Dns.Buf.length ba) obuf src' dst' processor
+      let obuf = (Io_page.(to_cstruct (get 1))) in
+      process_query buf (Cstruct.len buf) obuf src' dst' processor
       >>= function
       | None -> return ()
       | Some rba ->
-        let rbuf = Cstruct.of_bigarray rba in
         (* Do not attempt to retry if serving failed *)
-        S.UDPV4.write ~src_port:port ~dst:src ~dst_port:src_port udp rbuf >|= fun _ -> ()
+        S.UDPV4.write ~src_port:port ~dst:src ~dst_port:src_port udp rba >|= fun _ -> ()
     in
-    S.listen_udpv4 t.s port listener;
+    S.listen_udpv4 t.s ~port listener;
     S.listen t.s
 
   let serve_with_zonebufs t ~port ~zonebufs =

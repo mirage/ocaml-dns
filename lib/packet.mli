@@ -356,10 +356,10 @@ type t = {
 }
 
 val to_string : t -> string
-val parse : Buf.t -> t
+val parse : Cstruct.t -> t
 
 (** The marshalling entry point, given a {! dns} structure.
 
     @return the marshalled packet
 *)
-val marshal : Buf.t -> t -> Buf.t
+val marshal : Cstruct.t -> t -> Cstruct.t
