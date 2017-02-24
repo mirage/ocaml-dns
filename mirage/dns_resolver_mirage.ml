@@ -129,8 +129,6 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       Hashtbl.add res endp commfn;
       commfn
 
-  let alloc () = Io_page.(to_cstruct (get 1))
-
   let resolve client
       s server dns_port
       (q_class:DP.q_class) (q_type:DP.q_type)

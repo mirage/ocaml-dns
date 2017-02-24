@@ -37,7 +37,7 @@ module Client : CLIENT = struct
     Random.int (1 lsl 16)
 
   let marshal q =
-    [q.Packet.id, Packet.marshal (Cstruct.create 4096) q]
+    [q.Packet.id, Packet.marshal q]
 
   let parse id buf =
     let pkt = Packet.parse buf in
@@ -52,7 +52,7 @@ module type SERVER = sig
   val query_of_context : context -> Packet.t
 
   val parse   : Cstruct.t -> context option
-  val marshal : Cstruct.t -> context -> Packet.t -> Cstruct.t option
+  val marshal : context -> Packet.t -> Cstruct.t option
 
 end
 
@@ -70,6 +70,6 @@ module Server : SERVER with type context = Packet.t = struct
   let query_of_context x = x
 
   let parse buf = contain_exc "parse" (fun () -> Packet.parse buf)
-  let marshal buf _q response =
-    contain_exc "marshal" (fun () -> Packet.marshal buf response)
+  let marshal _q response =
+    contain_exc "marshal" (fun () -> Packet.marshal response)
 end

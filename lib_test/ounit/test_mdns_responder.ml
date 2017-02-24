@@ -14,8 +14,6 @@ let load_file path =
 let assert_range low high actual =
   assert_bool (sprintf "%f not in range %f <= x < %f" actual low high) (low <= actual && actual < high)
 
-let allocfn () = Cstruct.create 4096
-
 open Dns
 open Packet
 
@@ -88,7 +86,6 @@ let tests =
     "q-A-AAAA" >:: (fun test_ctxt ->
         let txlist = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -127,7 +124,6 @@ let tests =
     "q-legacy" >:: (fun test_ctxt ->
         let txlist = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -173,7 +169,6 @@ let tests =
     "q-PTR-first" >:: (fun test_ctxt ->
         let txlist = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -253,7 +248,6 @@ let tests =
 
     "q-PTR-known" >:: (fun test_ctxt ->
         let module MockTransport = struct
-          let alloc () = allocfn ()
           let write addr buf =
             assert_failure "write shouldn't be called"
           let sleep t =
@@ -275,7 +269,6 @@ let tests =
         let txlist = ref [] in
         let sleepl = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -317,7 +310,6 @@ let tests =
         let cond = Lwt_condition.create () in
         let sleepl = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -388,7 +380,6 @@ let tests =
         let sleepl = ref [] in
         let module MockTransport = struct
           open Lwt
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             return_unit
@@ -454,7 +445,6 @@ let tests =
         let sleepl = ref [] in
         let module MockTransport = struct
           open Lwt
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             return_unit
@@ -540,7 +530,6 @@ let tests =
         let sleepl = ref [] in
         let module MockTransport = struct
           open Lwt
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             return_unit
@@ -615,7 +604,6 @@ let tests =
         let txlist = ref [] in
         let sleepl = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()

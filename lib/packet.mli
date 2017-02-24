@@ -362,4 +362,4 @@ val parse : Cstruct.t -> t
 
     @return the marshalled packet
 *)
-val marshal : Cstruct.t -> t -> Cstruct.t
+val marshal : t -> Cstruct.t

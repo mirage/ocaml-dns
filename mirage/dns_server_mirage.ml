@@ -60,8 +60,7 @@ module Make(K:Mirage_kv_lwt.RO)(S:Mirage_stack_lwt.V4) = struct
     let listener ~src ~dst ~src_port buf =
       let src' = (Ipaddr.V4 dst), port in
       let dst' = (Ipaddr.V4 src), src_port in
-      let obuf = (Io_page.(to_cstruct (get 1))) in
-      process_query buf (Cstruct.len buf) obuf src' dst' processor
+      process_query buf (Cstruct.len buf) src' dst' processor
       >>= function
       | None -> return ()
       | Some rba ->

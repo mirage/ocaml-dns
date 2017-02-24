@@ -107,7 +107,7 @@ let tests =
             id=0x930b; detail; questions=[q];
             answers=[]; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Cstruct.create 512) packet in
+        let buf = marshal packet in
         assert_equal ~cmp:Cstruct.equal ~printer:hexdump raw buf
     );
 
@@ -178,7 +178,7 @@ let tests =
             id=0x930b; detail; questions=[q];
             answers; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Cstruct.create 512) packet in
+        let buf = marshal packet in
         assert_equal ~cmp:Cstruct.equal ~printer:hexdump raw buf
     );
 
@@ -220,7 +220,7 @@ let tests =
             id=0; detail; questions=[q];
             answers=[]; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Cstruct.create 512) packet in
+        let buf = marshal packet in
         assert_equal ~cmp:Cstruct.equal ~printer:hexdump raw buf
     );
 
@@ -265,7 +265,7 @@ let tests =
             id=0; detail; questions=[];
             answers=[a]; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Cstruct.create 512) packet in
+        let buf = marshal packet in
         assert_equal ~cmp:Cstruct.equal ~printer:hexdump raw buf
     );
 
@@ -284,7 +284,7 @@ let tests =
             id=0; detail; questions=[q];
             answers=[]; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Cstruct.create 512) packet in
+        let buf = marshal packet in
         let parsed = parse buf in
         let q = List.hd parsed.questions in
         assert_equal Q_mDNS_Unicast q.q_unicast

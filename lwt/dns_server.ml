@@ -44,7 +44,7 @@ let compose process backup ~src ~dst packet =
       | _ -> backup ~src ~dst packet)
   | None -> backup ~src ~dst packet
 
-let process_query buf len obuf src dst processor =
+let process_query buf len src dst processor =
   let module Processor = (val processor : PROCESSOR) in
   match Processor.parse (Cstruct.sub buf 0 len) with
   |None -> Lwt.return_none
@@ -54,7 +54,7 @@ let process_query buf len obuf src dst processor =
     |Some answer ->
       let query = Processor.query_of_context ctxt in
       let response = Dns.Query.response_of_answer query answer in
-      Processor.marshal obuf ctxt response
+      Processor.marshal ctxt response
 
 let processor_of_process process : Dns.Packet.t processor =
   let module P = struct

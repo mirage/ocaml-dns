@@ -34,8 +34,7 @@ module Client : Dns.Protocol.CLIENT = struct
 
   let get_id () = 0
 
-  let marshal q =
-    [q, DP.marshal (Cstruct.create 4096) q]
+  let marshal q = [q, DP.marshal q]
 
   let packet_matches query packet =
     let open DP in
@@ -117,8 +116,6 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       let commfn = { txfn; rxfn; timerfn; cleanfn } in
       Hashtbl.add res endp commfn;
       commfn
-
-  let alloc () = Io_page.(to_cstruct (get 1))
 
   let create_packet q_class q_type q_name =
     let open Dns.Packet in

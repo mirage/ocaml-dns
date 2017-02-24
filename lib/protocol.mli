@@ -64,12 +64,11 @@ module type SERVER = sig
   val parse   : Cstruct.t -> context option
 
   (** DNS wire format marshal function.
-      @param buf output resource
       @param _q context
       @param response answer packet
       @return buffer to write
   *)
-  val marshal : Cstruct.t -> context -> Packet.t -> Cstruct.t option
+  val marshal : context -> Packet.t -> Cstruct.t option
 end
 
 (** The default DNS server using the standard DNS protocol *)
