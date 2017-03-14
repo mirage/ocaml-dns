@@ -86,6 +86,7 @@ let tests =
     "q-A-AAAA" >:: (fun test_ctxt ->
         let txlist = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -124,6 +125,7 @@ let tests =
     "q-legacy" >:: (fun test_ctxt ->
         let txlist = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -169,6 +171,7 @@ let tests =
     "q-PTR-first" >:: (fun test_ctxt ->
         let txlist = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -248,6 +251,7 @@ let tests =
 
     "q-PTR-known" >:: (fun test_ctxt ->
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             assert_failure "write shouldn't be called"
           let sleep t =
@@ -269,6 +273,7 @@ let tests =
         let txlist = ref [] in
         let sleepl = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -310,6 +315,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let sleepl = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -379,6 +385,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let sleepl = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           open Lwt
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
@@ -444,6 +451,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let sleepl = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           open Lwt
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
@@ -529,6 +537,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let sleepl = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           open Lwt
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
@@ -604,6 +613,7 @@ let tests =
         let txlist = ref [] in
         let sleepl = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()

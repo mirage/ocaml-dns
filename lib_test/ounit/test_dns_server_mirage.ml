@@ -28,7 +28,7 @@ let simulate_query
     questions=[question]; answers=[]; authorities=[]; additionals=[];
   } in
   let buf = marshal request in
-  let listener_thread = match MockStack.udpv4_listeners stack 53 with
+  let listener_thread = match MockStack.udpv4_listeners stack ~dst_port:53 with
     | None -> assert_failure "missing listener"
     | Some listener -> listener ~src:from_ip ~dst:to_ip ~src_port:from_port buf
   in
