@@ -1488,8 +1488,8 @@ let parse buf =
   (* eprintf "RX: %s\n%!" (to_string dns); *)
   dns
 
-let marshal dns =
-  let txbuf = Cstruct.create 4096 in
+let marshal ?(alloc = fun () -> Cstruct.create 4096) dns =
+  let txbuf = alloc () in
   let marshaln f names base buf values =
     List.fold_left f (names, base, buf) values
   in

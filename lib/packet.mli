@@ -362,4 +362,4 @@ val parse : Cstruct.t -> t
 
     @return the marshalled packet
 *)
-val marshal : t -> Cstruct.t
+val marshal : ?alloc:(unit -> Cstruct.t) -> t -> Cstruct.t

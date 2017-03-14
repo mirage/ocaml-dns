@@ -34,7 +34,7 @@ module Client : Dns.Protocol.CLIENT = struct
 
   let get_id () = 0
 
-  let marshal q = [q, DP.marshal q]
+  let marshal ?alloc q = [q, DP.marshal ?alloc q]
 
   let packet_matches query packet =
     let open DP in
