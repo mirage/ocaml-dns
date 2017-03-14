@@ -420,7 +420,7 @@ let tests =
           detail= {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError};
           questions=[]; answers=[answer]; authorities=[]; additionals=[];
         } in
-        let response_buf = marshal (Cstruct.create 512) response in
+        let response_buf = marshal response in
         let _ = Responder.process responder ~src:(response_src_ip, 5353) ~dst:txaddr response_buf in
 
         (* A new probe cycle begins *)
@@ -480,7 +480,7 @@ let tests =
           detail= {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError};
           questions=[]; answers=[answer]; authorities=[]; additionals=[];
         } in
-        let response_buf = marshal (Cstruct.create 512) response in
+        let response_buf = marshal response in
         let _ = Responder.process responder ~src:(response_src_ip, 5353) ~dst:txaddr response_buf in
 
         (* Verify the second probe *)
@@ -573,7 +573,7 @@ let tests =
           detail= {qr=Query; opcode=Standard; aa=false; tc=false; rd=false; ra=false; rcode=NoError};
           questions=[question]; answers=[]; authorities=[auth]; additionals=[];
         } in
-        let query_buf = marshal (Cstruct.create 512) query in
+        let query_buf = marshal query in
         let _ = Responder.process responder ~src:(conflict_src_ip, 5353) ~dst:txaddr query_buf in
 
         (* One-second delay before restarting the probe cycle *)

@@ -27,7 +27,7 @@ let simulate_query
     detail= {qr=Query; opcode=Standard; aa=false; tc=false; rd=true; ra=false; rcode=NoError};
     questions=[question]; answers=[]; authorities=[]; additionals=[];
   } in
-  let buf = marshal (Cstruct.create 512) request in
+  let buf = marshal request in
   let listener_thread = match MockStack.udpv4_listeners stack 53 with
     | None -> assert_failure "missing listener"
     | Some listener -> listener ~src:from_ip ~dst:to_ip ~src_port:from_port buf

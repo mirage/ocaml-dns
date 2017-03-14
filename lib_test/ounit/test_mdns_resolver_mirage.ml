@@ -87,6 +87,8 @@ module StubIpv4 = struct
   type uipaddr = Ipaddr.t
   let to_uipaddr ip = Ipaddr.V4 ip
   let of_uipaddr = Ipaddr.to_v4
+
+  let mtu _ = 1500
 end
 
 
@@ -269,8 +271,8 @@ let simulate_response
     stack
   =
   let response = { id; detail; questions=[]; answers; authorities=[]; additionals=[]; } in
-  let buf = marshal (Cstruct.create 512) response in
-  let listener_thread = match MockStack.udpv4_listeners stack 5353 with
+  let buf = marshal response in
+  let listener_thread = match MockStack.udpv4_listeners ~dst_port:5353 stack with
     | None -> assert_failure "missing listener"
     | Some listener -> listener ~src:from_ip ~dst:to_ip ~src_port:from_port buf
   in
