@@ -22,7 +22,6 @@ depends: [
   "mirage-kv-lwt"
   "mirage-time-lwt"
   "duration"
-  "io-page"
   "lwt"
   "mirage-profile"
 ]
