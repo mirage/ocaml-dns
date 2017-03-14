@@ -50,9 +50,9 @@ let rec send_req txfn timerfn q = function
       send_req txfn timerfn q (count - 1)
     end
 
-let send_pkt client { log; txfn; rxfn; timerfn; cleanfn } pkt =
+let send_pkt ?alloc client { log; txfn; rxfn; timerfn; cleanfn } pkt =
   let module R = (val client: CLIENT ) in
-  let cqpl = R.marshal pkt in
+  let cqpl = R.marshal ?alloc pkt in
   let resl = List.map cqpl ~f:begin fun (ctxt, q) -> Deferred.any [
       ((send_req txfn timerfn q 4) >>| fun () -> (Err (R.timeout ctxt)));
       (try_with (fun () -> rxfn (R.parse ctxt)) >>| function
@@ -78,19 +78,19 @@ let send_pkt client { log; txfn; rxfn; timerfn; cleanfn } pkt =
       find_answer errors rs
   in select [] resl
 
-let resolve ?(dnssec = false) client commfn q_class q_type q_name =
+let resolve ?alloc ?(dnssec = false) client commfn q_class q_type q_name =
   Monitor.try_with_or_error begin fun () ->
     let id = (let module R = (val client: CLIENT ) in R.get_id ()) in
     let q = Dns.Query.create ~id ~dnssec q_class q_type q_name in
-    send_pkt client commfn q
+    send_pkt ?alloc client commfn q
   end >>| fun r ->
   don't_wait_for (commfn.cleanfn ());
   r
 
-let gethostbyname ?(q_class=DP.Q_IN) ?(q_type=DP.Q_A) commfn name =
+let gethostbyname ?alloc ?(q_class=DP.Q_IN) ?(q_type=DP.Q_A) commfn name =
   let open DP in
   let domain = Name.of_string name in
-  resolve (module Dns.Protocol.Client) commfn q_class q_type domain >>|
+  resolve ?alloc (module Dns.Protocol.Client) commfn q_class q_type domain >>|
   Or_error.map ~f:begin fun r ->
     List.fold_right r.answers ~init:[] ~f:begin fun x a ->
       match x.rdata with

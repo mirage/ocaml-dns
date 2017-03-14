@@ -31,6 +31,7 @@ type commfn = {
 }
 
 val resolve :
+  ?alloc:(unit -> Cstruct.t) ->
   ?dnssec:bool ->
   (module Protocol.CLIENT) ->
   commfn ->
@@ -39,6 +40,7 @@ val resolve :
   Name.t -> Packet.t Deferred.Or_error.t
 
 val gethostbyname :
+  ?alloc:(unit -> Cstruct.t) ->
   ?q_class:Packet.q_class ->
   ?q_type:Packet.q_type ->
   commfn ->
