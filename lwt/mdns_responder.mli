@@ -51,6 +51,7 @@ type ip_endpoint = Ipaddr.V4.t * int
 
 (** Encapsulates the dependencies that the responder requires for performing I/O. *)
 module type TRANSPORT = sig
+  val alloc : unit -> Cstruct.t
   val write : ip_endpoint -> Cstruct.t -> unit Lwt.t
   val sleep : float -> unit Lwt.t
 end

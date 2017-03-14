@@ -26,6 +26,7 @@ module Probe = Dns.Probe
 type ip_endpoint = Ipaddr.V4.t * int
 
 module type TRANSPORT = sig
+  val alloc : unit -> Cstruct.t
   val write : ip_endpoint -> Cstruct.t -> unit Lwt.t
   val sleep : float -> unit Lwt.t
 end
@@ -229,7 +230,7 @@ module Make (Transport : TRANSPORT) = struct
 
   let rec probe_forever t action first first_wakener =
     let send_action packet ip port =
-      match Dns.Protocol.contain_exc "marshal" (fun () -> DP.marshal packet) with
+      match Dns.Protocol.contain_exc "marshal" (fun () -> DP.marshal ~alloc:Transport.alloc packet) with
       | None -> Lwt.return_unit
       | Some buf -> Transport.write (ip, port) buf
     in
@@ -347,7 +348,7 @@ module Make (Transport : TRANSPORT) = struct
       Lwt.return_unit
     else
       (* TODO: limit the response packet size *)
-      match DS.marshal fake_query response with
+      match DS.marshal ~alloc:Transport.alloc fake_query response with
       | None -> Lwt.return_unit
       | Some obuf -> write_repeat (dest_host,dest_port) obuf repeat 1.0
 
@@ -426,7 +427,7 @@ module Make (Transport : TRANSPORT) = struct
           (* Possible delay before responding *)
           get_delay legacy response >>= fun () ->
           (* TODO: limit the response packet size *)
-          match DS.marshal query response with
+          match DS.marshal ~alloc:Transport.alloc query response with
           | None -> Lwt.return_unit
           | Some obuf ->
             (* RFC 6762 section 11 - TODO: send with IP TTL = 255 *)
