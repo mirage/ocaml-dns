@@ -55,9 +55,9 @@ type 'a processor = (module PROCESSOR with type context = 'a)
 	an {!rcode} other than {!NoError} in which case it becomes [backup_process]. *)
 val compose: Dns.Packet.t process -> Dns.Packet.t process -> Dns.Packet.t process
 
-(** [process_query ibuf ibuflen obuf src dst processor] *)
-val process_query: Dns.Buf.t -> int -> Dns.Buf.t -> ip_endpoint -> ip_endpoint -> 
-  (module PROCESSOR) -> Dns.Buf.t option Lwt.t
+(** [process_query ?alloc ibuf ibuflen src dst processor] *)
+val process_query: ?alloc:(unit -> Cstruct.t) -> Cstruct.t -> int -> ip_endpoint -> ip_endpoint -> 
+  (module PROCESSOR) -> Cstruct.t option Lwt.t
 
 (** Returns a packet processor module by combining {!Dns.Protocol.Server} with
     the specified packet processing function. *)

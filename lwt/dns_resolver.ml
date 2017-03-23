@@ -27,8 +27,8 @@ module DP = Packet
 type result = Answer of DP.t | Error of exn
 
 type commfn = {
-  txfn    : Dns.Buf.t -> unit Lwt.t;
-  rxfn    : (Dns.Buf.t -> Dns.Packet.t option) -> DP.t Lwt.t;
+  txfn    : Cstruct.t -> unit Lwt.t;
+  rxfn    : (Cstruct.t -> Dns.Packet.t option) -> DP.t Lwt.t;
   timerfn : unit -> unit Lwt.t;
   cleanfn : unit -> unit Lwt.t;
 }
@@ -41,7 +41,7 @@ let rec send_req txfn timerfn q =
     timerfn () >>= fun () ->
     send_req txfn timerfn q (count - 1)
 
-let send_pkt ?alloc client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
+let send_pkt client ?alloc ({ txfn; rxfn; timerfn; cleanfn }) pkt =
   let module R = (val client : CLIENT) in
   let cqpl = R.marshal ?alloc pkt in
   let resl = List.map (fun (ctxt,q) ->
@@ -73,7 +73,7 @@ let send_pkt ?alloc client ({ txfn; rxfn; timerfn; cleanfn }) pkt =
 
 let resolve_pkt client ?alloc (commfn:commfn) pkt =
   Lwt.catch (fun () ->
-      send_pkt ?alloc client commfn pkt
+      send_pkt client ?alloc commfn pkt
       >>= fun r -> commfn.cleanfn ()
       >>= fun () -> Lwt.return r)
     (function exn ->
@@ -97,7 +97,7 @@ let gethostbyname
     name =
   let open DP in
   let domain = Name.of_string name in
-  resolve ?alloc (module Dns.Protocol.Client) commfn q_class q_type domain
+  resolve (module Dns.Protocol.Client) ?alloc commfn q_class q_type domain
   >|= fun r ->
   List.fold_left (fun a x ->
       match x.rdata with
@@ -115,7 +115,7 @@ let gethostbyaddr
   =
   let addr = Name.of_ipaddr (Ipaddr.V4 addr) in
   let open DP in
-  resolve ?alloc (module Dns.Protocol.Client) commfn q_class q_type addr
+  resolve (module Dns.Protocol.Client) ?alloc commfn q_class q_type addr
   >|= fun r ->
   List.fold_left (fun a x ->
       match x.rdata with |PTR n -> (Name.to_string n)::a |_->a

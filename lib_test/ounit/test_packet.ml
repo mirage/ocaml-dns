@@ -57,24 +57,14 @@ let load_packet path =
     assert_equal 4 version;
     assert_equal 17 (get_ipv4_proto ip);
     let udp = Cstruct.shift ip sizeof_ipv4 in
-    let body = Cstruct.shift udp sizeof_udpv4 in
-    Dns.Buf.of_cstruct body
+    Cstruct.shift udp sizeof_udpv4
   | None ->
     assert_failure "No packets"
 
 let hexdump ibuf =
-  let n = Dns.Buf.length ibuf in
-  let obuf = Buffer.create (3 * n) in
-  let rec acc i =
-    let ch = (int_of_char ibuf.{i}) in
-    Buffer.add_char obuf (if ch < 32 || ch >= 127 then '.' else ibuf.{i});
-    Buffer.add_string obuf (sprintf "%.2x " ch);
-    if i mod 16 = 15 then Buffer.add_char obuf '\n';
-    if i < n - 1 then acc (i + 1);
-  in
-  if n >= 1 then acc 0;
-  if n mod 16 != 15 then Buffer.add_char obuf '\n';
-  Buffer.contents obuf
+  let b = Buffer.create 16 in
+  Cstruct.hexdump_to_buffer b ibuf ;
+  Buffer.contents b
 
 open Dns
 open Packet
@@ -117,8 +107,8 @@ let tests =
             id=0x930b; detail; questions=[q];
             answers=[]; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Dns.Buf.create 512) packet in
-        assert_equal ~printer:hexdump raw buf
+        let buf = marshal packet in
+        assert_equal ~cmp:Cstruct.equal ~printer:hexdump raw buf
     );
 
     "parse-dns-r-A" >:: (fun test_ctxt ->
@@ -188,8 +178,8 @@ let tests =
             id=0x930b; detail; questions=[q];
             answers; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Dns.Buf.create 512) packet in
-        assert_equal ~printer:hexdump raw buf
+        let buf = marshal packet in
+        assert_equal ~cmp:Cstruct.equal ~printer:hexdump raw buf
     );
 
     "parse-mdns-q-A" >:: (fun test_ctxt ->
@@ -230,8 +220,8 @@ let tests =
             id=0; detail; questions=[q];
             answers=[]; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Dns.Buf.create 512) packet in
-        assert_equal ~printer:hexdump raw buf
+        let buf = marshal packet in
+        assert_equal ~cmp:Cstruct.equal ~printer:hexdump raw buf
     );
 
     "parse-mdns-r-A" >:: (fun test_ctxt ->
@@ -275,8 +265,8 @@ let tests =
             id=0; detail; questions=[];
             answers=[a]; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Dns.Buf.create 512) packet in
-        assert_equal ~printer:hexdump raw buf
+        let buf = marshal packet in
+        assert_equal ~cmp:Cstruct.equal ~printer:hexdump raw buf
     );
 
     "q_unicast" >:: (fun test_ctxt ->
@@ -294,7 +284,7 @@ let tests =
             id=0; detail; questions=[q];
             answers=[]; authorities=[]; additionals=[];
           } in
-        let buf = marshal (Dns.Buf.create 512) packet in
+        let buf = marshal packet in
         let parsed = parse buf in
         let q = List.hd parsed.questions in
         assert_equal Q_mDNS_Unicast q.q_unicast

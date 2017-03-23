@@ -22,8 +22,8 @@ module type CLIENT = sig
 
   val get_id : unit -> int
 
-  val marshal : ?alloc:(unit -> Buf.t) -> Packet.t -> (context * Buf.t) list
-  val parse : context -> Buf.t -> Packet.t option
+  val marshal : ?alloc:(unit -> Cstruct.t) -> Packet.t -> (context * Cstruct.t) list
+  val parse : context -> Cstruct.t -> Packet.t option
 
   val timeout : context -> exn
 end
@@ -37,7 +37,7 @@ module Client : CLIENT = struct
     Random.int (1 lsl 16)
 
   let marshal ?alloc q =
-    [q.Packet.id, Packet.marshal (Buf.create ?alloc 4096) q]
+    [q.Packet.id, Packet.marshal ?alloc q]
 
   let parse id buf =
     let pkt = Packet.parse buf in
@@ -51,8 +51,8 @@ module type SERVER = sig
 
   val query_of_context : context -> Packet.t
 
-  val parse   : Buf.t -> context option
-  val marshal : Buf.t -> context -> Packet.t -> Buf.t option
+  val parse   : Cstruct.t -> context option
+  val marshal : ?alloc:(unit -> Cstruct.t) -> context -> Packet.t -> Cstruct.t option
 
 end
 
@@ -70,6 +70,6 @@ module Server : SERVER with type context = Packet.t = struct
   let query_of_context x = x
 
   let parse buf = contain_exc "parse" (fun () -> Packet.parse buf)
-  let marshal buf _q response =
-    contain_exc "marshal" (fun () -> Packet.marshal buf response)
+  let marshal ?alloc _q response =
+    contain_exc "marshal" (fun () -> Packet.marshal ?alloc response)
 end

@@ -1,8 +1,8 @@
 PKG async async_kernel
 PKG re ipaddr uri base64 hashcons cstruct result cstruct.ppx
 PKG lwt mirage-profile cmdliner re.str lwt.uni uri.services ipaddr.unix
-PKG io-page duration mirage-time-lwt mirage-stack-lwt mirage-kv-lwt
-PKG oUnit pcap-format mirage-protocols mirage-kv io-page.unix
+PKG duration mirage-time-lwt mirage-stack-lwt mirage-kv-lwt
+PKG oUnit pcap-format mirage-protocols mirage-kv
 
 S lib
 S lib_test

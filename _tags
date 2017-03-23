@@ -9,7 +9,7 @@ true : package(re re.str ipaddr uri base64 hashcons cstruct result)
 "lwt": include
 <lwt/*.{ml,mli}>: package(lwt mirage-profile)
 <lwt/dig_unix.*>: package(cmdliner lwt.unix uri.services ipaddr.unix lwt)
-<mirage/*.{ml,mli}>: package(io-page lwt duration mirage-time-lwt)
+<mirage/*.{ml,mli}>: package(lwt duration mirage-time-lwt)
 <mirage/*.{ml,mli}>: package(mirage-stack-lwt mirage-kv-lwt)
 
 <async/*.{ml,mli}>: package(async async_kernel threads), thread
@@ -20,7 +20,7 @@ true : package(re re.str ipaddr uri base64 hashcons cstruct result)
 "async": include
 <lib_test/unix/*>: package(lwt lwt.unix uri.services ipaddr.unix)
 <lib_test/ounit/*>: package(oUnit cstruct.ppx pcap-format lwt mirage-protocols)
-<lib_test/ounit/*>: package(mirage-stack-lwt mirage-time-lwt mirage-kv io-page)
+<lib_test/ounit/*>: package(mirage-stack-lwt mirage-time-lwt mirage-kv)
 <lib_test/ounit/*>: package(mirage-kv-lwt lwt.unix uri.services)
-<lib_test/ounit/*>: package(mirage-profile lwt ipaddr.unix duration io-page.unix)
-<lib_test/async/*>: package(async threads), thread
+<lib_test/ounit/*>: package(mirage-profile lwt ipaddr.unix duration)
+<lib_test/async/*>: package(async threads uri.services), thread

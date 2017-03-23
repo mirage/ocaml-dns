@@ -111,8 +111,7 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       let cleanfn () = return () in
       S.listen_udpv4 s ~port:src_port callback;
       let rec txfn buf =
-        Cstruct.of_bigarray buf |>
-        S.UDPV4.write ~src_port ~dst ~dst_port udp >>= function
+        S.UDPV4.write ~src_port ~dst ~dst_port udp buf >>= function
         | Error e ->
           Fmt.kstrf fail_with
             "Attempting to communicate with remote resolver: %a"
@@ -122,7 +121,7 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       let rec rxfn f =
         Lwt_mvar.take mvar
         >>= fun buf ->
-        match f (Dns.Buf.of_cstruct buf) with
+        match f buf with
         | None -> rxfn f
         | Some packet -> return packet
       in
@@ -130,27 +129,25 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       Hashtbl.add res endp commfn;
       commfn
 
-  let alloc () = (Io_page.get 1 :> Dns.Buf.t)
-
   let resolve client
       s server dns_port
       (q_class:DP.q_class) (q_type:DP.q_type)
       (q_name:Name.t) =
     let commfn = connect_to_resolver s (server,dns_port) in
-    resolve ~alloc client commfn q_class q_type q_name
+    resolve client commfn q_class q_type q_name
 
   let gethostbyname
       s ?(server = default_ns) ?(dns_port = default_port)
       ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
       name =
     let commfn = connect_to_resolver s (server,dns_port) in
-    gethostbyname ~alloc ~q_class ~q_type commfn name
+    gethostbyname ~q_class ~q_type commfn name
 
   let gethostbyaddr
       s ?(server = default_ns) ?(dns_port = default_port)
       ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
       addr =
     let commfn = connect_to_resolver s (server,dns_port) in
-    gethostbyaddr ~alloc ~q_class ~q_type commfn addr
+    gethostbyaddr ~q_class ~q_type commfn addr
 
 end

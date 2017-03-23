@@ -48,8 +48,6 @@ let eventual_process_of_zonefiles zonefiles =
   ) zonefiles
   >|= process_of_zonebufs
 
-let bufsz = 4096
-
 let ipaddr_of_sockaddr =
   function
   | Unix.ADDR_UNIX _ -> Lwt.fail (Failure "Unix domain sockets not supported")
@@ -57,27 +55,22 @@ let ipaddr_of_sockaddr =
 
 let listen ~fd ~src ~processor =
   let cont = ref true in
-  let bufs = Lwt_pool.create 64 (fun () -> Lwt.return (Dns.Buf.create bufsz)) in
   ipaddr_of_sockaddr src
   >>= fun src ->
   let rec loop () =
     if not !cont then Lwt.return_unit
     else
-      Lwt_pool.use bufs
-        (fun buf ->
-           Lwt_bytes.recvfrom fd buf 0 bufsz []
-           >>= fun (len, dst) ->
-           (* TODO Process in a background thread; should be a bounded queue *)
-           Lwt.async (fun () ->
-               ipaddr_of_sockaddr dst
-               >>= fun dst' ->
-               process_query buf len buf src dst' processor >>= function
-               | None -> Lwt.return_unit
-               | Some buf ->
-                   Lwt_bytes.sendto fd buf 0 (Dns.Buf.length buf) [] dst
-                   >>= fun _ -> Lwt.return_unit);
-           Lwt.return_unit)
-      >>= fun () ->
+      let buf = Cstruct.create 4096 in
+      Cstruct.(Lwt_bytes.recvfrom fd buf.buffer buf.off buf.len [])
+      >>= fun (len, dst) ->
+      (* TODO Process in a background thread; should be a bounded queue *)
+      Lwt.async (fun () ->
+          ipaddr_of_sockaddr dst >>= fun dst' ->
+          process_query buf len src dst' processor >>= function
+          | None -> Lwt.return_unit
+          | Some buf ->
+            Cstruct.(Lwt_bytes.sendto fd buf.buffer buf.off buf.len [] dst)
+            >>= fun _ -> Lwt.return_unit);
       loop ()
   in
   Lwt.async loop;

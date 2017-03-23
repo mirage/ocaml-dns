@@ -28,7 +28,6 @@ module Main (C:CONSOLE) (K:KV_RO) (S:STACKV4) = struct
     let open Mdns_responder in
     let udp = S.udpv4 s in
     let module Responder = Make(struct
-        let alloc () = (Io_page.get 1 :> Dns.Buf.t)
         let write (dest_ip,dest_port) txbuf =
           U.write ~source_port:listening_port ~dest_ip:dest_ip ~dest_port udp (Cstruct.of_bigarray txbuf)
         let sleep t = OS.Time.sleep t

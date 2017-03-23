@@ -27,8 +27,8 @@ let simulate_query
     detail= {qr=Query; opcode=Standard; aa=false; tc=false; rd=true; ra=false; rcode=NoError};
     questions=[question]; answers=[]; authorities=[]; additionals=[];
   } in
-  let buf = marshal (Dns.Buf.create 512) request |> Cstruct.of_bigarray in
-  let listener_thread = match MockStack.udpv4_listeners stack 53 with
+  let buf = marshal request in
+  let listener_thread = match MockStack.udpv4_listeners stack ~dst_port:53 with
     | None -> assert_failure "missing listener"
     | Some listener -> listener ~src:from_ip ~dst:to_ip ~src_port:from_port buf
   in
@@ -140,7 +140,7 @@ let tests =
           assert_equal ~printer:string_of_int 53 w.src_port;
           assert_ip client_ip w.dst;
           assert_equal ~printer:string_of_int 12345 w.dst_port;
-          let packet = parse (Dns.Buf.of_cstruct w.buf) in
+          let packet = parse w.buf in
           assert_packet ~prefix:"1" ~id:3848 packet
             {qr=Response; opcode=Standard; aa=true; tc=false; rd=true; ra=false; rcode=NoError}
             1 1 2 3;
@@ -170,7 +170,7 @@ let tests =
           assert_equal ~printer:string_of_int 53 w.src_port;
           assert_ip client_ip w.dst;
           assert_equal ~printer:string_of_int 12345 w.dst_port;
-          let packet = parse (Dns.Buf.of_cstruct w.buf) in
+          let packet = parse w.buf in
           assert_packet ~prefix:"2" ~id:19560 packet
             {qr=Response; opcode=Standard; aa=true; tc=false; rd=true; ra=false; rcode=NoError}
             1 1 2 3;

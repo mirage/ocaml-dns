@@ -51,8 +51,8 @@ type ip_endpoint = Ipaddr.V4.t * int
 
 (** Encapsulates the dependencies that the responder requires for performing I/O. *)
 module type TRANSPORT = sig
-  val alloc : unit -> Dns.Buf.t
-  val write : ip_endpoint -> Dns.Buf.t -> unit Lwt.t
+  val alloc : unit -> Cstruct.t
+  val write : ip_endpoint -> Cstruct.t -> unit Lwt.t
   val sleep : float -> unit Lwt.t
 end
 
@@ -92,7 +92,7 @@ module Make : functor (Transport : TRANSPORT) -> sig
       mDNS queries, but it also parses responses to detect
       conflicts with unique records.
   *)
-  val process : t -> src:ip_endpoint -> dst:ip_endpoint -> Dns.Buf.t -> unit Lwt.t
+  val process : t -> src:ip_endpoint -> dst:ip_endpoint -> Cstruct.t -> unit Lwt.t
 
   (** Call this function to permanently stop the probe thread,
       to shut down the responder.

@@ -22,7 +22,7 @@ tags: [
 build: [
   ["ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false"
     "--with-lwt" "%{lwt+mirage-profile+cmdliner:installed}%"
-    "--with-mirage" "%{mirage-time-lwt+mirage-stack-lwt+mirage-kv-lwt+lwt+duration+io-page+mirage-profile:installed}%"
+    "--with-mirage" "%{mirage-time-lwt+mirage-stack-lwt+mirage-kv-lwt+lwt+duration+mirage-profile:installed}%"
     "--with-async" "%{async:installed}%" ]
 ]
 build-test: [
@@ -53,7 +53,6 @@ depends: [
   "mirage-kv-lwt"    {test}
   "mirage-profile"   {test}
   "duration"         {test}
-  "io-page"          {test}
 ]
 depopts: [
   "async"
@@ -66,7 +65,6 @@ depopts: [
   "mirage-kv-lwt"
   "mirage-time-lwt"
   "duration"
-  "io-page"
 ]
 conflicts: [
   "mirage-types-lwt" {< "3.0.0"}

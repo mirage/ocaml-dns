@@ -14,8 +14,6 @@ let load_file path =
 let assert_range low high actual =
   assert_bool (sprintf "%f not in range %f <= x < %f" actual low high) (low <= actual && actual < high)
 
-let allocfn () = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 4096
-
 open Dns
 open Packet
 
@@ -88,7 +86,7 @@ let tests =
     "q-A-AAAA" >:: (fun test_ctxt ->
         let txlist = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -127,7 +125,7 @@ let tests =
     "q-legacy" >:: (fun test_ctxt ->
         let txlist = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -173,7 +171,7 @@ let tests =
     "q-PTR-first" >:: (fun test_ctxt ->
         let txlist = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -253,7 +251,7 @@ let tests =
 
     "q-PTR-known" >:: (fun test_ctxt ->
         let module MockTransport = struct
-          let alloc () = allocfn ()
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             assert_failure "write shouldn't be called"
           let sleep t =
@@ -275,7 +273,7 @@ let tests =
         let txlist = ref [] in
         let sleepl = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -317,7 +315,7 @@ let tests =
         let cond = Lwt_condition.create () in
         let sleepl = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
@@ -387,8 +385,8 @@ let tests =
         let cond = Lwt_condition.create () in
         let sleepl = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           open Lwt
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             return_unit
@@ -429,7 +427,7 @@ let tests =
           detail= {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError};
           questions=[]; answers=[answer]; authorities=[]; additionals=[];
         } in
-        let response_buf = marshal (Dns.Buf.create 512) response in
+        let response_buf = marshal response in
         let _ = Responder.process responder ~src:(response_src_ip, 5353) ~dst:txaddr response_buf in
 
         (* A new probe cycle begins *)
@@ -453,8 +451,8 @@ let tests =
         let cond = Lwt_condition.create () in
         let sleepl = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           open Lwt
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             return_unit
@@ -490,7 +488,7 @@ let tests =
           detail= {qr=Response; opcode=Standard; aa=true; tc=false; rd=false; ra=false; rcode=NoError};
           questions=[]; answers=[answer]; authorities=[]; additionals=[];
         } in
-        let response_buf = marshal (Dns.Buf.create 512) response in
+        let response_buf = marshal response in
         let _ = Responder.process responder ~src:(response_src_ip, 5353) ~dst:txaddr response_buf in
 
         (* Verify the second probe *)
@@ -539,8 +537,8 @@ let tests =
         let cond = Lwt_condition.create () in
         let sleepl = ref [] in
         let module MockTransport = struct
+          let alloc () = Cstruct.create 4096
           open Lwt
-          let alloc () = allocfn ()
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             return_unit
@@ -584,7 +582,7 @@ let tests =
           detail= {qr=Query; opcode=Standard; aa=false; tc=false; rd=false; ra=false; rcode=NoError};
           questions=[question]; answers=[]; authorities=[auth]; additionals=[];
         } in
-        let query_buf = marshal (Dns.Buf.create 512) query in
+        let query_buf = marshal query in
         let _ = Responder.process responder ~src:(conflict_src_ip, 5353) ~dst:txaddr query_buf in
 
         (* One-second delay before restarting the probe cycle *)
@@ -615,7 +613,7 @@ let tests =
         let txlist = ref [] in
         let sleepl = ref [] in
         let module MockTransport = struct
-          let alloc () = allocfn ()
+          let alloc () = Cstruct.create 4096
           let write addr buf =
             txlist := (addr, buf) :: !txlist;
             Lwt.return ()
