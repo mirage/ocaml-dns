@@ -46,7 +46,7 @@ depends: [
   "lwt"              {test}
   "ounit"            {test}
   "pcap-format"      {test}
-  "mirage-protocols" {test}
+  "mirage-protocols" {test & >="1.1.0"}
   "mirage-stack-lwt" {test}
   "mirage-time-lwt"  {test}
   "mirage-kv"        {test}
