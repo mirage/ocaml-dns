@@ -6,7 +6,6 @@ install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/ma
 script: bash ./.travis-docker.sh
 env:
  global:
-   - EXTRA_REMOTES="https://github.com/mirage/mirage-dev.git"
    - PINS="mirage-dns:."
    - PACKAGE="dns"
    - DEPOPTS="tcpip lwt async cstruct mirage-types-lwt"
