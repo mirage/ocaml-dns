@@ -1,3 +1,15 @@
+## 0.20.0 (2017-03-23)
+
+* Remove the `Dns.Buf` module that formerly wrapped Cstruct, now that the
+  latter is a mature library.
+* Add an `?alloc` optional argument to functions that would formerly accept
+  a `Dns.Buf`.  By default, this allocates a single page, but consumers of
+  this library can override it in order to supply their own allocation
+  logic (e.g. a pool allocator).
+* Remove dependency on `io-page` to follow the `Dns.Buf` removal.
+
+All these changes were part of #132 by @hannesm.
+
 ## 0.19.1 (2017-02-15)
 
 * Use topkg instead of oasis (#126)
