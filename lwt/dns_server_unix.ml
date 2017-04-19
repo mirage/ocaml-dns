@@ -22,19 +22,17 @@ open Dns_server
 let sp = Printf.sprintf
 
 let bind_fd ~address ~port =
-  let src =
-    Lwt.catch (fun () ->
-      (* should this be lwt hent = Lwt_lib.gethostbyname addr ? *)
-      let hent = Unix.gethostbyname address in
-      Lwt.return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), port)))
-      (fun exn ->
-         let err = sp "cannot resolve %s: %s" address (Printexc.to_string exn) in
-         Lwt.fail (Failure err))
-  in
-  src >|= fun src ->
+  Lwt.catch (fun () ->
+    (* should this be lwt hent = Lwt_lib.gethostbyname addr ? *)
+    let hent = Unix.gethostbyname address in
+    Lwt.return (Unix.ADDR_INET (hent.Unix.h_addr_list.(0), port)))
+    (fun exn ->
+       let err = sp "cannot resolve %s: %s" address (Printexc.to_string exn) in
+       Lwt.fail (Failure err))
+  >>= fun src ->
   let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
-  let () = Lwt_unix.bind fd src in
-  (fd, src)
+  Lwt_unix.bind fd src >>= fun () ->
+  Lwt.return (fd, src)
 
 let eventual_process_of_zonefiles zonefiles =
   Lwt_list.map_s (fun zonefile ->
