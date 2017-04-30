@@ -1,0 +1,44 @@
+opam-version: "1.2"
+maintainer: "Hannes Mehnert <hannes@mehnert.org>"
+authors: ["Hannes Mehnert <hannes@mehnert.org>"]
+homepage: "https://github.com/roburio/udns"
+doc: "https://roburio.github.io/udns/doc"
+dev-repo: "https://github.com/roburio/udns.git"
+bug-reports: "https://github.com/roburio/udns/issues"
+available: [ ocaml-version >= "4.04.0"]
+
+depends: [
+  "ocamlfind" {build}
+  "ocamlbuild" {build}
+  "topkg" {build}
+  "ppx_cstruct" {build}
+  "rresult"
+  "astring"
+  "fmt"
+  "cstruct" {>= "2.2.0"}
+  "ipaddr"
+  "logs"
+  "duration"
+  "nocrypto"
+  "lru"
+  "ptime"
+  "randomconv"
+  "duration"
+  "lwt"
+  "mirage-types-lwt"
+  "alcotest" {test}
+#  "afl-persistent" {test}
+  "mtime" {test}
+  "hashcons" {test}
+  "re" {test}
+]
+
+build: [
+  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false" ]
+]
+
+build-test: [
+  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ]
+  [ "ocaml" "pkg/pkg.ml" "test" ]
+]
+

@@ -1,0 +1,10 @@
+S src
+S resolver
+S test
+
+B _build/**
+
+PKG astring alcotest cstruct rresult afl-persistent cstruct.ppx ipaddr
+PKG mtime mtime.clock.os
+PKG duration lru logs
+PKG ptime nocrypto randomconv
