@@ -31,9 +31,9 @@ let bind_fd ~address ~port =
          let err = sp "cannot resolve %s: %s" address (Printexc.to_string exn) in
          Lwt.fail (Failure err))
   in
-  src >|= fun src ->
+  src >>= fun src ->
   let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 0) in
-  let () = Lwt_unix.bind fd src in
+  Lwt_unix.bind fd src >|= fun () ->
   (fd, src)
 
 let eventual_process_of_zonefiles zonefiles =
