@@ -1,0 +1,43 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="Start" href="index.html">
+<link rel="Up" href="Mdns_responder.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of exceptions" rel=Appendix href="index_exceptions.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
+<link title="Loader" rel="Chapter" href="Loader.html">
+<link title="Name" rel="Chapter" href="Name.html">
+<link title="Operators" rel="Chapter" href="Operators.html">
+<link title="Packet" rel="Chapter" href="Packet.html">
+<link title="Query" rel="Chapter" href="Query.html">
+<link title="RR" rel="Chapter" href="RR.html">
+<link title="Trie" rel="Chapter" href="Trie.html">
+<link title="Zone" rel="Chapter" href="Zone.html">
+<link title="Zone_lexer" rel="Chapter" href="Zone_lexer.html">
+<link title="Zone_parser" rel="Chapter" href="Zone_parser.html">
+<link title="Resolvconf" rel="Chapter" href="Resolvconf.html">
+<link title="Protocol" rel="Chapter" href="Protocol.html">
+<link title="Probe" rel="Chapter" href="Probe.html">
+<link title="Dns_resolver" rel="Chapter" href="Dns_resolver.html">
+<link title="Dns_server" rel="Chapter" href="Dns_server.html">
+<link title="Mdns_responder" rel="Chapter" href="Mdns_responder.html"><title>Mdns_responder.TRANSPORT</title>
+</head>
+<body>
+<div class="navbar">&nbsp;<a class="up" href="Mdns_responder.html" title="Mdns_responder">Up</a>
+&nbsp;</div>
+<h1>Module type <a href="type_Mdns_responder.TRANSPORT.html">Mdns_responder.TRANSPORT</a></h1>
+
+<pre><span class="keyword">module type</span> TRANSPORT = <code class="code"><span class="keyword">sig</span></code> <a href="Mdns_responder.TRANSPORT.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info modtype top">
+Encapsulates the dependencies that the responder requires for performing I/O.<br>
+</div>
+<hr width="100%">
+
+<pre><span id="VALalloc"><span class="keyword">val</span> alloc</span> : <code class="type">unit -> Cstruct.t</code></pre>
+<pre><span id="VALwrite"><span class="keyword">val</span> write</span> : <code class="type"><a href="Mdns_responder.html#TYPEip_endpoint">Mdns_responder.ip_endpoint</a> -> Cstruct.t -> unit Lwt.t</code></pre>
+<pre><span id="VALsleep"><span class="keyword">val</span> sleep</span> : <code class="type">float -> unit Lwt.t</code></pre></body></html>

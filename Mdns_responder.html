@@ -1,0 +1,91 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="Start" href="index.html">
+<link rel="previous" href="Dns_server.html">
+<link rel="Up" href="index.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of exceptions" rel=Appendix href="index_exceptions.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
+<link title="Loader" rel="Chapter" href="Loader.html">
+<link title="Name" rel="Chapter" href="Name.html">
+<link title="Operators" rel="Chapter" href="Operators.html">
+<link title="Packet" rel="Chapter" href="Packet.html">
+<link title="Query" rel="Chapter" href="Query.html">
+<link title="RR" rel="Chapter" href="RR.html">
+<link title="Trie" rel="Chapter" href="Trie.html">
+<link title="Zone" rel="Chapter" href="Zone.html">
+<link title="Zone_lexer" rel="Chapter" href="Zone_lexer.html">
+<link title="Zone_parser" rel="Chapter" href="Zone_parser.html">
+<link title="Resolvconf" rel="Chapter" href="Resolvconf.html">
+<link title="Protocol" rel="Chapter" href="Protocol.html">
+<link title="Probe" rel="Chapter" href="Probe.html">
+<link title="Dns_resolver" rel="Chapter" href="Dns_resolver.html">
+<link title="Dns_server" rel="Chapter" href="Dns_server.html">
+<link title="Mdns_responder" rel="Chapter" href="Mdns_responder.html"><title>Mdns_responder</title>
+</head>
+<body>
+<div class="navbar"><a class="pre" href="Dns_server.html" title="Dns_server">Previous</a>
+&nbsp;<a class="up" href="index.html" title="Index">Up</a>
+&nbsp;</div>
+<h1>Module <a href="type_Mdns_responder.html">Mdns_responder</a></h1>
+
+<pre><span class="keyword">module</span> Mdns_responder: <code class="code"><span class="keyword">sig</span></code> <a href="Mdns_responder.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info module top">
+Multicast DNS (RFC 6762) Responder.
+<p>
+
+    This is roughly the mDNS equivalent of Dns_server,
+    in that it accepts mDNS query packets
+    and responds with the matching records from a zone file.
+<p>
+
+    The simplest usage is with shared resource records only,
+    which requires the following steps:
+<p>
+<OL>
+<li>Create a module from a zone buffer using the "Make" functor.</li>
+<li>Call the module's "announce" function to announce the records.</li>
+<li>After announcement completes, call the "process" function for
+      each received packet.</li>
+</OL>
+
+    The use of unique resource records requires alternative steps:
+<p>
+<OL>
+<li>Create a module from a zone buffer using the "Make" functor.</li>
+<li>Call "add_unique_hostname" to add the a unique "A" record.</li>
+<li>Call the module's "first_probe" function to probe for
+      uniqueness of the hostname. The name will be changed to
+      something unique in the event of a conflict.</li>
+<li>After probing completes, call the module's "announce" function.</li>
+<li>After announcement completes, call the "process" function for
+      each received packet.</li>
+</OL>
+
+    As per RFC 6762 section 9, if at any time the responder observes a
+    response that conflicts with a record that was previously
+    already confirmed as unique, it restarts the probing sequence.
+    Therefore, it is necessary to invoke the "stop_probe" function
+    to shut down the responder.<br>
+</div>
+<hr width="100%">
+
+<pre><span id="TYPEip_endpoint"><span class="keyword">type</span> <code class="type"></code>ip_endpoint</span> = <code class="type">Ipaddr.V4.t * int</code> </pre>
+<div class="info ">
+An endpoint address consisting of an IPv4 address and a UDP port number.<br>
+</div>
+
+
+<pre><span class="keyword">module type</span> <a href="Mdns_responder.TRANSPORT.html">TRANSPORT</a> = <code class="code"><span class="keyword">sig</span></code> <a href="Mdns_responder.TRANSPORT.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info">
+Encapsulates the dependencies that the responder requires for performing I/O.
+</div>
+
+<pre><span class="keyword">module</span> <a href="Mdns_responder.Make.html">Make</a>: <div class="sig_block"><code class="code"><span class="keyword">functor</span>&nbsp;(</code><code class="code"><span class="constructor">Transport</span></code><code class="code">&nbsp;:&nbsp;</code><code class="type"><a href="Mdns_responder.TRANSPORT.html">TRANSPORT</a></code><code class="code">)&nbsp;<span class="keywordsign">-&gt;</span>&nbsp;</code><code class="code"><span class="keyword">sig</span></code> <a href="Mdns_responder.Make.html">..</a> <code class="code"><span class="keyword">end</span></code></div></pre><div class="info">
+Creates an mDNS responder module given a module that provides I/O functions.
+</div>
+</body></html>

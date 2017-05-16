@@ -1,0 +1,103 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="Start" href="index.html">
+<link rel="previous" href="Dns_resolver.html">
+<link rel="next" href="Mdns_responder.html">
+<link rel="Up" href="index.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of exceptions" rel=Appendix href="index_exceptions.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
+<link title="Loader" rel="Chapter" href="Loader.html">
+<link title="Name" rel="Chapter" href="Name.html">
+<link title="Operators" rel="Chapter" href="Operators.html">
+<link title="Packet" rel="Chapter" href="Packet.html">
+<link title="Query" rel="Chapter" href="Query.html">
+<link title="RR" rel="Chapter" href="RR.html">
+<link title="Trie" rel="Chapter" href="Trie.html">
+<link title="Zone" rel="Chapter" href="Zone.html">
+<link title="Zone_lexer" rel="Chapter" href="Zone_lexer.html">
+<link title="Zone_parser" rel="Chapter" href="Zone_parser.html">
+<link title="Resolvconf" rel="Chapter" href="Resolvconf.html">
+<link title="Protocol" rel="Chapter" href="Protocol.html">
+<link title="Probe" rel="Chapter" href="Probe.html">
+<link title="Dns_resolver" rel="Chapter" href="Dns_resolver.html">
+<link title="Dns_server" rel="Chapter" href="Dns_server.html">
+<link title="Mdns_responder" rel="Chapter" href="Mdns_responder.html"><title>Dns_server</title>
+</head>
+<body>
+<div class="navbar"><a class="pre" href="Dns_resolver.html" title="Dns_resolver">Previous</a>
+&nbsp;<a class="up" href="index.html" title="Index">Up</a>
+&nbsp;<a class="post" href="Mdns_responder.html" title="Mdns_responder">Next</a>
+</div>
+<h1>Module <a href="type_Dns_server.html">Dns_server</a></h1>
+
+<pre><span class="keyword">module</span> Dns_server: <code class="code"><span class="keyword">sig</span></code> <a href="Dns_server.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info module top">
+The main purpose of this module is to provide an implementation of a
+    standard DNS server based on <code class="code"><span class="constructor">Dns</span>.<span class="constructor">Query</span></code> and <code class="code"><span class="constructor">Dns</span>.<span class="constructor">Loader</span></code>.
+<p>
+
+    For a basic DNS server, call <a href="Dns_server.html#VALprocess_of_zonebuf"><code class="code"><span class="constructor">Dns_server</span>.process_of_zonebuf</code></a>, pass
+    the result to <a href="Dns_server.html#VALprocessor_of_process"><code class="code"><span class="constructor">Dns_server</span>.processor_of_process</code></a>, and then invoke
+    the resulting processor function for each received packet.
+<p>
+
+    This module also provides a way to override the parsing and marshaling of
+    DNS packets to allow extensions of DNS to be implemented, such as DNSCurve.<br>
+</div>
+<hr width="100%">
+
+<pre><span id="TYPEip_endpoint"><span class="keyword">type</span> <code class="type"></code>ip_endpoint</span> = <code class="type">Ipaddr.t * int</code> </pre>
+<div class="info ">
+A tuple consisting of an IPv4 or IPv6 address and a TCP or UDP port number.<br>
+</div>
+
+
+<pre><span id="TYPEprocess"><span class="keyword">type</span> <code class="type">'a</code> process</span> = <code class="type">src:<a href="Dns_server.html#TYPEip_endpoint">ip_endpoint</a> -><br>       dst:<a href="Dns_server.html#TYPEip_endpoint">ip_endpoint</a> -> 'a -> Dns.Query.answer option Lwt.t</code> </pre>
+<div class="info ">
+A type of function that takes an abstract request plus source and destination
+    endpoint addresses, and asynchronously produces an answer to the request,
+    or None if no answer is possible. For most applications the type <code class="code"><span class="keywordsign">'</span>a</code>
+    will be <code class="code"><span class="constructor">Dns</span>.<span class="constructor">Packet</span>.t</code>, but may be different if a custom parsing/marshalling
+    layer is required.<br>
+</div>
+
+
+<pre><span class="keyword">module type</span> <a href="Dns_server.PROCESSOR.html">PROCESSOR</a> = <code class="code"><span class="keyword">sig</span></code> <a href="Dns_server.PROCESSOR.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info">
+This type of module provides functions for parsing, marshalling and processing
+    DNS requests to produce answers.
+</div>
+
+<pre><span id="TYPEprocessor"><span class="keyword">type</span> <code class="type">'a</code> processor</span> = <code class="type">(module Dns_server.PROCESSOR with type context = 'a)</code> </pre>
+
+
+<pre><span id="VALcompose"><span class="keyword">val</span> compose</span> : <code class="type">Dns.Packet.t <a href="Dns_server.html#TYPEprocess">process</a> -><br>       Dns.Packet.t <a href="Dns_server.html#TYPEprocess">process</a> -> Dns.Packet.t <a href="Dns_server.html#TYPEprocess">process</a></code></pre><div class="info ">
+<code class="code">compose&nbsp;process&nbsp;backup_process</code> is <code class="code">process</code> unless it returns 
+	an <code class="code">rcode</code> other than <code class="code"><span class="constructor">NoError</span></code> in which case it becomes <code class="code">backup_process</code>.<br>
+</div>
+
+<pre><span id="VALprocess_query"><span class="keyword">val</span> process_query</span> : <code class="type">?alloc:(unit -> Cstruct.t) -><br>       Cstruct.t -><br>       int -><br>       <a href="Dns_server.html#TYPEip_endpoint">ip_endpoint</a> -><br>       <a href="Dns_server.html#TYPEip_endpoint">ip_endpoint</a> -><br>       (module Dns_server.PROCESSOR) -> Cstruct.t option Lwt.t</code></pre><div class="info ">
+<code class="code">process_query&nbsp;?alloc&nbsp;ibuf&nbsp;ibuflen&nbsp;src&nbsp;dst&nbsp;processor</code><br>
+</div>
+
+<pre><span id="VALprocessor_of_process"><span class="keyword">val</span> processor_of_process</span> : <code class="type">Dns.Packet.t <a href="Dns_server.html#TYPEprocess">process</a> -> Dns.Packet.t <a href="Dns_server.html#TYPEprocessor">processor</a></code></pre><div class="info ">
+Returns a packet processor module by combining <code class="code"><span class="constructor">Dns</span>.<span class="constructor">Protocol</span>.<span class="constructor">Server</span></code> with
+    the specified packet processing function.<br>
+</div>
+
+<pre><span id="VALprocess_of_zonebufs"><span class="keyword">val</span> process_of_zonebufs</span> : <code class="type">string list -> Dns.Packet.t <a href="Dns_server.html#TYPEprocess">process</a></code></pre><div class="info ">
+Given a list of DNS zone files as strings, parses them
+    using <code class="code"><span class="constructor">Dns</span>.<span class="constructor">Loader</span></code> and returns a processing
+    function that answers requests through the use of <code class="code"><span class="constructor">Dns</span>.<span class="constructor">Query</span></code>.<br>
+</div>
+
+<pre><span id="VALprocess_of_zonebuf"><span class="keyword">val</span> process_of_zonebuf</span> : <code class="type">string -> Dns.Packet.t <a href="Dns_server.html#TYPEprocess">process</a></code></pre><div class="info ">
+This is a convenience function that is equivalent to calling
+    <a href="Dns_server.html#VALprocess_of_zonebufs"><code class="code"><span class="constructor">Dns_server</span>.process_of_zonebufs</code></a> with a list containing a single zone file string.<br>
+</div>
+</body></html>

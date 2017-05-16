@@ -1,0 +1,119 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="Start" href="index.html">
+<link rel="previous" href="Probe.html">
+<link rel="next" href="Dns_server.html">
+<link rel="Up" href="index.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of exceptions" rel=Appendix href="index_exceptions.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
+<link title="Loader" rel="Chapter" href="Loader.html">
+<link title="Name" rel="Chapter" href="Name.html">
+<link title="Operators" rel="Chapter" href="Operators.html">
+<link title="Packet" rel="Chapter" href="Packet.html">
+<link title="Query" rel="Chapter" href="Query.html">
+<link title="RR" rel="Chapter" href="RR.html">
+<link title="Trie" rel="Chapter" href="Trie.html">
+<link title="Zone" rel="Chapter" href="Zone.html">
+<link title="Zone_lexer" rel="Chapter" href="Zone_lexer.html">
+<link title="Zone_parser" rel="Chapter" href="Zone_parser.html">
+<link title="Resolvconf" rel="Chapter" href="Resolvconf.html">
+<link title="Protocol" rel="Chapter" href="Protocol.html">
+<link title="Probe" rel="Chapter" href="Probe.html">
+<link title="Dns_resolver" rel="Chapter" href="Dns_resolver.html">
+<link title="Dns_server" rel="Chapter" href="Dns_server.html">
+<link title="Mdns_responder" rel="Chapter" href="Mdns_responder.html"><title>Dns_resolver</title>
+</head>
+<body>
+<div class="navbar"><a class="pre" href="Probe.html" title="Probe">Previous</a>
+&nbsp;<a class="up" href="index.html" title="Index">Up</a>
+&nbsp;<a class="post" href="Dns_server.html" title="Dns_server">Next</a>
+</div>
+<h1>Module <a href="type_Dns_resolver.html">Dns_resolver</a></h1>
+
+<pre><span class="keyword">module</span> Dns_resolver: <code class="code"><span class="keyword">sig</span></code> <a href="Dns_resolver.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info module top">
+<code class="code">txfn&nbsp;buf</code> resolves when <code class="code">buf</code> has been transmitted.<br>
+</div>
+<hr width="100%">
+
+<pre><code><span id="TYPEcommfn"><span class="keyword">type</span> <code class="type"></code>commfn</span> = {</code></pre><table class="typetable">
+<tr>
+<td align="left" valign="top" >
+<code>&nbsp;&nbsp;</code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTcommfn.txfn">txfn</span>&nbsp;: <code class="type">Cstruct.t -> unit Lwt.t</code>;</code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+<code class="code">txfn&nbsp;buf</code> resolves when <code class="code">buf</code> has been transmitted.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code>&nbsp;&nbsp;</code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTcommfn.rxfn">rxfn</span>&nbsp;: <code class="type">(Cstruct.t -> Dns.Packet.t option) -> Dns.Packet.t Lwt.t</code>;</code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+<code class="code">rxfn&nbsp;parse</code> resolves to a packet processed by <code class="code">parse</code> after it
+      has been received.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code>&nbsp;&nbsp;</code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTcommfn.timerfn">timerfn</span>&nbsp;: <code class="type">unit -> unit Lwt.t</code>;</code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+<code class="code">timerfn&nbsp;()</code> resolves when a request should be timed out.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code>&nbsp;&nbsp;</code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTcommfn.cleanfn">cleanfn</span>&nbsp;: <code class="type">unit -> unit Lwt.t</code>;</code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+<code class="code">cleanfn&nbsp;()</code> resolves after any resources used by the rest of
+      the <a href="Dns_resolver.html#TYPEcommfn"><code class="code"><span class="constructor">Dns_resolver</span>.commfn</code></a> have been released.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr></table>
+}
+
+<div class="info ">
+A <code class="code">commfn</code> value describes the means by which datagram
+    transmission and reception occur as well as providing functions to
+    timeout requests and clean up any resources used.<br>
+</div>
+
+
+<pre><span id="VALresolve_pkt"><span class="keyword">val</span> resolve_pkt</span> : <code class="type">(module Dns.Protocol.CLIENT) -><br>       ?alloc:(unit -> Cstruct.t) -><br>       <a href="Dns_resolver.html#TYPEcommfn">commfn</a> -> Dns.Packet.t -> Dns.Packet.t Lwt.t</code></pre><div class="info ">
+<code class="code">resolve_pkt&nbsp;client&nbsp;?alloc&nbsp;commfn&nbsp;packet</code> will attempt resolution
+    of the query contained in <code class="code">packet</code> via the protocol client
+    <code class="code">client</code> and using the utilities of <code class="code">commfn</code>. <code class="code">alloc</code> may be
+    provided to control how buffers are allocated.
+<p>
+
+    <code class="code">client</code> may issue multiple network transactions for the same
+    query simultaneously. The first received successful response will
+    be returned. If no responses are successful or received before
+    <a href="Dns_resolver.html#TYPEELTcommfn.timerfn"><code class="code"><span class="constructor">Dns_resolver</span>.commfn.timerfn</code></a> resolves, the <code class="code"><span class="constructor">Lwt</span>.t</code> value will fail with a
+    <code class="code"><span class="constructor">Dns</span>.<span class="constructor">Protocol</span>.<span class="constructor">Dns_resolve_error</span></code> exception which contains a list
+    of all of the errors encountered during resolution.<br>
+</div>
+
+<pre><span id="VALresolve"><span class="keyword">val</span> resolve</span> : <code class="type">(module Dns.Protocol.CLIENT) -><br>       ?alloc:(unit -> Cstruct.t) -><br>       ?dnssec:bool -><br>       <a href="Dns_resolver.html#TYPEcommfn">commfn</a> -><br>       Dns.Packet.q_class -> Dns.Packet.q_type -> Dns.Name.t -> Dns.Packet.t Lwt.t</code></pre><div class="info ">
+<code class="code">resolve&nbsp;client&nbsp;?alloc&nbsp;?dnssec&nbsp;commfn&nbsp;q_class&nbsp;q_type&nbsp;name</code> will
+    construct a query packet from <code class="code">dnssec</code>, <code class="code">q_class</code>, <code class="code">q_type</code>, and
+    <code class="code">name</code> and then attempt to resolve it by calling <a href="Dns_resolver.html#VALresolve_pkt"><code class="code"><span class="constructor">Dns_resolver</span>.resolve_pkt</code></a>.<br>
+</div>
+
+<pre><span id="VALgethostbyname"><span class="keyword">val</span> gethostbyname</span> : <code class="type">?alloc:(unit -> Cstruct.t) -><br>       ?q_class:Dns.Packet.q_class -><br>       ?q_type:Dns.Packet.q_type -><br>       <a href="Dns_resolver.html#TYPEcommfn">commfn</a> -> string -> Ipaddr.t list Lwt.t</code></pre>
+<pre><span id="VALgethostbyaddr"><span class="keyword">val</span> gethostbyaddr</span> : <code class="type">?alloc:(unit -> Cstruct.t) -><br>       ?q_class:Dns.Packet.q_class -><br>       ?q_type:Dns.Packet.q_type -><br>       <a href="Dns_resolver.html#TYPEcommfn">commfn</a> -> Ipaddr.V4.t -> string list Lwt.t</code></pre></body></html>

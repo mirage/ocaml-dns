@@ -1,0 +1,51 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="Start" href="index.html">
+<link rel="previous" href="Zone_parser.html">
+<link rel="next" href="Protocol.html">
+<link rel="Up" href="index.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of exceptions" rel=Appendix href="index_exceptions.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
+<link title="Loader" rel="Chapter" href="Loader.html">
+<link title="Name" rel="Chapter" href="Name.html">
+<link title="Operators" rel="Chapter" href="Operators.html">
+<link title="Packet" rel="Chapter" href="Packet.html">
+<link title="Query" rel="Chapter" href="Query.html">
+<link title="RR" rel="Chapter" href="RR.html">
+<link title="Trie" rel="Chapter" href="Trie.html">
+<link title="Zone" rel="Chapter" href="Zone.html">
+<link title="Zone_lexer" rel="Chapter" href="Zone_lexer.html">
+<link title="Zone_parser" rel="Chapter" href="Zone_parser.html">
+<link title="Resolvconf" rel="Chapter" href="Resolvconf.html">
+<link title="Protocol" rel="Chapter" href="Protocol.html">
+<link title="Probe" rel="Chapter" href="Probe.html">
+<link title="Dns_resolver" rel="Chapter" href="Dns_resolver.html">
+<link title="Dns_server" rel="Chapter" href="Dns_server.html">
+<link title="Mdns_responder" rel="Chapter" href="Mdns_responder.html"><title>Resolvconf</title>
+</head>
+<body>
+<div class="navbar"><a class="pre" href="Zone_parser.html" title="Zone_parser">Previous</a>
+&nbsp;<a class="up" href="index.html" title="Index">Up</a>
+&nbsp;<a class="post" href="Protocol.html" title="Protocol">Next</a>
+</div>
+<h1>Module <a href="type_Resolvconf.html">Resolvconf</a></h1>
+
+<pre><span class="keyword">module</span> Resolvconf: <code class="code"><span class="keyword">sig</span></code> <a href="Resolvconf.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><hr width="100%">
+
+<pre><span class="keyword">module</span> <a href="Resolvconf.LookupValue.html">LookupValue</a>: <code class="code"><span class="keyword">sig</span></code> <a href="Resolvconf.LookupValue.html">..</a> <code class="code"><span class="keyword">end</span></code></pre>
+<pre><span class="keyword">module</span> <a href="Resolvconf.OptionsValue.html">OptionsValue</a>: <code class="code"><span class="keyword">sig</span></code> <a href="Resolvconf.OptionsValue.html">..</a> <code class="code"><span class="keyword">end</span></code></pre>
+<pre><span class="keyword">module</span> <a href="Resolvconf.KeywordValue.html">KeywordValue</a>: <code class="code"><span class="keyword">sig</span></code> <a href="Resolvconf.KeywordValue.html">..</a> <code class="code"><span class="keyword">end</span></code></pre>
+<pre><span id="VALmap_line"><span class="keyword">val</span> map_line</span> : <code class="type">string -> string option</code></pre>
+<pre><span id="TYPEt"><span class="keyword">type</span> <code class="type"></code>t</span> = <code class="type"><a href="Resolvconf.KeywordValue.html#TYPEt">KeywordValue.t</a> list</code> </pre>
+
+
+<pre><span id="VALall_servers"><span class="keyword">val</span> all_servers</span> : <code class="type"><a href="Resolvconf.KeywordValue.html#TYPEt">KeywordValue.t</a> list -> (Ipaddr.t * int) list</code></pre>
+<pre><span id="VALchoose_server"><span class="keyword">val</span> choose_server</span> : <code class="type"><a href="Resolvconf.KeywordValue.html#TYPEt">KeywordValue.t</a> list -> (Ipaddr.t * int) option</code></pre>
+<pre><span id="VALsearch_domains"><span class="keyword">val</span> search_domains</span> : <code class="type"><a href="Resolvconf.KeywordValue.html#TYPEt">KeywordValue.t</a> list -> string list</code></pre></body></html>

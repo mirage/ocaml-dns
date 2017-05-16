@@ -1,0 +1,191 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<link rel="stylesheet" href="style.css" type="text/css">
+<meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="Start" href="index.html">
+<link rel="previous" href="Protocol.html">
+<link rel="next" href="Dns_resolver.html">
+<link rel="Up" href="index.html">
+<link title="Index of types" rel=Appendix href="index_types.html">
+<link title="Index of exceptions" rel=Appendix href="index_exceptions.html">
+<link title="Index of values" rel=Appendix href="index_values.html">
+<link title="Index of modules" rel=Appendix href="index_modules.html">
+<link title="Index of module types" rel=Appendix href="index_module_types.html">
+<link title="Loader" rel="Chapter" href="Loader.html">
+<link title="Name" rel="Chapter" href="Name.html">
+<link title="Operators" rel="Chapter" href="Operators.html">
+<link title="Packet" rel="Chapter" href="Packet.html">
+<link title="Query" rel="Chapter" href="Query.html">
+<link title="RR" rel="Chapter" href="RR.html">
+<link title="Trie" rel="Chapter" href="Trie.html">
+<link title="Zone" rel="Chapter" href="Zone.html">
+<link title="Zone_lexer" rel="Chapter" href="Zone_lexer.html">
+<link title="Zone_parser" rel="Chapter" href="Zone_parser.html">
+<link title="Resolvconf" rel="Chapter" href="Resolvconf.html">
+<link title="Protocol" rel="Chapter" href="Protocol.html">
+<link title="Probe" rel="Chapter" href="Probe.html">
+<link title="Dns_resolver" rel="Chapter" href="Dns_resolver.html">
+<link title="Dns_server" rel="Chapter" href="Dns_server.html">
+<link title="Mdns_responder" rel="Chapter" href="Mdns_responder.html"><title>Probe</title>
+</head>
+<body>
+<div class="navbar"><a class="pre" href="Protocol.html" title="Protocol">Previous</a>
+&nbsp;<a class="up" href="index.html" title="Index">Up</a>
+&nbsp;<a class="post" href="Dns_resolver.html" title="Dns_resolver">Next</a>
+</div>
+<h1>Module <a href="type_Probe.html">Probe</a></h1>
+
+<pre><span class="keyword">module</span> Probe: <code class="code"><span class="keyword">sig</span></code> <a href="Probe.html">..</a> <code class="code"><span class="keyword">end</span></code></pre><div class="info module top">
+Implements the core of the unique name probing part of a Multicast DNS (mDNS) responder.<br>
+</div>
+<hr width="100%">
+
+<pre><span id="TYPEstate"><span class="keyword">type</span> <code class="type"></code>state</span> </pre>
+<div class="info ">
+The internal data structure representing the of the probing part of an mDNS responder.<br>
+</div>
+
+
+<pre><span id="TYPEdatagram"><span class="keyword">type</span> <code class="type"></code>datagram</span> = <code class="type"><a href="Packet.html#TYPEt">Packet.t</a> * Ipaddr.V4.t * int</code> </pre>
+<div class="info ">
+A DNS packet to be sent with its destination IP address and UDP port number.<br>
+</div>
+
+
+<pre><code><span id="TYPEaction"><span class="keyword">type</span> <code class="type"></code>action</span> = </code></pre><table class="typetable">
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTaction.Nothing"><span class="constructor">Nothing</span></span></code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+The protocol is idle because all names have been confirmed unique.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTaction.ToSend"><span class="constructor">ToSend</span></span> <span class="keyword">of</span> <code class="type"><a href="Probe.html#TYPEdatagram">datagram</a></code></code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+The caller shall send the specified <code class="code">datagram</code>.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTaction.Delay"><span class="constructor">Delay</span></span> <span class="keyword">of</span> <code class="type">float</code></code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+The caller shall wait for the specified duration in seconds.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTaction.Continue"><span class="constructor">Continue</span></span></code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+The caller should invoke <code class="code">do_probe</code> again.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTaction.NotReady"><span class="constructor">NotReady</span></span></code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+The call was unexpected. This may indicate a bug in the caller, and should be logged.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTaction.Stop"><span class="constructor">Stop</span></span></code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+<code class="code">stop</code> has been called.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr></table>
+
+<div class="info ">
+The I/O action that the caller of this module must take.<br>
+</div>
+
+
+<pre><span id="VALnew_state"><span class="keyword">val</span> new_state</span> : <code class="type"><a href="Loader.html#TYPEdb">Loader.db</a> -> <a href="Probe.html#TYPEstate">state</a></code></pre><div class="info ">
+Initialises a new mDNS probe protocol.<br>
+</div>
+
+<pre><span id="VALadd_name"><span class="keyword">val</span> add_name</span> : <code class="type"><a href="Probe.html#TYPEstate">state</a> -> <a href="Name.html#TYPEt">Name.t</a> -> <a href="Probe.html#TYPEstate">state</a></code></pre><div class="info ">
+Marks a Name.t as unique. The name will be included in the next probe cycle.<br>
+</div>
+
+<pre><span id="VALdo_probe"><span class="keyword">val</span> do_probe</span> : <code class="type"><a href="Probe.html#TYPEstate">state</a> -> <a href="Probe.html#TYPEstate">state</a> * <a href="Probe.html#TYPEaction">action</a></code></pre><div class="info ">
+Initiates the probe protocol and returns the I/O action that the caller should take.<br>
+</div>
+
+<pre><span id="VALon_send_complete"><span class="keyword">val</span> on_send_complete</span> : <code class="type"><a href="Probe.html#TYPEstate">state</a> -> <a href="Probe.html#TYPEstate">state</a> * <a href="Probe.html#TYPEaction">action</a></code></pre><div class="info ">
+After completing a <code class="code"><span class="constructor">ToSend</span></code> action, call this function to continue the probe protocol.<br>
+</div>
+
+<pre><span id="VALon_delay_complete"><span class="keyword">val</span> on_delay_complete</span> : <code class="type"><a href="Probe.html#TYPEstate">state</a> -> <a href="Probe.html#TYPEstate">state</a> * <a href="Probe.html#TYPEaction">action</a></code></pre><div class="info ">
+After completing a <code class="code"><span class="constructor">Delay</span></code> action, call this function to continue the probe protocol.<br>
+</div>
+
+<pre><span id="VALis_first_complete"><span class="keyword">val</span> is_first_complete</span> : <code class="type"><a href="Probe.html#TYPEstate">state</a> -> bool</code></pre><div class="info ">
+Returns <code class="code"><span class="keyword">true</span></code> if the first probe cycle has completed successfully.<br>
+</div>
+
+<pre><code><span id="TYPEconflict"><span class="keyword">type</span> <code class="type"></code>conflict</span> = </code></pre><table class="typetable">
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTconflict.NoConflict"><span class="constructor">NoConflict</span></span></code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+No conflict occurred.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr>
+<tr>
+<td align="left" valign="top" >
+<code><span class="keyword">|</span></code></td>
+<td align="left" valign="top" >
+<code><span id="TYPEELTconflict.ConflictRestart"><span class="constructor">ConflictRestart</span></span></code></td>
+<td class="typefieldcomment" align="left" valign="top" ><code>(*</code></td><td class="typefieldcomment" align="left" valign="top" ><div class="info ">
+A conflict occurred. The caller should interrupt any <code class="code"><span class="constructor">Delay</span></code> action that is currently executing, if possible.<br>
+</div>
+</td><td class="typefieldcomment" align="left" valign="bottom" ><code>*)</code></td>
+</tr></table>
+
+<div class="info ">
+Indicates whether the received datagram caused a restart of the probe cycle due to a conflict.<br>
+</div>
+
+
+<pre><span id="VALon_response_received"><span class="keyword">val</span> on_response_received</span> : <code class="type"><a href="Probe.html#TYPEstate">state</a> -> <a href="Packet.html#TYPEt">Packet.t</a> -> <a href="Probe.html#TYPEstate">state</a> * <a href="Probe.html#TYPEconflict">conflict</a></code></pre><div class="info ">
+Call this function when an mDNS response packet is received, in order to check for conflicting resource records.<br>
+</div>
+
+<pre><span id="VALon_query_received"><span class="keyword">val</span> on_query_received</span> : <code class="type"><a href="Probe.html#TYPEstate">state</a> -><br>       <a href="Packet.html#TYPEt">Packet.t</a> -> <a href="Packet.html#TYPEt">Packet.t</a> -> <a href="Packet.html#TYPEt">Packet.t</a> * <a href="Probe.html#TYPEstate">state</a> * <a href="Probe.html#TYPEconflict">conflict</a></code></pre><div class="info ">
+Call this function when an mDNS query packet is received, in order to check for simultaneous probe conflicts.<br>
+</div>
+
+<pre><span id="VALis_confirmed"><span class="keyword">val</span> is_confirmed</span> : <code class="type"><a href="Probe.html#TYPEstate">state</a> -> <a href="Name.html#TYPEt">Name.t</a> -> bool</code></pre><div class="info ">
+Returns <code class="code"><span class="keyword">true</span></code> if the name has been confirmed unique (probed successfully).
+    This is intended for controlling the cache flush bit.<br>
+</div>
+
+<pre><span id="VALstop"><span class="keyword">val</span> stop</span> : <code class="type"><a href="Probe.html#TYPEstate">state</a> -> <a href="Probe.html#TYPEstate">state</a></code></pre><div class="info ">
+Stops executing the protocol.<br>
+</div>
+</body></html>
