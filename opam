@@ -3,6 +3,8 @@ maintainer:   "anil@recoil.org"
 homepage:     "https://github.com/mirage/ocaml-dns"
 dev-repo:     "https://github.com/mirage/ocaml-dns.git"
 bug-reports:  "https://github.com/mirage/ocaml-dns/issues"
+doc:          "https://mirage.github.io/ocaml-dns/"
+
 authors: [
   "Anil Madhavapeddy"
   "Tim Deegan"
