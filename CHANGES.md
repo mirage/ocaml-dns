@@ -1,3 +1,7 @@
+## 0.20.1 (2017-05-16)
+
+* Port to lwt >= 3.0 (#136, @djs55)
+
 ## 0.20.0 (2017-03-23)
 
 * Remove the `Dns.Buf` module that formerly wrapped Cstruct, now that the
@@ -114,7 +118,7 @@ All these changes were part of #132 by @hannesm.
 * mDNS doesn't echo the questions in the response (RFC 6762 section 6), except
   in legacy mode, so a `bool` argument was added to `Query.response_of_answer`.
 * `Query.answer` still exists but now `Query.answer_multiple` is also available
-  for answering multiple questions in one query to produce a single answer 
+  for answering multiple questions in one query to produce a single answer
   (RFC 6762 section 5.3). One caveat is that responses may exceed the maximum
   message length, but that is not really specific to mDNS. Also, in
   theory multiple questions might require multiple separate response
