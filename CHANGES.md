@@ -1,6 +1,8 @@
 ## 0.20.2 (2017-06-01)
 
 * Depend explicitly on `Ipaddr_unix` and `Uri_services` modules.
+* Add a basic server example which has a static lookup table and
+  does not use the Trie structure.  It is in [examples/server.ml].
 
 ## 0.20.1 (2017-05-16)
 
