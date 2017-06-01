@@ -9,7 +9,7 @@ let async = Conf.with_pkg ~default:false "async"
 
 let opams =
   let lint_deps_excluding =
-    Some ["ounit"; "oUnit"; "ppx_tools"; "async_kernel"]
+    Some ["ounit"; "oUnit"; "ppx_tools"; "async_kernel"; "ppx_cstruct"]
   in
   [Pkg.opam_file ~lint_deps_excluding "opam"]
 
