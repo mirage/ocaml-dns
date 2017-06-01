@@ -1,3 +1,7 @@
+## 0.20.2 (2017-06-01)
+
+* Depend explicitly on `Ipaddr_unix` and `Uri_services` modules.
+
 ## 0.20.1 (2017-05-16)
 
 * Port to lwt >= 3.0 (#136, @djs55)

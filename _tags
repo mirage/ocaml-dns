@@ -8,6 +8,7 @@ true : package(re re.str ipaddr uri base64 hashcons cstruct result)
 
 "lwt": include
 <lwt/*.{ml,mli}>: package(lwt mirage-profile)
+<lwt/dns_*_unix.*>: package(ipaddr.unix)
 <lwt/dig_unix.*>: package(cmdliner lwt.unix uri.services ipaddr.unix lwt)
 <lib/zone_parser.*>: package(uri.services)
 <mirage/*.{ml,mli}>: package(lwt duration mirage-time-lwt)
