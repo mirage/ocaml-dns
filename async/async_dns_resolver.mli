@@ -17,9 +17,8 @@
 
 (** Async DNS resolution logic *)
 
-open Core_kernel.Std
-open Async.Std
-
+open Core_kernel
+open Async
 open Dns
 
 type commfn = {

@@ -1,0 +1,6 @@
+(library
+ ((name        dns_lwt_unix) 
+  (public_name dns-lwt-unix)
+  (libraries   (dns-lwt mirage-profile cmdliner ipaddr.unix lwt.unix))
+  (wrapped false)
+))

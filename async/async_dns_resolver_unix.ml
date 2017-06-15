@@ -15,8 +15,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Core.Std
-open Async.Std
+open Core
+open Async
 
 open Dns
 open Async_dns_resolver

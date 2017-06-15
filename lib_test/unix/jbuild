@@ -1,0 +1,10 @@
+(executables
+ ((names (time_server))
+  (libraries (dns-lwt-unix))
+))
+
+(alias
+ ((name    runtest)
+  (deps    (time_server.exe))
+;  (action  (run ${<} --help))
+))

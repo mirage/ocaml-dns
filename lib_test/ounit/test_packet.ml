@@ -37,7 +37,6 @@ type udpv4 = {
 ]
 
 let load_pcap path =
-  let path = "lib_test/ounit/" ^ path in
   let fd = Unix.(openfile path [O_RDONLY] 0) in
   let buf = Bigarray.(Array1.map_file fd Bigarray.char c_layout false (-1)) in
   let buf = Cstruct.of_bigarray buf in

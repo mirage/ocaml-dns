@@ -3,22 +3,14 @@ maintainer:   "anil@recoil.org"
 homepage:     "https://github.com/mirage/ocaml-dns"
 dev-repo:     "https://github.com/mirage/ocaml-dns.git"
 bug-reports:  "https://github.com/mirage/ocaml-dns/issues"
-license:      "ISC"
+doc:          "https://mirage.github.io/ocaml-dns/"
+license: "ISC"
 authors: [ "Anil Madhavapeddy" "Tim Deegan" "Richard Mortier" "Haris Rotsos"
-  "David Sheets" "Thomas Gazagnaire" "Luke Dunstan" ]
-
-build: [
-  ["jbuilder" "subst"] {pinned}
-  ["jbuilder" "build" "-p" name "-j" jobs]
-]
+  "David Sheets" "Thomas Gazagnaire" "Luke Dunstan" "David Scott" ]
+tags: [ "org:mirage" "org:xapi-project" ]
 
 depends: [
-  "jbuilder" {>="1.0+beta9"}
-  "dns-lwt"
-  "duration"
-  "mirage-stack-lwt"
-  "mirage-kv-lwt"
-  "mirage-time-lwt"
-  "mirage-profile"
+  "dns"
+  "async" {>="v0.9.0"}
 ]
 available: [ocaml-version >= "4.03.0"]
