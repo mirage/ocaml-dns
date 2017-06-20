@@ -1,5 +1,5 @@
-open Core.Std
-open Async.Std
+open Core
+open Async
 open Log.Global
 open Async_dns_resolver_unix
 
@@ -12,13 +12,11 @@ let print_resolve server port url =
         | _ -> ()
       end
     | Ok hosts -> List.iter hosts ~f:(fun addr -> printf "%s" @@ Ipaddr.to_string addr)
-  end >>| fun () ->
-  shutdown 0
+  end
 
 let main ll ip port url () =
   set_level @@ (match ll with 2 -> `Info | 3 -> `Debug | _ -> `Error);
-  don't_wait_for @@ print_resolve ip port url;
-  never_returns @@ Scheduler.go ()
+  print_resolve ip port url
 
 let command =
   let spec =
@@ -29,7 +27,6 @@ let command =
     +> flag "-port" (optional_with_default 53 int) ~doc:"int port of the DNS resolver"
     +> anon ("url" %: string)
   in
-  Command.basic ~summary:"DNS Resolver" spec main
+  Command.async ~summary:"DNS Resolver" spec main
 
 let () = Command.run command
-

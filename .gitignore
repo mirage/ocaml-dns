@@ -1,3 +1,4 @@
 *.swp
 _build/
-dns.install
+*.install
+.merlin

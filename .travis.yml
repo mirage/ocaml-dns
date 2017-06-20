@@ -6,14 +6,11 @@ install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/ma
 script: bash ./.travis-docker.sh
 env:
  global:
-   - PINS="mirage-dns:."
+   - PINS="mirage-dns:. dns-async:. dns-lwt:. dns-lwt-unix:."
    - PACKAGE="dns"
-   - DEPOPTS="tcpip lwt async cstruct mirage-types-lwt"
+   - DEPOPTS="mirage-dns dns-async dns-lwt dns-lwt-unix"
  matrix:
-   - DISTRO=debian-stable OCAML_VERSION=4.03.0 REVDEPS="true"
-   - DISTRO=debian-testing OCAML_VERSION=4.04.0
+   - DISTRO=debian-stable OCAML_VERSION=4.03.0
+   - DISTRO=debian-testing OCAML_VERSION=4.04.1
    - DISTRO=ubuntu-16.04 OCAML_VERSION=4.03.0
-   - DISTRO=centos-6 OCAML_VERSION=4.04.0
-   - DISTRO=centos-7 OCAML_VERSION=4.03.0
-   - DISTRO=fedora-24 OCAML_VERSION=4.04.0
-   - DISTRO=alpine-3.5 OCAML_VERSION=4.04.0
+   - DISTRO=alpine-3.5 OCAML_VERSION=4.04.1

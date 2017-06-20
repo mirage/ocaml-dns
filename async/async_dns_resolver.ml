@@ -15,8 +15,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Core_kernel.Std
-open Async.Std
+open Core_kernel
+open Async
 
 open Dns
 open Operators
