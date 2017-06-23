@@ -55,7 +55,7 @@ let connect_to_resolver server port =
   let rec rxfn f =
     let buf = Cstruct.create buflen in
     Cstruct.(Lwt_bytes.recvfrom ofd buf.buffer buf.off buf.len [])
-    >>= fun (len, sa) ->
+    >>= fun (len, _) ->
     let buf = Cstruct.sub buf 0 len in
     match f buf with
     | None -> rxfn f
