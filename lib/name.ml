@@ -27,7 +27,6 @@ type key = string
 module Ordered = struct
   type x = t
   type t = x
-  let eq x y = x = y
   let rec compare l1 l2 = match (l1, l2) with
     | []    ,  []    -> 0
     | _::_  , []     -> 1
@@ -206,7 +205,7 @@ let to_key domain_name =
   List.iter check domain_name;
   String.concat "\000" (List.rev_map String.lowercase_ascii domain_name)
 
-let rec dnssec_compare a b =
+let dnssec_compare a b =
   match (a, b) with
   | [], [] -> 0
   | [], _ -> -1
