@@ -19,7 +19,6 @@
 open Lwt.Infix
 open Printf
 open Dns
-open Operators
 open Protocol
 open Dns_resolver
 
