@@ -41,12 +41,12 @@ let sockaddr_to_string = Lwt_unix.(function
 
 let outfd addr port =
   let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in
-  Lwt_unix.(bind fd (sockaddr addr port));
-  fd
+  Lwt_unix.(bind fd (sockaddr addr port)) >>= fun () ->
+  Lwt.return fd
 
 let connect_to_resolver server port =
   let dst = sockaddr server port in
-  let ofd = outfd Ipaddr.(V4 V4.any) 0 in
+  outfd Ipaddr.(V4 V4.any) 0 >>= fun ofd ->
   let cleanfn () =
     Lwt.catch (fun () ->
         Lwt_unix.close ofd
@@ -67,21 +67,21 @@ let connect_to_resolver server port =
     | None -> rxfn f
     | Some r -> Lwt.return r
   in
-  { txfn; rxfn; timerfn; cleanfn }
+  Lwt.return { txfn; rxfn; timerfn; cleanfn }
 
 let resolve client
     ?(dnssec=false)
     server dns_port
     (q_class:DP.q_class) (q_type:DP.q_type)
     (q_name:Name.t) =
-   let commfn = connect_to_resolver server dns_port in
+   connect_to_resolver server dns_port >>= fun commfn ->
    resolve client ~dnssec commfn q_class q_type q_name
 
 let gethostbyname
     ?(server = ns) ?(dns_port = port)
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
     name =
-   let commfn = connect_to_resolver server dns_port in
+   connect_to_resolver server dns_port >>= fun commfn ->
    gethostbyname ~q_class ~q_type commfn name
 
 let gethostbyaddr
@@ -89,7 +89,7 @@ let gethostbyaddr
     ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
     addr
     =
-   let commfn = connect_to_resolver server dns_port in
+   connect_to_resolver server dns_port >>= fun commfn ->
    gethostbyaddr ~q_class ~q_type commfn addr
 
 open Dns.Resolvconf

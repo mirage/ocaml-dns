@@ -17,8 +17,10 @@ for those. However, porting should be relatively straightforward
 to the new release, and in return your users will not have to deal
 with specifying a myriad of optional dependencies in OPAM.
 
-This release also ports the build to use Jbuilder, which speeds
-it up quite a bit and removes boilerplate files.
+- This release also ports the build to use Jbuilder, which speeds
+  it up quite a bit and removes boilerplate files.
+
+- Depend on Lwt 3.0.0 interfaces, including the blocking bind.
 
 v0.20.2 2017-06-01
 ------------------
