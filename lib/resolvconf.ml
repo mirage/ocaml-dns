@@ -27,8 +27,6 @@
  * The standard resolver supports overrides through environment vars. Not implemented.
  *)
  
-let default_configuration_file = "/etc/resolv.conf"
-
 let raw_read_file filename = 
   let c = open_in filename in
   let lines = ref [] in
@@ -46,12 +44,6 @@ let raw_read_file filename =
 let strip_comments =
   let re = Re_str.regexp "[#;].*" in
   fun x -> Re_str.global_replace re "" x
-
-(* A blank line is either empty or one where every character is whitespace *)
-let filter_blanks =
-  let ws_regexp = Re_str.regexp "[\t ]+" in
-  let is_blank x = List.length (Re_str.split ws_regexp x) = 0 in
-  List.filter is_blank
 
 (* Remove any whitespace prefix and suffix from a line *)
 let ltrim = Re_str.(replace_first (regexp "^[\t ]+") "")
@@ -85,7 +77,7 @@ module OptionsValue = struct
     if String.length x >= 6 && (String.sub x 0 6 = "ndots:") then begin
       try
         Ndots (int_of_string (String.sub x 6 (String.length x - 6)))
-      with Failure("int_of_string") -> raise (Unknown x)
+      with Failure _ -> raise (Unknown x)
     end else match x with
     | "debug"     -> Debug
     | "edns0"     -> Edns0
