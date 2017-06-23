@@ -17,7 +17,6 @@
  *)
 
 open Lwt.Infix
-open Printf
 open Dns
 open Operators
 open Protocol
