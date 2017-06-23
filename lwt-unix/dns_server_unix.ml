@@ -72,7 +72,7 @@ let listen ~fd ~src ~processor =
       loop ()
   in
   Lwt.async loop;
-  let t, u = Lwt.task () in
+  let t, _ = Lwt.task () in
   Lwt.on_cancel t (fun () -> cont := false);
   t
 

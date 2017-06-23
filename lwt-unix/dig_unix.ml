@@ -35,7 +35,7 @@ open Cmdliner
 
 let dns_port = 53
 
-let dig source_ip opt_dest_port q_class q_type args =
+let dig _source_ip opt_dest_port q_class q_type args =
   Dns_resolver_unix.create ()
   >>= fun res ->
   let timeout = 5 (* matches dig *) in
