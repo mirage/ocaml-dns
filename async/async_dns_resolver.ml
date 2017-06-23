@@ -19,7 +19,6 @@ open Core_kernel
 open Async
 
 open Dns
-open Operators
 open Protocol
 
 module DP = Packet

@@ -51,7 +51,7 @@ let connect_to_resolver ?log ?(timeout=Time_ns.Span.of_int_sec 1) ?(port=53) add
         Writer.write_bigstring ~pos:buf.Cstruct.off ~len:buf.Cstruct.len w buf.Cstruct.buffer;
         Writer.flushed w
       in
-      let rec rxfn f =
+      let rxfn f =
         let r = Reader.create (Socket.fd ac_sock) in
         let handle_chunk (iobuf : ([ `Read | `Who_can_write of Core_kernel.Perms.me ], Iobuf.seek) Iobuf.t) =
           match f @@ Cstruct.of_bigarray (Iobuf.Consume.To_bigstring.subo (iobuf :> ([ `Read ], Iobuf.seek) Iobuf.t)) with
