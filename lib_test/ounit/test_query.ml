@@ -185,7 +185,7 @@ let tests =
         let txt_assoc = List.combine ptrl ["species=Pseudonaja affinis"; "species=Pseudechis australis"; "species=Notechis scutatus"] in
         let a_assoc = List.combine srvl ["127.0.0.95"; "127.0.0.96"; "127.0.0.94"] in
         List.iter (fun rr ->
-            let key = String.lowercase (Name.to_string rr.name) in
+            let key = String.lowercase_ascii (Name.to_string rr.name) in
             match rr.rdata with
             | SRV (priority, weight, port, srv) ->
               assert_equal 0 priority;

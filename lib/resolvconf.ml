@@ -66,7 +66,7 @@ let map_line x =
 module LookupValue = struct
   type t = Bind | File | Yp
   exception Unknown of string
-  let of_string x = match (String.lowercase x) with
+  let of_string x = match (String.lowercase_ascii x) with
   | "bind" -> Bind
   | "file" -> File
   | "yp"   -> Yp
@@ -81,7 +81,7 @@ module OptionsValue = struct
   type t = Debug | Edns0 | Inet6 | Insecure1 | Insecure2 | Ndots of int
   exception Unknown of string
   let of_string x = 
-    let x = String.lowercase x in
+    let x = String.lowercase_ascii x in
     if String.length x >= 6 && (String.sub x 0 6 = "ndots:") then begin
       try
         Ndots (int_of_string (String.sub x 6 (String.length x - 6)))
@@ -128,7 +128,7 @@ module KeywordValue = struct
     |ns, Some p -> Printf.sprintf "[%s]:%d" (Ipaddr.to_string ns) p
 
   let of_string x = 
-    match split (String.lowercase x) with
+    match split (String.lowercase_ascii x) with
     | [ "nameserver"; ns ] -> ns_of_string ns
     | [ "domain"; domain ] -> Domain domain
     | [ "port"; port ]     -> (try Port (int_of_string port) with _ -> raise (Unknown x))

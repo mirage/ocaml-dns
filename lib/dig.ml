@@ -21,7 +21,7 @@ open Packet
 
 let al = List.length
 
-let string_of_secname s = sprintf ";; %s SECTION:\n" (String.uppercase s)
+let string_of_secname s = sprintf ";; %s SECTION:\n" (String.uppercase_ascii s)
 
 let string_of_rr rr = sprintf "%-24s %-8lu %-8s %-8s %s\n"
   (Name.to_string rr.name) rr.ttl (rr_class_to_string rr.cls)
@@ -68,8 +68,8 @@ let string_of_answers p =
   String.concat "" 
   ([ ";; global options: \n";
     sprintf ";; ->>HEADER<<- opcode: %s, status: %s, id: %u\n"
-      (String.uppercase (opcode_to_string detail.opcode))
-      (String.uppercase (rcode_to_string detail.rcode)) id;
+      (String.uppercase_ascii (opcode_to_string detail.opcode))
+      (String.uppercase_ascii (rcode_to_string detail.rcode)) id;
     sprintf ";; flags: %s; QUERY: %d, ANSWER: %d, AUTHORITY: %d, ADDITIONAL: %d\n\n"
       (string_of_flags detail) (al questions) (al answers) (al authorities) (al additionals);
     string_of_section string_of_question "question" questions;
