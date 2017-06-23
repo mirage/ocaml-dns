@@ -1,5 +1,5 @@
-v1.0.0
-------
+v1.0.0 2017-06-23
+-----------------
 
 Rearrange the `opam` packages to eliminate optional dependencies,
 and have explicit and separate packages for the Lwt, Async and
@@ -17,7 +17,7 @@ for those. However, porting should be relatively straightforward
 to the new release, and in return your users will not have to deal
 with specifying a myriad of optional dependencies in OPAM.
 
-This release alsop ports the build to use Jbuilder, which speeds
+This release also ports the build to use Jbuilder, which speeds
 it up quite a bit and removes boilerplate files.
 
 v0.20.2 2017-06-01
