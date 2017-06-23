@@ -15,8 +15,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Printf
-
 (** Some widely used operators.
 
     @author Richard Mortier <mort\@cantab.net>

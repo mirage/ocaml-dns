@@ -49,7 +49,7 @@ let unescape s =
 
 
 (* Disambiguate keywords and generic character strings *)
-let kw_or_cs s = match (Bytes.uppercase s) with 
+let kw_or_cs s = match (Bytes.uppercase_ascii s) with 
     "A" -> TYPE_A s
   | "NS" -> TYPE_NS s 
   | "MD" -> TYPE_MD s

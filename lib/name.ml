@@ -27,7 +27,6 @@ type key = string
 module Ordered = struct
   type x = t
   type t = x
-  let eq x y = x = y
   let rec compare l1 l2 = match (l1, l2) with
     | []    ,  []    -> 0
     | _::_  , []     -> 1
@@ -43,16 +42,16 @@ module Set = Set.Make(Ordered)
 
 let empty = []
 let append = (@)
-let cons x xs = (String.lowercase x) :: xs
+let cons x xs = (String.lowercase_ascii x) :: xs
 let to_string_list dn = dn
-let of_string_list = List.map String.lowercase
+let of_string_list = List.map String.lowercase_ascii
 
 let to_string = String.concat "."
 
 (* TODO: this looks wrong for the trailing dot case/we should ensure
    we handle the trailing dot case consistently *)
 let of_string (s:string) : t =
-  Re_str.split (Re_str.regexp "\\.") (String.lowercase s)
+  Re_str.split (Re_str.regexp "\\.") (String.lowercase_ascii s)
 let string_to_domain_name = of_string
 
 let of_ipaddr ip = of_string_list (Ipaddr.to_domain_name ip)
@@ -183,7 +182,7 @@ let rec hashcons (x:t) = match x with
   | h :: t ->
       let th = hashcons t in
       DNH.hashcons !dn_hash
-	    (((hashcons_string (String.lowercase h)).Hashcons.node)
+	    (((hashcons_string (String.lowercase_ascii h)).Hashcons.node)
 	     :: (th.Hashcons.node))
 
 let clear_cons_tables () =
@@ -204,9 +203,9 @@ let to_key domain_name =
       raise (BadDomainName ("label too long: " ^ s))
   in
   List.iter check domain_name;
-  String.concat "\000" (List.rev_map String.lowercase domain_name)
+  String.concat "\000" (List.rev_map String.lowercase_ascii domain_name)
 
-let rec dnssec_compare a b =
+let dnssec_compare a b =
   match (a, b) with
   | [], [] -> 0
   | [], _ -> -1

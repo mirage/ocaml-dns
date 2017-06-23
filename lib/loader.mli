@@ -63,7 +63,6 @@ val add_rt_rr : int -> Name.t -> int32 -> Name.t -> db -> unit
 val add_srv_rr :
   int -> int -> int -> Name.t -> int32 -> Name.t -> db -> unit
 (* val add_unspec_rr : string -> int32 -> Name.t -> db -> unit *)
-val add_txt_rr : string list -> int32 -> Name.t -> db -> unit
 val add_dnskey_rr : int -> int -> string -> int32 -> Name.t -> db -> unit
 val add_ds_rr : int -> int -> int -> string -> int32 -> Name.t -> db ->
   unit

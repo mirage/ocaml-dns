@@ -19,7 +19,6 @@ open Core_kernel
 open Async
 
 open Dns
-open Operators
 open Protocol
 
 module DP = Packet
@@ -50,7 +49,7 @@ let rec send_req txfn timerfn q = function
       send_req txfn timerfn q (count - 1)
     end
 
-let send_pkt ?alloc client { log; txfn; rxfn; timerfn; cleanfn } pkt =
+let send_pkt ?alloc client { log; txfn; rxfn; timerfn; _ } pkt =
   let module R = (val client: CLIENT ) in
   let cqpl = R.marshal ?alloc pkt in
   let resl = List.map cqpl ~f:begin fun (ctxt, q) -> Deferred.any [

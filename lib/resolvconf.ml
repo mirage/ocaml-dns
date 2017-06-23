@@ -27,31 +27,10 @@
  * The standard resolver supports overrides through environment vars. Not implemented.
  *)
  
-let default_configuration_file = "/etc/resolv.conf"
-
-let raw_read_file filename = 
-  let c = open_in filename in
-  let lines = ref [] in
-  try
-    while true do
-      let line = input_line c in
-      lines := line :: !lines
-    done;
-    [] (* never reached *)
-  with End_of_file ->
-    close_in c;
-    List.rev (!lines)
-
 (* Ignore everything on a line after a '#' or ';' *)
 let strip_comments =
   let re = Re_str.regexp "[#;].*" in
   fun x -> Re_str.global_replace re "" x
-
-(* A blank line is either empty or one where every character is whitespace *)
-let filter_blanks =
-  let ws_regexp = Re_str.regexp "[\t ]+" in
-  let is_blank x = List.length (Re_str.split ws_regexp x) = 0 in
-  List.filter is_blank
 
 (* Remove any whitespace prefix and suffix from a line *)
 let ltrim = Re_str.(replace_first (regexp "^[\t ]+") "")
@@ -66,7 +45,7 @@ let map_line x =
 module LookupValue = struct
   type t = Bind | File | Yp
   exception Unknown of string
-  let of_string x = match (String.lowercase x) with
+  let of_string x = match (String.lowercase_ascii x) with
   | "bind" -> Bind
   | "file" -> File
   | "yp"   -> Yp
@@ -81,11 +60,11 @@ module OptionsValue = struct
   type t = Debug | Edns0 | Inet6 | Insecure1 | Insecure2 | Ndots of int
   exception Unknown of string
   let of_string x = 
-    let x = String.lowercase x in
+    let x = String.lowercase_ascii x in
     if String.length x >= 6 && (String.sub x 0 6 = "ndots:") then begin
       try
         Ndots (int_of_string (String.sub x 6 (String.length x - 6)))
-      with Failure("int_of_string") -> raise (Unknown x)
+      with Failure _ -> raise (Unknown x)
     end else match x with
     | "debug"     -> Debug
     | "edns0"     -> Edns0
@@ -128,7 +107,7 @@ module KeywordValue = struct
     |ns, Some p -> Printf.sprintf "[%s]:%d" (Ipaddr.to_string ns) p
 
   let of_string x = 
-    match split (String.lowercase x) with
+    match split (String.lowercase_ascii x) with
     | [ "nameserver"; ns ] -> ns_of_string ns
     | [ "domain"; domain ] -> Domain domain
     | [ "port"; port ]     -> (try Port (int_of_string port) with _ -> raise (Unknown x))

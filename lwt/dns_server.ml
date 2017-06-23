@@ -16,7 +16,6 @@
  *)
 
 open Lwt.Infix
-open Printf
 
 module DR = Dns.RR
 module DP = Dns.Packet
@@ -67,7 +66,7 @@ let process_of_zonebufs zonebufs =
   let db = List.fold_left (fun db -> Dns.Zone.load ~db [])
     (Dns.Loader.new_db ()) zonebufs in
   let dnstrie = db.Dns.Loader.trie in
-  let get_answer qname qtype id =
+  let get_answer qname qtype _id =
     Dns.Query.answer ~dnssec:true qname qtype dnstrie
   in
   fun ~src ~dst d ->

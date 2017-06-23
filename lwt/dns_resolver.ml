@@ -17,7 +17,6 @@
  *)
 
 open Lwt.Infix
-open Printf
 open Dns
 open Operators
 open Protocol
@@ -41,7 +40,7 @@ let rec send_req txfn timerfn q =
     timerfn () >>= fun () ->
     send_req txfn timerfn q (count - 1)
 
-let send_pkt client ?alloc ({ txfn; rxfn; timerfn; cleanfn }) pkt =
+let send_pkt client ?alloc ({ txfn; rxfn; timerfn; _ }) pkt =
   let module R = (val client : CLIENT) in
   let cqpl = R.marshal ?alloc pkt in
   let resl = List.map (fun (ctxt,q) ->

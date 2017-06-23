@@ -19,7 +19,6 @@
 
 open RR
 open Trie
-open Operators
 open Printf
 
 (* Loader database: the DNS trie plus a hash table of other names in use *)

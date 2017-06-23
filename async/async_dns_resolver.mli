@@ -17,7 +17,6 @@
 
 (** Async DNS resolution logic *)
 
-open Core_kernel
 open Async
 open Dns
 
