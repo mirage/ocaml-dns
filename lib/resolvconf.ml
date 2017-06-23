@@ -27,19 +27,6 @@
  * The standard resolver supports overrides through environment vars. Not implemented.
  *)
  
-let raw_read_file filename = 
-  let c = open_in filename in
-  let lines = ref [] in
-  try
-    while true do
-      let line = input_line c in
-      lines := line :: !lines
-    done;
-    [] (* never reached *)
-  with End_of_file ->
-    close_in c;
-    List.rev (!lines)
-
 (* Ignore everything on a line after a '#' or ';' *)
 let strip_comments =
   let re = Re_str.regexp "[#;].*" in
