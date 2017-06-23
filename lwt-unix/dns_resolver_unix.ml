@@ -33,11 +33,6 @@ let port = 53
 let sockaddr addr port =
   Lwt_unix.(ADDR_INET (Ipaddr_unix.to_inet_addr addr, port))
 
-let sockaddr_to_string = Lwt_unix.(function
-  | ADDR_INET (a,p) -> sprintf "%s/%d" (Unix.string_of_inet_addr a) p
-  | ADDR_UNIX s -> s ^ "/UNIX"
-  )
-
 let outfd addr port =
   let fd = Lwt_unix.(socket PF_INET SOCK_DGRAM 17) in
   Lwt_unix.(bind fd (sockaddr addr port)) >>= fun () ->
