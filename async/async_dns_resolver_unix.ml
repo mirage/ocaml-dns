@@ -17,8 +17,6 @@
 
 open Core
 open Async
-
-open Dns
 open Async_dns_resolver
 
 let sockaddr addr ~port =
