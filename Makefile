@@ -2,7 +2,7 @@
 .PHONY: build clean test
 
 build:
-	jbuilder build @install --dev
+	jbuilder build @install
 
 test:
 	jbuilder runtest
