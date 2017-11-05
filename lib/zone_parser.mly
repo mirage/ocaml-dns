@@ -65,15 +65,15 @@ let parse_hexbytes s =
   let rec unhex src dst off =
     if (off < 0) then ()
     else begin
-      Bytes.set dst off (char_of_int (int_of_string ("0x" ^ Bytes.sub s (off*2) 2)));
+      Bytes.set dst off (char_of_int (int_of_string ("0x" ^ String.sub s (off*2) 2)));
       unhex src dst (off - 1)
     end
   in
-  let slen = Bytes.length s in
+  let slen = String.length s in
   if not (slen mod 2 = 0) then raise Parsing.Parse_error;
   let r = Bytes.create (slen / 2)
   in unhex s r (slen / 2 - 1);
-  r
+  Bytes.to_string r
 
 (* Parse a list of services into a bitmap of port numbers *)
 let parse_wks proto services =
@@ -98,13 +98,13 @@ let parse_wks proto services =
   in let addport bitmap n =
     let byte = n/8 in
     let bit = 128 lsr (n mod 8) in
-    Bytes.set bitmap byte (char_of_int ((int_of_char bitmap.[byte]) lor bit))
+    Bytes.set bitmap byte (char_of_int ((int_of_char (Bytes.get bitmap byte)) lor bit))
   in
   let ports = List.map (s2n proto) services in
   let maxport = List.fold_left max 0 ports in
   let s = Bytes.make ((maxport/8)+1) '\000' in
   List.iter (addport s) ports;
-  s
+  Bytes.to_string s
 
 (* Parse an IPv6 address.  (RFC 3513 section 2.2) *)
 let parse_ipv6 s =
@@ -335,7 +335,7 @@ int32: NUMBER
 	 raise Parsing.Parse_error }
 
 generic_type: TYPE_GENERIC
-     { try parse_uint16 (Bytes.sub $1 4 (Bytes.length $1 - 4))
+     { try parse_uint16 (String.sub $1 4 (String.length $1 - 4))
        with Parsing.Parse_error ->
 	 parse_error ($1 ^ " is not a 16-bit number");
 	 raise Parsing.Parse_error }
@@ -343,10 +343,10 @@ generic_type: TYPE_GENERIC
 generic_rdata: GENERIC s NUMBER s generic_words
      { try
          let len = int_of_string $3 in
-           if not (Bytes.length $5 = len)
+           if not (String.length $5 = len)
              then parse_warning ("generic data length field is "
 				 ^ $3 ^ " but actual length is "
-				 ^ (string_of_int (Bytes.length $5)));
+				 ^ (string_of_int (String.length $5)));
 	 $5
        with Failure _ ->
 	 parse_error ("\\# should be followed by a number");
@@ -390,7 +390,7 @@ charstrings: charstring { [$1] } | charstrings s charstring { $1 @ [$3] }
 charstring: CHARSTRING { $1 } | keyword_or_number { $1 } | AT { "@" }
 
 label_except_specials: CHARSTRING
-    { if Bytes.length $1 > 63 then begin
+    { if String.length $1 > 63 then begin
         parse_error "label is longer than 63 bytes";
         raise Parsing.Parse_error;
       end; $1 }

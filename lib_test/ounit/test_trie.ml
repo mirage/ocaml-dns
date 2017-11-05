@@ -14,7 +14,7 @@ let load_test_zone path =
   really_input ch data 0 n;
   close_in ch;
   let db = Dns.Loader.new_db () in
-  let db = Dns.Zone.load ~db [] data in
+  let db = Dns.Zone.load ~db [] (Bytes.to_string data) in
   db.Dns.Loader.trie
 
 let tests =
