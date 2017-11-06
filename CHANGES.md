@@ -1,3 +1,10 @@
+v1.0.1 2017-11-06
+-----------------
+
+* dns-lwt-unix: add missing dependency on cmdliner (#145 by @avsm)
+* async: close reader and writer properly (#147 by @1yefuwang1)
+* fix build with OCaml 4.06 (and -safe-string) (#148 by @djs55)
+
 v1.0.0 2017-06-23
 -----------------
 
