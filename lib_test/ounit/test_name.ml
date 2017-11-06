@@ -5,7 +5,7 @@ let cstruct_of ints =
   let buf = Buffer.create (List.length ints) in
   ints |> List.iter (fun i ->
     Buffer.add_char buf (Char.chr i));
-  Cstruct.of_bytes (Buffer.contents buf)
+  Cstruct.of_string (Buffer.contents buf)
 
 open Dns
 open Name

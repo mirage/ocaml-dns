@@ -305,16 +305,16 @@ let init n f =
     s
 
 let string_of_hex s =
-  let l = Bytes.length s in
+  let l = String.length s in
   if l land 1 = 1 then invalid_arg "Bytes.from_hex" ;
         init (l lsr 1) (
           fun i ->
             let i = i lsl 1 in
             Char.chr (
-              (char_of_hex_value (Bytes.get s i) lsl 4)
-              + (char_of_hex_value (Bytes.get s (i+1)))
+              (char_of_hex_value (String.get s i) lsl 4)
+              + (char_of_hex_value (String.get s (i+1)))
             )
-       )
+       ) |> Bytes.to_string
 
 
 let add_ds_rr tag alg digest key ttl owner db =
