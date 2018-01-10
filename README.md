@@ -1,5 +1,7 @@
 # udns - an opinionated Domain Name System (DNS) library
 
+[![Build Status](https://travis-ci.org/roburio/udns.svg?branch=master)](https://travis-ci.org/roburio/udns)
+
 (c) 2017,2018 Hannes Mehnert (Centre for the Cultivation of Technology), all rights reserved
 
 %%VERSION%%
