@@ -24,6 +24,9 @@ are not supported (always full length of the hash algorithm).  `EDNS` is not yet
 supported (but planned).  The resolver code is not yet ready (and disconnected
 from the build system).
 
+Please read [the blog article](https://hannes.nqsb.io/Posts/DNS) for a more
+detailed overview.
+
 ## Supported RFCs
 
 * [RFC 1034](https://tools.ietf.org/html/rfc1034) Domain Names - Concepts and Facilities
