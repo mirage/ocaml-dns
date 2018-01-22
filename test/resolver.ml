@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Dns_resolver_entry
 open Dns_resolver_cache
@@ -12,6 +12,11 @@ let name = Dns_name.of_string_exn
 let sec = Duration.of_sec
 
 let invalid_soa = Dns_resolver_utils.invalid_soa
+
+let root_servers = snd (List.split Dns_resolver_root.root_servers)
+let a_root = List.hd root_servers
+
+let rng i = Cstruct.create 1
 
 let rr_equal a b =
   Dns_name.equal a.name b.name &&
@@ -80,47 +85,52 @@ let follow_cname_tests = [
 
 let resolve_ns_ret =
   let module M = struct
-    type t = [ `NeedA of Dns_name.t | `HaveIP of Ipaddr.V4.t list ] * Dns_resolver_cache.t
+    type t = [ `NeedA of Dns_name.t | `NeedCname of Dns_name.t | `HaveIPS of Ipaddr.V4.t list | `No | `NoDom ] * Dns_resolver_cache.t
     let pp ppf = function
       | `NeedA nam, _ -> Fmt.pf ppf "need A of %a" Dns_name.pp nam
-      | `HaveIP ips, _ -> Fmt.pf ppf "have IPs %a" Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) ips
+      | `NeedCname nam, _ -> Fmt.pf ppf "need cname of %a" Dns_name.pp nam
+      | `HaveIPS ips, _ -> Fmt.pf ppf "have IPs %a" Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) ips
+      | `No, _ -> Fmt.string ppf "no"
+      | `NoDom, _ -> Fmt.string ppf "nodom"
     let equal a b = match a, b with
       | (`NeedA n, _), (`NeedA n', _) -> Dns_name.equal n n'
-      | (`HaveIP ips, _), (`HaveIP ips', _) -> List.for_all2 (fun a b -> Ipaddr.V4.compare a b = 0) ips ips'
+      | (`NeedCname n, _), (`NeedCname n', _) -> Dns_name.equal n n'
+      | (`HaveIPS ips, _), (`HaveIPS ips', _) -> List.for_all2 (fun a b -> Ipaddr.V4.compare a b = 0) ips ips'
+      | (`No, _), (`No, _) -> true
+      | (`NoDom, _), (`NoDom, _) -> true
       | _, _ -> false
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)
 
 let resolve_ns_empty () =
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in empty cache needA"
-              (Ok (`NeedA (name "foo.com"), empty))
+              (`NeedA (name "foo.com"), empty)
               (resolve_ns empty 0L (name "foo.com")))
 
-(* XXX: not sure whether I agree with the result! *)
 let resolve_ns_cname () =
   let cname_rr =
     { name = name "foo.com" ; ttl = 250l ; rdata = CNAME (name "bar.com") }
   in
   let cache = maybe_insert Dns_enum.A (name "foo.com") 0L AuthoritativeAnswer (NoErr [cname_rr]) empty in
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with CNAME returns needA"
-              (Ok (`NeedA (name "foo.com"), cache))
+              (`NeedCname (name "bar.com"), cache)
               (resolve_ns cache 0L (name "foo.com"))) ;
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with expired CNAME returns needA"
-              (Ok (`NeedA (name "foo.com"), cache))
+              (`NeedA (name "foo.com"), cache)
               (resolve_ns cache (sec 251) (name "foo.com")))
 
 let resolve_ns_empty_noerr () =
   let cache = maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr []) empty in
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with A (NoErr []) returns needA"
-              (Ok (`NeedA (name "ns1.foo.com"), cache))
+              (`NeedA (name "ns1.foo.com"), cache)
               (resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with expired A returns needA"
-              (Ok (`NeedA (name "ns1.foo.com"), cache))
+              (`NeedA (name "ns1.foo.com"), cache)
               (resolve_ns cache (sec 251) (name "ns1.foo.com")))
 
 let resolve_ns_noerr_aaaa () =
@@ -128,13 +138,13 @@ let resolve_ns_noerr_aaaa () =
     { name = name "ns1.foo.com" ; ttl = 250l ; rdata = AAAA (ip6 "::1") }
   in
   let cache = maybe_insert Dns_enum.AAAA (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr [aaaa]) empty in
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with AAAA returns needA"
-              (Ok (`NeedA (name "ns1.foo.com"), cache))
+              (`NeedA (name "ns1.foo.com"), cache)
               (resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with expired AAAA returns needA"
-              (Ok (`NeedA (name "ns1.foo.com"), cache))
+              (`NeedA (name "ns1.foo.com"), cache)
               (resolve_ns cache (sec 251) (name "ns1.foo.com")))
 
 let resolve_ns_a () =
@@ -142,13 +152,13 @@ let resolve_ns_a () =
     { name = name "ns1.foo.com" ; ttl = 250l ; rdata = A (ip "1.2.3.4") }
   in
   let cache = maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr [a_rr]) empty in
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with A returns haveIP"
-              (Ok (`HaveIP [ip "1.2.3.4"], cache))
+              (`HaveIPS [ip "1.2.3.4"], cache)
               (resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with A returns NeedA after timeout"
-              (Ok (`NeedA (name "ns1.foo.com"), cache))
+              (`NeedA (name "ns1.foo.com"), cache)
               (resolve_ns cache (sec 251) (name "ns1.foo.com")))
 
 let resolve_ns_as () =
@@ -157,46 +167,49 @@ let resolve_ns_as () =
     { name = name "ns1.foo.com" ; ttl = 2500l ; rdata = A (ip "1.2.3.5") }
   ] in
   let cache = maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr a_rrs) empty in
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with multiple A returns all IPs"
-              (Ok (`HaveIP [ip "1.2.3.4" ; ip "1.2.3.5"], cache))
+              (`HaveIPS [ip "1.2.3.4" ; ip "1.2.3.5"], cache)
               (resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with multiple A after TTL expired for one returns other"
-              (Ok (`HaveIP [ip "1.2.3.5"], cache))
+              (`HaveIPS [ip "1.2.3.5"], cache)
               (resolve_ns cache (sec 251) (name "ns1.foo.com"))) ;
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with multiple A after TTL expired for all returns NeedA"
-              (Ok (`NeedA (name "ns1.foo.com"), cache))
+              (`NeedA (name "ns1.foo.com"), cache)
               (resolve_ns cache (sec 2501) (name "ns1.foo.com")))
 
+(* TODO: not sure whether the semantics is correct... now no more any errors
+   from resolve_ns, no more result type *)
 let resolve_ns_bad () =
   let bad_rr = invalid_soa (name "ns1.foo.com") in
   let cache = maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoData bad_rr) empty in
-  Alcotest.(check (result resolve_ns_ret unit)
-              "looking for NS in cache with nodata returns error"
-              (Error ())
+  Alcotest.(check resolve_ns_ret
+              "looking for NS in cache with nodata returns needa"
+              (`No, cache)
               (resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with expired nodata returns NeedA"
-              (Ok (`NeedA (name "ns1.foo.com"), cache))
+              (`NeedA (name "ns1.foo.com"), cache)
               (resolve_ns cache (sec 301) (name "ns1.foo.com"))) ;
   let cache = maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoDom bad_rr) empty in
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with nodom returns error"
-              (Error ()) (resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check (result resolve_ns_ret unit)
+              (`NoDom, cache)
+              (resolve_ns cache 0L (name "ns1.foo.com"))) ;
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with nodom returns needA"
-              (Ok (`NeedA (name "ns1.foo.com"), cache))
+              (`NeedA (name "ns1.foo.com"), cache)
               (resolve_ns cache (sec 301) (name "ns1.foo.com"))) ;
   let cache = maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (ServFail bad_rr) empty in
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with servfail returns error"
-              (Error ())
+              (`No, cache)
               (resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check (result resolve_ns_ret unit)
+  Alcotest.(check resolve_ns_ret
               "looking for NS in cache with expired servfail returns needA"
-              (Ok (`NeedA (name "ns1.foo.com"), cache))
+              (`NeedA (name "ns1.foo.com"), cache)
               (resolve_ns cache (sec 301) (name "ns1.foo.com")))
 
 let resolve_ns_tests = [
@@ -211,28 +224,55 @@ let resolve_ns_tests = [
 
 let find_ns_ret =
   let module M = struct
-    type t = [ `NeedNS | `No | `Cname of Dns_name.t | `NeedA of Dns_name.t | `HaveIP of Ipaddr.V4.t list ] * Dns_resolver_cache.t
+    type t = [ `Loop | `NeedNS | `No | `NoDom | `Cname of Dns_name.t | `NeedA of Dns_name.t | `HaveIP of Ipaddr.V4.t | `NeedGlue of Dns_name.t ] * Dns_resolver_cache.t
     let pp ppf = function
-      | `NeedA nam, _ -> Fmt.pf ppf "need A of %a" Dns_name.pp nam
-      | `HaveIP ips, _ -> Fmt.pf ppf "have IPs %a" Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) ips
-      | `NeedNS, _ -> Fmt.pf ppf "need NS"
+      | `NeedA name, _ -> Fmt.pf ppf "need A of %a" Dns_name.pp name
+      | `NeedGlue name, _ -> Fmt.pf ppf "need glue for %a" Dns_name.pp name
+      | `HaveIP ip, _ -> Fmt.pf ppf "have IP %a" Ipaddr.V4.pp_hum ip
+      | `NeedNS, _ -> Fmt.string ppf "need NS"
       | `Cname nam, _ -> Fmt.pf ppf "cname %a" Dns_name.pp nam
-      | `No, _ -> Fmt.pf ppf "no"
+      | `No, _ -> Fmt.string ppf "no"
+      | `NoDom, _ -> Fmt.string ppf "nodom"
+      | `Loop, _ -> Fmt.string ppf "loop"
     let equal a b = match a, b with
       | (`NeedA n, _), (`NeedA n', _) -> Dns_name.equal n n'
-      | (`HaveIP ips, _), (`HaveIP ips', _) -> List.for_all2 (fun a b -> Ipaddr.V4.compare a b = 0) ips ips'
+      | (`NeedGlue n, _), (`NeedGlue n', _) -> Dns_name.equal n n'
+      | (`HaveIP ip, _), (`HaveIP ip', _) -> Ipaddr.V4.compare ip ip' = 0
       | (`NeedNS, _), (`NeedNS, _) -> true
       | (`Cname n, _), (`Cname n', _) -> Dns_name.equal n n'
       | (`No, _), (`No, _) -> true
+      | (`NoDom, _), (`NoDom, _) -> true
+      | (`Loop, _), (`Loop, _) -> true
       | _, _ -> false
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)
 
+let eds = Dns_name.DomSet.empty
+
 let find_ns_empty () =
-  Alcotest.check find_ns_ret "looking for NS in empty cache needNS"
-    (`NeedNS, empty) (find_ns empty 0L (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in empty cache for root HaveIP"
-    (`HaveIP root_servers, empty) (find_ns empty 0L Dns_name.root)
+  Alcotest.check find_ns_ret "looking for NS in empty cache `NeedNS"
+    (`NeedNS, empty) (find_ns empty rng 0L eds (name "foo.com")) ;
+  Alcotest.check find_ns_ret "looking for NS in empty cache for root `NeedNS"
+    (`NeedNS, empty) (find_ns empty rng 0L eds Dns_name.root)
+
+let with_root =
+  let cache =
+    List.fold_left (fun cache (name, rr) ->
+        Dns_resolver_cache.maybe_insert
+          Dns_enum.A name 0L Dns_resolver_entry.Additional
+          (Dns_resolver_entry.NoErr [ rr ]) cache)
+      empty Dns_resolver_root.a_records
+  in
+  Dns_resolver_cache.maybe_insert
+    Dns_enum.NS Dns_name.root 0L Dns_resolver_entry.Additional
+    (Dns_resolver_entry.NoErr Dns_resolver_root.ns_records) cache
+
+let find_ns_prefilled () =
+  Alcotest.check find_ns_ret "looking for NS in empty cache `NeedNS"
+    (`NeedNS, empty) (find_ns with_root rng 0L eds (name "foo.com")) ;
+  Alcotest.check find_ns_ret "looking for NS in empty cache for root `HaveIP"
+    (`HaveIP a_root, empty)
+    (find_ns with_root rng 0L eds Dns_name.root)
 
 let find_ns_cname () =
   let cname_rr =
@@ -240,32 +280,32 @@ let find_ns_cname () =
   in
   let cache = maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr [cname_rr]) empty in
   Alcotest.check find_ns_ret "looking for NS in cache with CNAME returns cname"
-    (`Cname (name "bar.com"), cache) (find_ns cache 0L (name "foo.com"))
+    (`Cname (name "bar.com"), cache) (find_ns cache rng 0L eds (name "foo.com"))
 
 let find_ns_bad () =
   let bad_rr = invalid_soa (name "foo.com") in
   let cache = maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoData bad_rr) empty in
   Alcotest.check find_ns_ret "looking for NS in cache with nodata returns No"
-    (`No, cache) (find_ns cache 0L (name "foo.com")) ;
+    (`No, cache) (find_ns cache rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired nodata returns NeedNS"
-    (`NeedNS, cache) (find_ns cache (sec 301) (name "foo.com")) ;
+    (`NeedNS, cache) (find_ns cache rng (sec 301) eds (name "foo.com")) ;
   let cache = maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoDom bad_rr) empty in
   Alcotest.check find_ns_ret "looking for NS in cache with nodom returns No"
-    (`No, cache) (find_ns cache 0L (name "foo.com")) ;
+    (`No, cache) (find_ns cache rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired nodom returns NeedNS"
-    (`NeedNS, cache) (find_ns cache (sec 301) (name "foo.com")) ;
+    (`NeedNS, cache) (find_ns cache rng (sec 301) eds (name "foo.com")) ;
   let cache = maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (ServFail bad_rr) empty in
   Alcotest.check find_ns_ret "looking for NS in cache with servfail returns no"
-    (`No, cache) (find_ns cache 0L (name "foo.com")) ;
+    (`No, cache) (find_ns cache rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired servfail returns NeedNS"
-    (`NeedNS, cache) (find_ns cache (sec 301) (name "foo.com"))
+    (`NeedNS, cache) (find_ns cache rng (sec 301) eds (name "foo.com"))
 
 let find_ns_empty_noerr () =
   let cache = maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr []) empty in
   Alcotest.check find_ns_ret "looking for NS in cache with NoErr returns NeedNS"
-    (`NeedNS, cache) (find_ns cache 0L (name "foo.com")) ;
+    (`NeedNS, cache) (find_ns cache rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired NoErr returns NeedNS"
-    (`NeedNS, cache) (find_ns cache (sec 251) (name "foo.com"))
+    (`NeedNS, cache) (find_ns cache rng (sec 251) eds (name "foo.com"))
 
 let find_ns_ns () =
   let ns =
@@ -273,9 +313,9 @@ let find_ns_ns () =
   in
   let cache = maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr [ns]) empty in
   Alcotest.check find_ns_ret "looking for NS in cache with NS returns NeedA"
-    (`NeedA (name "ns1.foo.com"), cache) (find_ns cache 0L (name "foo.com")) ;
+    (`NeedGlue (name "foo.com"), cache) (find_ns cache rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired NS returns NeedNS"
-    (`NeedNS, cache) (find_ns cache (sec 251) (name "foo.com"))
+    (`NeedNS, cache) (find_ns cache rng (sec 251) eds (name "foo.com"))
 
 let find_ns_ns_and_a () =
   let ns =
@@ -288,9 +328,9 @@ let find_ns_ns_and_a () =
       (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr [a]) empty)
   in
   Alcotest.check find_ns_ret "looking for NS in cache with A and NS returns HaveIP"
-    (`HaveIP [ ip "1.2.3.4" ], cache) (find_ns cache 0L (name "foo.com")) ;
+    (`HaveIP (ip "1.2.3.4"), cache) (find_ns cache rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired NS and A returns NeedNS"
-    (`NeedNS, cache) (find_ns cache (sec 251) (name "foo.com"))
+    (`NeedNS, cache) (find_ns cache rng (sec 251) eds (name "foo.com"))
 
 let find_ns_ns_and_a_exp () =
   let ns =
@@ -303,11 +343,10 @@ let find_ns_ns_and_a_exp () =
       (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr [a]) empty)
   in
   Alcotest.check find_ns_ret "looking for NS in cache with A and NS returns HaveIP"
-    (`HaveIP [ip "1.2.3.4"], cache) (find_ns cache 0L (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired A and NS returns NeedA"
-    (`NeedA (name "ns1.foo.com"), cache) (find_ns cache (sec 251) (name "foo.com"))
+    (`HaveIP (ip "1.2.3.4"), cache) (find_ns cache rng 0L eds (name "foo.com")) ;
+  Alcotest.check find_ns_ret "looking for NS in cache with expired A and NS returns NeedGlue"
+    (`NeedGlue (name "foo.com"), cache) (find_ns cache rng (sec 251) eds (name "foo.com"))
 
-(* XXX: not sure whether I agree with the result! (maybe should append HaveIPs?) *)
 let find_ns_ns_and_a_a_exp () =
   let ns = [
     { name = name "foo.com" ; ttl = 2000l ; rdata = NS (name "ns1.foo.com") } ;
@@ -327,19 +366,18 @@ let find_ns_ns_and_a_a_exp () =
             empty))
   in
   Alcotest.check find_ns_ret "looking for NS in cache with A, A and NS, NS returns HaveIP"
-    (`HaveIP [ip "1.2.3.4" ; ip "1.2.3.2"], cache) (find_ns cache 0L (name "foo.com")) ;
+    (`HaveIP (ip "1.2.3.4"), cache) (find_ns cache rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired A and A, NS, NS returns HaveIP"
-    (`HaveIP [ip "1.2.3.4"], cache) (find_ns cache (sec 151) (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired A, A, NS, NS returns HaveIP"
-    (`HaveIP [ip "1.2.3.5"], cache) (find_ns cache (sec 201) (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired A, A, NS, NS returns NeedA"
-    (`NeedA (name "ns1.foo.com"), cache) (find_ns cache (sec 251) (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired A, A, NS, NS returns NeedA"
-    (`NeedA (name "ns2.foo.com"), cache) (find_ns cache (sec 2001) (name "foo.com")) ;
+    (`HaveIP (ip "1.2.3.4"), cache) (find_ns cache rng (sec 151) eds (name "foo.com")) ;
+  Alcotest.check find_ns_ret "looking for NS in cache with expired A, A, NS, NS returns Needglue foo.com"
+    (`NeedGlue (name "foo.com"), cache) (find_ns cache rng (sec 201) eds (name "foo.com")) ;
+  Alcotest.check find_ns_ret "looking for NS in cache with expired A, A, NS, NS returns NeedGlue"
+    (`NeedGlue (name "foo.com"), cache) (find_ns cache rng (sec 251) eds (name "foo.com")) ;
+  Alcotest.check find_ns_ret "looking for NS in cache with expired A, A, NS, NS returns NeedGlue"
+    (`NeedGlue (name "foo.com"), cache) (find_ns cache rng (sec 2001) eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired returns NeedNS"
-    (`NeedNS, cache) (find_ns cache (sec 2501) (name "foo.com"))
+    (`NeedNS, cache) (find_ns cache rng (sec 2501) eds (name "foo.com"))
 
-(* XXX: not sure whether I agree with the result! *)
 let find_ns_ns_and_cname () =
   let ns =
     { name = name "foo.com" ; ttl = 250l ; rdata = NS (name "ns1.foo.com") }
@@ -350,10 +388,11 @@ let find_ns_ns_and_cname () =
     maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr [ns])
       (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr [cname]) empty)
   in
-  Alcotest.check find_ns_ret "looking for NS in cache with CNAME and NS returns HaveIP"
-    (`NeedA (name "ns1.foo.com"), cache) (find_ns cache 0L (name "foo.com")) ;
+  (* TODO this is a bad cache entry, not sure whether this behaviour is good (following cnames) *)
+  Alcotest.check find_ns_ret "looking for NS in cache with CNAME and NS returns NeedGlue"
+    (`NeedA (name "ns1.bar.com"), cache) (find_ns cache rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired CNAME and NS returns NeedNS"
-    (`NeedNS, cache) (find_ns cache (sec 251) (name "foo.com"))
+    (`NeedNS, cache) (find_ns cache rng (sec 251) eds (name "foo.com"))
 
 let find_ns_ns_and_aaaa () =
   let ns =
@@ -365,13 +404,14 @@ let find_ns_ns_and_aaaa () =
     maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr [ns])
       (maybe_insert Dns_enum.AAAA (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr [aaaa]) empty)
   in
-  Alcotest.check find_ns_ret "looking for NS in cache with AAAA and NS returns NeedA"
-    (`NeedA (name "ns1.foo.com"), cache) (find_ns cache 0L (name "foo.com")) ;
+  Alcotest.check find_ns_ret "looking for NS in cache with AAAA and NS returns NeedGlue"
+    (`NeedGlue (name "foo.com"), cache) (find_ns cache rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in cache with expired NS and AAAA returns NeedNS"
-    (`NeedNS, cache) (find_ns cache (sec 251) (name "foo.com"))
+    (`NeedNS, cache) (find_ns cache rng (sec 251) eds (name "foo.com"))
 
 let find_ns_tests = [
   "empty", `Quick, find_ns_empty ;
+  "with_root", `Quick, find_ns_prefilled ;
   "cname", `Quick, find_ns_cname ;
   "nodata nodom servfail", `Quick, find_ns_bad ;
   "empty noerr", `Quick, find_ns_empty_noerr ;
@@ -385,13 +425,13 @@ let find_ns_tests = [
 
 let resolve_ret =
   let module M = struct
-    type t = Dns_name.t * Dns_enum.rr_typ * Ipaddr.V4.t list * Dns_resolver_cache.t
-    let pp ppf (name, typ, ips, _) =
+    type t = Dns_name.t * Dns_enum.rr_typ * Ipaddr.V4.t * Dns_resolver_cache.t
+    let pp ppf (name, typ, ip, _) =
       Fmt.pf ppf "requesting %a for %a (asking %a)"
         Dns_enum.pp_rr_typ typ Dns_name.pp name
-        Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) ips
+        Ipaddr.V4.pp_hum ip
     let equal (n, t, i, _) (n', t', i', _) =
-      Dns_name.equal n n' && t = t' && List.for_all2 (fun a b -> Ipaddr.V4.compare a b = 0) i i'
+      Dns_name.equal n n' && t = t' && Ipaddr.V4.compare i i' = 0
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)
 
@@ -406,27 +446,41 @@ let str_err =
 let resolve_res = Alcotest.result resolve_ret str_err
 
 let resolve_empty () =
-  Alcotest.check resolve_res "looking for NS in empty cache for root Ok"
-    (Ok (Dns_name.root, Dns_enum.NS, root_servers, empty))
-    (resolve empty 0L Dns_name.root Dns_enum.NS) ;
-  Alcotest.check resolve_res  "resolving A foo.com in empty cache -> NeedNS .com"
-    (Ok (name "com", Dns_enum.NS, root_servers, empty))
-    (resolve empty 0L (name "foo.com") Dns_enum.A) ;
-  Alcotest.check resolve_res  "resolving NS foo.com in empty cache -> NeedNS .com"
-    (Ok (name "com", Dns_enum.NS, root_servers, empty))
-    (resolve empty 0L (name "foo.com") Dns_enum.NS) ;
-  Alcotest.check resolve_res  "resolving PTR 1.2.3.4.in-addr.arpa in empty cache -> NeedNS .arpa"
-    (Ok (name "arpa", Dns_enum.NS, root_servers, empty))
-    (resolve empty 0L (name "1.2.3.4.in-addr.arpa") Dns_enum.PTR)
+  Alcotest.check resolve_res "looking for NS in empty cache for root -> look for NS . @a_root"
+    (Ok (Dns_name.root, Dns_enum.NS, List.hd root_servers, empty))
+    (resolve ~rng empty 0L Dns_name.root Dns_enum.NS) ;
+  Alcotest.check resolve_res  "resolving A foo.com in empty cache -> look for NS . @a_root"
+    (Ok (Dns_name.root, Dns_enum.NS, List.hd root_servers, empty))
+    (resolve ~rng empty 0L (name "foo.com") Dns_enum.A) ;
+  Alcotest.check resolve_res  "resolving NS foo.com in empty cache -> look for NS . @a_root"
+    (Ok (Dns_name.root, Dns_enum.NS, List.hd root_servers, empty))
+    (resolve ~rng empty 0L (name "foo.com") Dns_enum.NS) ;
+  Alcotest.check resolve_res  "resolving PTR 1.2.3.4.in-addr.arpa in empty cache -> look for NS . @a_root"
+    (Ok (Dns_name.root, Dns_enum.NS, List.hd root_servers, empty))
+    (resolve ~rng empty 0L (name "1.2.3.4.in-addr.arpa") Dns_enum.PTR)
+
+let resolve_with_root () =
+  Alcotest.check resolve_res "looking for NS in with_root -> look for NS . @a_root"
+    (Ok (Dns_name.root, Dns_enum.NS, a_root, empty))
+    (resolve ~rng with_root 0L Dns_name.root Dns_enum.NS) ;
+  Alcotest.check resolve_res  "resolving A foo.com in with_root -> look for NS .com @a_root "
+    (Ok (name "com", Dns_enum.NS, a_root, empty))
+    (resolve ~rng with_root 0L (name "foo.com") Dns_enum.A) ;
+  Alcotest.check resolve_res  "resolving NS foo.com in with_root -> look for NS .com @a_root"
+    (Ok (name "com", Dns_enum.NS, a_root, empty))
+    (resolve ~rng with_root 0L (name "foo.com") Dns_enum.NS) ;
+  Alcotest.check resolve_res  "resolving PTR 1.2.3.4.in-addr.arpa in with_root -> look for NS .arpa @a_root"
+    (Ok (name "arpa", Dns_enum.NS, a_root, empty))
+    (resolve ~rng with_root 0L (name "1.2.3.4.in-addr.arpa") Dns_enum.PTR)
 
 let resolve_with_ns () =
   let ns =
     { name = name "com" ; ttl = 250l ; rdata = NS (name "ns1.foo.org") }
   in
-  let cache = maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr [ns]) empty in
+  let cache = maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr [ns]) with_root in
   Alcotest.check resolve_res "looking for A for foo.com asks for NS org"
-    (Ok (name "org", Dns_enum.NS, root_servers, cache))
-    (resolve cache 0L (name "foo.com") Dns_enum.A)
+    (Ok (name "org", Dns_enum.NS, a_root, cache))
+    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A)
 
 let resolve_with_ns_err () =
   let ns =
@@ -436,36 +490,37 @@ let resolve_with_ns_err () =
   let cache =
     maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr [ns])
       (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoData bad_rr)
-         empty)
+         with_root)
   in
-  Alcotest.check resolve_res "looking for A for foo.com asks for NS com"
-    (Ok (name "foo.com", Dns_enum.NS, root_servers, cache))
-    (resolve cache 0L (name "foo.com") Dns_enum.A) ;
+  Alcotest.check resolve_res "looking for A for foo.com with com NS ns1.foo.com, ns1.foo.com NoData requests NS foo.com"
+    (Ok (name "foo.com", Dns_enum.NS, a_root, cache))
+    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A) ;
   let cache =
     maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr [ns])
       (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoDom bad_rr)
-         empty)
+         with_root)
   in
-  Alcotest.check resolve_res "looking for A for foo.com asks for NS com"
-    (Ok (name "foo.com", Dns_enum.NS, root_servers, cache))
-    (resolve cache 0L (name "foo.com") Dns_enum.A) ;
+  Alcotest.check resolve_res "looking for A for foo.com with com NS ns1.foo.com, ns1.foo.com NoDom errors"
+    (Error "")
+    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A) ;
   let cache =
     maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr [ns])
       (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (ServFail bad_rr)
-         empty)
+         with_root)
   in
-  Alcotest.check resolve_res "looking for A for foo.com asks for NS com"
-    (Ok (name "foo.com", Dns_enum.NS, root_servers, cache))
-    (resolve cache 0L (name "foo.com") Dns_enum.A) ;
+  Alcotest.check resolve_res "looking for A for foo.com with com NS ns1.foo.com, ns1.foo.com ServFail requests NS foo.com"
+    (Ok (name "foo.com", Dns_enum.NS, a_root, cache))
+    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A) ;
   let cache =
     maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr [ns])
       (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (ServFail bad_rr)
          (maybe_insert Dns_enum.A (name "com") 0L AuthoritativeAnswer (ServFail bad_rr)
-            empty))
+            with_root))
   in
-  Alcotest.check resolve_res "looking for A for ns1.foo.com asks for NS com"
-    (Ok (name "com", Dns_enum.A, root_servers, cache))
-    (resolve cache 0L (name "com") Dns_enum.A)
+  (* TODO: correctness? should request NS for .com! *)
+  Alcotest.check resolve_res "looking for A com with com NS ns1.foo.com, ns1.foo.com ServFail, com A ServFail asks for A foo.com"
+    (Ok (name "com", Dns_enum.A, a_root, cache))
+    (resolve ~rng cache 0L (name "com") Dns_enum.A)
 
 let resolve_with_ns_a () =
   let ns =
@@ -475,11 +530,12 @@ let resolve_with_ns_a () =
   in
   let cache =
     maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr [ns])
-      (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr [a]) empty)
+      (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr [a])
+         with_root)
   in
   Alcotest.check resolve_res "looking for A for foo.com asks for NS foo.com @ns1.foo.com"
-    (Ok (name "foo.com", Dns_enum.NS, [ ip "1.2.3.4" ], cache))
-    (resolve cache 0L (name "foo.com") Dns_enum.A)
+    (Ok (name "foo.com", Dns_enum.NS, ip "1.2.3.4", cache))
+    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A)
 
 let resolve_with_ns_a_ns () =
   let ns =
@@ -496,15 +552,14 @@ let resolve_with_ns_a_ns () =
       (maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr [a])
          (maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr [ns2])
             (maybe_insert Dns_enum.A (name "ns2.foo.com") 0L AuthoritativeAnswer (NoErr [a2])
-               empty)))
+               with_root)))
   in
   Alcotest.check resolve_res "looking for A for foo.com asks for A foo.com @ns1.foo.com"
-    (Ok (name "foo.com", Dns_enum.A, [ ip "1.2.3.5" ], cache))
-    (resolve cache 0L (name "foo.com") Dns_enum.A) ;
-  (* XXX: wrong! *)
-  Alcotest.check resolve_res "looking for A for foo.com Errors cycle"
-    (Error "cycle detected")
-    (resolve cache (sec 251) (name "foo.com") Dns_enum.A)
+    (Ok (name "foo.com", Dns_enum.A, ip "1.2.3.5", cache))
+    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A) ;
+  Alcotest.check resolve_res "looking for A after TTL for foo.com asks NS .com @a_root"
+    (Ok (name "com", Dns_enum.NS, a_root, cache))
+    (resolve ~rng cache (sec 251) (name "foo.com") Dns_enum.A)
 
 let resolve_cycle () =
   let ns =
@@ -515,16 +570,17 @@ let resolve_cycle () =
   let cache =
     maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr [ns])
       (maybe_insert Dns_enum.NS (name "org") 0L AuthoritativeAnswer (NoErr [ns2])
-         empty)
+         with_root)
   in
   Alcotest.check resolve_res "looking for A for foo.com Errors cycle"
     (Error "cycle detected")
-    (resolve cache 0L (name "foo.com") Dns_enum.A)
+    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A)
 
 let resolve_tests = [
   "empty", `Quick, resolve_empty ;
+  "with root", `Quick, resolve_with_root ;
   "with ns", `Quick, resolve_with_ns ;
-  "with ns err", `Quick,  resolve_with_ns_err ;
+  "with ns err", `Quick, resolve_with_ns_err ;
   "with ns a", `Quick, resolve_with_ns_a ;
   "with ns a ns", `Quick, resolve_with_ns_a_ns ;
   "cycle", `Quick, resolve_cycle ;
@@ -662,15 +718,15 @@ let res =
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)
 
-let msg =
+let rcode =
   let module M = struct
-    type t = [ `Msg of string ]
-    let pp ppf (`Msg s) = Fmt.string ppf s
-    let equal _ _ = true
+    type t = Dns_enum.rcode
+    let pp = Dns_enum.pp_rcode
+    let equal a b = Dns_enum.rcode_to_int a = Dns_enum.rcode_to_int b
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)
 
-let res = Alcotest.(result res msg)
+let res = Alcotest.(result res rcode)
 
 let empty_q () =
   { question = [] ; answer = [] ; authority = [] ; additional = [] }

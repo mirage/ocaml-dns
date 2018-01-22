@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Rresult.R.Infix
 
@@ -13,19 +13,17 @@ let compute_tsig name tsig ~key buf =
   let h = algorithm_to_nc tsig.Dns_packet.algorithm
   and data = Dns_packet.encode_raw_tsig name tsig
   in
-  let mac = Nocrypto.Hash.mac h ~key (Cstruct.append buf data) in
-  Logs.debug (fun m -> m "computed mac @.%a using key @.%a of buf @.%a"
-                 Cstruct.hexdump_pp mac Cstruct.hexdump_pp key
-                 Cstruct.hexdump_pp buf) ;
-  mac
+  Nocrypto.Hash.mac h ~key (Cstruct.append buf data)
 
 let guard p err = if p then Ok () else Error err
 
-let add_tsig name tsig buf =
-  let ad = Cstruct.BE.get_uint16 buf 10 in
-  Cstruct.BE.set_uint16 buf 10 (succ ad) ;
+(* TODO: should name compression be done?  atm it's convenient not to do it *)
+let add_tsig ?max_size name tsig buf =
+  Cstruct.BE.set_uint16 buf 10 (succ (Cstruct.BE.get_uint16 buf 10)) ;
   let tsig = Dns_packet.encode_full_tsig name tsig in
-  Cstruct.(append buf tsig)
+  match max_size with
+  | Some x when x - Cstruct.len buf < Cstruct.len tsig -> None
+  | _ -> Some (Cstruct.(append buf tsig))
 
 let mac_to_prep = function
   | None -> Cstruct.create 0
@@ -34,14 +32,41 @@ let mac_to_prep = function
     Cstruct.BE.set_uint16 l 0 (Cstruct.len mac) ;
     Cstruct.append l mac
 
-let sign ?mac name tsig ~key buf =
+let sign ?mac ?max_size name tsig ~key buf =
   match Nocrypto.Base64.decode key.Dns_packet.key with
   | None -> None
   | Some key ->
     let prep = mac_to_prep mac in
     let mac = compute_tsig name tsig ~key (Cstruct.append prep buf) in
     let tsig = Dns_packet.with_mac tsig mac in
-    Some (add_tsig name tsig buf, mac)
+    (* RFC2845 Sec 3.1: if TSIG leads to truncation, alter message:
+       - header stays (truncated = true)!
+       - only question is preserved
+       - _one_ additional, the TSIG itself *)
+    match add_tsig ?max_size name tsig buf with
+    | Some out -> Some (out, mac)
+    | None ->
+      match Dns_packet.decode_question Dns_name.IntMap.empty buf 12 with
+      | Error e ->
+        Logs.err
+          (fun m -> m "dns_tsig sign: truncated, couldn't reparse question %a:@.%a"
+              Dns_packet.pp_err e Cstruct.hexdump_pp buf) ;
+        None (* assert false? *)
+      | Ok (q, _, off) ->
+        let new_buf = Cstruct.sub buf 0 off in
+        Cstruct.set_uint8 new_buf 2 (0x02 lor (Cstruct.get_uint8 new_buf 2)) ;
+        Cstruct.BE.set_uint16 new_buf 4 1 ;
+        Cstruct.BE.set_uint16 new_buf 6 0 ;
+        Cstruct.BE.set_uint16 new_buf 8 0 ;
+        Cstruct.BE.set_uint16 new_buf 10 1 ;
+        let mac = compute_tsig name tsig ~key (Cstruct.append prep new_buf) in
+        let tsig = Dns_packet.with_mac tsig mac in
+        match add_tsig name tsig new_buf with
+        | None ->
+          Logs.err (fun m -> m "dns_tsig sign: query %a with tsig %a too big %a:@.%a"
+                       Dns_packet.pp_question q Dns_packet.pp_tsig tsig Fmt.(option ~none:(unit "none") int) max_size Cstruct.hexdump_pp new_buf) ;
+          None
+        | Some out -> Some (out, mac)
 
 let verify ?mac now v header name ~key tsig tbs =
   match
@@ -50,37 +75,33 @@ let verify ?mac now v header name ~key tsig tbs =
       (Nocrypto.Base64.decode key.Dns_packet.key) >>= fun priv ->
     let ac = Cstruct.BE.get_uint16 tbs 10 in
     Cstruct.BE.set_uint16 tbs 10 (pred ac) ;
-    Logs.app (fun m -> m "key %a (priv %a) tbs %a" Dns_packet.pp_dnskey key
-                 Cstruct.hexdump_pp priv Cstruct.hexdump_pp tbs) ;
     let prep = mac_to_prep mac in
     let computed = compute_tsig name tsig ~key:priv (Cstruct.append prep tbs) in
     (* TODO: could be truncated to NN bytes ?!?! *)
     let mac = tsig.Dns_packet.mac in
-    Logs.debug (fun m -> m "comparing mac@.%avs computed@.%a"
-                   Cstruct.hexdump_pp mac Cstruct.hexdump_pp computed) ;
     guard (Cstruct.equal computed mac) (`InvalidMac (name, tsig)) >>= fun () ->
-    Logs.debug (fun m -> m "mac is good") ;
     guard (Dns_packet.valid_time now tsig) (`BadTimestamp (name, tsig, key)) >>= fun () ->
-    Logs.debug (fun m -> m "time is valid") ;
     Rresult.R.of_option ~none:(fun () -> Error (`BadTimestamp (name, tsig, key)))
       (Dns_packet.with_signed tsig now) >>= fun tsig ->
     Ok (tsig, mac, key)
   with
   | Ok x -> Ok x
   | Error e ->
+    let header = { header with Dns_packet.query = not header.Dns_packet.query } in
+    let or_empty = function None -> Cstruct.create 0 | Some x -> x in
     match Dns_packet.error header v Dns_enum.NotAuth, e with
     | None, _ -> Error (Cstruct.create 0)
-    | Some err, `BadKey (name, tsig) ->
+    | Some (err, max_size), `BadKey (name, tsig) ->
       let tsig = Dns_packet.with_error (Dns_packet.with_mac tsig (Cstruct.create 0)) Dns_enum.BadKey in
-      Error (add_tsig name tsig err)
-    | Some err, `InvalidMac (name, tsig) ->
+      Error (or_empty (add_tsig ~max_size name tsig err))
+    | Some (err, max_size), `InvalidMac (name, tsig) ->
       let tsig = Dns_packet.with_error (Dns_packet.with_mac tsig (Cstruct.create 0)) Dns_enum.BadVersOrSig in
-      Error (add_tsig name tsig err)
-    | Some err, `BadTimestamp (name, tsig, key) ->
+      Error (or_empty (add_tsig ~max_size name tsig err))
+    | Some (err, max_size), `BadTimestamp (name, tsig, key) ->
       let tsig = Dns_packet.with_error tsig Dns_enum.BadTime in
       match Dns_packet.with_other tsig (Some now) with
       | None -> Error err
       | Some tsig ->
-        match sign ~mac:tsig.Dns_packet.mac name tsig ~key err with
+        match sign ~max_size ~mac:tsig.Dns_packet.mac name tsig ~key err with
         | None -> Error err
         | Some (buf, _) -> Error buf

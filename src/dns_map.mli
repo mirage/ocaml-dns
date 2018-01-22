@@ -53,8 +53,7 @@ module K : sig
     | Any : (Dns_packet.rr list * Dns_name.DomSet.t) t
     | Cname : (int32 * Dns_name.t) t
     | Mx : (int32 * (int * Dns_name.t) list) t
-    | Ns : (int32 * Dns_name.DomSet.t *
-            ((int32 * Ipaddr.V4.t list) * (int32 * Ipaddr.V6.t list)) Dns_name.DomMap.t) t
+    | Ns : (int32 * Dns_name.DomSet.t) t
     | Ptr : (int32 * Dns_name.t) t
     | Soa : (int32 * Dns_packet.soa) t
     | Txt : (int32 * string list list) t

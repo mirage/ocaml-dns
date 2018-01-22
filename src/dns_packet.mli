@@ -1,4 +1,6 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
+
+type proto = [ `Tcp | `Udp ]
 
 val pp_err : [< Dns_name.err | `BadTTL of int32
              | `BadRRTyp of int | `DisallowedRRTyp of Dns_enum.rr_typ
@@ -9,6 +11,7 @@ val pp_err : [< Dns_name.err | `BadTTL of int32
              | `InvalidZoneRR of Dns_enum.rr_typ
              | `InvalidTimestamp of int64 | `InvalidAlgorithm of Dns_name.t
              | `BadProto of int | `BadAlgorithm of int
+             | `BadOpt | `BadKeepalive
              ] Fmt.t
 
 type header = {
@@ -35,6 +38,20 @@ type question = {
   q_name : Dns_name.t ;
   q_type : Dns_enum.rr_typ ;
 }
+
+val decode_question : (Dns_name.t * int) Dns_name.IntMap.t ->
+  Cstruct.t ->
+  int ->
+  (question * (Dns_name.t * int) Dns_name.IntMap.t * int,
+   [> `BadClass of Cstruct.uint16
+   | `BadContent of string
+   | `BadOffset of int
+   | `BadRRTyp of Cstruct.uint16
+   | `BadTag of int
+   | `Partial
+   | `TooLong
+   | `UnsupportedClass of Dns_enum.clas ])
+    result
 
 val pp_question : question Fmt.t
 
@@ -125,6 +142,26 @@ val compare_caa : caa -> caa -> int
 
 val pp_caa : caa Fmt.t
 
+type opt =
+  | Payload_size of int
+  | Nsid of Cstruct.t
+  | Cookie of Cstruct.t
+  | Tcp_keepalive of int option
+  | Padding of int
+  | Option of int * Cstruct.t
+
+type opts = opt list
+
+val payload_size : opts -> int option
+
+val compare_opt : opt -> opt -> int
+
+val compare_opts : opts -> opts -> int
+
+val pp_opt : opt Fmt.t
+
+val pp_opts : opts Fmt.t
+
 type rdata =
   | CNAME of Dns_name.t
   | MX of int * Dns_name.t
@@ -138,6 +175,7 @@ type rdata =
   | TSIG of tsig
   | DNSKEY of dnskey
   | CAA of caa
+  | OPTS of opt list
   | Raw of Dns_enum.rr_typ * Cstruct.t
 
 val pp_rdata : rdata Fmt.t
@@ -164,29 +202,12 @@ val pp_rr : rr Fmt.t
 
 val pp_rrs : rr list Fmt.t
 
-val encode_rr : int Dns_name.DomMap.t -> Cstruct.t -> int -> rr ->
-  (int Dns_name.DomMap.t * int)
-
 type query = {
   question : question list ;
   answer : rr list ;
   authority : rr list ;
   additional : rr list ;
 }
-
-val decode_query : Cstruct.t -> bool ->
-  (query * int option,
-   [> Dns_name.err | `BadTTL of int32
-   | `BadRRTyp of int | `DisallowedRRTyp of Dns_enum.rr_typ
-   | `BadRcode of int
-   | `BadClass of int | `DisallowedClass of Dns_enum.clas
-   | `UnsupportedClass of Dns_enum.clas
-   | `BadProto of int | `BadAlgorithm of int
-   | `InvalidTimestamp of int64 | `InvalidAlgorithm of Dns_name.t
-   | `BadCaaTag
-   | `LeftOver ]) result
-
-val encode_query : Cstruct.t -> header -> query -> int
 
 val pp_query : query Fmt.t
 
@@ -214,35 +235,19 @@ type update = {
   addition : rr list ;
 }
 
-val decode_update : Cstruct.t ->
-  (update * int option,
-   [> Dns_name.err | `BadTTL of int32
-   | `BadRRTyp of int | `DisallowedRRTyp of Dns_enum.rr_typ
-   | `BadRcode of int
-   | `BadClass of int | `DisallowedClass of Dns_enum.clas
-   | `UnsupportedClass of Dns_enum.clas
-   | `BadProto of int | `BadAlgorithm of int | `BadCaaTag
-   | `LeftOver
-   | `InvalidTimestamp of int64 | `InvalidAlgorithm of Dns_name.t
-   | `NonZeroTTL of int32
-   | `NonZeroRdlen of int | `InvalidZoneCount of int
-   | `InvalidZoneRR of Dns_enum.rr_typ
-   ]) result
-
-val encode_update : Cstruct.t -> header -> update -> int
-
 val pp_update : update Fmt.t
 
 type v = [ `Query of query | `Update of update | `Notify of query ]
-type t = header * v
+val pp_v : v Fmt.t
 
+type t = header * v
 val pp : t Fmt.t
 
 type tsig_verify = ?mac:Cstruct.t -> Ptime.t -> v -> header ->
   Dns_name.t -> key:dnskey option -> tsig -> Cstruct.t ->
   (tsig * Cstruct.t * dnskey, Cstruct.t) result
 
-type tsig_sign = ?mac:Cstruct.t -> Dns_name.t -> tsig ->
+type tsig_sign = ?mac:Cstruct.t -> ?max_size:int -> Dns_name.t -> tsig ->
   key:dnskey -> Cstruct.t -> (Cstruct.t * Cstruct.t) option
 
 val decode : Cstruct.t ->
@@ -254,7 +259,7 @@ val decode : Cstruct.t ->
    | `BadRRTyp of int | `DisallowedRRTyp of Dns_enum.rr_typ
    | `BadClass of int | `DisallowedClass of Dns_enum.clas
    | `UnsupportedClass of Dns_enum.clas
-   | `BadProto of int | `BadAlgorithm of int
+   | `BadProto of int | `BadAlgorithm of int | `BadOpt | `BadKeepalive
    | `BadCaaTag
    | `LeftOver
    | `InvalidTimestamp of int64 | `InvalidAlgorithm of Dns_name.t
@@ -263,10 +268,10 @@ val decode : Cstruct.t ->
    | `InvalidZoneRR of Dns_enum.rr_typ
    ]) result
 
-val encode : Cstruct.t -> t -> int
+val encode : ?max_size:int -> ?edns:opts -> proto -> t -> Cstruct.t * int
 
 val find_tsig : v -> (Dns_name.t * tsig) option
 
-val error : header -> v -> Dns_enum.rcode -> Cstruct.t option
+val find_edns : v -> opts option
 
-val answer : header -> v -> Cstruct.t option
+val error : header -> v -> Dns_enum.rcode -> (Cstruct.t * int) option

@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 val compute_tsig : Dns_name.t -> Dns_packet.tsig -> key:Cstruct.t ->
   Cstruct.t -> Cstruct.t

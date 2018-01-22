@@ -1,10 +1,14 @@
 S src
+S server
 S resolver
+S mirage
 S test
 
 B _build/**
 
-PKG astring alcotest cstruct rresult afl-persistent cstruct.ppx ipaddr
+PKG astring alcotest cstruct rresult afl-persistent cstruct.ppx ipaddr fmt
 PKG mtime mtime.clock.os
 PKG duration lru logs
 PKG ptime nocrypto randomconv
+
+PKG lwt mirage-stack-lwt mirage-types-lwt

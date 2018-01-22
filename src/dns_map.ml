@@ -128,8 +128,7 @@ module K = struct
     | Any : (Dns_packet.rr list * Dns_name.DomSet.t) t
     | Cname : (int32 * Dns_name.t) t
     | Mx : (int32 * (int * Dns_name.t) list) t
-    | Ns : (int32 * Dns_name.DomSet.t *
-            ((int32 * Ipaddr.V4.t list) * (int32 * Ipaddr.V6.t list)) Dns_name.DomMap.t) t
+    | Ns : (int32 * Dns_name.DomSet.t) t
     | Ptr : (int32 * Dns_name.t) t
     | Soa : (int32 * Dns_packet.soa) t
     | Txt : (int32 * string list list) t
@@ -164,17 +163,9 @@ module K = struct
     | Mx, (ttl, mxs) ->
       Fmt.pf ppf "mx ttl %lu %a" ttl
         Fmt.(list ~sep:(unit ";@,") (pair ~sep:(unit " ") int Dns_name.pp)) mxs
-    | Ns, (ttl, names, glue) ->
-      Fmt.pf ppf "ns ttl %lu %a glue %a" ttl
+    | Ns, (ttl, names) ->
+      Fmt.pf ppf "ns ttl %lu %a" ttl
         Fmt.(list ~sep:(unit ";@,") Dns_name.pp) (Dns_name.DomSet.elements names)
-        Fmt.(list ~sep:(unit ";@,")
-               (pair ~sep:(unit ": ") Dns_name.pp
-                  (pair ~sep:(unit ", ")
-                     (pair ~sep:(unit " TTL ") int32
-                        (list ~sep:(unit ", ") Ipaddr.V4.pp_hum))
-                     (pair ~sep:(unit " TTL ") int32
-                        (list ~sep:(unit ", ") Ipaddr.V6.pp_hum)))))
-        (Dns_name.DomMap.bindings glue)
     | Ptr, (ttl, name) -> Fmt.pf ppf "ptr ttl %lu %a" ttl Dns_name.pp name
     | Soa, (ttl, soa) -> Fmt.pf ppf "soa ttl %lu %a" ttl Dns_packet.pp_soa soa
     | Txt, (ttl, txts) ->
@@ -217,7 +208,7 @@ let equal_v v v' = match v, v' with
             prio = prio' && Dns_name.equal name name')
           mxs')
       mxs
-  | V (K.Ns, (_, ns, _)), V (K.Ns, (_, ns', _)) ->
+  | V (K.Ns, (_, ns)), V (K.Ns, (_, ns')) ->
     Dns_name.DomSet.equal ns ns'
   | V (K.Ptr, (_, name)), V (K.Ptr, (_, name')) ->
     Dns_name.equal name name'
@@ -292,7 +283,7 @@ let to_rr : Dns_name.t -> v -> Dns_packet.rr list = fun name (V (k, v)) ->
     List.map (fun (prio, mx) ->
         { Dns_packet.name ; ttl ; rdata = Dns_packet.MX (prio, mx) })
       mxs
-  | K.Ns, (ttl, names, _) ->
+  | K.Ns, (ttl, names) ->
     Dns_name.DomSet.fold (fun ns acc ->
       { Dns_packet.name ; ttl ; rdata = Dns_packet.NS ns } :: acc)
       names []
@@ -328,7 +319,7 @@ let to_rr : Dns_name.t -> v -> Dns_packet.rr list = fun name (V (k, v)) ->
 let names = function
   | V (K.Any, (_, names)) -> names
   | V (K.Mx, (_, mxs)) -> Dns_name.DomSet.of_list (snd (List.split mxs))
-  | V (K.Ns, (_, names, _)) -> names
+  | V (K.Ns, (_, names)) -> names
   | V (K.Srv, (_, srvs)) ->
     Dns_name.DomSet.of_list (List.map (fun x -> x.Dns_packet.target) srvs)
   | _ -> Dns_name.DomSet.empty
@@ -336,8 +327,7 @@ let names = function
 let of_rdata : int32 -> Dns_packet.rdata -> v option = fun ttl rd ->
   match rd with
   | Dns_packet.MX (prio, name) -> Some (V (K.Mx, (ttl, [ (prio, name) ])))
-  | Dns_packet.NS ns ->
-    Some (V (K.Ns, (ttl, Dns_name.DomSet.singleton ns, Dns_name.DomMap.empty)))
+  | Dns_packet.NS ns -> Some (V (K.Ns, (ttl, Dns_name.DomSet.singleton ns)))
   | Dns_packet.PTR ptr -> Some (V (K.Ptr, (ttl, ptr)))
   | Dns_packet.SOA soa -> Some (V (K.Soa, (ttl, soa)))
   | Dns_packet.TXT txt -> Some (V (K.Txt, (ttl, [ txt ])))
@@ -353,8 +343,8 @@ let add_rdata : v -> Dns_packet.rdata -> v option = fun v rdata ->
   match v, rdata with
   | V (K.Mx, (ttl, mxs)), Dns_packet.MX (prio, name) ->
     Some (V (K.Mx, (ttl, add (prio, name) mxs)))
-  | V (K.Ns, (ttl, nss, glue)), Dns_packet.NS ns ->
-    Some (V (K.Ns, (ttl, Dns_name.DomSet.add ns nss, glue)))
+  | V (K.Ns, (ttl, nss)), Dns_packet.NS ns ->
+    Some (V (K.Ns, (ttl, Dns_name.DomSet.add ns nss)))
   | V (K.Txt, (ttl, txts)), Dns_packet.TXT txt ->
     Some (V (K.Txt, (ttl, add txt txts)))
   | V (K.A, (ttl, ips)), Dns_packet.A ip ->
@@ -377,13 +367,12 @@ let remove_rdata : v -> Dns_packet.rdata -> v option = fun v rdata ->
       | [] -> None
       | mxs -> Some (V (K.Mx, (ttl, mxs)))
     end
-  | V (K.Ns, (ttl, nss, glue)), Dns_packet.NS ns ->
+  | V (K.Ns, (ttl, nss)), Dns_packet.NS ns ->
     let left = Dns_name.DomSet.remove ns nss in
     if left = Dns_name.DomSet.empty then
       None
     else
-      let glue' = Dns_name.DomMap.remove ns glue in
-      Some (V (K.Ns, (ttl, left, glue')))
+      Some (V (K.Ns, (ttl, left)))
   | V (K.Txt, (ttl, txts)), Dns_packet.TXT txt ->
     begin match rm txt txts with
       | [] -> None

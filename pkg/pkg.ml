@@ -23,11 +23,11 @@ let () =
     Pkg.mllib "crypto/udns_crypto.mllib" ;
     Pkg.mllib "server/udns_server.mllib" ;
     Pkg.mllib ~api:["Zonefile"] "zonefile/udns_zonefile.mllib" ;
-    (* Pkg.mllib "resolver/udns_resolver.mllib" ; *)
+    Pkg.mllib "resolver/udns_resolver.mllib" ;
     Pkg.mllib "mirage/udns_mirage.mllib" ;
     Pkg.test "test/tests" ;
     Pkg.test "test/tsig" ;
-    (* Pkg.test "test/resolver" ; *)
+    Pkg.test "test/resolver" ;
     Pkg.test "test/server" ;
     (* Pkg.test ~run:false "test/afl" *)
     Pkg.test ~run:false "test/bench" ;

@@ -1,32 +1,28 @@
 true : bin_annot, safe_string, principal, color(always)
 true : warn(+A-4-44)
-true : package(rresult cstruct astring fmt logs)
+true : package(rresult cstruct astring fmt ipaddr logs ptime)
 
 <mirage/examples>: -traverse
 
 <src/*> : warn_error(+1..49)
 <src/dns_enum.{ml,mli}>: package(ppx_cstruct)
-<src/dns_packet.{ml,mli}>: package(ipaddr ptime)
-<src/dns_map.{ml,mli}>: package(ipaddr)
 "src" : include
 
 <crypto/*> : warn_error(+1..49)
-<crypto/*> : package(nocrypto ptime)
+<crypto/*> : package(nocrypto)
 "crypto" : include
 
 <resolver/*> : warn_error(+1..49)
-<resolver/*> : package(duration lru ipaddr)
+<resolver/*> : package(duration lru randomconv)
 "resolver" : include
 
 <server/*> : warn_error(+1..49)
-<server/dns_server.{ml,mli}>: package(ipaddr ptime randomconv duration)
+<server/dns_server.{ml,mli}>: package(randomconv duration)
 "server" : include
 
-<zonefile/*> : package(ipaddr)
+<mirage/*> : package(mirage-types-lwt lwt duration randomconv)
 
-<mirage/*> : package(mirage-types-lwt lwt duration ptime)
-
-<test/*> : package(alcotest ipaddr ptime randomconv duration)
+<test/*> : package(alcotest randomconv duration)
 <test/tsig.{ml,native,byte}> : package(nocrypto)
 <test/resolver.{ml,native,byte}> : package(lru duration)
 

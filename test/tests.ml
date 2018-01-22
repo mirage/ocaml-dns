@@ -292,7 +292,9 @@ module Packet = struct
                | `BadClass of int | `DisallowedClass of Dns_enum.clas | `UnsupportedClass of Dns_enum.clas
                | `BadOpcode of int | `UnsupportedOpcode of Dns_enum.opcode
                | `BadRcode of int
-               | `BadProto of int | `BadAlgorithm of int | `BadCaaTag
+               | `BadProto of int | `BadAlgorithm of int
+               | `BadOpt | `BadKeepalive
+               | `BadCaaTag
                | `LeftOver | `InvalidTimestamp of int64
                | `InvalidAlgorithm of Dns_name.t
                | `NonZeroTTL of int32
@@ -318,6 +320,8 @@ module Packet = struct
         | `LeftOver, `LeftOver -> true
         | `BadProto a, `BadProto b -> a = b
         | `BadAlgorithm a, `BadAlgorithm b -> a = b
+        | `BadOpt, `BadOpt -> true
+        | `BadKeepalive, `BadKeepalive -> true
         | `InvalidTimestamp a, `InvalidTimestamp b -> a = b
         | `InvalidAlgorithm a, `InvalidAlgorithm b -> Dns_name.equal a b
         | `NonZeroTTL a, `NonZeroTTL b -> a = b
@@ -557,12 +561,80 @@ module Packet = struct
                      answer = [] ; additional = []}))
                 (decode data))
 
+  let regression3 () =
+    let data = of_hex {___|e213 8180 0001
+        0001 0000 0001 0366 6f6f 0363 6f6d 0000
+        0f00 01c0 0c00 0f00 0100 0002 2c00 0b03
+        e801 3001 3001 3001 3000 0000 2901 c2 00
+        0000 0000 00|___}
+    in
+    let header =
+      let rcode = Dns_enum.NoError in
+      { query = false ; id = 0xe213 ; operation = Dns_enum.Query ;
+        authoritative = false ; truncation = false ; recursion_desired = true ;
+        recursion_available = true ; authentic_data = false ;
+        checking_disabled = false ; rcode }
+    in
+    let question =
+      [ { q_name = Dns_name.of_string_exn ~hostname:false "foo.com" ;
+          q_type = Dns_enum.MX } ]
+    and answer =
+      let prio, n = (1000, Dns_name.of_string_exn ~hostname:false "0.0.0.0") in
+      [ { name = Dns_name.of_string_exn "foo.com" ; ttl = 556l ; rdata = MX (prio, n) } ]
+    and additional =
+      let opt = [ Payload_size 450 ] in
+      [ { name = Dns_name.root ; ttl = 0l ; rdata = OPTS opt } ]
+    in
+    Alcotest.(check (result q_ok p_err) "regression 4 decodes"
+                (Ok (header, {
+                     question ; authority = [] ; answer ; additional}))
+                (decode data))
+
+  (* still not sure whether to allow this or not... *)
+  let regression4 () =
+    let data = of_hex {___|9f ca 84 03 00 01 00 00  00 01 00 01 04 5f 74 63
+                           70 04 6b 65 79 73 06 72  69 73 65 75 70 03 6e 65
+                           74 00 00 02 00 01 c0 16  00 06 00 01 00 00 01 2c
+                           00 2b 07 70 72 69 6d 61  72 79 c0 16 0a 63 6f 6c
+                           6c 65 63 74 69 76 65 c0  16 78 48 8b 04 00 00 1c
+                           20 00 00 0e 10 00 12 75  00 00 00 01 2c 00 00 29
+                           10 00 00 00 00 00 00 00|___}
+    in
+    let header =
+      let rcode = Dns_enum.NXDomain in
+      { query = false ; id = 0x9FCA ; operation = Dns_enum.Query ;
+        authoritative = false ; truncation = false ; recursion_desired = false ;
+        recursion_available = false ; authentic_data = false ;
+        checking_disabled = false ; rcode }
+    in
+    let question =
+      [ { q_name = Dns_name.of_string_exn ~hostname:false "_tcp.keys.riseup.net" ;
+          q_type = Dns_enum.NS } ]
+    and authority =
+      let soa = { nameserver = Dns_name.of_string_exn "primary.riseup.net" ;
+                  hostmaster = Dns_name.of_string_exn "collective.riseup.net" ;
+                  serial = 0x78488b04l ; refresh = 0x1c20l ; retry = 0x0e10l ;
+                  expiry = 0x127500l ; minimum = 0x012cl }
+      in
+      [ { name = Dns_name.of_string_exn "riseup.net" ; ttl = 300l ; rdata = SOA soa } ]
+    and additional =
+      let opt = [ Payload_size 4096 ] in
+      [ { name = Dns_name.root ; ttl = 0l ; rdata = OPTS opt } ]
+    in
+    Alcotest.(check (result q_ok p_err) "regression 4 decodes"
+                (Ok (header, {
+                     question ; authority ;
+                     answer = [] ; additional}))
+                (decode data))
+
   let code_tests = [
     "basic header", `Quick, basic_header ;
     "bad query", `Quick, bad_query ;
     "regression0", `Quick, regression0 ;
     "regression1", `Quick, regression1 ;
     "regression2", `Quick, regression2 ;
+    "regression3", `Quick, regression3 ;
+    (* "regression4", `Quick, regression4 ; *)
   ]
 end
 

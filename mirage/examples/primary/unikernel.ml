@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Lwt.Infix
 
@@ -28,15 +28,23 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
     let t = insert (n "mirage") (V (K.Ns, (ttl, s ns, Dns_name.DomMap.empty))) t in
     let t = insert (n "nuc.mirage") (V (K.A, (ttl, [ ip "10.0.0.1" ]))) t in
     let t = insert ns (V (K.A, (ttl, [ ip "10.0.0.2" ]))) t in
-    let t = insert (n "charrua.mirage") (V (K.A, (ttl, [ ip "10.0.0.5" ]))) t in
-    let t = insert (n "resolver.mirage") (V (K.Cname, (ttl, n "cname2.example"))) t in
-    let key = Cstruct.of_string  "vig6XSd5HUDh79UQrdS3qfO5/rfMcNofhzQGtEQpyHs=" in
-    let t = insert (Dns_name.of_string_exn ~hostname:false "key._transfer.example")
-        (V (K.Dnskey, [ { Dns_packet.flags = 0 ; key_algorithm = Dns_enum.SHA256 ; key } ])) t
+    let t = insert (n "charrua.mirage") (V (K.A, (ttl, [ ip "10.0.0.3" ]))) t in
+    let t = insert (n "resolver.mirage") (V (K.A, (ttl, [ ip "10.0.0.5" ]))) t in
+    let t = insert (n "www.mirage") (V (K.Cname, (ttl, n "nuc.mirage"))) t in
+    let key_algorithm = Dns_enum.SHA256
+    and flags = 0
     in
-    let key = Cstruct.of_string "eEc/4kAwnhNXAcKrfyyC13NeVG2CkBaHRrYbDoUVDOE=" in
-    let t = insert (Dns_name.of_string_exn ~hostname:false "one._update.example")
-        (V (K.Dnskey, [ { Dns_packet.flags = 0 ; key_algorithm = Dns_enum.SHA256 ; key } ])) t
+    let key = Cstruct.of_string "/WcnjpqrErYrXi1dd4sv8dfwCwDFg0ZGm6N6Bq1VwMI=" in
+    let t = insert (Dns_name.of_string_exn ~hostname:false "key._transfer.mirage")
+        (V (K.Dnskey, [ { Dns_packet.flags ; key_algorithm ; key } ])) t
+    in
+    let key = Cstruct.of_string "eRhj4OoaGIIJ3I9hJFwYGhAkdiR5DNzia0WoGrYy70k=" in
+    let t = insert (Dns_name.of_string_exn ~hostname:false "one._update.mirage")
+        (V (K.Dnskey, [ { Dns_packet.flags ; key_algorithm ; key } ])) t
+    in
+    let key = Cstruct.of_string "/NzgCgIc4yKa7nZvWmODrHMbU+xpMeGiDLkZJGD/Evo=" in
+    let t = insert (Dns_name.of_string_exn ~hostname:false "foo._key-management")
+        (V (K.Dnskey, [ { Dns_packet.flags ; key_algorithm ; key } ])) t
     in
     t
 

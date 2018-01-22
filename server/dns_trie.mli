@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 (** Prefix tree data structure for domain names
 
     The key is a {!Dns_name}, whereas the value may be any resource record.  The
@@ -44,7 +44,7 @@ val remove : Dns_name.t -> Dns_enum.rr_typ -> t -> t
 
 val remove_zone : Dns_name.t -> t -> t
 (** [remove_zone name t] remove the zone [name] from [t], retaining subzones
-    (entries with [Soa] records). *)
+    (entries with [Soa] records).  This removes as well any delegations. *)
 
 
 (** {1 Checking invariants} *)
@@ -55,7 +55,6 @@ type err = [ `Missing_soa of Dns_name.t
            | `Bad_ttl of Dns_name.t * Dns_map.v
            | `Empty of Dns_name.t * Dns_enum.rr_typ
            | `Missing_address of Dns_name.t
-           | `Missing_ns of Dns_name.t
            | `Soa_not_ns of Dns_name.t ]
 
 val pp_err : err Fmt.t
@@ -67,29 +66,20 @@ val check : t -> (unit, err) result
 
 (** {1 Lookup} *)
 
-val pp_e : [< `Delegation of Dns_name.t * (int32 * Dns_name.DomSet.t * Dns_packet.rr list)
+val pp_e : [< `Delegation of Dns_name.t * (int32 * Dns_name.DomSet.t)
            | `EmptyNonTerminal of Dns_name.t * int32 * Dns_packet.soa
            | `NotAuthoritative
            | `NotFound of Dns_name.t * int32 * Dns_packet.soa ] Fmt.t
 
 
-(* TODO: is this premature optimisation to _not_ walk the trie twice!? *)
-val lookup_a : Dns_name.t -> Dns_enum.rr_typ -> t ->
-  (Dns_map.v * (Dns_name.t * int32 * Dns_name.DomSet.t),
-   [> `Delegation of Dns_name.t * (int32 * Dns_name.DomSet.t * Dns_packet.rr list)
-   | `EmptyNonTerminal of Dns_name.t * int32 * Dns_packet.soa
-   | `NotAuthoritative
-   | `NotFound of Dns_name.t * int32 * Dns_packet.soa ]) result
-(** [lookup_auth k ty t] finds [k, ty] in [t], which may lead to an error.  The
-    authority information is returned as well. *)
-
 val lookup : Dns_name.t -> Dns_enum.rr_typ -> t ->
-  (Dns_map.v,
-   [> `Delegation of Dns_name.t * (int32 * Dns_name.DomSet.t * Dns_packet.rr list)
+  (Dns_map.v * (Dns_name.t * int32 * Dns_name.DomSet.t),
+   [> `Delegation of Dns_name.t * (int32 * Dns_name.DomSet.t)
    | `EmptyNonTerminal of Dns_name.t * int32 * Dns_packet.soa
    | `NotAuthoritative
    | `NotFound of Dns_name.t * int32 * Dns_packet.soa ]) result
-(** [lookup k ty t] finds [k, ty] in [t], which may lead to an error. *)
+(** [lookup k ty t] finds [k, ty] in [t], which may lead to an error.  The
+    authority information is returned as well. *)
 
 val lookup_ignore : Dns_name.t -> Dns_enum.rr_typ -> t ->
   (Dns_map.v, unit) result
@@ -98,7 +88,7 @@ val lookup_ignore : Dns_name.t -> Dns_enum.rr_typ -> t ->
 
 val entries : Dns_name.t -> t ->
   (Dns_packet.rr * Dns_packet.rr list,
-   [> `Delegation of Dns_name.t * (int32 * Dns_name.DomSet.t * Dns_packet.rr list)
+   [> `Delegation of Dns_name.t * (int32 * Dns_name.DomSet.t)
    | `NotAuthoritative
    | `NotFound of Dns_name.t * int32 * Dns_packet.soa ]) result
 (** [entries name t] returns either the SOA and all entries for the requested

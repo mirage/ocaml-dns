@@ -1,6 +1,12 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 type t
+
+type stats
+
+val pp_stats : stats Fmt.t
+
+val stats : unit -> stats
 
 val empty : int -> t
 
@@ -25,17 +31,23 @@ val follow_cname : t -> int64 -> Dns_enum.rr_typ -> Dns_name.t -> Dns_packet.rr 
   | `ServFail of Dns_packet.rr * t
   ]
 
+val answer : t -> int64 -> Dns_packet.question -> int ->
+  [ `Query of Dns_name.t * t
+  | `Packet of Dns_packet.t * t ]
+
 val resolve_ns : t -> int64 -> Dns_name.t ->
   ([ `NeedA of Dns_name.t
-   | `HaveIP of Ipaddr.V4.t list ] * t, unit) result
+   | `NeedCname of Dns_name.t
+   | `HaveIPS of Ipaddr.V4.t list
+   | `NoDom
+   | `No ] * t)
 
-val find_ns : t -> ?overlay:(Dns_name.t -> Ipaddr.V4.t option) -> int64 -> Dns_name.t -> [ `NeedNS | `No | `Cname of Dns_name.t | `HaveIP of Ipaddr.V4.t list | `NeedA of Dns_name.t ] * t
+val find_ns : t -> (int -> Cstruct.t) -> int64 -> Dns_name.DomSet.t -> Dns_name.t ->
+  [ `Loop | `NeedNS | `NoDom | `No | `Cname of Dns_name.t | `HaveIP of Ipaddr.V4.t | `NeedA of Dns_name.t | `NeedGlue of Dns_name.t ] * t
 
-val root_servers : Ipaddr.V4.t list
+val resolve : t -> rng:(int -> Cstruct.t) ->  int64 -> Dns_name.t -> Dns_enum.rr_typ -> (Dns_name.t * Dns_enum.rr_typ * Ipaddr.V4.t * t, string) result
 
-val resolve : t -> ?overlay:(Dns_name.t -> Ipaddr.V4.t option) -> int64 -> Dns_name.t -> Dns_enum.rr_typ -> (Dns_name.t * Dns_enum.rr_typ * Ipaddr.V4.t list * t, string) result
-
-val handle_query : t -> ?overlay:(Dns_name.t -> Ipaddr.V4.t option) -> Ipaddr.V4.t -> int -> int64 -> Dns_packet.question -> int ->
-  [ `Answer of Cstruct.t * (Ipaddr.V4.t * int)
+val handle_query : t -> rng:(int -> Cstruct.t) -> int64 -> Dns_packet.question -> int ->
+  [ `Answer of Dns_packet.t
   | `Nothing
   | `Query of Dns_name.t * Dns_enum.rr_typ * Ipaddr.V4.t ] * t

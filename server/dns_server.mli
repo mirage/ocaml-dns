@@ -1,35 +1,73 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-(* just for convenience... *)
-type proto = [ `Tcp | `Udp ]
-
-type a = Dns_trie.t -> proto -> Dns_name.t option -> string -> Dns_name.t -> bool
+type a = Dns_trie.t -> Dns_packet.proto -> Dns_name.t option -> string -> Dns_name.t -> bool
 
 val tsig_auth : a
 
+type t = private {
+  data : Dns_trie.t ;
+  authorised : a list ;
+  rng : int -> Cstruct.t ;
+  tsig_verify : Dns_packet.tsig_verify ;
+  tsig_sign : Dns_packet.tsig_sign ;
+}
+
+val create : Dns_trie.t -> a list -> (int -> Cstruct.t) ->
+  Dns_packet.tsig_verify -> Dns_packet.tsig_sign -> t
+
+val handle_query : t -> Dns_packet.proto -> Dns_name.t option -> Dns_packet.header ->
+  Dns_packet.query ->
+  (Dns_packet.t, Dns_enum.rcode) result
+
+module IPS : (Set.S with type elt = Ipaddr.V4.t)
+
+val notify : (int -> Cstruct.t) -> int64 -> Dns_trie.t -> Dns_name.t ->
+  Dns_packet.soa ->
+  (int64 * int * IPS.elt * Dns_packet.header * Dns_packet.query) list
+
+val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Dns_packet.t ->
+  int option -> Cstruct.t ->
+  ((Dns_name.t * Dns_packet.tsig * Cstruct.t * Dns_packet.dnskey) option,
+   Cstruct.t) result
+
 module Primary : sig
-  type t
+  type s
+
+  val server : s -> t
 
   (* TODO: could make the Dns_trie.t optional, and have an optional key *)
   val create : int64 -> ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->
-    ?zones:Dns_name.t list -> Dns_trie.t -> t
+    ?zones:Dns_name.t list -> Dns_trie.t -> s
 
-  val handle : t -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> Cstruct.t ->
-    t * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t) list
+  val handle_frame : s -> int64 -> Ipaddr.V4.t -> Dns_packet.proto ->
+    Dns_name.t option -> Dns_packet.t ->
+    (s * Dns_packet.t option * (Ipaddr.V4.t * Cstruct.t) list,
+     Dns_enum.rcode) result
 
-  val timer : t -> int64 -> t * (Ipaddr.V4.t * Cstruct.t) list
+  val handle : s -> Ptime.t -> int64 -> Dns_packet.proto -> Ipaddr.V4.t -> Cstruct.t ->
+    s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t) list
+
+  val timer : s -> int64 -> s * (Ipaddr.V4.t * Cstruct.t) list
 end
 
 module Secondary : sig
-  type t
+  type s
+
+  val server : s -> t
 
   val create : ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->
-    (Dns_name.t * Dns_packet.dnskey) list -> t
+    (Dns_name.t * Dns_packet.dnskey) list -> s
 
-  val handle : t -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> Cstruct.t ->
-    t * Cstruct.t option * (proto * Ipaddr.V4.t * Cstruct.t) list
+  val handle_frame : s -> Ptime.t -> int64 -> Ipaddr.V4.t -> Dns_packet.proto ->
+    Dns_name.t option -> Dns_packet.dnskey option -> Dns_packet.t ->
+    (s * Dns_packet.t option * (Dns_packet.proto * Ipaddr.V4.t * Cstruct.t) list,
+     Dns_enum.rcode) result
 
-  val timer : t -> Ptime.t -> int64 -> t * (proto * Ipaddr.V4.t * Cstruct.t) list
+  val handle : s -> Ptime.t -> int64 -> Dns_packet.proto -> Ipaddr.V4.t -> Cstruct.t ->
+    s * Cstruct.t option * (Dns_packet.proto * Ipaddr.V4.t * Cstruct.t) list
+
+  val timer : s -> Ptime.t -> int64 ->
+    s * (Dns_packet.proto * Ipaddr.V4.t * Cstruct.t) list
 end

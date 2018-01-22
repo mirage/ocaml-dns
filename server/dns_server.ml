@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Rresult
 open R.Infix
@@ -10,10 +10,17 @@ let guard p err = if p then Ok () else Error err
 
 type proto = [ `Tcp | `Udp ]
 
-let size = function
-  | `Udp -> 450
-  | `Tcp -> 4056
-  | `Tls _ -> 4000
+let s_header h =
+  { h with Dns_packet.authoritative = true ; query = false ;
+           recursion_available = false ; authentic_data = false }
+
+let err header v rcode =
+  let header =
+    let hdr = s_header header in
+    let authoritative = if rcode = Dns_enum.NotAuth then false else true in
+    { hdr with Dns_packet.authoritative }
+  in
+  Dns_packet.error header v rcode
 
 type a = Dns_trie.t -> proto -> Dns_name.t option -> string -> Dns_name.t -> bool
 
@@ -72,7 +79,7 @@ let find_glue trie typ name names =
     | _ -> empty, empty
   in
   let find_rr typ name =
-    match Dns_trie.lookup_a name typ trie with
+    match Dns_trie.lookup name typ trie with
     | Ok (v, _) -> Dns_map.to_rr name v
     | _ -> []
   in
@@ -82,11 +89,13 @@ let find_glue trie typ name names =
       acc)
     names []
 
-let lookup trie hdr max q =
+let lookup trie hdr q =
   let open Dns_packet in
-  let answer ?(hdr = hdr) ?(an = []) ?(au = []) ?(ad = []) () =
+  let answer ?(authoritative = true) ?(rcode = Dns_enum.NoError) ?(an = []) ?(au = []) ?(ad = []) () =
     (* TODO: should randomize answers + ad? *)
     (* TODO: should dedup at a higher layer (v instead of rr) *)
+    let hdr = s_header hdr in
+    let hdr = { hdr with authoritative ; rcode } in
     (* TODO: temporary precaution, should be relaxed later (once we support DNSSec) *)
     let au =
       List.filter (fun a ->
@@ -103,15 +112,9 @@ let lookup trie hdr max q =
           not (List.exists (fun rr -> Dns_packet.rr_equal rr a) (an@authority)))
         ad
     in
-    let q =
-      { question = [ q ] ; answer = an ; authority ; additional }
-    (* TODO: this is bad -- rethink allocation strategy *)
-    and b = Cstruct.create max
-    in
-    let l = encode_query b hdr q in
-    Ok (Cstruct.sub b 0 l)
+    Ok (hdr, `Query { question = [ q ] ; answer = an ; authority ; additional })
   in
-  match Dns_trie.lookup_a q.q_name q.q_type trie with
+  match Dns_trie.lookup q.q_name q.q_type trie with
   | Ok (v, (name, ttl, ns)) ->
     let an = Dns_map.to_rr q.q_name v
     and au = to_ns_rrs name ttl ns
@@ -121,21 +124,28 @@ let lookup trie hdr max q =
       find_glue trie q.q_type q.q_name names
     in
     answer ~an ~au ~ad ()
-  | Error (`Delegation (name, (ttl, ns, rr))) ->
-    let hdr = { hdr with authoritative = false } in
-    answer ~hdr ~au:(to_ns_rrs name ttl ns) ~ad:rr ()
+  | Error (`Delegation (name, (ttl, ns))) ->
+    let ad =
+      Dns_name.DomSet.fold (fun name acc ->
+          (* TODO aaaa records! *)
+          match Dns_trie.lookup_ignore name Dns_enum.A trie with
+          | Ok (Dns_map.V (Dns_map.K.A, _) as v) -> Dns_map.to_rr name v @ acc
+          | _ -> acc)
+        ns []
+    in
+    answer ~authoritative:false ~au:(to_ns_rrs name ttl ns) ~ad ()
   | Error (`EmptyNonTerminal (zname, ttl, soa)) ->
     answer ~au:(to_soa zname ttl soa) ()
   | Error (`NotFound (zname, ttl, soa)) ->
-    let hdr = { hdr with rcode = Dns_enum.NXDomain } in
-    answer ~hdr ~au:(to_soa zname ttl soa) ()
-  | Error `NotAuthoritative ->
-    let hdr =
-      { hdr with rcode = Dns_enum.NotAuth ; authoritative = false }
-    in
-    answer ~hdr ()
+    answer ~rcode:Dns_enum.NXDomain ~au:(to_soa zname ttl soa) ()
+  | Error `NotAuthoritative -> Error Dns_enum.NotAuth
 
-let axfr t proto key hdr q zone =
+let axfr t proto key q zone =
+  (if proto = `Udp then begin
+      Log.err (fun m -> m "refusing AXFR query via UDP") ;
+      Error Dns_enum.Refused
+    end else
+     Ok ()) >>= fun () ->
   (if authorise t proto key zone Key_management then
      Ok true
    else if authorise t proto key zone Transfer then
@@ -145,23 +155,20 @@ let axfr t proto key hdr q zone =
   match Dns_trie.entries zone t.data with
   | Ok (soa, rrs) ->
     let rrs =
-      if keys then rrs
+      if keys then
+        rrs
       else
         let not_dnskey rr =
           Dns_packet.(match rr.rdata with DNSKEY _ -> false | _ -> true)
         in
         List.filter not_dnskey rrs
     in
-    let b = Cstruct.create (size proto) in
-    let q =
-      let answer = soa :: rrs @ [ soa ] in
-      { Dns_packet.question = q.Dns_packet.question ; answer ; authority = [] ;
-        additional = [] }
+    let answer = soa :: rrs @ [ soa ]
+    and question = q.Dns_packet.question
+    and authority = []
+    and additional = []
     in
-    (* TODO: never truncate! answer in multiple packets, leave space for tsig!
-             (but we only ever use TCP for AXFR, thanks to a filter above! *)
-    let l = Dns_packet.encode_query b hdr q in
-    Ok (Cstruct.sub b 0 l)
+    Ok (`Query { Dns_packet.question ; answer ; authority ; additional })
   | Error `Delegation _
   | Error `NotAuthoritative
   | Error `NotFound _ ->
@@ -172,7 +179,7 @@ let axfr t proto key hdr q zone =
 let key_retrieval t proto key hdr q =
   guard (authorise t proto key q.Dns_packet.q_name Key_management)
     Dns_enum.NotAuth >>= fun () ->
-  lookup t.data hdr (size proto) q
+  lookup t.data hdr q
 
 let safe_decode buf =
   match Dns_packet.decode buf with
@@ -200,22 +207,16 @@ let safe_decode buf =
 let handle_query t proto key header query =
   match query.Dns_packet.question with
   | [ q ] ->
-    let hdr =
-      { header with Dns_packet.query = false ;
-                    authoritative = true ;
-                    recursion_available = false ;
-                    authentic_data = false }
-    in
     let open Dns_enum in
     begin match q.Dns_packet.q_type with
-      | AXFR | ANY when proto = `Udp ->
-        Logs.err (fun m -> m "refusing %a query via UDP" Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
-        Error Dns_enum.Refused
-      | AXFR -> axfr t proto key hdr query q.Dns_packet.q_name
-      | DNSKEY -> key_retrieval t proto key hdr q
+      | AXFR ->
+        axfr t proto key query q.Dns_packet.q_name >>= fun answer ->
+        let hdr = s_header header in
+        Ok (hdr, answer)
+      | DNSKEY -> key_retrieval t proto key header q
       (* TODO: IXFR -> *)
       | A | NS | CNAME | SOA | PTR | MX | TXT | AAAA | SRV | ANY | CAA ->
-        lookup t.data hdr (size proto) q
+        lookup t.data header q
       | r ->
         Log.err (fun m -> m "refusing query type %a" Dns_enum.pp_rr_typ r) ;
         Error Dns_enum.Refused
@@ -263,17 +264,17 @@ let check_exists trie rrs =
       Dns_map.fold (fun v r ->
           r >>= fun () ->
           match Dns_trie.lookup name (Dns_map.to_rr_typ v) trie with
-          | Ok v' when Dns_map.equal_v v v' -> Ok ()
+          | Ok (v', _) when Dns_map.equal_v v v' -> Ok ()
           | _ -> Error Dns_enum.NXRRSet)
         map r)
     map (Ok ())
 
 (* RFC 2136 Section 2.5 + 3.4.2 *)
-(* we never complain, we just ignore errors *)
-let handle_rr_update zname trie = function
+(* we partially ignore 3.4.2.3 and 3.4.2.4 by not special-handling of NS, SOA *)
+let handle_rr_update trie = function
   | Dns_packet.Remove (name, typ) ->
     begin match typ with
-      | Dns_enum.ANY | Dns_enum.NS ->
+      | Dns_enum.ANY ->
         Log.warn (fun m -> m "ignoring request to remove %a %a"
                       Dns_enum.pp_rr_typ typ Dns_name.pp name) ;
         trie
@@ -282,13 +283,7 @@ let handle_rr_update zname trie = function
         Dns_trie.remove_zone name trie
       | _ -> Dns_trie.remove name typ trie
     end
-  | Dns_packet.Remove_all name ->
-    if Dns_name.equal zname name then begin
-      Log.warn (fun m -> m "ignoring request to remove entire zone %a"
-                    Dns_name.pp name) ;
-      trie
-    end else
-      Dns_trie.remove name Dns_enum.ANY trie
+  | Dns_packet.Remove_all name -> Dns_trie.remove name Dns_enum.ANY trie
   | Dns_packet.Remove_single (name, rdata) ->
     let typ = Dns_packet.rdata_to_rr_typ rdata in
     begin match typ with
@@ -299,14 +294,14 @@ let handle_rr_update zname trie = function
         trie
       | _ ->
         begin match Dns_trie.lookup name typ trie with
-          | Ok (Dns_map.V (Dns_map.K.Cname, _)) when Dns_enum.CNAME = typ ->
+          | Ok (Dns_map.V (Dns_map.K.Cname, _), _) when Dns_enum.CNAME = typ ->
             (* we could be picky and require rdata.name == alias *)
             Dns_trie.remove name typ trie
-          | Ok (Dns_map.V (Dns_map.K.Cname, _)) ->
+          | Ok (Dns_map.V (Dns_map.K.Cname, _), _) ->
             Log.warn (fun m -> m "ignoring request to remove %a %a %a (got a cname on lookup)"
                           Dns_enum.pp_rr_typ typ Dns_name.pp name Dns_packet.pp_rdata rdata) ;
             trie
-          | Ok v ->
+          | Ok (v, _) ->
             begin match Dns_map.remove_rdata v rdata with
               | None -> Dns_trie.remove name typ trie
               | Some v -> Dns_trie.insert name v trie
@@ -319,7 +314,6 @@ let handle_rr_update zname trie = function
         end
     end
   | Dns_packet.Add rr ->
-    (* in contrast to 2136, we allow to add SOA - zone creation! *)
     let typ = Dns_packet.rdata_to_rr_typ rr.Dns_packet.rdata in
     begin match typ with
       | Dns_enum.ANY ->
@@ -332,11 +326,11 @@ let handle_rr_update zname trie = function
           trie
         | _ ->
           match Dns_trie.lookup rr.Dns_packet.name typ trie with
-          | Ok (Dns_map.V (Dns_map.K.Cname, (_, alias))) ->
+          | Ok (Dns_map.V (Dns_map.K.Cname, (_, alias)), _) ->
             Log.warn (fun m -> m "found a CNAME %a, won't add %a"
                           Dns_name.pp alias Dns_packet.pp_rr rr) ;
             trie
-          | Ok v ->
+          | Ok (v, _) ->
             begin match Dns_map.add_rdata v rr.Dns_packet.rdata with
               | None ->
                 Log.warn (fun m -> m "error while adding %a to %a"
@@ -345,17 +339,17 @@ let handle_rr_update zname trie = function
               | Some v ->
                 Dns_trie.insert rr.Dns_packet.name v trie
             end
-          | Error (`EmptyNonTerminal _ | `NotFound _) ->
+          | Error _ ->
+            (* here we allow arbitrary, even out-of-zone updates.  this is
+               crucial for the resolver operation as we have it right now:
+               add . 300 NS resolver ; add resolver . 300 A 141.1.1.1 would
+               otherwise fail (no SOA for . / delegation for resolver) *)
             begin match Dns_map.of_rdata rr.Dns_packet.ttl rr.Dns_packet.rdata with
               | None ->
                 Log.warn (fun m -> m "couldn't convert rdata %a" Dns_packet.pp_rr rr) ;
                 trie
               | Some v -> Dns_trie.insert rr.Dns_packet.name v trie
             end
-          | Error e ->
-            Log.warn (fun m -> m "error %a on lookup while adding %a"
-                          Dns_trie.pp_e e Dns_packet.pp_rr rr) ;
-            trie
     end
 
 let extract_zone_and_ip ?(secondary = false) name =
@@ -380,28 +374,16 @@ let notify rng now trie zone soa =
      servers which have transfer keys for the zone *)
   let ips =
     match Dns_trie.lookup zone Dns_enum.NS trie with
-    | Ok (Dns_map.V (Dns_map.K.Ns, (_, ns, glue))) ->
+    | Ok (Dns_map.V (Dns_map.K.Ns, (_, ns)), _) ->
       let secondaries = Dns_name.DomSet.remove soa.Dns_packet.nameserver ns in
-      (* TODO: AAAA records *)
+      (* TODO AAAA records *)
       Dns_name.DomSet.fold (fun ns acc ->
-          let ips =
-            match Dns_name.DomMap.find ns glue with
-            | exception Not_found -> None
-            | ((_, []), _) -> None
-            | ((_, xs), _) -> Some xs
-          in
-          let ips = match ips with
-            | None ->
-              Log.debug (fun m -> m "no address record found in glue for %a"
-                            Dns_name.pp ns) ;
-              begin match Dns_trie.lookup ns Dns_enum.A trie with
-                | Ok (Dns_map.V (Dns_map.K.A, (_, ips))) -> IPS.of_list ips
-                | _ ->
-                  Log.err (fun m -> m "lookup for A %a returned nothing as well"
-                              Dns_name.pp ns) ;
-                  IPS.empty
-              end
-            | Some ips -> IPS.of_list ips
+          let ips = match Dns_trie.lookup ns Dns_enum.A trie with
+            | Ok (Dns_map.V (Dns_map.K.A, (_, ips)), _) -> IPS.of_list ips
+            | _ ->
+              Log.err (fun m -> m "lookup for A %a returned nothing as well"
+                          Dns_name.pp ns) ;
+              IPS.empty
           in
           IPS.union ips acc) secondaries IPS.empty
     | _ -> IPS.empty
@@ -409,19 +391,19 @@ let notify rng now trie zone soa =
     let tx = Dns_name.prepend_exn ~hostname:false zone (operation_to_string Transfer) in
     match Dns_trie.keys tx trie with
     | Error () ->
-      Logs.err (fun m -> m "no keys found for %a" Dns_name.pp tx) ; IPS.empty
+      Log.err (fun m -> m "no keys found for %a" Dns_name.pp tx) ; IPS.empty
     | Ok es ->
       List.fold_left (fun acc (n, _) ->
           match extract_zone_and_ip ~secondary:true n with
           | None ->
-            Logs.err (fun m -> m "failed to parse secondary IP: %a" Dns_name.pp n) ;
+            Log.err (fun m -> m "failed to parse secondary IP: %a" Dns_name.pp n) ;
             acc
           | Some (_, ip) -> IPS.add ip acc)
         IPS.empty es
   in
   let ips = IPS.union ips key_ips in
-  Logs.debug (fun m -> m "notifying %a %a" Dns_name.pp zone
-                 Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) (IPS.elements ips)) ;
+  Log.debug (fun m -> m "notifying %a %a" Dns_name.pp zone
+                Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) (IPS.elements ips)) ;
   let notify =
     let question = [ { Dns_packet.q_name = zone ; q_type = Dns_enum.SOA } ] in
     let answer =
@@ -442,7 +424,7 @@ let notify rng now trie zone soa =
   in
   IPS.fold (fun ip acc -> one ip :: acc) ips []
 
-let handle_update t ts proto key header u =
+let handle_update t ts proto key u =
   (* first of all, see whether we think we're authoritative for the zone *)
   let zone = Dns_packet.(u.zone.q_name) in
   let need_key =
@@ -460,73 +442,32 @@ let handle_update t ts proto key header u =
      Ok ()
    else
      Error Dns_enum.NotAuth) >>= fun () ->
-  (* TODO: should we explicitly forbid root zone modifications? *)
   let trie = t.data in
-  match Dns_trie.lookup zone Dns_enum.SOA trie with
-  | Ok (Dns_map.V (Dns_map.K.Soa, (ttl, soa))) ->
-    List.fold_left (fun r pre ->
-        r >>= fun acc ->
-        handle_rr_prereq trie zone acc pre)
-      (Ok []) u.Dns_packet.prereq >>= fun acc ->
-    check_exists trie acc >>= fun () ->
-    let updates, glues =
-      let p u = in_zone zone (Dns_packet.rr_update_name u) in
-      List.partition p u.Dns_packet.update
-    in
-    let trie = List.fold_left (handle_rr_update zone) trie updates in
-    (* TODO: still need safety to have at least one glue address record for NS *)
-    (match glues, Dns_trie.lookup zone Dns_enum.NS trie with
-     | [], _ -> Ok trie
-     | glues, Ok (Dns_map.V (Dns_map.K.Ns, (ttl, ns, glue))) ->
-       List.fold_left (fun r up ->
-           r >>= fun glue ->
-           match up with
-           | Dns_packet.Add rr when Dns_name.DomSet.mem rr.Dns_packet.name ns ->
-             let a_glue, aaaa_glue = match Dns_name.DomMap.find rr.Dns_packet.name glue with
-               | exception Not_found -> ((0l, []), (0l, []))
-               | glue -> glue
-             in
-             (match rr.Dns_packet.rdata with
-              | Dns_packet.A ip ->
-                Ok ((ttl, ip :: snd a_glue), aaaa_glue)
-              | Dns_packet.AAAA ip6 ->
-                Ok (a_glue, (ttl, ip6 :: snd aaaa_glue))
-              | _ -> Error Dns_enum.NotZone) >>= fun glues ->
-             Ok (Dns_name.DomMap.add rr.Dns_packet.name glues glue)
-           | Dns_packet.Remove (name, typ) when Dns_name.DomSet.mem name ns ->
-             begin match Dns_name.DomMap.find name glue, typ with
-               | exception Not_found -> Error Dns_enum.NotZone
-               | (_, aaaa), Dns_enum.A ->
-                 Ok (Dns_name.DomMap.add name ((0l, []), aaaa) glue)
-               | (a, _), Dns_enum.AAAA ->
-                 Ok (Dns_name.DomMap.add name (a, (0l, [])) glue)
-               | _ -> Error Dns_enum.NotZone
-             end
-           | Dns_packet.Remove_all name when Dns_name.DomSet.mem name ns ->
-             Ok (Dns_name.DomMap.remove name glue)
-           | Dns_packet.Remove_single (name, data) when Dns_name.DomSet.mem name ns ->
-             let add = function
-               | ((_, []), (_, [])) -> Dns_name.DomMap.remove name glue
-               | entry -> Dns_name.DomMap.add name entry glue
-             in
-             begin match Dns_name.DomMap.find name glue, data with
-               | exception Not_found -> Ok glue
-               | ((ttla, a), aaaa), Dns_packet.A ip ->
-                 Ok (add ((ttla, List.filter (fun ip' -> not (Ipaddr.V4.compare ip' ip = 0)) a), aaaa))
-               | (a, (ttlaaaa, aaaa)), Dns_packet.AAAA ip6 ->
-                 Ok (add (a, (ttlaaaa, List.filter (fun ip' -> not (Ipaddr.V6.compare ip' ip6 = 0)) aaaa)))
-               | _ -> Error Dns_enum.NotZone
-             end
-           | _ -> Error Dns_enum.NotZone)
-         (Ok glue) glues >>= fun glue ->
-       Ok (Dns_trie.insert zone (Dns_map.V (Dns_map.K.Ns, (ttl, ns, glue))) trie)
-     | _, _ -> Error Dns_enum.NotZone) >>= fun trie ->
+  List.fold_left (fun r pre ->
+      r >>= fun acc ->
+      handle_rr_prereq trie zone acc pre)
+    (Ok []) u.Dns_packet.prereq >>= fun acc ->
+  check_exists trie acc >>= fun () ->
+  List.fold_left (fun acc up ->
+      acc >>= fun () ->
+      guard (in_zone zone (Dns_packet.rr_update_name up)) Dns_enum.NotZone)
+    (Ok ()) u.Dns_packet.update >>= fun () ->
+  let trie = List.fold_left handle_rr_update trie u.Dns_packet.update in
+  (match Dns_trie.check trie with
+   | Ok () -> Ok ()
+   | Error e ->
+     Log.err (fun m -> m "check after update returned %a" Dns_trie.pp_err e) ;
+     Error Dns_enum.FormErr) >>= fun () ->
+  match Dns_trie.lookup zone Dns_enum.SOA t.data, Dns_trie.lookup zone Dns_enum.SOA trie with
+  | Ok (Dns_map.V (Dns_map.K.Soa, (_, oldsoa)), _), Ok (Dns_map.V (Dns_map.K.Soa, (_, soa)), _) when oldsoa.Dns_packet.serial < soa.Dns_packet.serial ->
+    let notifies = notify t.rng ts trie zone soa in
+    Ok (trie, notifies)
+  | _, Ok (Dns_map.V (Dns_map.K.Soa, (ttl, soa)), _) ->
     let soa = { soa with Dns_packet.serial = Int32.succ soa.Dns_packet.serial } in
     let trie = Dns_trie.insert zone (Dns_map.V (Dns_map.K.Soa, (ttl, soa))) trie in
-    let answer = Dns_packet.answer header (`Update u) in
     let notifies = notify t.rng ts trie zone soa in
-    Ok (trie, answer, notifies)
-  | _ -> Error Dns_enum.NXDomain
+    Ok (trie, notifies)
+  | _, _ -> Ok (trie, [])
 
 let raw_server_error buf rcode =
   (* copy id from header, retain opcode, set rcode to ServFail
@@ -551,7 +492,7 @@ let find_key trie name p =
   | Ok (Dns_map.V (Dns_map.K.Dnskey, keys)) -> List.filter p keys
   | _ -> []
 
-let handle_tsig ?mac t now header v off buf =
+let handle_tsig ?mac t now (header, v) off buf =
   match off, Dns_packet.find_tsig v with
   | None, _ | _, None -> Ok None
   | Some off, Some (name, tsig) ->
@@ -571,35 +512,39 @@ let handle_tsig ?mac t now header v off buf =
 module Primary = struct
 
   (* TODO: there's likely a better data structure for outstanding notifications *)
-  type nonrec t =
+  type s =
     t * (int64 * int * Ipaddr.V4.t * Dns_packet.header * Dns_packet.query) list
+
+  let server (t, _) = t
 
   let create now ?(a = []) ~tsig_verify ~tsig_sign ~rng ?(zones = []) data =
     let notifications =
       List.fold_left (fun acc zone ->
           match Dns_trie.lookup zone Dns_enum.SOA data with
-          | Ok (Dns_map.V (Dns_map.K.Soa, (_, soa))) ->
+          | Ok (Dns_map.V (Dns_map.K.Soa, (_, soa)), _) ->
             acc @ notify rng now data zone soa
           | _ -> acc) [] zones
     in
     let t = create data a rng tsig_verify tsig_sign in
     (t, notifications)
 
-  let handle_frame (t, ns) ts ip proto header key v =
+  let handle_frame (t, ns) ts ip proto key (header, v) =
     match v, header.Dns_packet.query with
     | `Query q, true ->
       handle_query t proto key header q >>= fun answer ->
       Ok ((t, ns), Some answer, [])
     | `Update u, true ->
       (* TODO: intentional? all other notifications apart from the new ones are dropped *)
-      handle_update t ts proto key header u >>= fun (data, answer, notifications) ->
-      let out = List.map (fun (_, _, ip, hdr, q) ->
-          let buf = Cstruct.create 512 in
-          let l = Dns_packet.encode_query buf hdr q in
-          ip, Cstruct.sub buf 0 l)
-          notifications
+      handle_update t ts proto key u >>= fun (data, ns) ->
+      let out =
+        List.map (fun (_, _, ip, hdr, q) ->
+            (ip, fst (Dns_packet.encode ~edns:[] `Udp (hdr, `Query q)))) ns
       in
-      Ok (({ t with data }, notifications), answer, out)
+      let answer =
+        s_header header,
+        `Update { u with Dns_packet.prereq = [] ; update = [] ; addition = [] }
+      in
+      Ok (({ t with data }, ns), Some answer, out)
     | `Notify _, false ->
       let notifications =
         List.filter (fun (_, _, ip', hdr', _) ->
@@ -623,29 +568,35 @@ module Primary = struct
     | Error rcode -> (t, ns), raw_server_error buf rcode, []
     | Ok ((header, v), tsig_off) ->
       Log.debug (fun m -> m "%a sent %a" Ipaddr.V4.pp_hum ip Dns_packet.pp (header, v)) ;
-      match handle_tsig t now header v tsig_off buf with
+      let handle_inner keyname =
+        match handle_frame (t, ns) ts ip proto keyname (header, v) with
+        | Ok (t, Some answer, out) ->
+          let max_size, edns =
+            match Dns_packet.find_edns v with
+            | None -> None, None
+            | Some edns -> Dns_packet.payload_size edns, Some []
+          in
+          (* be aware, this may be truncated... here's where AXFR is assembled! *)
+          (t, Some (Dns_packet.encode ?max_size ?edns proto answer), out)
+        | Ok (t, None, out) -> (t, None, out)
+        | Error rcode -> ((t, ns), err header v rcode, [])
+      in
+      match handle_tsig t now (header, v) tsig_off buf with
       | Error data -> ((t, ns), Some data, [])
       | Ok None ->
-        begin match handle_frame (t, ns) ts ip proto header None v with
-          | Ok x -> x
-          | Error rcode -> ((t, ns), Dns_packet.error header v rcode, [])
+        begin match handle_inner None with
+          | t, None, out -> t, None, out
+          | t, Some (cs, _), out -> t, Some cs, out
         end
       | Ok (Some (name, tsig, mac, key)) ->
-        match handle_frame (t, ns) ts ip proto header (Some name) v with
-        | Ok (a, Some answer, out) ->
-          begin match t.tsig_sign ~mac name tsig ~key answer with
-            | None -> (a, None, out)
-            | Some (buf, _) -> (a, Some buf, out)
-          end
-        | Ok res -> res
-        | Error rcode ->
-          let answer = match Dns_packet.error header v rcode with
-            | None -> None
-            | Some err -> match t.tsig_sign ~mac name tsig ~key err with
-              | None -> None
-              | Some (buf, _) -> Some buf
-          in
-          ((t, ns), answer, [])
+        match handle_inner (Some name) with
+        | (a, None, out) -> (a, None, out)
+        | (a, Some (buf, max_size), out) ->
+          match t.tsig_sign ~max_size ~mac name tsig ~key buf with
+          | None ->
+            Log.warn (fun m -> m "couldn't use %a to tsig sign" Dns_name.pp name) ;
+            (a, None, out)
+          | Some (buf, _) -> (a, Some buf, out)
 
   let retransmit = Array.map Duration.of_sec [| 5 ; 12 ; 25 ; 40 ; 60 |]
 
@@ -666,12 +617,9 @@ module Primary = struct
             (ts, count, ip, hdr, q) :: ns, acc)
         ([], []) ns
     in
-    let out = List.map (fun (ip, hdr, q) ->
-        let buf = Cstruct.create 512 in
-        let l = Dns_packet.encode_query buf hdr q in
-        let b = Cstruct.sub buf 0 l in
-        (ip, b))
-        out
+    let out =
+      List.map (fun (ip, hdr, q) ->
+          (ip, fst (Dns_packet.encode `Udp (hdr, `Query q)))) out
     in
     (t, notifications), out
 end
@@ -682,8 +630,10 @@ module Secondary = struct
     | Requested_axfr of int64 * int * Cstruct.t
     | Requested_soa of int64 * int * Cstruct.t
 
-  type nonrec t =
+  type s =
     t * (state * Ipaddr.V4.t * Dns_name.t) Dns_name.DomMap.t
+
+  let server (t, _) = t
 
   let create ?(a = []) ~tsig_verify ~tsig_sign ~rng keys =
     (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
@@ -707,14 +657,14 @@ module Secondary = struct
     in
     (create trie a rng tsig_verify tsig_sign, zones)
 
-  let maybe_sign sign trie name signed original_id buf =
+  let maybe_sign ?max_size sign trie name signed original_id buf =
     match find_key trie name (fun _ -> true) with
     | [key] ->
       begin match Dns_packet.dnskey_to_tsig_algo key with
         | Some algorithm ->
           begin match Dns_packet.tsig ~algorithm ~original_id ~signed () with
             | None -> Log.err (fun m -> m "creation of tsig failed") ; None
-            | Some tsig -> match sign ?mac:None name tsig ~key buf with
+            | Some tsig -> match sign ?mac:None ?max_size name tsig ~key buf with
               | None -> Log.err (fun m -> m "signing failed") ; None
               | Some res -> Some res
           end
@@ -730,16 +680,13 @@ module Secondary = struct
       authentic_data = false ; checking_disabled = false ;
       rcode = Dns_enum.NoError }
 
-  let axfr t now ts q_name name =
+  let axfr t proto now ts q_name name =
     let header = header t.rng ()
     and question = [ { Dns_packet.q_name ; q_type = Dns_enum.AXFR } ]
     in
     let query = { Dns_packet.question ; answer = [] ; authority = [] ; additional = [] } in
-    let buf = Cstruct.create 512 in
-    let l = Dns_packet.encode_query buf header query in
-    let buf = Cstruct.sub buf 0 l in
-    Log.debug (fun m -> m "out %a@.%a" Dns_packet.pp (header, `Query query) Cstruct.hexdump_pp buf) ;
-    match maybe_sign t.tsig_sign t.data name now header.Dns_packet.id buf with
+    let buf, max_size = Dns_packet.encode proto (header, `Query query) in
+    match maybe_sign ~max_size t.tsig_sign t.data name now header.Dns_packet.id buf with
     | None -> None
     | Some (buf, mac) ->
       Log.debug (fun m -> m "buf@.%a" Cstruct.hexdump_pp buf) ;
@@ -750,11 +697,8 @@ module Secondary = struct
     and question = [ { Dns_packet.q_name ; q_type = Dns_enum.SOA } ]
     in
     let query = { Dns_packet.question ; answer = [] ; authority = [] ; additional = [] } in
-    let buf = Cstruct.create 512 in
-    let l = Dns_packet.encode_query buf header query in
-    let buf = Cstruct.sub buf 0 l in
-    Log.debug (fun m -> m "out %a@.%a" Dns_packet.pp (header, `Query query) Cstruct.hexdump_pp buf) ;
-    match maybe_sign t.tsig_sign t.data name now header.Dns_packet.id buf with
+    let buf, max_size = Dns_packet.encode `Udp (header, `Query query) in
+    match maybe_sign ~max_size t.tsig_sign t.data name now header.Dns_packet.id buf with
     | None -> None
     | Some (buf, mac) ->
       Log.debug (fun m -> m "buf@.%a" Cstruct.hexdump_pp buf) ;
@@ -765,7 +709,7 @@ module Secondary = struct
       Dns_name.DomMap.fold (fun zone (st, ip, name) (zones, acc) ->
           let change =
             match Dns_trie.lookup zone Dns_enum.SOA t.data with
-            | Ok (Dns_map.V (Dns_map.K.Soa, (_, soa))) ->
+            | Ok (Dns_map.V (Dns_map.K.Soa, (_, soa)), _) ->
               begin match st with
                 | Transferred ts ->
                   (* TODO: integer overflows (Int64.add) *)
@@ -781,9 +725,9 @@ module Secondary = struct
                   else
                     None
               end
-            | Ok v ->
+            | Ok (v, _) ->
               Log.err (fun m -> m "looked up SOA %a, got %a"
-                           Dns_name.pp zone Dns_map.pp_v v) ;
+                          Dns_name.pp zone Dns_map.pp_v v) ;
               None
             | Error e ->
               Log.warn (fun m -> m "error %a while looking up SOA %a, querying SOA"
@@ -799,7 +743,7 @@ module Secondary = struct
     in
     (t, zones), out
 
-  let handle_notify t zones now ts ip header query =
+  let handle_notify t zones now ts ip query =
     match query.Dns_packet.question with
     | [ q ] ->
       begin match q.Dns_packet.q_type with
@@ -808,18 +752,11 @@ module Secondary = struct
           begin match Dns_name.DomMap.find zone zones with
             | exception Not_found -> (* we don't know anything about the notified zone *)
               Log.warn (fun m -> m "ignoring notify for %a, no such zone"
-                            Dns_name.pp q.Dns_packet.q_name) ;
+                           Dns_name.pp q.Dns_packet.q_name) ;
               Error Dns_enum.Refused
             | (_, ip', name) when Ipaddr.V4.compare ip ip' = 0 ->
               Log.debug (fun m -> m "received notify for %a, replying and requesting SOA"
-                             Dns_name.pp q.Dns_packet.q_name) ;
-              let answer =
-                let hdr = { header with Dns_packet.authoritative = true ;
-                                        recursion_available = false ;
-                                        authentic_data = false }
-                in
-                Dns_packet.answer hdr (`Query query)
-              in
+                            Dns_name.pp q.Dns_packet.q_name) ;
               let zones, out =
                 match query_soa t now ts zone name with
                 | None -> zones, []
@@ -827,21 +764,21 @@ module Secondary = struct
                   Dns_name.DomMap.add zone (st, ip, name) zones,
                   [ (`Udp, ip, buf) ]
               in
-              Ok (zones, answer, out)
+              Ok (zones, out)
             | (_, ip', _) ->
               Log.warn (fun m -> m "ignoring notify for %a from %a (%a is primary"
-                            Dns_name.pp q.Dns_packet.q_name
-                            Ipaddr.V4.pp_hum ip Ipaddr.V4.pp_hum ip') ;
+                           Dns_name.pp q.Dns_packet.q_name
+                           Ipaddr.V4.pp_hum ip Ipaddr.V4.pp_hum ip') ;
               Error Dns_enum.Refused
           end
         | t ->
           Log.warn (fun m -> m "ignoring notify %a with type %a"
-                        Dns_name.pp q.Dns_packet.q_name Dns_enum.pp_rr_typ t) ;
+                       Dns_name.pp q.Dns_packet.q_name Dns_enum.pp_rr_typ t) ;
           Error Dns_enum.FormErr
       end
     | qs ->
       Log.warn (fun m -> m "ignoring notify with zero or multiple questions: %a"
-                    Fmt.(list ~sep:(unit ",@,") Dns_packet.pp_question) qs) ;
+                   Fmt.(list ~sep:(unit ",@,") Dns_packet.pp_question) qs) ;
       Error Dns_enum.FormErr
 
   let handle_answer t zones now ts keyname key header query =
@@ -851,13 +788,13 @@ module Secondary = struct
       begin match Dns_name.DomMap.find zone zones with
         | exception Not_found ->
           Log.warn (fun m -> m "ignoring %a (%a), unknown zone"
-                        Dns_name.pp q.Dns_packet.q_name
-                        Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
+                       Dns_name.pp q.Dns_packet.q_name
+                       Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
           Error Dns_enum.Refused
         | (st, ip, name) ->
           Log.debug (fun m -> m "in %a (keyname %a) got answer %a"
-                         Dns_name.pp q.Dns_packet.q_name Dns_name.pp name
-                         Dns_packet.pp_rrs query.Dns_packet.answer) ;
+                        Dns_name.pp q.Dns_packet.q_name Dns_name.pp name
+                        Dns_packet.pp_rrs query.Dns_packet.answer) ;
           Rresult.R.of_option
             ~none:(fun () ->
                 Log.err (fun m -> m "refusing (not authenticated)") ;
@@ -872,7 +809,8 @@ module Secondary = struct
               (* (c) drop zone from trie *)
               (* (d) insert vs into trie *)
               (* (e) insert dnskey into trie *)
-              (* TODO: do we need to preserve other keys than the current!? *)
+              (* NOTE we don't need to preserve any other key than the one used,
+                      because we have at most one transfer key in a zone *)
               (* first ensure that all entries are in the zone! *)
               List.fold_left (fun r rr ->
                   r >>= fun () ->
@@ -897,16 +835,16 @@ module Secondary = struct
                 with
                 | exception Not_found ->
                   Log.err (fun m -> m "didn't get a SOA answer for %a from %a"
-                               Dns_name.pp q.Dns_packet.q_name Ipaddr.V4.pp_hum ip) ;
+                              Dns_name.pp q.Dns_packet.q_name Ipaddr.V4.pp_hum ip) ;
                   Error Dns_enum.FormErr
-                | Ok (Dns_map.V (Dns_map.K.Soa, (_, cached_soa))), fresh_soa ->
+                | Ok (Dns_map.V (Dns_map.K.Soa, (_, cached_soa)), _), fresh_soa ->
                   (* TODO: > with wraparound in mind *)
                   let fresh = match fresh_soa.Dns_packet.rdata with Dns_packet.SOA soa -> soa | _ -> assert false in
                   if fresh.Dns_packet.serial > cached_soa.Dns_packet.serial then
-                    match axfr t now ts zone name with
+                    match axfr t `Tcp now ts zone name with
                     | None ->
                       Log.warn (fun m -> m "trouble creating axfr for %a (using %a)"
-                                    Dns_name.pp zone Dns_name.pp name) ;
+                                   Dns_name.pp zone Dns_name.pp name) ;
                       (* TODO: reset state? *)
                       Ok (t, zones, [])
                     | Some (st, buf) ->
@@ -915,34 +853,34 @@ module Secondary = struct
                       Ok (t, zones, [ (`Tcp, ip, buf) ])
                   else begin
                     Log.info (fun m -> m "received soa (%a) for %a is not newer than cached (%a), moving on"
-                                  Dns_packet.pp_soa fresh Dns_name.pp zone Dns_packet.pp_soa cached_soa) ;
+                                 Dns_packet.pp_soa fresh Dns_name.pp zone Dns_packet.pp_soa cached_soa) ;
                     let zones = Dns_name.DomMap.add zone (Transferred ts, ip, name) zones in
                     Ok (t, zones, [])
                   end
                 | Error _, _ ->
                   Log.info (fun m -> m "couldn't find soa, requesting AXFR") ;
-                  begin match axfr t now ts zone name with
+                  begin match axfr t `Tcp now ts zone name with
                     | None -> Log.warn (fun m -> m "trouble building axfr") ; Ok (t, zones, [])
                     | Some (st, buf) ->
                       Log.debug (fun m -> m "requesting AXFR for %a now!" Dns_name.pp zone) ;
                       let zones = Dns_name.DomMap.add zone (st, ip, name) zones in
                       Ok (t, zones, [ (`Tcp, ip, buf) ])
                   end
-                | Ok v, _ ->
+                | Ok (v, _), _ ->
                   Log.warn (fun m -> m "expected SOA for %a, but found %a"
-                                Dns_name.pp zone Dns_map.pp_v v) ;
+                               Dns_name.pp zone Dns_map.pp_v v) ;
                   Ok (t, zones, [])
               end
             | _ ->
               Log.warn (fun m -> m "ignoring %a (%a) unmatched state"
-                            Dns_name.pp q.Dns_packet.q_name
-                            Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
+                           Dns_name.pp q.Dns_packet.q_name
+                           Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
               Error Dns_enum.Refused
           end
       end
     | qs ->
       Log.warn (fun m -> m "ignoring answer with questions: %a"
-                    Fmt.(list ~sep:(unit ",@,") Dns_packet.pp_question) qs) ;
+                   Fmt.(list ~sep:(unit ",@,") Dns_packet.pp_question) qs) ;
       Error Dns_enum.FormErr
 
   let handle_rr_update t now ts zname (zones, trie, outs) u =
@@ -955,16 +893,19 @@ module Secondary = struct
         (Dns_name.DomMap.remove key zones, Dns_trie.remove_zone zname trie, outs)
       | (_, _, keyname) ->
         Log.warn (fun m -> m "key %a not registered for zone %a (but %a is)"
-                      Dns_name.pp key Dns_name.pp zname Dns_name.pp keyname) ;
+                     Dns_name.pp key Dns_name.pp zname Dns_name.pp keyname) ;
         (zones, trie, outs)
     in
     match u with
+    | Dns_packet.Remove_all name ->
+      let trie = Dns_trie.remove name Dns_enum.DNSKEY trie in
+      rm_zone trie name
     | Dns_packet.Remove (name, Dns_enum.DNSKEY) ->
       let trie = Dns_trie.remove name Dns_enum.DNSKEY trie in
       rm_zone trie name
     | Dns_packet.Remove_single (name, Dns_packet.DNSKEY key) ->
       begin match Dns_trie.lookup name Dns_enum.DNSKEY trie with
-        | Ok (Dns_map.V (Dns_map.K.Dnskey, _) as v) ->
+        | Ok (Dns_map.V (Dns_map.K.Dnskey, _) as v, _) ->
           begin match Dns_map.remove_rdata v (Dns_packet.DNSKEY key) with
             | None ->
               let trie = Dns_trie.remove name Dns_enum.DNSKEY trie in
@@ -973,12 +914,12 @@ module Secondary = struct
               let trie = Dns_trie.insert name keys trie in
               (zones, trie, outs)
           end
-        | Ok v ->
+        | Ok (v, _) ->
           Log.warn (fun m -> m "looked for DNSKEY %a, found %a, ignoring" Dns_name.pp name Dns_map.pp_v v) ;
           (zones, trie, outs)
         | Error e ->
           Log.err (fun m -> m "error %a while looking up DNSKEY for %a, didn't remove %a"
-                        Dns_trie.pp_e e Dns_name.pp name Dns_packet.pp_dnskey key) ;
+                      Dns_trie.pp_e e Dns_name.pp name Dns_packet.pp_dnskey key) ;
           (zones, trie, outs)
       end
     | Dns_packet.Add rr ->
@@ -988,7 +929,7 @@ module Secondary = struct
           begin match extract_zone_and_ip name with
             | Some (zname', ip) when Dns_name.equal zname zname' ->
               let keys = match Dns_trie.lookup name Dns_enum.DNSKEY trie with
-                | Ok (Dns_map.V (Dns_map.K.Dnskey, keys)) -> key :: keys
+                | Ok (Dns_map.V (Dns_map.K.Dnskey, keys), _) -> key :: keys
                 | _ -> [ key ]
               in
               let trie' = Dns_trie.insert name (Dns_map.V (Dns_map.K.Dnskey, keys)) trie in
@@ -1003,7 +944,7 @@ module Secondary = struct
               end
             | Some (zname', _) ->
               Log.err (fun m -> m "found zone name %a in %a, expected %a"
-                           Dns_name.pp zname' Dns_name.pp name Dns_name.pp zname) ;
+                          Dns_name.pp zname' Dns_name.pp name Dns_name.pp zname) ;
               (zones, trie, outs)
             | None ->
               Log.err (fun m -> m "couldn't find ip and zone name in %a" Dns_name.pp name) ;
@@ -1014,25 +955,23 @@ module Secondary = struct
           (zones, trie, outs)
       end
     | u ->
-      (* TODO: should handle Dns_packet.Remove_all? *)
       (* TODO: should be forwarded to primary *)
       Log.warn (fun m -> m "ignoring update %a" Dns_packet.pp_rr_update u) ;
       (zones, trie, outs)
 
-    let handle_update t zones now ts proto keyname header u =
-      (* TODO: handle prereq *)
-      let zname = u.Dns_packet.zone.Dns_packet.q_name in
-      (* TODO: can allow weaker keys for nsupdates we proxy *)
-      guard (authorise t proto keyname zname Key_management) Dns_enum.NotAuth >>= fun () ->
-      let ups = u.Dns_packet.update in
-      guard (List.for_all (fun u -> in_zone zname (Dns_packet.rr_update_name u)) ups) Dns_enum.NotZone >>= fun () ->
-      let zones, trie, outs =
-        List.fold_left (handle_rr_update t now ts zname) (zones, t.data, []) ups
-      in
-      let answer = Dns_packet.answer header (`Update u) in
-      Ok (trie, zones, answer, outs)
+  let handle_update t zones now ts proto keyname u =
+    (* TODO: handle prereq *)
+    let zname = u.Dns_packet.zone.Dns_packet.q_name in
+    (* TODO: can allow weaker keys for nsupdates we proxy *)
+    guard (authorise t proto keyname zname Key_management) Dns_enum.NotAuth >>= fun () ->
+    let ups = u.Dns_packet.update in
+    guard (List.for_all (fun u -> in_zone zname (Dns_packet.rr_update_name u)) ups) Dns_enum.NotZone >>= fun () ->
+    let zones, trie, outs =
+      List.fold_left (handle_rr_update t now ts zname) (zones, t.data, []) ups
+    in
+    Ok (trie, zones, outs)
 
-  let handle_frame (t, zones) now ts ip proto header keyname key v =
+  let handle_frame (t, zones) now ts ip proto keyname key (header, v) =
     match v, header.Dns_packet.query with
     | `Query q, true ->
       handle_query t proto keyname header q >>= fun answer ->
@@ -1041,13 +980,21 @@ module Secondary = struct
       handle_answer t zones now ts keyname key header q >>= fun (t, zones, out) ->
       Ok ((t, zones), None, out)
     | `Update u, true ->
-      handle_update t zones now ts proto keyname header u >>= fun (data, zones, answer, out) ->
-      Ok (({ t with data }, zones), answer, out)
+      handle_update t zones now ts proto keyname u >>= fun (data, zones, out) ->
+      let answer =
+        let update = { u with Dns_packet.prereq = [] ; update = [] ; addition = [] } in
+        (s_header header, `Update update)
+      in
+      Ok (({ t with data }, zones), Some answer, out)
     | `Update _, false -> (* TODO: answer from primary, need to forward to client *)
       Error Dns_enum.FormErr
     | `Notify n, true ->
-      handle_notify t zones now ts ip header n >>= fun (zones, answer, out) ->
-      Ok ((t, zones), answer, out)
+      handle_notify t zones now ts ip n >>= fun (zones, out) ->
+      let answer =
+        let n = { n with Dns_packet.answer = [] ; authority = [] ; additional = [] } in
+        (s_header header, `Notify n)
+      in
+      Ok ((t, zones), Some answer, out)
     | `Notify _, false ->
       Log.err (fun m -> m "ignoring notify response (we don't send notifications)") ;
       Ok ((t, zones), None, [])
@@ -1074,30 +1021,34 @@ module Secondary = struct
     with
     | Error rcode -> ((t, zones), raw_server_error buf rcode, [])
     | Ok ((header, v), tsig_off) ->
-      Log.debug (fun m -> m "%a sent %a" Ipaddr.V4.pp_hum ip Dns_packet.pp (header, v)) ;
+      let handle_inner name key =
+        match handle_frame (t, zones) now ts ip proto name key (header, v) with
+        | Ok (t, Some answer, out) ->
+          let max_size, edns = match Dns_packet.find_edns v with
+            | None -> None, None
+            | Some e -> Dns_packet.payload_size e, Some []
+          in
+          (t, Some (Dns_packet.encode ?max_size ?edns proto answer), out)
+        | Ok (t, None, out) -> (t, None, out)
+        | Error rcode -> ((t, zones), err header v rcode, [])
+      in
       let mac = find_mac zones header v in
-      match handle_tsig ?mac t now header v tsig_off buf with
+      match handle_tsig ?mac t now (header, v) tsig_off buf with
       | Error data -> ((t, zones), Some data, [])
       | Ok None ->
-        begin
-          match handle_frame (t, zones) now ts ip proto header None None v with
-          | Ok x -> x
-          | Error rcode -> ((t, zones), Dns_packet.error header v rcode, [])
+        begin match handle_inner None None with
+          | (t, None, out) -> (t, None, out)
+          | (t, Some (buf, _), out) -> (t, Some buf, out)
         end
       | Ok (Some (name, tsig, mac, key)) ->
-        match handle_frame (t, zones) now ts ip proto header (Some name) (Some key) v with
-        | Ok (a, Some answer, out) ->
-          begin match t.tsig_sign ~mac name tsig ~key answer with
-            | None -> (a, None, out)
+        match handle_inner (Some name) (Some key) with
+        | (a, Some (buf, max_size), out) ->
+          begin match t.tsig_sign ~max_size ~mac name tsig ~key buf with
+            | None ->
+              Log.warn (fun m -> m "couldn't use %a to tsig sign"
+                           Dns_name.pp name) ;
+              (a, None, out)
             | Some (buf, _) -> (a, Some buf, out)
           end
-        | Ok res -> res
-        | Error rcode ->
-          let err = match Dns_packet.error header v rcode with
-            | None -> None
-            | Some err -> match t.tsig_sign ~mac name tsig ~key err with
-              | None -> None
-              | Some (buf, _) -> Some buf
-          in
-          ((t, zones), err, [])
+        | (a, None, out) -> (a, None, out)
 end

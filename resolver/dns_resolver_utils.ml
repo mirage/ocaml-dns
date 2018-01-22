@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Dns_packet
 
@@ -109,7 +109,13 @@ let noerror q hdr dns =
            f Dns_enum.A a @ f Dns_enum.AAAA aaaa)
           (NM.bindings aaaaa))
   in
+  (* This is defined in RFC2181, Sec9 -- answer is unique if authority or
+     additional is non-empty *)
+  let answer_complete = dns.authority <> [] || dns.additional <> [] in
   match answers, ns with
+  | [], [] when not answer_complete && hdr.truncation ->
+    (* special handling for truncated replies.. better not add anything *)
+    []
   | [], [] ->
     (* not sure if this can happen, maybe discard everything? *)
     [ q.q_type, q.q_name, Additional, NoData (invalid_soa q.q_name) ]
@@ -138,4 +144,4 @@ let scrub q hdr dns =
   match hdr.rcode with
   | Dns_enum.NoError -> Ok (noerror q hdr dns)
   | Dns_enum.NXDomain -> Ok (nxdomain q hdr dns)
-  | _ -> Error (`Msg "dunno")
+  | e -> Error e

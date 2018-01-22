@@ -1,6 +1,8 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 open Rresult.R.Infix
+
+type proto = [ `Tcp | `Udp ]
 
 (*BISECT-IGNORE-BEGIN*)
 let pp_err ppf = function
@@ -24,6 +26,8 @@ let pp_err ppf = function
   | `InvalidAlgorithm n -> Fmt.pf ppf "invalid algorithm %a" Dns_name.pp n
   | `BadProto num -> Fmt.pf ppf "bad protocol %d" num
   | `BadAlgorithm num -> Fmt.pf ppf "bad algorithm %d" num
+  | `BadOpt -> Fmt.pf ppf "bad option"
+  | `BadKeepalive -> Fmt.pf ppf "bad keepalive"
 (*BISECT-IGNORE-END*)
 
 let guard p err = if p then Ok () else Error err
@@ -539,7 +543,7 @@ let encode_dnskey t offs buf off =
   Cstruct.set_uint8 buf (off + 2) 3 ;
   Cstruct.set_uint8 buf (off + 3) (Dns_enum.dnskey_to_int t.key_algorithm) ;
   let kl = Cstruct.len t.key in
-  Cstruct.blit buf (off + 4) t.key 0 kl ;
+  Cstruct.blit t.key 0 buf (off + 4) kl ;
   offs, off + 4 + kl
 
 type srv = {
@@ -619,6 +623,102 @@ let encode_caa t buf off =
   Cstruct.blit_from_string value 0 buf (off + 2 + tl) vl ;
   off + tl + 2 + vl
 
+type opt =
+  | Payload_size of int
+  | Nsid of Cstruct.t
+  | Cookie of Cstruct.t
+  | Tcp_keepalive of int option
+  | Padding of int
+  | Option of int * Cstruct.t
+
+type opts = opt list
+
+let payload_size =
+  List.fold_left (fun r -> function
+      | Payload_size x when x < 512 -> Some 512
+      | Payload_size x -> Some x
+      | _ -> r) None
+
+let compare_opt a b = match a, b with
+  | Payload_size a, Payload_size b -> compare a b
+  | Payload_size _, _ -> 1 | _, Payload_size _ -> -1
+  | Nsid a, Nsid b -> Cstruct.compare a b
+  | Nsid _, _ -> 1 | _, Nsid _ -> -1
+  | Cookie a, Cookie b -> Cstruct.compare a b
+  | Cookie _, _ -> 1 | _, Cookie _ -> -1
+  | Tcp_keepalive a, Tcp_keepalive b -> compare a b
+  | Tcp_keepalive _, _ -> 1 | _, Tcp_keepalive _ -> -1
+  | Padding a, Padding b -> compare a b
+  | Padding _, _ -> 1 | _, Padding _ -> -1
+  | Option (t, v), Option (t', v') -> andThen (compare t t') (Cstruct.compare v v')
+
+let compare_opts a b =
+  List.fold_left2
+    (fun r a b -> if r = 0 then compare_opt a b else r)
+    (compare (List.length a) (List.length b)) a b
+
+(*BISECT-IGNORE-BEGIN*)
+let pp_opt ppf = function
+  | Payload_size a -> Fmt.pf ppf "size %d" a
+  | Nsid cs -> Fmt.pf ppf "nsid %a" Cstruct.hexdump_pp cs
+  | Cookie cs -> Fmt.pf ppf "cookie %a" Cstruct.hexdump_pp cs
+  | Tcp_keepalive i -> Fmt.pf ppf "keepalive %a" Fmt.(option ~none:(unit "none") int) i
+  | Padding i -> Fmt.pf ppf "padding %d" i
+  | Option (t, v) -> Fmt.pf ppf "unknown option %d: %a" t Cstruct.hexdump_pp v
+
+let pp_opts ppf opts =
+  Fmt.(pf ppf "opts: %a" (list ~sep:(unit ", ") pp_opt) opts)
+(*BISECT-IGNORE-END*)
+
+let decode_opt buf off len =
+  let code = Cstruct.BE.get_uint16 buf off
+  and tl = Cstruct.BE.get_uint16 buf (off + 2)
+  in
+  guard (tl <= len - 4) `BadOpt >>= fun () ->
+  let v = Cstruct.sub buf (off + 4) tl in
+  let len = tl + 4 in
+  match Dns_enum.int_to_edns_opt code with
+  | Some Dns_enum.NSID -> Ok (Nsid v, len)
+  | Some Dns_enum.Cookie -> Ok (Cookie v, len)
+  | Some Dns_enum.TCP_keepalive ->
+    (begin match tl with
+       | 0 -> Ok None
+       | 2 -> Ok (Some (Cstruct.BE.get_uint16 v 0))
+       | _ -> Error `BadKeepalive
+     end >>= fun i ->
+     Ok (Tcp_keepalive i, len))
+  | Some Dns_enum.Padding -> Ok (Padding tl, len)
+  | _ -> Ok (Option (code, v), len)
+
+let decode_opts buf off len =
+  let rec one acc pos =
+    if len = pos - off then
+      Ok (List.rev acc)
+    else
+      decode_opt buf pos (len - (pos - off)) >>= fun (opt, len) ->
+      one (opt :: acc) (pos + len)
+  in
+  one [] off
+
+let encode_opt t buf off =
+  let o_i = Dns_enum.edns_opt_to_int in
+  let code, v = match t with
+    | Payload_size _ -> assert false
+    | Nsid cs -> o_i Dns_enum.NSID, cs
+    | Cookie cs -> o_i Dns_enum.Cookie, cs
+    | Tcp_keepalive i -> o_i Dns_enum.TCP_keepalive, (match i with None -> Cstruct.create 0 | Some i -> let buf = Cstruct.create 2 in Cstruct.BE.set_uint16 buf 0 i ; buf)
+    | Padding i -> o_i Dns_enum.Padding, Cstruct.create i
+    | Option (t, v) -> t, v
+  in
+  let l = Cstruct.len v in
+  Cstruct.BE.set_uint16 buf off code ;
+  Cstruct.BE.set_uint16 buf (off + 2) l ;
+  Cstruct.blit v 0 buf (off + 4) l ;
+  off + 4 + l
+
+let encode_opts t buf off =
+  List.fold_left (fun off opt -> encode_opt opt buf off) off t
+
 type rdata =
   | CNAME of Dns_name.t
   | MX of int * Dns_name.t
@@ -632,6 +732,7 @@ type rdata =
   | TSIG of tsig
   | DNSKEY of dnskey
   | CAA of caa
+  | OPTS of opt list
   | Raw of Dns_enum.rr_typ * Cstruct.t
 
 let compare_rdata a b = match a, b with
@@ -662,6 +763,8 @@ let compare_rdata a b = match a, b with
   | DNSKEY _, _ -> 1 | _, DNSKEY _ -> -1
   | CAA a, CAA b -> compare_caa a b
   | CAA _, _ -> 1 | _, CAA _ -> -1
+  | OPTS a, OPTS b -> compare_opts a b
+  | OPTS _, _ -> 1 | _, OPTS _ -> -1
   | Raw (t, v), Raw (t', v') ->
     andThen (compare t t') (Cstruct.compare v v')
   | _ -> 1 (* TSIG is missing here expicitly, it's never supposed to be in any set! *)
@@ -680,6 +783,7 @@ let pp_rdata ppf = function
   | TSIG ts -> pp_tsig ppf ts
   | DNSKEY tk -> pp_dnskey ppf tk
   | CAA caa -> pp_caa ppf caa
+  | OPTS opts -> pp_opts ppf opts
   | Raw (t, d) ->
     Fmt.pf ppf "%a: %a" Dns_enum.pp_rr_typ t Cstruct.hexdump_pp d
 (*BISECT-IGNORE-END*)
@@ -697,6 +801,7 @@ let rdata_to_rr_typ = function
   | TSIG _ -> Dns_enum.TSIG
   | DNSKEY _ -> Dns_enum.DNSKEY
   | CAA _ -> Dns_enum.CAA
+  | OPTS _ -> Dns_enum.OPT
   | Raw (t, _) -> t
 
 let rdata_name = function
@@ -711,7 +816,7 @@ let decode_rdata names buf off len = function
     Ok (CNAME name, names, off)
   | Dns_enum.MX ->
     let prio = Cstruct.BE.get_uint16 buf off in
-    Dns_name.decode names buf (off + 2) >>= fun (name, names, off) ->
+    Dns_name.decode ~hostname:false names buf (off + 2) >>= fun (name, names, off) ->
     Ok (MX (prio, name), names, off)
   | Dns_enum.NS ->
     Dns_name.decode names buf off >>= fun (name, names, off) ->
@@ -761,6 +866,9 @@ let decode_rdata names buf off len = function
   | Dns_enum.CAA ->
     decode_caa buf off len >>= fun caa ->
     Ok (CAA caa, names, off + len)
+  | Dns_enum.OPT ->
+    decode_opts buf off len >>= fun opts ->
+    Ok (OPTS opts, names, off + len)
   | x -> Ok (Raw (x, Cstruct.sub buf off len), names, off + len)
 
 let encode_rdata offs buf off = function
@@ -795,6 +903,7 @@ let encode_rdata offs buf off = function
   | TSIG t -> encode_tsig t offs buf off
   | DNSKEY t -> encode_dnskey t offs buf off
   | CAA caa -> offs, encode_caa caa buf off
+  | OPTS opts -> offs, encode_opts opts buf off
   | Raw (_, rr) ->
     let len = Cstruct.len rr in
     Cstruct.blit rr 0 buf off len ;
@@ -866,29 +975,49 @@ let decode_rr names buf off =
   guard (Cstruct.len buf >= len + 6) `Partial >>= fun () ->
   let off = off + 6 in
   safe_decode_rdata names buf off len typ >>= fun (rdata, names, off') ->
+  let rdata = match rdata with
+    | OPTS opts -> OPTS (Payload_size c :: opts)
+    | x -> x
+  in
   Ok ({ name ; ttl ; rdata }, names, off')
 
 let encode_rr offs buf off rr =
   let typ = rdata_to_rr_typ rr.rdata in
-  let clas, ttl = match typ with
-    | Dns_enum.OPT -> 4096, 0l (* XXX: UDP size in clas, rcode + flags in ttl *)
-    | Dns_enum.TSIG -> Dns_enum.(clas_to_int ANY_CLASS), 0l
-    | _ -> Dns_enum.(clas_to_int IN), rr.ttl
+  let clas, ttl, rdata = match rr.rdata with
+    | OPTS opts  ->
+      let s, opts =
+        List.fold_left (fun (s, acc) opt -> match opt with
+            | Payload_size a -> (a, acc)
+            | x -> (s, x :: acc))
+          (4096, [])
+          (List.rev opts)
+      in
+      s, 0l, OPTS opts (* XXX: rcode + flags in ttl *)
+    | TSIG t -> Dns_enum.(clas_to_int ANY_CLASS), 0l, TSIG t
+    | rdata -> Dns_enum.(clas_to_int IN), rr.ttl, rdata
   in
   let offs, off = encode_ntc offs buf off (rr.name, typ, clas) in
   Cstruct.BE.set_uint32 buf off ttl ;
-  let offs, off' = encode_rdata offs buf (off + 6) rr.rdata in
+  let offs, off' = encode_rdata offs buf (off + 6) rdata in
   Cstruct.BE.set_uint16 buf (off + 4) (off' - (off + 6)) ;
   offs, off'
 
-
 (* QUERY *)
-let rec decode_n_partial f names buf off r acc = function
-  | 0 -> Ok (`Full (names, off, List.rev acc, r))
+let rec decode_n_partial f names buf off acc = function
+  | 0 -> Ok (`Full (names, off, List.rev acc))
   | n ->
     match f names buf off with
     | Ok (ele, names, off') ->
-      decode_n_partial f names buf off' off (ele :: acc) (pred n)
+      decode_n_partial f names buf off' (ele :: acc) (pred n)
+    | Error `Partial -> Ok (`Partial (List.rev acc))
+    | Error e -> Error e
+
+let rec decode_n_additional_partial f names buf off r acc = function
+  | 0 -> Ok (`Full (off, List.rev acc, r))
+  | n ->
+    match f names buf off with
+    | Ok (ele, names, off') ->
+      decode_n_additional_partial f names buf off' (Some off) (ele :: acc) (pred n)
     | Error `Partial -> Ok (`Partial (List.rev acc))
     | Error e -> Error e
 
@@ -910,41 +1039,33 @@ let decode_query buf t =
     { question ; answer ; authority ; additional }
   in
   let empty = Dns_name.IntMap.empty in
-  decode_n_partial decode_question empty buf hdr_len 0 [] qcount >>= function
+  decode_n_partial decode_question empty buf hdr_len [] qcount >>= function
   | `Partial qs -> guard t `Partial >>= fun () -> Ok (query qs [] [] [], None)
-  | `Full (names, off, qs, _) ->
-    decode_n_partial decode_rr names buf off 0 [] ancount >>= function
+  | `Full (names, off, qs) ->
+    decode_n_partial decode_rr names buf off [] ancount >>= function
     | `Partial an -> guard t `Partial >>= fun () -> Ok (query qs an [] [], None)
-    | `Full (names, off, an, _) ->
-      decode_n_partial decode_rr names buf off 0 [] aucount >>= function
+    | `Full (names, off, an) ->
+      decode_n_partial decode_rr names buf off [] aucount >>= function
       | `Partial au -> guard t `Partial >>= fun () -> Ok (query qs an au [], None)
-      | `Full (names, off, au, _) ->
-        decode_n_partial decode_rr names buf off 0 [] adcount >>= function
-        | `Partial ad -> guard t `Partial >>= fun () -> Ok (query qs an au ad, None)
-        | `Full (_, off, ad, lastoff) ->
+      | `Full (names, off, au) ->
+        decode_n_additional_partial decode_rr names buf off None [] adcount >>= function
+        | `Partial ad ->
+          guard t `Partial >>= fun () ->
+          Ok (query qs an au ad, None)
+        | `Full (off, ad, lastoff) ->
           guard (Cstruct.len buf = off) `LeftOver >>= fun () ->
-          Ok (query qs an au ad, Some lastoff)
+          Ok (query qs an au ad, lastoff)
 
-let encode_query buf header data =
-  encode_header buf header ;
-  try
-    Cstruct.BE.set_uint16 buf 4 (List.length data.question) ;
-    Cstruct.BE.set_uint16 buf 6 (List.length data.answer) ;
-    Cstruct.BE.set_uint16 buf 8 (List.length data.authority) ;
-    Cstruct.BE.set_uint16 buf 10 (List.length data.additional) ;
-    let offs, off =
-      List.fold_left (fun (offs, off) q -> encode_question offs buf off q)
-        (Dns_name.DomMap.empty, hdr_len) data.question
-    in
-    let _, off =
-      List.fold_left (fun (offs, off) rr -> encode_rr offs buf off rr)
-        (offs, off) (data.answer @ data.authority @ data.additional)
-    in
-    off
-  with _ ->
-    (* if we failed to store data into buf, set truncation bit! *)
-    Cstruct.set_uint8 buf 2 (0x02 lor (Cstruct.get_uint8 buf 2)) ;
-    Cstruct.len buf
+let encode_query buf data =
+  Cstruct.BE.set_uint16 buf 4 (List.length data.question) ;
+  Cstruct.BE.set_uint16 buf 6 (List.length data.answer) ;
+  Cstruct.BE.set_uint16 buf 8 (List.length data.authority) ;
+  let offs, off =
+    List.fold_left (fun (offs, off) q -> encode_question offs buf off q)
+      (Dns_name.DomMap.empty, hdr_len) data.question
+  in
+  List.fold_left (fun (offs, off) rr -> encode_rr offs buf off rr)
+    (offs, off) (data.answer @ data.authority)
 
 (*BISECT-IGNORE-BEGIN*)
 let pp_query ppf t =
@@ -1122,12 +1243,20 @@ let pp_update ppf t =
     (Fmt.list ~sep:(Fmt.unit ";@ ") pp_rr) t.addition
 (*BISECT-IGNORE-END*)
 
-let rec decode_n f names buf off r acc = function
-  | 0 -> Ok (names, off, List.rev acc, r)
+let rec decode_n f names buf off acc = function
+  | 0 -> Ok (names, off, List.rev acc)
   | n ->
     match f names buf off with
     | Ok (ele, names, off') ->
-      decode_n f names buf off' off (ele :: acc) (pred n)
+      decode_n f names buf off' (ele :: acc) (pred n)
+    | Error e -> Error e
+
+let rec decode_n_additional f names buf off r acc = function
+  | 0 -> Ok (off, List.rev acc, r)
+  | n ->
+    match f names buf off with
+    | Ok (ele, names, off') ->
+      decode_n_additional f names buf off' (Some off) (ele :: acc) (pred n)
     | Error e -> Error e
 
 let decode_update buf =
@@ -1140,60 +1269,50 @@ let decode_update buf =
   guard (zcount = 1) (`InvalidZoneCount zcount) >>= fun () ->
   decode_question Dns_name.IntMap.empty buf hdr_len >>= fun (q, ns, off) ->
   guard (q.q_type = Dns_enum.SOA) (`InvalidZoneRR q.q_type) >>= fun () ->
-  decode_n decode_rr_prereq ns buf off 0 [] prcount >>= fun (ns, off, pre, _) ->
-  decode_n decode_rr_update ns buf off 0 [] upcount >>= fun (ns, off, up, _) ->
-  decode_n decode_rr ns buf off 0 [] adcount >>= fun (_, off, addition, loff) ->
+  decode_n decode_rr_prereq ns buf off [] prcount >>= fun (ns, off, pre) ->
+  decode_n decode_rr_update ns buf off [] upcount >>= fun (ns, off, up) ->
+  decode_n_additional decode_rr ns buf off None [] adcount >>= fun (off, addition, loff) ->
   guard (Cstruct.len buf = off) `LeftOver >>= fun () ->
-  Ok ({ zone = q ; prereq = pre ; update = up ; addition }, Some loff)
+  Ok ({ zone = q ; prereq = pre ; update = up ; addition }, loff)
 
-let encode_update buf header data =
-  encode_header buf header ;
-  try
-    Cstruct.BE.set_uint16 buf 4 1 ;
-    Cstruct.BE.set_uint16 buf 6 (List.length data.prereq) ;
-    Cstruct.BE.set_uint16 buf 8 (List.length data.update) ;
-    Cstruct.BE.set_uint16 buf 10 (List.length data.addition) ;
-    let offs, off =
-      encode_question Dns_name.DomMap.empty buf hdr_len data.zone
-    in
-    let offs, off =
-      List.fold_left (fun (offs, off) rr -> encode_rr_prereq offs buf off rr)
-        (offs, off) data.prereq
-    in
-    let offs, off =
-      List.fold_left (fun (offs, off) rr -> encode_rr_update offs buf off rr)
-        (offs, off) data.update
-    in
-    let _, off =
-      List.fold_left (fun (offs, off) rr -> encode_rr offs buf off rr)
-        (offs, off) data.addition
-    in
-    off
-  with _ ->
-    (* if we failed to store data into buf, set truncation bit! *)
-    Cstruct.set_uint8 buf 2 (0x02 lor (Cstruct.get_uint8 buf 2)) ;
-    Cstruct.len buf
+let encode_update buf data =
+  Cstruct.BE.set_uint16 buf 4 1 ;
+  Cstruct.BE.set_uint16 buf 6 (List.length data.prereq) ;
+  Cstruct.BE.set_uint16 buf 8 (List.length data.update) ;
+  let offs, off =
+    encode_question Dns_name.DomMap.empty buf hdr_len data.zone
+  in
+  let offs, off =
+    List.fold_left (fun (offs, off) rr -> encode_rr_prereq offs buf off rr)
+      (offs, off) data.prereq
+  in
+  List.fold_left (fun (offs, off) rr -> encode_rr_update offs buf off rr)
+    (offs, off) data.update
 
 type v = [ `Query of query | `Update of update | `Notify of query ]
 type t = header * v
 
-let pp ppf (hdr, v) =
-  pp_header ppf hdr ;
-  match v with
+(*BISECT-IGNORE-BEGIN*)
+let pp_v ppf = function
   | `Query q -> pp_query ppf q
   | `Update u -> pp_update ppf u
   | `Notify n -> pp_query ppf n
+
+let pp ppf (hdr, v) =
+  pp_header ppf hdr ;
+  Fmt.sp ppf () ;
+  pp_v ppf v
+(*BISECT-IGNORE-END*)
 
 type tsig_verify = ?mac:Cstruct.t -> Ptime.t -> v -> header ->
   Dns_name.t -> key:dnskey option -> tsig -> Cstruct.t ->
   (tsig * Cstruct.t * dnskey, Cstruct.t) result
 
-type tsig_sign = ?mac:Cstruct.t -> Dns_name.t -> tsig ->
+type tsig_sign = ?mac:Cstruct.t -> ?max_size:int -> Dns_name.t -> tsig ->
   key:dnskey -> Cstruct.t -> (Cstruct.t * Cstruct.t) option
 
-(* TODO: who's going to verify the invariants we have:
-   - only one EDNS (and only in additional)
-   - if TSIG than only ever in additional and the last one!?
+(* TODO: verify the following invariants:
+   - only single EDNS/TSIG in additional
    - EDNS/TSIG TTL always 0
    - notify allows only a single SOA in answer, rest better be empty *)
 let decode buf =
@@ -1201,18 +1320,97 @@ let decode buf =
   let t = hdr.truncation in
   match hdr.operation with
   | Dns_enum.Query ->
-    decode_query buf t >>= fun (q, i) -> Ok ((hdr, `Query q), i)
+    decode_query buf t >>= fun (q, off) ->
+    Ok ((hdr, `Query q), off)
   | Dns_enum.Update ->
-    decode_update buf >>= fun (u, i) -> Ok ((hdr, `Update u), i)
+    decode_update buf >>= fun (u, off) ->
+    Ok ((hdr, `Update u), off)
   | Dns_enum.Notify ->
-    decode_query buf t >>= fun (n, i) -> Ok ((hdr, `Notify n), i)
+    decode_query buf t >>= fun (n, off) ->
+    Ok ((hdr, `Notify n), off)
   | x -> Error (`UnsupportedOpcode x)
 
-let encode buf (hdr, v) =
+let max_udp = 1484 (* in MirageOS. using IPv4 this is max UDP payload via ethernet *)
+let max_reply_udp = 450 (* we don't want anyone to amplify! *)
+let max_tcp = 1 lsl 16 - 1 (* DNS-over-TCP is 2 bytes len ++ payload *)
+
+let size_edns max_size edns protocol query =
+  let max = match max_size, query with
+    | Some x, true -> x
+    | Some x, false -> min x max_reply_udp
+    | None, true -> max_udp
+    | None, false -> max_reply_udp
+  in
+  (* it's udp payload size only, ignore any value for tcp *)
+  let maximum = match protocol with
+    | `Udp -> max
+    | `Tcp -> max_tcp
+  in
+  let edns = match edns with
+    | None -> None
+    | Some opts -> Some (Payload_size max :: opts)
+  in
+  maximum, edns
+
+let encode_v buf v =
   match v with
-  | `Query q -> encode_query buf hdr q
-  | `Update u -> encode_update buf hdr u
-  | `Notify n -> encode_query buf hdr n
+  | `Query q | `Notify q -> encode_query buf q
+  | `Update u -> encode_update buf u
+
+let encode_ad ?edns offs buf off ads =
+  let ads, edns = match edns with
+    | None -> ads, None
+    | Some opts ->
+      let e = { name = Dns_name.root ; ttl = 0l ; rdata = OPTS opts } in
+      ads @ [ e ], Some e
+  in
+  try
+    Cstruct.BE.set_uint16 buf 10 (List.length ads) ;
+    snd (List.fold_left (fun (offs, off) rr -> encode_rr offs buf off rr)
+           (offs, off) ads)
+  with _ ->
+  (* This is RFC 2181 Sec 9, not set truncated, just drop additional *)
+  match edns with
+  | None -> off
+  | Some e ->
+    try
+      (* we attempt encoding edns only *)
+      Cstruct.BE.set_uint16 buf 10 1 ;
+      snd (encode_rr offs buf off e)
+    with _ -> off
+
+let encode ?max_size ?edns protocol (hdr, v) =
+  let max, edns = size_edns max_size edns protocol hdr.query in
+  (* TODO: enforce invariants: additionals no TSIG and no EDNS! *)
+  let try_encoding buf =
+    let off, trunc =
+      try
+        encode_header buf hdr ;
+        let offs, off = encode_v buf v in
+        let ad = match v with
+          | `Query q | `Notify q -> q.additional
+          | `Update u -> u.addition
+        in
+        encode_ad ?edns offs buf off ad, false
+      with _ -> (* set truncated *)
+        (* if we failed to store data into buf, set truncation bit! *)
+        Cstruct.set_uint8 buf 2 (0x02 lor (Cstruct.get_uint8 buf 2)) ;
+        Cstruct.len buf, true
+    in
+    Cstruct.sub buf 0 off, trunc
+  in
+  let rec doit s =
+    let cs = Cstruct.create s in
+    match try_encoding cs with
+    | (cs, false) -> (cs, max)
+    | (cs, true) ->
+      let next = min max (s * 2) in
+      if next = s then
+        (cs, max)
+      else
+        doit next
+  in
+  doit (min max 4000) (* (mainly for TCP) we use a page as initial allocation *)
 
 let find_tsig t =
   let find_tsig xs =
@@ -1227,21 +1425,27 @@ let find_tsig t =
   | `Query q | `Notify q -> find_tsig q.additional
   | `Update u -> find_tsig u.addition
 
-let question = function
-  | `Update u -> [ u.zone ]
-  | `Query q | `Notify q -> q.question
+let find_edns t =
+  List.fold_left
+    (fun x rr -> match rr.rdata with
+       | OPTS edns -> Some edns
+       | _ -> x)
+    None
+    (match t with
+     | `Query q | `Notify q -> q.additional
+     | `Update u -> u.addition)
 
-let answer header v =
-  if header.query then
-    let header = { header with query = false }
-    and question = question v
+let error header v rcode =
+  if not header.query then
+    let header = { header with rcode }
+    and question = match v with
+      | `Update u -> [ u.zone ]
+      | `Query q | `Notify q -> q.question
     in
-    (* header is 12 bytes, plus question - name (up to 256) + qtype + qclass -- always <512! *)
-    let errbuf = Cstruct.create 512 in
+    let errbuf = Cstruct.create max_reply_udp in
     let query = { question ; answer = [] ; authority = [] ; additional = [] } in
-    let l = encode_query errbuf header query in
-    Some (Cstruct.sub errbuf 0 l)
+    encode_header errbuf header ;
+    let _, l = encode_query errbuf query in
+    Some (Cstruct.sub errbuf 0 l, max_reply_udp)
   else
     None
-
-let error header v rcode = answer { header with rcode } v

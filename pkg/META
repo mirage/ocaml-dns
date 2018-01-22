@@ -39,21 +39,21 @@ package "zonefile" (
  exists_if = "udns_zonefile.cma"
 )
 
-#package "resolver" (
-# version = "%%VERSION_NUM%%"
-# description = "Recursive DNS resolver"
-# requires = "udns lru duration"
-# archive(byte) = "udns_resolver.cma"
-# plugin(byte) = "udns_resolver.cma"
-# archive(native) = "udns_resolver.cmxa"
-# plugin(native) = "udns_resolver.cmxs"
-# exists_if = "udns_resolver.cma"
-#)
+package "resolver" (
+ version = "%%VERSION_NUM%%"
+ description = "Recursive DNS resolver"
+ requires = "udns udns.server lru duration randomconv"
+ archive(byte) = "udns_resolver.cma"
+ plugin(byte) = "udns_resolver.cma"
+ archive(native) = "udns_resolver.cmxa"
+ plugin(native) = "udns_resolver.cmxs"
+ exists_if = "udns_resolver.cma"
+)
 
 package "mirage" (
  version = "%%VERSION_NUM%%"
  description = "effectful MirageOS DNS layer"
- requires = "udns udns.server mirage-types-lwt"
+ requires = "udns udns.server udns.resolver mirage-types-lwt lwt duration randomconv"
  archive(byte) = "udns_mirage.cma"
  plugin(byte) = "udns_mirage.cma"
  archive(native) = "udns_mirage.cmxa"
