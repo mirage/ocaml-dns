@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/roburio/udns.svg?branch=master)](https://travis-ci.org/roburio/udns)
 
-(c) 2017,2018 Hannes Mehnert (robur.io, Centre for the Cultivation of Technology)
+(c) 2017,2018 Hannes Mehnert (robur.io, Center for the Cultivation of Technology)
 
 %%VERSION%%
 
