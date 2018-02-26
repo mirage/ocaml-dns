@@ -19,7 +19,7 @@ package "server" (
 
 package "crypto" (
  version = "%%VERSION_NUM%%"
- description = "Cryptographic support (TSIG)"
+ description = "Cryptographic support (TSIG) for DNS"
  requires = "udns nocrypto"
  archive(byte) = "udns_crypto.cma"
  plugin(byte) = "udns_crypto.cma"

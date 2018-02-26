@@ -148,15 +148,15 @@ val encode : ?compress:bool -> int DomMap.t -> Cstruct.t -> int -> t ->
     [map].  If [compress] is [true] (the default), and a (sub)domain name of [t]
     is in [map], a pointer is inserted instead of the full domain name.
 
-    @raise Invalid_argument if the provided [buf] is too small.
-
     NB: DNS (especially RFC 3597) mentions that pointers should only point to
     domain names in resource data which are well known (which means specified in
     RFC 1035).  To achieve this, the caller of [encode] if inside of other
     resource data fields needs to discard the returned [map], and continue to
     use the provided [map].  There should be no reason to use [~compress:false]
     (esp. these resource data fields which are _not_ well known may still
-    contain pointers to well known ones.  *)
+    contain pointers to well known ones.
+
+    @raise Invalid_argument if the provided [buf] is too small.  *)
 
 module DomSet : Set.S with type elt = t
 (** The module of a domain name set *)

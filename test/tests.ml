@@ -300,7 +300,9 @@ module Packet = struct
                | `NonZeroTTL of int32
                | `NonZeroRdlen of int | `InvalidZoneCount of int
                | `InvalidZoneRR of Dns_enum.rr_typ
-               ]
+               | `BadTlsaCertUsage of int | `BadTlsaSelector of int | `BadTlsaMatchingType of int
+               | `BadSshfpAlgorithm of int | `BadSshfpType of int
+             ]
       let pp = pp_err
       let equal a b = match a, b with
         | `Partial, `Partial -> true
@@ -328,6 +330,11 @@ module Packet = struct
         | `NonZeroRdlen a, `NonZeroRdlen b -> a = b
         | `InvalidZoneCount a, `InvalidZoneCount b -> a = b
         | `InvalidZoneRR a, `InvalidZoneRR b -> a = b
+        | `BadTlsaCertUsage u, `BadTlsaCertUsage v -> u = v
+        | `BadTlsaSelector s, `BadTlsaSelector t -> s = t
+        | `BadTlsaMatchingType m, `BadTlsaMatchingType n -> m = n
+        | `BadSshfpAlgorithm i, `BadSshfpAlgorithm j -> i = j
+        | `BadSshfpType i, `BadSshfpType j -> i = j
         | _ -> false
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)

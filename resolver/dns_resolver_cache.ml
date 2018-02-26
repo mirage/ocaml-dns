@@ -84,12 +84,9 @@ let update_res created ts res =
 let cached t ts typ nam =
   match LRU.find nam t with
   | None ->
-    Logs.debug (fun m -> m "found nothing %a" Dns_name.pp nam) ;
     s := { !s with miss = succ !s.miss } ;
     Error `Cache_miss
   | Some (V.All (created, _, res), t) ->
-    Logs.debug (fun m -> m "found all %a (%a) %a" Dns_name.pp nam
-                   Dns_enum.pp_rr_typ typ pp_res res) ;
     begin match update_res created ts res with
       | None ->
         s := { !s with drop = succ !s.drop } ;
@@ -101,17 +98,11 @@ let cached t ts typ nam =
   | Some (V.Entries tm, t) ->
     match Dns_enum.RRMap.find typ tm with
     | exception Not_found ->
-      Logs.debug (fun m -> m "found entries for %a, but no matching rr typ (%a): %a"
-                     Dns_name.pp nam Dns_enum.pp_rr_typ typ
-                     Fmt.(list ~sep:(unit ", ") Dns_enum.pp_rr_typ)
-                     (fst (List.split (Dns_enum.RRMap.bindings tm)))) ;
       s := { !s with miss = succ !s.miss } ;
       Error `Cache_miss
     | (created, _, res) ->
       match update_res created ts res with
       | None ->
-        Logs.debug (fun m -> m "didn't survive, dropping %a %a since invalid"
-                       Dns_name.pp nam Dns_enum.pp_rr_typ typ) ;
         s := { !s with drop = succ !s.drop } ;
         Error `Cache_drop
       | Some r ->
@@ -266,7 +257,7 @@ let find_ns t rng ts stash name =
       | `Name ns ->
         let actual = Dns_name.DomSet.diff ns stash in
         if Dns_name.DomSet.is_empty actual then begin
-          Logs.debug (fun m -> m "find_ns: couldn't take any name from %a (stash: %a)"
+          Logs.warn (fun m -> m "find_ns: couldn't take any name from %a (stash: %a), returning loop"
                          Fmt.(list ~sep:(unit ",@ ") Dns_name.pp) (Dns_name.DomSet.elements ns)
                          Fmt.(list ~sep:(unit ",@ ") Dns_name.pp) (Dns_name.DomSet.elements stash)) ;
           `Loop, t
@@ -387,35 +378,31 @@ let follow_cname t ts typ name answer =
       | _ -> None
     with
     | None ->
-      Logs.debug (fun m -> m "followed names %a noerror"
+      Logs.debug (fun m -> m "follow_cname: followed names %a noerror"
                      Fmt.(list ~sep:(unit ", ") Dns_name.pp) (N.elements names)) ;
       `NoError (acc, t)
     | Some n ->
-      Logs.debug (fun m -> m "looking in %d items for (names %a) %a (%a)"
-                     (LRU.items t)
-                     Fmt.(list ~sep:(unit ", ") Dns_name.pp) (N.elements names)
-                     Dns_name.pp n Dns_enum.pp_rr_typ typ) ;
       if N.mem n names then begin
-        Logs.debug (fun m -> m "cycle detected") ;
+        Logs.debug (fun m -> m "follow_cname: cycle detected") ;
         `Cycle (acc, t)
       end else
         match cached t ts typ n with
         | Error _ ->
-          Logs.debug (fun m -> m "cache miss, need to query %a" Dns_name.pp n) ;
+          Logs.debug (fun m -> m "follow_cname: cache miss, need to query %a" Dns_name.pp n) ;
           `Query (n, t)
         | Ok (NoErr ans, t) ->
-          Logs.debug (fun m -> m "noerr, follow again") ;
+          Logs.debug (fun m -> m "follow_cname: noerr, follow again") ;
           follow t (N.add n names) (acc@ans) ans
         | Ok (NoDom soa, t) ->
-          Logs.debug (fun m -> m "nodom") ;
+          Logs.debug (fun m -> m "follow_cname: nodom") ;
           `NoDom ((acc, soa), t)
         | Ok (NoData soa, t) ->
-          Logs.debug (fun m -> m "nodata") ;
+          Logs.debug (fun m -> m "follow_cname: nodata") ;
           `NoData ((acc, soa), t)
         (* XXX: the last case here is not asymmetric... the acc is dropped
            TODO: write tests and evalute what we need (what clients expect) *)
         | Ok (ServFail soa, t) ->
-          Logs.debug (fun m -> m "servfail") ;
+          Logs.debug (fun m -> m "follow_cname: servfail") ;
           `ServFail (soa, t)
   in
   follow t (N.singleton name) answer answer

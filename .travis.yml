@@ -5,6 +5,8 @@ sudo: required
 env:
   global:
     - PACKAGE="udns"
+    - PINS="mirage-os-shim:https://github.com/hannesm/mirage-os-shim.git#4.06"
+    - POST_INSTALL_HOOK="./.travis-test-mirage.sh"
   matrix:
     - OCAML_VERSION=4.04
     - OCAML_VERSION=4.05

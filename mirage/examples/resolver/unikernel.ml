@@ -37,7 +37,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
         ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign ~rng:R.generate
         trie
     in
-    let p = Dns_resolver.create ~root:true now R.generate server () in
-    D.resolver s pclock mclock p ;
+    let p = Dns_resolver.create now R.generate server () in
+    D.resolver ~root:true s pclock mclock p ;
     S.listen s
 end

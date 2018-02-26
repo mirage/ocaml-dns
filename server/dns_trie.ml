@@ -279,6 +279,16 @@ let check trie =
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else begin match caas with
             | [] -> Error (`Empty (name, Dns_enum.CAA))
+            | _ -> Ok () end
+        | Dns_map.V (Dns_map.K.Tlsa, (ttl, tlsas)) ->
+          if ttl < 0l then Error (`Bad_ttl (name, v))
+          else begin match tlsas with
+            | [] -> Error (`Empty (name, Dns_enum.TLSA))
+            | _ -> Ok () end
+        | Dns_map.V (Dns_map.K.Sshfp, (ttl, sshfps)) ->
+          if ttl < 0l then Error (`Bad_ttl (name, v))
+          else begin match sshfps with
+            | [] -> Error (`Empty (name, Dns_enum.SSHFP))
             | _ -> Ok () end)
       map (Ok ()) >>= fun () ->
     M.fold (fun lbl (N (sub, map)) r ->

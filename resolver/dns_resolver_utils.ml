@@ -44,7 +44,10 @@ let noerror q hdr dns =
             dns.authority
         with
         | [ soa ], _ -> [ q.q_type, q.q_name, rank, NoData soa ]
-        | [], [] -> [ q.q_type, q.q_name, Additional, NoData (invalid_soa q.q_name) ]
+        | [], [] ->
+          Logs.warn (fun m -> m "noerror answer, but nothing in authority whose sub is %a (%a) in %a, invalid_soa!"
+                        Dns_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type Dns_packet.pp_rrs dns.authority) ;
+          [ q.q_type, q.q_name, Additional, NoData (invalid_soa q.q_name) ]
         | _, _ -> [] (* general case when we get an answer from root server *)
       end, N.empty
     | answer ->
@@ -59,6 +62,8 @@ let noerror q hdr dns =
       | _, _ ->
         (* case multiple cnames or cname and sth else *)
         (* fail hard already here!? -- there's either multiple cname or cname and others *)
+        Logs.warn (fun m -> m "noerror answer with right name, but not either one or no cname in %a, invalid soa for %a (%a)"
+                      Dns_packet.pp_rrs answer Dns_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
         [ q.q_type, q.q_name, rank, NoData (invalid_soa q.q_name) ], N.empty
   in
 
@@ -115,9 +120,13 @@ let noerror q hdr dns =
   match answers, ns with
   | [], [] when not answer_complete && hdr.truncation ->
     (* special handling for truncated replies.. better not add anything *)
+    Logs.warn (fun m -> m "truncated reply for %a (%a), ignoring completely"
+                  Dns_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
     []
   | [], [] ->
     (* not sure if this can happen, maybe discard everything? *)
+    Logs.warn (fun m -> m "reply without answers or ns invalid so for %a (%a)"
+                  Dns_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
     [ q.q_type, q.q_name, Additional, NoData (invalid_soa q.q_name) ]
   | _, _ -> answers @ ns @ glues
 

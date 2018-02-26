@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 (* this code wouldn't exist without Justus Matthiesen, thanks for the help! *)
 
@@ -62,6 +62,8 @@ module K : sig
     | Srv : (int32 * Dns_packet.srv list) t
     | Dnskey : Dns_packet.dnskey list t
     | Caa : (int32 * Dns_packet.caa list) t
+    | Tlsa : (int32 * Dns_packet.tlsa list) t
+    | Sshfp : (int32 * Dns_packet.sshfp list) t
   val compare : 'a t -> 'b t -> ('a, 'b) Order.t
   val pp : Format.formatter -> 'a t -> 'a -> unit
 end

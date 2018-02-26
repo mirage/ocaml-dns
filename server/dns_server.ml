@@ -215,7 +215,7 @@ let handle_query t proto key header query =
         Ok (hdr, answer)
       | DNSKEY -> key_retrieval t proto key header q
       (* TODO: IXFR -> *)
-      | A | NS | CNAME | SOA | PTR | MX | TXT | AAAA | SRV | ANY | CAA ->
+      | A | NS | CNAME | SOA | PTR | MX | TXT | AAAA | SRV | ANY | CAA | SSHFP | TLSA ->
         lookup t.data header q
       | r ->
         Log.err (fun m -> m "refusing query type %a" Dns_enum.pp_rr_typ r) ;

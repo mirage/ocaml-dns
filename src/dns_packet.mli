@@ -12,6 +12,8 @@ val pp_err : [< Dns_name.err | `BadTTL of int32
              | `InvalidTimestamp of int64 | `InvalidAlgorithm of Dns_name.t
              | `BadProto of int | `BadAlgorithm of int
              | `BadOpt | `BadKeepalive
+             | `BadTlsaCertUsage of int | `BadTlsaSelector of int | `BadTlsaMatchingType of int
+             | `BadSshfpAlgorithm of int | `BadSshfpType of int
              ] Fmt.t
 
 type header = {
@@ -162,6 +164,27 @@ val pp_opt : opt Fmt.t
 
 val pp_opts : opts Fmt.t
 
+type tlsa = {
+  tlsa_cert_usage : Dns_enum.tlsa_cert_usage ;
+  tlsa_selector : Dns_enum.tlsa_selector ;
+  tlsa_matching_type : Dns_enum.tlsa_matching_type ;
+  tlsa_data : Cstruct.t ;
+}
+
+val compare_tlsa : tlsa -> tlsa -> int
+
+val pp_tlsa : tlsa Fmt.t
+
+type sshfp = {
+  sshfp_algorithm : Dns_enum.sshfp_algorithm ;
+  sshfp_type : Dns_enum.sshfp_type ;
+  sshfp_fingerprint : Cstruct.t ;
+}
+
+val compare_sshfp : sshfp -> sshfp -> int
+
+val pp_sshfp : sshfp Fmt.t
+
 type rdata =
   | CNAME of Dns_name.t
   | MX of int * Dns_name.t
@@ -176,6 +199,8 @@ type rdata =
   | DNSKEY of dnskey
   | CAA of caa
   | OPTS of opt list
+  | TLSA of tlsa
+  | SSHFP of sshfp
   | Raw of Dns_enum.rr_typ * Cstruct.t
 
 val pp_rdata : rdata Fmt.t
@@ -266,6 +291,8 @@ val decode : Cstruct.t ->
    | `NonZeroTTL of int32
    | `NonZeroRdlen of int | `InvalidZoneCount of int
    | `InvalidZoneRR of Dns_enum.rr_typ
+   | `BadTlsaCertUsage of int | `BadTlsaSelector of int | `BadTlsaMatchingType of int
+   | `BadSshfpAlgorithm of int | `BadSshfpType of int
    ]) result
 
 val encode : ?max_size:int -> ?edns:opts -> proto -> t -> Cstruct.t * int

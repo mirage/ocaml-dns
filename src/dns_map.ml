@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 (* this code wouldn't exist without Justus Matthiesen, thanks for the help! *)
 
@@ -137,6 +137,8 @@ module K = struct
     | Srv : (int32 * Dns_packet.srv list) t
     | Dnskey : Dns_packet.dnskey list t
     | Caa : (int32 * Dns_packet.caa list) t
+    | Tlsa : (int32 * Dns_packet.tlsa list) t
+    | Sshfp : (int32 * Dns_packet.sshfp list) t
 
   let compare : type a b. a t -> b t -> (a, b) Order.t = fun t t' ->
     let open Order in
@@ -152,7 +154,9 @@ module K = struct
     | Aaaa, Aaaa -> Eq | Aaaa, _ -> Lt | _, Aaaa -> Gt
     | Srv, Srv -> Eq | Srv, _ -> Lt | _, Srv -> Gt
     | Dnskey, Dnskey -> Eq | Dnskey, _ -> Lt | _, Dnskey -> Gt
-    | Caa, Caa -> Eq (* | Caa, _ -> Lt | _, Caa -> Gt *)
+    | Caa, Caa -> Eq | Caa, _ -> Lt | _, Caa -> Gt
+    | Tlsa, Tlsa -> Eq | Tlsa, _ -> Lt | _, Tlsa -> Gt
+    | Sshfp, Sshfp -> Eq (* | Sshfp, _ -> Lt | _, Sshfp -> Gt *)
 
   let pp : type a. Format.formatter -> a t -> a -> unit = fun ppf t v ->
     match t, v with
@@ -186,6 +190,12 @@ module K = struct
     | Caa, (ttl, caas) ->
       Fmt.pf ppf "caa ttl %lu %a" ttl
         Fmt.(list ~sep:(unit ";@,") Dns_packet.pp_caa) caas
+    | Tlsa, (ttl, tlsas) ->
+      Fmt.pf ppf "tlsa ttl %lu %a" ttl
+        Fmt.(list ~sep:(unit ";@,") Dns_packet.pp_tlsa) tlsas
+    | Sshfp, (ttl, sshfps) ->
+      Fmt.pf ppf "sshfp ttl %lu %a" ttl
+        Fmt.(list ~sep:(unit ";@,") Dns_packet.pp_sshfp) sshfps
 end
 
 include Make(K)
@@ -247,6 +257,16 @@ let equal_v v v' = match v, v' with
     List.for_all (fun caa ->
         List.exists (fun caa' -> Dns_packet.compare_caa caa caa' = 0) caas')
       caas
+  | V (K.Tlsa, (_, tlsas)), V (K.Tlsa, (_, tlsas')) ->
+    List.length tlsas = List.length tlsas' &&
+    List.for_all (fun tlsa ->
+        List.exists (fun tlsa' -> Dns_packet.compare_tlsa tlsa tlsa' = 0) tlsas')
+      tlsas
+  | V (K.Sshfp, (_, sshfps)), V (K.Sshfp, (_, sshfps')) ->
+    List.length sshfps = List.length sshfps' &&
+    List.for_all (fun sshfp ->
+        List.exists (fun sshfp' -> Dns_packet.compare_sshfp sshfp sshfp' = 0) sshfps')
+      sshfps
   | _, _ -> false
 
 let glue map =
@@ -273,6 +293,8 @@ let to_rr_typ : v -> Dns_enum.rr_typ = fun (V (k, _)) ->
   | K.Srv -> Dns_enum.SRV
   | K.Dnskey -> Dns_enum.DNSKEY
   | K.Caa -> Dns_enum.CAA
+  | K.Tlsa -> Dns_enum.TLSA
+  | K.Sshfp -> Dns_enum.SSHFP
 
 let to_rr : Dns_name.t -> v -> Dns_packet.rr list = fun name (V (k, v)) ->
   match k, v with
@@ -315,6 +337,14 @@ let to_rr : Dns_name.t -> v -> Dns_packet.rr list = fun name (V (k, v)) ->
     List.map (fun caa ->
         { Dns_packet.name ; ttl ; rdata = Dns_packet.CAA caa })
       caas
+  | K.Tlsa, (ttl, tlsas) ->
+    List.map (fun tlsa ->
+        { Dns_packet.name ; ttl ; rdata = Dns_packet.TLSA tlsa })
+      tlsas
+  | K.Sshfp, (ttl, sshfps) ->
+    List.map (fun sshfp ->
+        { Dns_packet.name ; ttl ; rdata = Dns_packet.SSHFP sshfp })
+      sshfps
 
 let names = function
   | V (K.Any, (_, names)) -> names
@@ -336,6 +366,8 @@ let of_rdata : int32 -> Dns_packet.rdata -> v option = fun ttl rd ->
   | Dns_packet.SRV srv -> Some (V (K.Srv, (ttl, [ srv ])))
   | Dns_packet.DNSKEY key -> Some (V (K.Dnskey, [ key ]))
   | Dns_packet.CAA caa -> Some (V (K.Caa, (ttl, [ caa ])))
+  | Dns_packet.TLSA tlsa -> Some (V (K.Tlsa, (ttl, [ tlsa ])))
+  | Dns_packet.SSHFP sshfp -> Some (V (K.Sshfp, (ttl, [ sshfp ])))
   | _ -> None
 
 let add_rdata : v -> Dns_packet.rdata -> v option = fun v rdata ->
@@ -357,6 +389,10 @@ let add_rdata : v -> Dns_packet.rdata -> v option = fun v rdata ->
     Some (V (K.Dnskey, add key keys))
   | V (K.Caa, (ttl, caas)), Dns_packet.CAA caa ->
     Some (V (K.Caa, (ttl, add caa caas)))
+  | V (K.Tlsa, (ttl, tlsas)), Dns_packet.TLSA tlsa ->
+    Some (V (K.Tlsa, (ttl, add tlsa tlsas)))
+  | V (K.Sshfp, (ttl, sshfps)), Dns_packet.SSHFP sshfp ->
+    Some (V (K.Sshfp, (ttl, add sshfp sshfps)))
   | _ -> None
 
 let remove_rdata : v -> Dns_packet.rdata -> v option = fun v rdata ->
@@ -403,6 +439,16 @@ let remove_rdata : v -> Dns_packet.rdata -> v option = fun v rdata ->
       | [] -> None
       | caas -> Some (V (K.Caa, (ttl, caas)))
     end
+  | V (K.Tlsa, (ttl, tlsas)), Dns_packet.TLSA tlsa ->
+    begin match rm tlsa tlsas with
+      | [] -> None
+      | tlsas -> Some (V (K.Tlsa, (ttl, tlsas)))
+    end
+  | V (K.Sshfp, (ttl, sshfps)), Dns_packet.SSHFP sshfp ->
+    begin match rm sshfp sshfps with
+      | [] -> None
+      | sshfps -> Some (V (K.Sshfp, (ttl, sshfps)))
+    end
   | _ -> None
 
 let lookup_rr : Dns_enum.rr_typ -> t -> v option = fun rr t ->
@@ -417,6 +463,8 @@ let lookup_rr : Dns_enum.rr_typ -> t -> v option = fun rr t ->
   | Dns_enum.SRV -> findv K.Srv t
   | Dns_enum.DNSKEY -> findv K.Dnskey t
   | Dns_enum.CAA -> findv K.Caa t
+  | Dns_enum.TLSA -> findv K.Tlsa t
+  | Dns_enum.SSHFP -> findv K.Sshfp t
   | _ -> None
 
 let remove_rr : Dns_enum.rr_typ -> t -> t = fun rr t ->
@@ -431,6 +479,8 @@ let remove_rr : Dns_enum.rr_typ -> t -> t = fun rr t ->
   | Dns_enum.SRV -> remove K.Srv t
   | Dns_enum.DNSKEY -> remove K.Dnskey t
   | Dns_enum.CAA -> remove K.Caa t
+  | Dns_enum.TLSA -> remove K.Tlsa t
+  | Dns_enum.SSHFP -> remove K.Sshfp t
   | _ -> t
 
 let of_rrs rrs =

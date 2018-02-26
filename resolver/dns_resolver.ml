@@ -112,6 +112,7 @@ let maybe_query ?recursion_desired t ts retry out ip typ name (proto, edns, orig
     (* TODO: is `Udp good here? *)
     let transit, packet = build_query ?recursion_desired t ts proto quest retry edns ip in
     let t = { t with transit ; queried = QM.add k [await] t.queried } in
+    Logs.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.V4.pp_hum ip Dns_packet.pp packet) ;
     let packet, _ = Dns_packet.encode ?edns proto packet in
     `Query (packet, ip), t
 
@@ -187,10 +188,11 @@ let handle_query t its out ?(retry = 0) proto edns from port ts q qid =
              max_out ; total_out = !s.total_out + out ;
              max_time ; total_time = Int64.add !s.total_time time ;
            } ;
-      Logs.debug (fun m -> m "answering %a (%a) after %a %d out packets"
+      Logs.debug (fun m -> m "answering %a (%a) after %a %d out packets: %a"
                      Dns_name.pp q.Dns_packet.q_name
                      Dns_enum.pp_rr_typ q.Dns_packet.q_type
-                     Duration.pp time out) ;
+                     Duration.pp time out
+                     Dns_packet.pp a) ;
       let max_size, edns = match edns with
         | None -> None, None
         | Some x -> Dns_packet.payload_size x, Some []
@@ -241,6 +243,7 @@ let handle_primary t now ts proto sender header v tsig_off buf =
                 | None -> None, None
                 | Some edns -> Dns_packet.payload_size edns, Some []
               in
+              Logs.debug (fun m -> m "authoritative reply %a %a" Dns_packet.pp_header header Dns_packet.pp_v v) ;
               let out = Dns_packet.encode ?max_size ?edns proto (header, v') in
               `Reply (t, out)
             end else begin
@@ -274,6 +277,7 @@ let handle_primary t now ts proto sender header v tsig_off buf =
 let supported = [ Dns_enum.A ; Dns_enum.NS ; Dns_enum.CNAME ;
                   Dns_enum.SOA ; Dns_enum.PTR ; Dns_enum.MX ;
                   Dns_enum.TXT ; Dns_enum.AAAA ; Dns_enum.SRV ;
+                  Dns_enum.SSHFP ; Dns_enum.TLSA ;
                   Dns_enum.ANY ]
 
 let handle_awaiting_queries ?retry t ts q =
@@ -339,6 +343,7 @@ let resolve t ts proto sender sport header v =
                 | `Query_without_edns ->
                   s := { !s with retry_edns = succ !s.retry_edns } ;
                   let transit, packet = build_query t ts proto q 1 None sender in
+                  Logs.debug (fun m -> m "resolve: requery without edns %a %a" Ipaddr.V4.pp_hum sender Dns_packet.pp packet) ;
                   let cs, _ = Dns_packet.encode `Udp packet in
                   ({ t with transit }, [], [ `Udp, sender, cs ])
                 | `Upgrade_to_tcp cache ->
@@ -352,6 +357,7 @@ let resolve t ts proto sender sport header v =
                      with different ids *)
                   let t, out_a, out_q = handle_awaiting_queries t ts q in
                   let transit, packet = build_query t ts `Tcp q 1 None sender in
+                  Logs.debug (fun m -> m "resolve: upgrade to tcp %a %a" Dns_packet.pp_header header Dns_packet.pp_v v) ;
                   let cs, _ = Dns_packet.encode `Tcp packet in
                   ({ t with transit }, out_a, (`Tcp, sender, cs) :: out_q)
                 | `Try_another_ns ->
@@ -413,14 +419,14 @@ let handle_delegation t ts proto sender sport header v v' =
                 Logs.warn (fun m -> m "maybe_query for %a at %a returned nothing"
                               Dns_name.pp name Ipaddr.V4.pp_hum ip) ;
                 t, [], []
-              | `Query (cs, ip), t ->
-                t, [], [ (`Udp, ip, cs) ]
+              | `Query (cs, ip), t -> t, [], [ (`Udp, ip, cs) ]
             end
           | `Packet (pkt, cache) ->
             let max_size, edns = match Dns_packet.find_edns v with
               | None -> None, None
               | Some edns -> Dns_packet.payload_size edns, Some []
             in
+            Logs.debug (fun m -> m "delegation reply from cache %a" Dns_packet.pp pkt) ;
             let pkt, _ = Dns_packet.encode ?max_size ?edns proto pkt in
             { t with cache }, [ (proto, sender, sport, pkt) ], []
             (* send it out! we've a cache hit here! *)

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2005-2006 Tim Deegan <tjd@phlegethon.org>
- * Copyright (c) 2017 Hannes Mehnert <hannes@mehnert.org>
+ * Copyright (c) 2017, 2018 Hannes Mehnert <hannes@mehnert.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -75,6 +75,8 @@ let parse_ipv6 s =
 %token <string> TYPE_SRV
 %token <string> TYPE_CAA
 %token <string> TYPE_DNSKEY
+%token <string> TYPE_TLSA
+%token <string> TYPE_SSHFP
 
 %token <string> CLASS_IN
 %token <string> CLASS_CS
@@ -131,6 +133,25 @@ rr:
  | TYPE_SRV s int16 s int16 s int16 s domain
      { Dns_packet.SRV { Dns_packet.priority = $3 ; weight = $5 ; port = $7 ; target = $9 } }
      /* RFC 3596 */
+ | TYPE_TLSA s int8 s int8 s int8 s hex
+     { match
+         Dns_enum.int_to_tlsa_cert_usage $3,
+         Dns_enum.int_to_tlsa_selector $5,
+         Dns_enum.int_to_tlsa_matching_type $7
+       with
+       | Some tlsa_cert_usage, Some tlsa_selector, Some tlsa_matching_type ->
+          Dns_packet.TLSA { Dns_packet.tlsa_cert_usage ; tlsa_selector ; tlsa_matching_type ; tlsa_data = $9 }
+       | _ -> raise Parsing.Parse_error
+     }
+ | TYPE_SSHFP s int8 s int8 s hex
+     { match
+         Dns_enum.int_to_sshfp_algorithm $3,
+         Dns_enum.int_to_sshfp_type $5
+       with
+       | Some sshfp_algorithm, Some sshfp_type ->
+          Dns_packet.SSHFP { Dns_packet.sshfp_algorithm ; sshfp_type ; sshfp_fingerprint = $7 }
+       | _ -> raise Parsing.Parse_error
+     }
  | TYPE_AAAA s ipv6 { Dns_packet.AAAA $3 }
  | TYPE_DNSKEY s int16 s int16 s int16 s charstring
      { if not ($5 = 3) then
@@ -143,6 +164,13 @@ rr:
      { let critical = if $3 = 0x80 then true else false in
        Dns_packet.CAA { Dns_packet.critical ; tag = $5 ; value = $7 } }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
+
+single_hex: charstring
+  { Cstruct.of_hex $1 }
+
+hex:
+   single_hex { $1 }
+ | hex s single_hex { Cstruct.append $1 $3 }
 
 ipv4: NUMBER DOT NUMBER DOT NUMBER DOT NUMBER
      { try
@@ -160,6 +188,11 @@ ipv6: charstring
        | Failure _ | Parsing.Parse_error ->
 	  parse_error ("invalid IPv6 address " ^ $1)
      }
+
+int8: NUMBER
+     { try parse_uint8 $1
+       with Parsing.Parse_error ->
+	 parse_error ($1 ^ " is not a 8-bit number") }
 
 int16: NUMBER
      { try parse_uint16 $1
@@ -219,6 +252,8 @@ keyword_or_number:
  | TYPE_AAAA { $1 }
  | TYPE_SRV { $1 }
  | TYPE_DNSKEY { $1 }
+ | TYPE_TLSA { $1 }
+ | TYPE_SSHFP { $1 }
  | CLASS_IN { $1 }
  | CLASS_CS { $1 }
  | CLASS_CH { $1 }

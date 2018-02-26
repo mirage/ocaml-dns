@@ -37,19 +37,23 @@ detailed overview.
 * [RFC 2782](https://tools.ietf.org/html/rfc2782) A DNS RR for specifying the location of services (DNS SRV)
 * [RFC 2845](https://tools.ietf.org/html/rfc2845) Secret Key Transaction Authentication for DNS (TSIG)
 * [RFC 3596](https://tools.ietf.org/html/rfc3596) DNS Extensions to Support IP Version 6
-* `*` [RFC 4034](https://tools.ietf.org/html/rfc4034) Resource Records for the DNS Security Extensions
+* [RFC 4034](https://tools.ietf.org/html/rfc4034) Resource Records for the DNS Security Extensions
+* [RFC 4255](https://tools.ietf.org/html/rfc4255) Using DNS to Securely Publish Secure Shell (SSH) Key Fingerprints
 * [RFC 4343](https://tools.ietf.org/html/rfc4343) Domain Name System (DNS) Case Insensitivity Clarification
 * [RFC 4635](https://tools.ietf.org/html/rfc4635) HMAC SHA TSIG Algorithm Identifiers
 * `*` [RFC 5001](https://tools.ietf.org/html/rfc5001) DNS Name Server Identifier (NSID) Option
 * [RFC 5358](https://tools.ietf.org/html/rfc5358) Preventing Use of Recursive Nameservers in Reflector Attacks
 * [RFC 5452](https://tools.ietf.org/html/rfc5452) Measures for Making DNS More Resilient against Forged Answers
 * [RFC 5936](https://tools.ietf.org/html/rfc5936) DNS Zone Transfer Protocol (AXFR)
+* [RFC 6594](https://tools.ietf.org/html/rfc6594) Use of the SHA-256 Algorithm with RSA, Digital Signature Algorithm (DSA), and Elliptic Curve DSA (ECDSA) in SSHFP Resource Records
+* [RFC 6698](https://tools.ietf.org/html/rfc6698.html) The DNS-Based Authentication of Named Entities (DANE) Transport Layer Security (TLS) Protocol: TLSA
 * [RFC 6761](https://tools.ietf.org/html/rfc6761) Special-Use Domain Names
 * `*` [RFC 6762](https://tools.ietf.org/html/rfc6762) Multicast DNS
 * [RFC 6844](https://tools.ietf.org/html/rfc6844) DNS Certification Authority Authorization (CAA) Resource Record
 * [RFC 6890](https://tools.ietf.org/html/rfc6890) Special-Purpose IP Address Registries
 * [RFC 6891](https://tools.ietf.org/html/rfc6891) Extension Mechanisms for DNS (EDNS(0))
 * [RFC 6895](https://tools.ietf.org/html/rfc6895) Domain Name System (DNS) IANA Considerations (BCP 42)
+* [RFC 7479](https://tools.ietf.org/html/rfc7479) Using Ed25519 in SSHFP Resource Records
 * [RFC 7626](https://tools.ietf.org/html/rfc7626) DNS Privacy Considerations
 * [RFC 7766](https://tools.ietf.org/html/rfc7766) DNS Transport over TCP - Implementation Requirements
 * [RFC 7816](https://tools.ietf.org/html/rfc7816) DNS Query Name Minimisation to Improve Privacy

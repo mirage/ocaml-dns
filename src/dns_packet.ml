@@ -28,6 +28,11 @@ let pp_err ppf = function
   | `BadAlgorithm num -> Fmt.pf ppf "bad algorithm %d" num
   | `BadOpt -> Fmt.pf ppf "bad option"
   | `BadKeepalive -> Fmt.pf ppf "bad keepalive"
+  | `BadTlsaCertUsage usage -> Fmt.pf ppf "bad TLSA cert usage %d" usage
+  | `BadTlsaSelector selector -> Fmt.pf ppf "bad TLSA selector %d" selector
+  | `BadTlsaMatchingType matching_type -> Fmt.pf ppf "bad TLSA matching type %d" matching_type
+  | `BadSshfpAlgorithm i -> Fmt.pf ppf "bad SSHFP algorithm %d" i
+  | `BadSshfpType i -> Fmt.pf ppf "bad SSHFP type %d" i
 (*BISECT-IGNORE-END*)
 
 let guard p err = if p then Ok () else Error err
@@ -148,9 +153,12 @@ let decode_ntc names buf off =
   in
   match Dns_enum.int_to_rr_typ typ with
   | None -> Error (`BadRRTyp typ)
+  | Some Dns_enum.TLSA when Dns_name.is_service name ->
+    Ok ((name, Dns_enum.TLSA, cls), names, off + 4)
   | Some Dns_enum.SRV when Dns_name.is_service name ->
     Ok ((name, Dns_enum.SRV, cls), names, off + 4)
-  | Some Dns_enum.SRV -> Error (`BadContent (Dns_name.to_string name))
+  | Some Dns_enum.SRV | Some Dns_enum.TLSA ->
+    Error (`BadContent (Dns_name.to_string name))
   | Some (Dns_enum.DNSKEY | Dns_enum.TSIG | Dns_enum.TXT as t) ->
     Ok ((name, t, cls),names, off + 4)
   | Some t when Dns_name.is_hostname name ->
@@ -719,6 +727,89 @@ let encode_opt t buf off =
 let encode_opts t buf off =
   List.fold_left (fun off opt -> encode_opt opt buf off) off t
 
+type tlsa = {
+  tlsa_cert_usage : Dns_enum.tlsa_cert_usage ;
+  tlsa_selector : Dns_enum.tlsa_selector ;
+  tlsa_matching_type : Dns_enum.tlsa_matching_type ;
+  tlsa_data : Cstruct.t ;
+}
+
+(*BISECT-IGNORE-BEGIN*)
+let pp_tlsa ppf tlsa =
+  Fmt.pf ppf "TLSA %a %a %a %a"
+    Dns_enum.pp_tlsa_cert_usage tlsa.tlsa_cert_usage
+    Dns_enum.pp_tlsa_selector tlsa.tlsa_selector
+    Dns_enum.pp_tlsa_matching_type tlsa.tlsa_matching_type
+    Cstruct.hexdump_pp tlsa.tlsa_data
+(*BISECT-IGNORE-END*)
+
+let compare_tlsa t1 t2 =
+  andThen (compare t1.tlsa_cert_usage t2.tlsa_cert_usage)
+    (andThen (compare t1.tlsa_selector t2.tlsa_selector)
+       (andThen (compare t1.tlsa_matching_type t2.tlsa_matching_type)
+          (Cstruct.compare t1.tlsa_data t2.tlsa_data)))
+
+let decode_tlsa buf off len =
+  let usage, selector, matching_type =
+    Cstruct.get_uint8 buf off,
+    Cstruct.get_uint8 buf (off + 1),
+    Cstruct.get_uint8 buf (off + 2)
+  in
+  let tlsa_data = Cstruct.sub buf (off + 3) (len - 3) in
+  match
+    Dns_enum.int_to_tlsa_cert_usage usage,
+    Dns_enum.int_to_tlsa_selector selector,
+    Dns_enum.int_to_tlsa_matching_type matching_type
+  with
+  | Some tlsa_cert_usage, Some tlsa_selector, Some tlsa_matching_type ->
+    Ok { tlsa_cert_usage ; tlsa_selector ; tlsa_matching_type ; tlsa_data }
+  | None, _, _ -> Error (`BadTlsaCertUsage usage)
+  | _, None, _ -> Error (`BadTlsaSelector selector)
+  | _, _, None -> Error (`BadTlsaMatchingType matching_type)
+
+let encode_tlsa tlsa buf off =
+  Cstruct.set_uint8 buf off (Dns_enum.tlsa_cert_usage_to_int tlsa.tlsa_cert_usage) ;
+  Cstruct.set_uint8 buf (off + 1) (Dns_enum.tlsa_selector_to_int tlsa.tlsa_selector) ;
+  Cstruct.set_uint8 buf (off + 2) (Dns_enum.tlsa_matching_type_to_int tlsa.tlsa_matching_type) ;
+  let l = Cstruct.len tlsa.tlsa_data in
+  Cstruct.blit tlsa.tlsa_data 0 buf (off + 3) l ;
+  off + 3 + l
+
+type sshfp = {
+  sshfp_algorithm : Dns_enum.sshfp_algorithm ;
+  sshfp_type : Dns_enum.sshfp_type ;
+  sshfp_fingerprint : Cstruct.t ;
+}
+
+let compare_sshfp s1 s2 =
+  andThen (compare s1.sshfp_algorithm s2.sshfp_algorithm)
+    (andThen (compare s1.sshfp_type s2.sshfp_type)
+       (Cstruct.compare s1.sshfp_fingerprint s2.sshfp_fingerprint))
+
+(*BISECT-IGNORE-BEGIN*)
+let pp_sshfp ppf sshfp =
+  Fmt.pf ppf "SSHFP %a %a %a"
+    Dns_enum.pp_sshfp_algorithm sshfp.sshfp_algorithm
+    Dns_enum.pp_sshfp_type sshfp.sshfp_type
+    Cstruct.hexdump_pp sshfp.sshfp_fingerprint
+(*BISECT-IGNORE-END*)
+
+let decode_sshfp buf off len =
+  let algo, typ = Cstruct.get_uint8 buf off, Cstruct.get_uint8 buf (succ off) in
+  let sshfp_fingerprint = Cstruct.sub buf (off + 2) (len - 2) in
+  match Dns_enum.int_to_sshfp_algorithm algo, Dns_enum.int_to_sshfp_type typ with
+  | Some sshfp_algorithm, Some sshfp_type ->
+    Ok { sshfp_algorithm ; sshfp_type ; sshfp_fingerprint }
+  | None, _ -> Error (`BadSshfpAlgorithm algo)
+  | _, None -> Error (`BadSshfpType typ)
+
+let encode_sshfp sshfp buf off =
+  Cstruct.set_uint8 buf off (Dns_enum.sshfp_algorithm_to_int sshfp.sshfp_algorithm) ;
+  Cstruct.set_uint8 buf (succ off) (Dns_enum.sshfp_type_to_int sshfp.sshfp_type) ;
+  let l = Cstruct.len sshfp.sshfp_fingerprint in
+  Cstruct.blit sshfp.sshfp_fingerprint 0 buf (off + 2) l ;
+  off + l + 2
+
 type rdata =
   | CNAME of Dns_name.t
   | MX of int * Dns_name.t
@@ -733,6 +824,8 @@ type rdata =
   | DNSKEY of dnskey
   | CAA of caa
   | OPTS of opt list
+  | TLSA of tlsa
+  | SSHFP of sshfp
   | Raw of Dns_enum.rr_typ * Cstruct.t
 
 let compare_rdata a b = match a, b with
@@ -765,6 +858,10 @@ let compare_rdata a b = match a, b with
   | CAA _, _ -> 1 | _, CAA _ -> -1
   | OPTS a, OPTS b -> compare_opts a b
   | OPTS _, _ -> 1 | _, OPTS _ -> -1
+  | TLSA a, TLSA b -> compare_tlsa a b
+  | TLSA _, _ -> 1 | _, TLSA _ -> -1
+  | SSHFP a, SSHFP b -> compare_sshfp a b
+  | SSHFP _, _ -> 1 | _, SSHFP _ -> -1
   | Raw (t, v), Raw (t', v') ->
     andThen (compare t t') (Cstruct.compare v v')
   | _ -> 1 (* TSIG is missing here expicitly, it's never supposed to be in any set! *)
@@ -784,6 +881,8 @@ let pp_rdata ppf = function
   | DNSKEY tk -> pp_dnskey ppf tk
   | CAA caa -> pp_caa ppf caa
   | OPTS opts -> pp_opts ppf opts
+  | TLSA tlsa -> pp_tlsa ppf tlsa
+  | SSHFP sshfp -> pp_sshfp ppf sshfp
   | Raw (t, d) ->
     Fmt.pf ppf "%a: %a" Dns_enum.pp_rr_typ t Cstruct.hexdump_pp d
 (*BISECT-IGNORE-END*)
@@ -802,6 +901,8 @@ let rdata_to_rr_typ = function
   | DNSKEY _ -> Dns_enum.DNSKEY
   | CAA _ -> Dns_enum.CAA
   | OPTS _ -> Dns_enum.OPT
+  | TLSA _ -> Dns_enum.TLSA
+  | SSHFP _ -> Dns_enum.SSHFP
   | Raw (t, _) -> t
 
 let rdata_name = function
@@ -869,6 +970,12 @@ let decode_rdata names buf off len = function
   | Dns_enum.OPT ->
     decode_opts buf off len >>= fun opts ->
     Ok (OPTS opts, names, off + len)
+  | Dns_enum.TLSA ->
+    decode_tlsa buf off len >>= fun tlsa ->
+    Ok (TLSA tlsa, names, off + len)
+  | Dns_enum.SSHFP ->
+    decode_sshfp buf off len >>= fun sshfp ->
+    Ok (SSHFP sshfp, names, off + len)
   | x -> Ok (Raw (x, Cstruct.sub buf off len), names, off + len)
 
 let encode_rdata offs buf off = function
@@ -904,6 +1011,8 @@ let encode_rdata offs buf off = function
   | DNSKEY t -> encode_dnskey t offs buf off
   | CAA caa -> offs, encode_caa caa buf off
   | OPTS opts -> offs, encode_opts opts buf off
+  | TLSA tlsa -> offs, encode_tlsa tlsa buf off
+  | SSHFP sshfp -> offs, encode_sshfp sshfp buf off
   | Raw (_, rr) ->
     let len = Cstruct.len rr in
     Cstruct.blit rr 0 buf off len ;

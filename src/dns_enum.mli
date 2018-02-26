@@ -1,4 +1,4 @@
-(* (c) 2017 Hannes Mehnert, all rights reserved *)
+(* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
 (* retrieved and converted 2017-04-29 from https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml *)
 
@@ -208,3 +208,53 @@ val dnskey_len : dnskey -> int
 val pp_dnskey : dnskey Fmt.t
 
 module RRMap : Map.S with type key = rr_typ
+
+[%%cenum
+type tlsa_cert_usage =
+  | CA_constraint [@id 0]
+  | Service_certificate_constraint [@id 1]
+  | Trust_anchor_assertion [@id 2]
+  | Domain_issued_certificate [@id 3]
+[@@uint8_t]
+]
+
+val pp_tlsa_cert_usage : tlsa_cert_usage Fmt.t
+
+[%%cenum
+type tlsa_selector =
+  | Full_certificate [@id 0]
+  | Subject_public_key_info [@id 1]
+[@@uint8_t]
+]
+
+val pp_tlsa_selector : tlsa_selector Fmt.t
+
+[%%cenum
+type tlsa_matching_type =
+  | Tlsa_no_hash [@id 0]
+  | Tlsa_SHA256 [@id 1]
+  | Tlsa_SHA512 [@id 2]
+[@@uint8_t]
+]
+
+val pp_tlsa_matching_type : tlsa_matching_type Fmt.t
+
+[%%cenum
+type sshfp_algorithm =
+  | Sshfp_rsa [@id 1]
+  | Sshfp_dsa [@id 2]
+  | Sshfp_ecdsa [@id 3]
+  | Sshfp_ed25519 [@id 4]
+[@@uint8_t]
+]
+
+val pp_sshfp_algorithm : sshfp_algorithm Fmt.t
+
+[%%cenum
+type sshfp_type =
+  | Sshfp_SHA1 [@id 1]
+  | Sshfp_SHA256 [@id 2]
+[@@uint8_t]
+]
+
+val pp_sshfp_type : sshfp_type Fmt.t

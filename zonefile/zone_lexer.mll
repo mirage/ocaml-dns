@@ -1,7 +1,7 @@
 (*
  * Copyright (c) 2006 Tim Deegan <tjd@phlegethon.org>
  * Copyright (c) 2010-12 Anil Madhavapeddy <anil@recoil.org>
- * Copyright (c) 2017 Hannes Mehnert <hannes@mehnert.org>
+ * Copyright (c) 2017, 2018 Hannes Mehnert <hannes@mehnert.org>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -40,6 +40,8 @@ let kw_or_cs s = match (String.uppercase_ascii s) with
   | "SRV" -> TYPE_SRV s
   | "DNSKEY" -> TYPE_DNSKEY s
   | "CAA" -> TYPE_CAA s
+  | "TLSA" -> TYPE_TLSA s
+  | "SSHFP" -> TYPE_SSHFP s
   | "IN" -> CLASS_IN s
   | "CS" -> CLASS_CS s
   | "CH" -> CLASS_CH s
