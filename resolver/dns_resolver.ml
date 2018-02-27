@@ -61,8 +61,8 @@ type t = {
   queried : awaiting list QM.t ;
 }
 
-let create now rng primary () =
-  let cache = Dns_resolver_cache.empty 100000 in
+let create ?(size = 10000) now rng primary =
+  let cache = Dns_resolver_cache.empty size in
   let cache =
     List.fold_left (fun cache (name, rr) ->
         Dns_resolver_cache.maybe_insert

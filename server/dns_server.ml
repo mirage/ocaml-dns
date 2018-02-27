@@ -58,7 +58,7 @@ let authorise t proto keyname zone operation =
   let op = operation_to_string operation in
   List.exists (fun a -> a t.data proto keyname op zone) t.authorised
 
-let create data authorised rng tsig_verify tsig_sign  =
+let create data authorised rng tsig_verify tsig_sign =
   { data ; authorised ; rng ; tsig_verify ; tsig_sign }
 
 let to_ns_rrs name ttl ns =

@@ -37,7 +37,7 @@ let a_records =
       name, { Dns_packet.name ; ttl ; rdata })
     root_servers
 
-let reserved_zones =
+let reserved_zone_records =
   let n = Dns_name.of_string_exn in
   (* RFC 6761, avoid them to get out of here + multicast DNS 6762 *)
   let zones =
@@ -73,4 +73,12 @@ let reserved_zones =
     zones nets
 (* XXX V6 reserved nets (also RFC6890) *)
 
-
+let reserved_zones =
+  let inv s =
+    let soa = { Dns_packet.nameserver = s ; hostmaster = s ;
+                serial = 0l ; refresh = 300l ; retry = 300l ;
+                expiry = 300l ; minimum = 300l }
+    in
+    Dns_map.(V (K.Soa, (300l, soa)))
+  in
+  Dns_name.DomSet.fold (fun n acc -> (n, inv n) :: acc) reserved_zone_records []

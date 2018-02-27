@@ -2,7 +2,7 @@
 
 type t
 
-val create : int64 -> (int -> Cstruct.t) -> Dns_server.Primary.s -> unit -> t
+val create : ?size:int ->int64 -> (int -> Cstruct.t) -> Dns_server.Primary.s -> t
 
 val handle : t -> Ptime.t -> int64 -> Dns_packet.proto -> Ipaddr.V4.t -> int -> Cstruct.t ->
   t * (Dns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list
