@@ -221,8 +221,10 @@ let handle_query t proto key header query =
         Log.err (fun m -> m "refusing query type %a" Dns_enum.pp_rr_typ r) ;
         Error Dns_enum.Refused
     end
-  | _ ->
-    Log.err (fun m -> m "none or multiple questions, bailing") ;
+  | qs ->
+    Log.err (fun m -> m "%d questions %a, bailing"
+                (List.length qs)
+                Fmt.(list ~sep:(unit ",@ ") Dns_packet.pp_question) qs) ;
     Error Dns_enum.FormErr
 
 let in_zone zone name = Dns_name.sub ~subdomain:name ~domain:zone
