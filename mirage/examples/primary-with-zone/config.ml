@@ -3,8 +3,8 @@
 open Mirage
 
 let address =
-  let network = Ipaddr.V4.Prefix.of_address_string_exn "10.0.0.2/24"
-  and gateway = Ipaddr.V4.of_string "10.0.0.1"
+  let network = Ipaddr.V4.Prefix.of_address_string_exn "10.0.42.2/24"
+  and gateway = Ipaddr.V4.of_string "10.0.42.1"
   in
   { network ; gateway }
 

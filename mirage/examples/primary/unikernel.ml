@@ -26,10 +26,10 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
     let open Dns_map in
     let t = insert (n "mirage") (V (K.Soa, (ttl, soa))) Dns_trie.empty in
     let t = insert (n "mirage") (V (K.Ns, (ttl, s ns))) t in
-    let t = insert (n "nuc.mirage") (V (K.A, (ttl, [ ip "10.0.0.1" ]))) t in
-    let t = insert ns (V (K.A, (ttl, [ ip "10.0.0.2" ]))) t in
-    let t = insert (n "charrua.mirage") (V (K.A, (ttl, [ ip "10.0.0.3" ]))) t in
-    let t = insert (n "resolver.mirage") (V (K.A, (ttl, [ ip "10.0.0.5" ]))) t in
+    let t = insert (n "nuc.mirage") (V (K.A, (ttl, [ ip "10.0.42.1" ]))) t in
+    let t = insert ns (V (K.A, (ttl, [ ip "10.0.42.2" ]))) t in
+    let t = insert (n "charrua.mirage") (V (K.A, (ttl, [ ip "10.0.42.3" ]))) t in
+    let t = insert (n "resolver.mirage") (V (K.A, (ttl, [ ip "10.0.42.5" ]))) t in
     let t = insert (n "www.mirage") (V (K.Cname, (ttl, n "nuc.mirage"))) t in
     let key_algorithm = Dns_enum.SHA256
     and flags = 0
