@@ -1162,7 +1162,10 @@ let decode_query buf t =
           guard t `Partial >>= fun () ->
           Ok (query qs an au ad, None)
         | `Full (off, ad, lastoff) ->
-          guard (Cstruct.len buf = off) `LeftOver >>= fun () ->
+          (if Cstruct.len buf > off then
+             let n = Cstruct.len buf - off in
+             Logs.warn (fun m -> m "received %d extra bytes %a"
+                           n Cstruct.hexdump_pp (Cstruct.sub buf off n))) ;
           Ok (query qs an au ad, lastoff)
 
 let encode_query buf data =

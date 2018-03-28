@@ -597,7 +597,8 @@ module Packet = struct
                      question ; authority = [] ; answer ; additional}))
                 (decode data))
 
-  (* still not sure whether to allow this or not... *)
+  (* still not sure whether to allow this or not... -- since the resolver code
+     now knows about SRV records (and drops _foo._tcp), this shouldn't appear *)
   let regression4 () =
     let data = of_hex {___|9f ca 84 03 00 01 00 00  00 01 00 01 04 5f 74 63
                            70 04 6b 65 79 73 06 72  69 73 65 75 70 03 6e 65
@@ -634,6 +635,28 @@ module Packet = struct
                      answer = [] ; additional}))
                 (decode data))
 
+  let regression5 () =
+    (* this is what bbc returns me (extra bytes) since it doesn't like EDNS *)
+    let data = of_hex {___|5b 12 84 01 00 01 00 00  00 00 00 00 03 6e 73 34
+                           03 62 62 63 03 6e 65 74  02 75 6b 00 00 02 00 01
+                           00 00 29 05 cc 00 00 00  00 00 00|___}
+    in
+    let header =
+      let rcode = Dns_enum.FormErr in
+      { query = false ; id = 0x5B12 ; operation = Dns_enum.Query ;
+        authoritative = true ; truncation = false ; recursion_desired = false ;
+        recursion_available = false ; authentic_data = false ;
+        checking_disabled = false ; rcode }
+    in
+    let question =
+      [ { q_name = Dns_name.of_string_exn "ns4.bbc.net.uk" ; q_type = Dns_enum.NS } ]
+    in
+    Alcotest.(check (result q_ok p_err) "regression 5 decodes"
+                (Ok (header, {
+                     question ; authority = [] ;
+                     answer = [] ; additional = [] }))
+                (decode data))
+
   let code_tests = [
     "basic header", `Quick, basic_header ;
     "bad query", `Quick, bad_query ;
@@ -642,6 +665,7 @@ module Packet = struct
     "regression2", `Quick, regression2 ;
     "regression3", `Quick, regression3 ;
     (* "regression4", `Quick, regression4 ; *)
+    "regression5", `Quick, regression5 ;
   ]
 end
 
