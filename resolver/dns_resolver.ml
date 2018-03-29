@@ -460,12 +460,15 @@ let handle_error proto sender sport buf =
 let handle t now ts proto sender sport buf =
   match Dns_packet.decode buf with
   | Error e ->
-    Logs.err (fun m -> m "parse error %a for@.%a"
+    Logs.err (fun m -> m "parse error (from %a:%d) %a for@.%a"
+                 Ipaddr.V4.pp_hum sender sport
                  Dns_packet.pp_err e Cstruct.hexdump_pp buf) ;
     s := { !s with errors = succ !s.errors } ;
     t, handle_error proto sender sport buf, []
   | Ok ((header, v), tsig_off) ->
-    Logs.info (fun m -> m "reacting to %a: %a" Dns_packet.pp_header header
+    Logs.info (fun m -> m "reacting to (from %a:%d) %a: %a"
+                  Ipaddr.V4.pp_hum sender sport
+                  Dns_packet.pp_header header
                   Dns_packet.pp_v v) ;
     match handle_primary t.primary now ts proto sender header v tsig_off buf with
     | `Reply (primary, pkt) ->
