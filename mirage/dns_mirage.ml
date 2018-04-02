@@ -66,7 +66,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
   let primary stack pclock mclock ?(timer = 2) ?(port = 53) t =
     let state = ref t in
     let send_notify (ip, data) = send_udp stack port ip port data in
-    let udp_cb ~src ~dst ~src_port buf =
+    let udp_cb ~src ~dst:_ ~src_port buf =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
@@ -142,7 +142,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
                   T.close flow) ;
         Lwt.return_unit
     in
-    let udp_cb ~src ~dst ~src_port buf =
+    let udp_cb ~src ~dst:_ ~src_port buf =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
@@ -210,12 +210,12 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     let tcp_out = ref IM.empty in
 
     let rec client_out dst port =
-      T.create_connection (S.tcpv4 stack) (dst, port) >>= function
+      T.create_connection (S.tcpv4 stack) (dst, port) >|= function
       | Error e ->
         (* do i need to report this back into the resolver? what are their options then? *)
         Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
                     T.pp_error e Ipaddr.V4.pp_hum dst port) ;
-        Lwt.return (Error ())
+        Error ()
       | Ok flow ->
         Logs.info (fun m -> m "established new outgoing TCP connection to %a:%d"
                       Ipaddr.V4.pp_hum dst port);
@@ -232,7 +232,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
                 let now = Ptime.v (P.now_d_ps pclock) in
                 let ts = M.elapsed_ns mclock in
                 let new_state, answers, queries =
-                  Dns_resolver.handle !state now ts `Tcp dst port data
+                  Dns_resolver.handle !state now ts false `Tcp dst port data
                 in
                 state := new_state ;
                 Lwt_list.iter_p handle_answer answers >>= fun () ->
@@ -240,7 +240,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
                 loop ()
             in
             loop ()) ;
-        Lwt.return (Ok flow)
+        Ok ()
     and client_tcp dst port data =
       match try Some (IM.find dst !tcp_out) with Not_found -> None with
       | None ->
@@ -248,9 +248,9 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
           client_out dst port >>= function
           | Error () ->
             let sport = sport () in
-            S.listen_udpv4 stack ~port:sport udp_cb ;
+            S.listen_udpv4 stack ~port:sport (udp_cb false) ;
             send_udp stack sport dst port data
-          | Ok flow -> client_tcp dst port data
+          | Ok () -> client_tcp dst port data
         end
       | Some x ->
         send_tcp x data >>= function
@@ -266,7 +266,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       | Ok () -> Lwt.return_unit
       | Error () ->
         let sport = sport () in
-        S.listen_udpv4 stack ~port:sport udp_cb ;
+        S.listen_udpv4 stack ~port:sport (udp_cb false) ;
         send_udp stack sport dst port data
     and handle_query (proto, dst, data) = match proto with
       | `Udp -> maybe_tcp dst port data
@@ -281,21 +281,21 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
         | Some flow -> send_tcp flow data >|= function
           | Ok () -> ()
           | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in
-    and udp_cb ~src ~dst ~src_port buf =
+    and udp_cb req ~src ~dst:_ ~src_port buf =
       let now = Ptime.v (P.now_d_ps pclock)
       and ts = M.elapsed_ns mclock
       in
       let new_state, answers, queries =
-        Dns_resolver.handle !state now ts `Udp src src_port buf
+        Dns_resolver.handle !state now ts req `Udp src src_port buf
       in
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
       Lwt_list.iter_p handle_query queries
     in
-    S.listen_udpv4 stack ~port udp_cb ;
+    S.listen_udpv4 stack ~port (udp_cb true) ;
     Logs.app (fun f -> f "DNS resolver listening on UDP port %d" port);
 
-    let tcp_cb flow =
+    let tcp_cb query flow =
       let dst_ip, dst_port = T.dst flow in
       Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
       tcp_in := FM.add (dst_ip, dst_port) flow !tcp_in ;
@@ -309,7 +309,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
           let now = Ptime.v (P.now_d_ps pclock) in
           let ts = M.elapsed_ns mclock in
           let new_state, answers, queries =
-            Dns_resolver.handle !state now ts `Tcp dst_ip dst_port data
+            Dns_resolver.handle !state now ts query `Tcp dst_ip dst_port data
           in
           state := new_state ;
           Lwt_list.iter_p handle_answer answers >>= fun () ->
@@ -318,7 +318,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       in
       loop ()
     in
-    S.listen_tcpv4 stack ~port tcp_cb ;
+    S.listen_tcpv4 stack ~port (tcp_cb true) ;
     Log.info (fun m -> m "DNS resolver listening on TCP port %d" port) ;
 
     let rec stats_reporter () =

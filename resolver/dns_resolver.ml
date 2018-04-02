@@ -307,69 +307,86 @@ let resolve t ts proto sender sport header v =
                   Fmt.(option ~none:(unit "none") Dns_packet.pp_question) q) ;
     begin match query.Dns_packet.question with
       | [ q ] ->
-        if header.Dns_packet.query then begin
-          guard (header.Dns_packet.recursion_desired)
-            (fun () ->
-               Logs.err (fun m -> m "recursion not desired") ;
-               error Dns_enum.FormErr) >>= fun () ->
-          guard (List.mem q.Dns_packet.q_type supported)
-            (fun () ->
-               Logs.err (fun m -> m "unsupported query type %s"
-                            (Dns_enum.rr_typ_to_string q.Dns_packet.q_type)) ;
-               error Dns_enum.NotImp) >>= fun () ->
-          s := { !s with questions = succ !s.questions } ;
-          let edns = Dns_packet.find_edns v in
-          (* ask the cache *)
-          begin match handle_query t ts 0 proto edns sender sport ts q id with
-            | `Answer pkt, t -> Ok (t, [ (proto, sender, sport, pkt) ], [])
-            | `Nothing, t -> Ok (t, [], [])
-            | `Query (packet, dst), t -> Ok (t, [], [ `Udp, dst, packet ])
-          end
-        end else (* is not a query, but a response *) begin
-          let r =
-            if sport <> 53 then begin
-              Logs.err (fun m -> m "source port is not 53, but %d" sport) ;
-              (t, [], [])
-            end else begin
-              (* (a) first check whether frame was in transit! *)
-              let r, transit = was_in_transit t.transit q.Dns_packet.q_type q.Dns_packet.q_name id sender in
-              let t = { t with transit } in
-              match r with
-              | None -> (t, [], [])
-              | Some edns ->
-                s := { !s with responses = succ !s.responses } ;
-                (* (b) now we scrub and either *)
-                match scrub_it t.cache proto edns ts q header query with
-                | `Query_without_edns ->
-                  s := { !s with retry_edns = succ !s.retry_edns } ;
-                  let transit, packet = build_query t ts proto q 1 None sender in
-                  Logs.debug (fun m -> m "resolve: requery without edns %a %a" Ipaddr.V4.pp_hum sender Dns_packet.pp packet) ;
-                  let cs, _ = Dns_packet.encode `Udp packet in
-                  ({ t with transit }, [], [ `Udp, sender, cs ])
-                | `Upgrade_to_tcp cache ->
-                  s := { !s with tcp_upgrade = succ !s.tcp_upgrade } ;
-                  (* RFC 2181 Sec 9: correct would be to drop entire frame, and retry with tcp *)
-                  (* but we're happy to retrieve the partial information, it may be useful *)
-                  let t = { t with cache } in
-                  (* this may provoke the very same question again -
-                     but since tcp is first, that should trigger the TCP connection,
-                     which is then reused... ok, we may send the same query twice
-                     with different ids *)
-                  let t, out_a, out_q = handle_awaiting_queries t ts q in
-                  let transit, packet = build_query t ts `Tcp q 1 None sender in
-                  Logs.debug (fun m -> m "resolve: upgrade to tcp %a %a" Dns_packet.pp_header header Dns_packet.pp_v v) ;
-                  let cs, _ = Dns_packet.encode `Tcp packet in
-                  ({ t with transit }, out_a, (`Tcp, sender, cs) :: out_q)
-                | `Try_another_ns ->
-                  (* is this the right behaviour? by luck we'll use another path *)
-                  handle_awaiting_queries t ts q
-                | `Cache cache ->
-                  let t = { t with cache } in
-                  handle_awaiting_queries t ts q
-            end
-          in
-          Ok r
-        end (* [ q ] && query or not *)
+        guard (header.Dns_packet.recursion_desired)
+          (fun () ->
+             Logs.err (fun m -> m "recursion not desired") ;
+             error Dns_enum.FormErr) >>= fun () ->
+        guard (List.mem q.Dns_packet.q_type supported)
+          (fun () ->
+             Logs.err (fun m -> m "unsupported query type %s"
+                          (Dns_enum.rr_typ_to_string q.Dns_packet.q_type)) ;
+             error Dns_enum.NotImp) >>= fun () ->
+        s := { !s with questions = succ !s.questions } ;
+        let edns = Dns_packet.find_edns v in
+        (* ask the cache *)
+        begin match handle_query t ts 0 proto edns sender sport ts q id with
+          | `Answer pkt, t -> Ok (t, [ (proto, sender, sport, pkt) ], [])
+          | `Nothing, t -> Ok (t, [], [])
+          | `Query (packet, dst), t -> Ok (t, [], [ `Udp, dst, packet ])
+        end
+      | question ->
+        Logs.warn (fun m -> m "got %d questions %a"
+                      (List.length question)
+                      Fmt.(list ~sep:(unit ";@ ") Dns_packet.pp_question) question) ;
+        Error (error Dns_enum.FormErr)
+    end (* `Query query *)
+  | v ->
+    Logs.err (fun m -> m "ignoring %a" Dns_packet.pp (header, v)) ;
+    Error (error Dns_enum.FormErr)
+
+let handle_reply t ts proto sender header v =
+  let id = header.Dns_packet.id
+  and error rcode =
+    s := { !s with errors = succ !s.errors } ;
+    let header = { header with Dns_packet.query = not header.Dns_packet.query } in
+    match Dns_packet.error header v rcode with
+    | None -> None
+    | Some (cs, _) -> Some cs
+  in
+  match v with
+  | `Query query ->
+    let q = match query.Dns_packet.question with | [x] -> Some x | _ -> None in
+    Logs.info (fun m -> m "handling reply %a %a" Dns_packet.pp_header header
+                  Fmt.(option ~none:(unit "none") Dns_packet.pp_question) q) ;
+    begin match query.Dns_packet.question with
+      | [ q ] ->
+        (* (a) first check whether frame was in transit! *)
+        let r, transit = was_in_transit t.transit q.Dns_packet.q_type q.Dns_packet.q_name id sender in
+        let t = { t with transit } in
+        let r = match r with
+          | None -> (t, [], [])
+          | Some edns ->
+            s := { !s with responses = succ !s.responses } ;
+            (* (b) now we scrub and either *)
+            match scrub_it t.cache proto edns ts q header query with
+            | `Query_without_edns ->
+              s := { !s with retry_edns = succ !s.retry_edns } ;
+              let transit, packet = build_query t ts proto q 1 None sender in
+              Logs.debug (fun m -> m "resolve: requery without edns %a %a" Ipaddr.V4.pp_hum sender Dns_packet.pp packet) ;
+              let cs, _ = Dns_packet.encode `Udp packet in
+              ({ t with transit }, [], [ `Udp, sender, cs ])
+            | `Upgrade_to_tcp cache ->
+              s := { !s with tcp_upgrade = succ !s.tcp_upgrade } ;
+              (* RFC 2181 Sec 9: correct would be to drop entire frame, and retry with tcp *)
+              (* but we're happy to retrieve the partial information, it may be useful *)
+              let t = { t with cache } in
+              (* this may provoke the very same question again -
+                 but since tcp is first, that should trigger the TCP connection,
+                 which is then reused... ok, we may send the same query twice
+                 with different ids *)
+              let t, out_a, out_q = handle_awaiting_queries t ts q in
+              let transit, packet = build_query t ts `Tcp q 1 None sender in
+              Logs.debug (fun m -> m "resolve: upgrade to tcp %a %a" Dns_packet.pp_header header Dns_packet.pp_v v) ;
+              let cs, _ = Dns_packet.encode `Tcp packet in
+              ({ t with transit }, out_a, (`Tcp, sender, cs) :: out_q)
+            | `Try_another_ns ->
+              (* is this the right behaviour? by luck we'll use another path *)
+              handle_awaiting_queries t ts q
+            | `Cache cache ->
+              let t = { t with cache } in
+              handle_awaiting_queries t ts q
+        in
+        Ok r
       | question ->
         Logs.warn (fun m -> m "got %d questions %a"
                       (List.length question)
@@ -457,7 +474,7 @@ let handle_error proto sender sport buf =
     | None -> []
     | Some (cs, _) -> [ (proto, sender, sport, cs) ]
 
-let handle t now ts proto sender sport buf =
+let handle t now ts query proto sender sport buf =
   match Dns_packet.decode buf with
   | Error e ->
     Logs.err (fun m -> m "parse error (from %a:%d) %a for@.%a"
@@ -470,16 +487,30 @@ let handle t now ts proto sender sport buf =
                   Ipaddr.V4.pp_hum sender sport
                   Dns_packet.pp_header header
                   Dns_packet.pp_v v) ;
-    match handle_primary t.primary now ts proto sender header v tsig_off buf with
-    | `Reply (primary, pkt) ->
-      { t with primary }, [ (proto, sender, sport, pkt) ], []
-    | `Delegation v' ->
-      handle_delegation t ts proto sender sport header v v'
-    | `No ->
-      match resolve t ts proto sender sport header v with
-      | Ok a -> a
-      | Error (Some e) -> t, [ (proto, sender, sport, e) ], []
-      | Error None -> t, [], []
+    match header.Dns_packet.query, query with
+    | true, true ->
+      begin
+        match handle_primary t.primary now ts proto sender header v tsig_off buf with
+        | `Reply (primary, pkt) ->
+          { t with primary }, [ (proto, sender, sport, pkt) ], []
+        | `Delegation v' ->
+          handle_delegation t ts proto sender sport header v v'
+        | `No ->
+          match resolve t ts proto sender sport header v with
+          | Ok a -> a
+          | Error (Some e) -> t, [ (proto, sender, sport, e) ], []
+          | Error None -> t, [], []
+      end
+    | false, false ->
+      begin
+        match handle_reply t ts proto sender header v with
+        | Ok a -> a
+        | Error (Some e) -> t, [ (proto, sender, sport, e) ], []
+        | Error None -> t, [], []
+      end
+    | _, _ ->
+      Logs.err (fun m -> m "ignoring unsolicited packet (query allowed? %b)" query);
+      t, [], []
 
 let query_root t now proto =
   let q_name = Dns_name.root
