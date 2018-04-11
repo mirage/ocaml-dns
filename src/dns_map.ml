@@ -309,8 +309,8 @@ let to_rr : Dns_name.t -> v -> Dns_packet.rr list = fun name (V (k, v)) ->
     Dns_name.DomSet.fold (fun ns acc ->
       { Dns_packet.name ; ttl ; rdata = Dns_packet.NS ns } :: acc)
       names []
-  | K.Ptr, (ttl, name) ->
-    [ { Dns_packet.name ; ttl ; rdata = Dns_packet.PTR name } ]
+  | K.Ptr, (ttl, ptrname) ->
+    [ { Dns_packet.name ; ttl ; rdata = Dns_packet.PTR ptrname } ]
   | K.Soa, (ttl, soa) ->
     [ { Dns_packet.name ; ttl ; rdata = Dns_packet.SOA soa } ]
   | K.Txt, (ttl, txts) ->
