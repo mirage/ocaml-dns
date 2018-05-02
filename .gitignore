@@ -10,3 +10,10 @@ main.ml
 mirage-unikernel-*.opam
 myocamlbuild.ml
 ukvm-bin
+
+*pcap
+*out
+*key
+*private
+*native
+coverage/
