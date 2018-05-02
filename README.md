@@ -78,24 +78,8 @@ computer.
 µDNS is not released yet, but you can install it and its dependencies via opam:
 `opam pin add udns https://github.com/roburio/udns.git`
 
-Now the µDNS library is installed, and you can try out the examples.  For this,
-you need to clone this git repository (`git clone
-https://github.com/roburio/udns.git`) and try the provided examples
-(located in `mirage/examples`):
-- `primary` - a primary nameserver with its zone embedded in OCaml code
-- `primary-with-zone` - a primary nameserver where the zone is embedded as a zonefile
-- `secondary` - a secondary nameserver
-- `resolver` - a recursive resolver
-- `stub` - a stub resolver (with 141.1.1.1 preconfigured)
-
-In either of the directories, run `mirage configure` (see `mirage help
-configure` for options), followed by `make depend` and `make` (read more
-information [Hello MirageOS world](https://mirage.io/wiki/hello-world)).
-
-Depending on the target, the name and type of the resulting binary varies. In
-the default target, `unix`, its name is `./main.native`, and which requires
-superuser privileges to listen on port 53 (e.g. `doas ./main.native -l
-\*:debug`).
+Now the µDNS library is installed, and you can try out the examples.  Read the
+[README](mirage/examples/) in the `mirage/examples` subdirectory.
 
 ## Documentation
 
