@@ -4,23 +4,27 @@ eval `opam config env`
 
 opam install mirage
 
-for x in mirage/examples/*; do
+UNIKERNELS="primary primary-with-zone secondary resolver stub"
+
+cd mirage/examples
+
+for x in $UNIKERNELS; do
     cd $x
     echo "now working in $x, compiling for unix"
     mirage configure -t unix && make depend && mirage build && mirage clean
-    cd ../../..
+    cd ..
 done
 
-for x in mirage/examples/*; do
+for x in $UNIKERNELS; do
     cd $x
     echo "now working in $x, compiling for ukvm"
     mirage configure -t ukvm && make depend && mirage build && mirage clean
-    cd ../../..
+    cd ..
 done
 
-for x in mirage/examples/*; do
+for x in $UNIKERNELS; do
     cd $x
     echo "now working in $x, compiling for virtio"
     mirage configure -t virtio && make depend && mirage build && mirage clean
-    cd ../../..
+    cd ..
 done
