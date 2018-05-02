@@ -519,13 +519,10 @@ module Primary = struct
 
   let server (t, _) = t
 
-  let create now ?(a = []) ~tsig_verify ~tsig_sign ~rng ?(zones = []) data =
+  let create ?(a = []) ~tsig_verify ~tsig_sign ~rng data =
     let notifications =
-      List.fold_left (fun acc zone ->
-          match Dns_trie.lookup zone Dns_enum.SOA data with
-          | Ok (Dns_map.V (Dns_map.K.Soa, (_, soa)), _) ->
-            acc @ notify rng now data zone soa
-          | _ -> acc) [] zones
+      List.fold_left (fun acc (zone, soa) ->
+          acc @ notify rng 0L data zone soa) [] (Dns_trie.zones data)
     in
     let t = create data a rng tsig_verify tsig_sign in
     (t, notifications)
@@ -603,25 +600,22 @@ module Primary = struct
   let retransmit = Array.map Duration.of_sec [| 5 ; 12 ; 25 ; 40 ; 60 |]
 
   let timer (t, ns) now =
-    let max = Array.length retransmit in
+    let max = pred (Array.length retransmit) in
+    let encode hdr q = fst @@ Dns_packet.encode `Udp (hdr, `Query q) in
     let notifications, out =
       List.fold_left (fun (ns, acc) (ts, count, ip, hdr, q) ->
           if Int64.add ts retransmit.(count) < now then
             (if count = max then begin
                 Log.warn (fun m -> m "retransmitting to %a the last time %a %a"
-                              Ipaddr.V4.pp_hum ip Dns_packet.pp_header hdr
-                              Dns_packet.pp_query q) ;
+                             Ipaddr.V4.pp_hum ip Dns_packet.pp_header hdr
+                             Dns_packet.pp_query q) ;
                 ns
               end else
                (ts, succ count, ip, hdr, q) :: ns),
-            (ip, hdr, q) :: acc
+            (ip, encode hdr q) :: acc
           else
             (ts, count, ip, hdr, q) :: ns, acc)
         ([], []) ns
-    in
-    let out =
-      List.map (fun (ip, hdr, q) ->
-          (ip, fst (Dns_packet.encode `Udp (hdr, `Query q)))) out
     in
     (t, notifications), out
 end
@@ -690,9 +684,7 @@ module Secondary = struct
     let buf, max_size = Dns_packet.encode proto (header, `Query query) in
     match maybe_sign ~max_size t.tsig_sign t.data name now header.Dns_packet.id buf with
     | None -> None
-    | Some (buf, mac) ->
-      Log.debug (fun m -> m "buf@.%a" Cstruct.hexdump_pp buf) ;
-      Some (Requested_axfr (ts, header.Dns_packet.id, mac), buf)
+    | Some (buf, mac) -> Some (Requested_axfr (ts, header.Dns_packet.id, mac), buf)
 
   let query_soa t now ts q_name name =
     let header = header t.rng ()
@@ -702,9 +694,7 @@ module Secondary = struct
     let buf, max_size = Dns_packet.encode `Udp (header, `Query query) in
     match maybe_sign ~max_size t.tsig_sign t.data name now header.Dns_packet.id buf with
     | None -> None
-    | Some (buf, mac) ->
-      Log.debug (fun m -> m "buf@.%a" Cstruct.hexdump_pp buf) ;
-      Some (Requested_soa (ts, header.Dns_packet.id, mac), buf)
+    | Some (buf, mac) -> Some (Requested_soa (ts, header.Dns_packet.id, mac), buf)
 
   let timer (t, zones) p_now now =
     let zones, out =

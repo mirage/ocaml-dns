@@ -97,3 +97,6 @@ val entries : Dns_name.t -> t ->
 val keys : Dns_name.t -> t -> ((Dns_name.t * Dns_packet.dnskey) list, unit) result
 (** [keys name t] returns either all DNSKEY records which have the requested
     [name] as prefix, or an error. *)
+
+val zones : t -> (Dns_name.t * Dns_packet.soa) list
+(** [zones t] returns all SOA records in the trie. *)

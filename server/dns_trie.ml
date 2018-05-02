@@ -127,6 +127,23 @@ let keys name t =
   | Error _ -> Error ()
   | Ok (_zone, sub, map) -> Ok (collect name sub (get_key name map))
 
+let zones t =
+  let get_key name map acc =
+    match Dns_map.find Dns_map.K.Soa map with
+    | Some (_, soa) -> (name, soa) :: acc
+    | None -> acc
+  in
+  let rec collect name sub acc =
+    List.fold_left (fun acc (pre, N (sub, map)) ->
+        let n' = Dns_name.prepend_exn ~hostname:false name pre in
+        let acc = get_key n' map acc in
+        collect n' sub acc) acc (M.bindings sub)
+  in
+  let name = Dns_name.root in
+  match lookup_aux name t with
+  | Error _ -> []
+  | Ok (_zone, sub, map) -> collect name sub (get_key name map [])
+
 let collect_map name rrmap =
   (* collecting rr out of rrmap + name, no SOA! *)
   Dns_map.fold (fun v acc ->

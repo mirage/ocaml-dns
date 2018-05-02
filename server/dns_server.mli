@@ -36,9 +36,9 @@ module Primary : sig
   val server : s -> t
 
   (* TODO: could make the Dns_trie.t optional, and have an optional key *)
-  val create : int64 -> ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->
+  val create : ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->
-    ?zones:Dns_name.t list -> Dns_trie.t -> s
+    Dns_trie.t -> s
 
   val handle_frame : s -> int64 -> Ipaddr.V4.t -> Dns_packet.proto ->
     Dns_name.t option -> Dns_packet.t ->
