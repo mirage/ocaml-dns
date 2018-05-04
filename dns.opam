@@ -13,7 +13,7 @@ license: "ISC"
 tags: [ "org:mirage" "org:xapi-project" ]
 
 build: [
-  ["jbuilder" "subst"] {pinned}
+  ["jbuilder" "subst" "-n" name] {pinned}
   ["jbuilder" "build" "-p" name "-j" jobs]
 ]
 
