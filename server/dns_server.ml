@@ -436,7 +436,7 @@ let handle_update t ts proto key u =
           Dns_name.sub ~subdomain ~domain)
         all_operations
     in
-    Dns_packet.(List.exists (fun up -> f (rr_update_name up)) u.update)
+    Dns_packet.(List.exists f (List.map rr_update_name u.update))
   in
   (if authorise t proto key zone Key_management then
      Ok ()
