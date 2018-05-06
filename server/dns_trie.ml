@@ -111,48 +111,32 @@ let lookup_ignore name ty t =
     | None -> Error ()
     | Some v -> Ok v
 
-let keys name t =
-  let get_key name map =
-    match Dns_map.find Dns_map.K.Dnskey map with
-    | Some keys -> List.map (fun k -> (name, k)) keys
-    | None -> []
-  in
-  let rec collect name sub acc =
-    List.fold_left (fun acc (pre, N (sub, map)) ->
-        let n' = Dns_name.prepend_exn ~hostname:false name pre in
-        let keys = get_key n' map @ acc in
-        collect n' sub keys) acc (M.bindings sub)
-  in
-  match lookup_aux name t with
-  | Error _ -> Error ()
-  | Ok (_zone, sub, map) -> Ok (collect name sub (get_key name map))
-
-let zones t =
-  let get_key name map acc =
-    match Dns_map.find Dns_map.K.Soa map with
-    | Some (_, soa) -> (name, soa) :: acc
+let folde name key t f s =
+  let get name map acc =
+    match Dns_map.find key map with
+    | Some a -> f name a acc
     | None -> acc
   in
   let rec collect name sub acc =
     List.fold_left (fun acc (pre, N (sub, map)) ->
         let n' = Dns_name.prepend_exn ~hostname:false name pre in
-        let acc = get_key n' map acc in
-        collect n' sub acc) acc (M.bindings sub)
+        let keys = get n' map acc in
+        collect n' sub keys)
+      acc (M.bindings sub)
   in
-  let name = Dns_name.root in
   match lookup_aux name t with
-  | Error _ -> []
-  | Ok (_zone, sub, map) -> collect name sub (get_key name map [])
+  | Error e -> Error e
+  | Ok (_zone, sub, map) -> Ok (collect name sub (get name map s))
 
-let collect_map name rrmap =
-  (* collecting rr out of rrmap + name, no SOA! *)
-  Dns_map.fold (fun v acc ->
-      match v with
-      | Dns_map.V (Dns_map.K.Soa, _) -> acc
-      | v -> Dns_map.to_rr name v @ acc)
-    rrmap []
-
-let walk name sub map =
+let collect_rrs name sub map =
+  let collect_map name rrmap =
+    (* collecting rr out of rrmap + name, no SOA! *)
+    Dns_map.fold (fun v acc ->
+        match v with
+        | Dns_map.V (Dns_map.K.Soa, _) -> acc
+        | v -> Dns_map.to_rr name v @ acc)
+      rrmap []
+  in
   let rec go name sub map =
     let entries = collect_map name map in
     List.fold_left
@@ -176,7 +160,7 @@ let collect_entries name sub map =
   match ttlsoa with
   | None -> Error `NotAuthoritative
   | Some (ttl, soa) ->
-    let entries = walk name sub map in
+    let entries = collect_rrs name sub map in
     Ok ({ Dns_packet.name ; ttl ; rdata = Dns_packet.SOA soa }, entries)
 
 let entries name t =

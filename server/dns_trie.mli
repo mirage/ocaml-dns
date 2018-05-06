@@ -94,9 +94,10 @@ val entries : Dns_name.t -> t ->
 (** [entries name t] returns either the SOA and all entries for the requested
     [name], or an error. *)
 
-val keys : Dns_name.t -> t -> ((Dns_name.t * Dns_packet.dnskey) list, unit) result
-(** [keys name t] returns either all DNSKEY records which have the requested
-    [name] as prefix, or an error. *)
-
-val zones : t -> (Dns_name.t * Dns_packet.soa) list
-(** [zones t] returns all SOA records in the trie. *)
+val folde : Dns_name.t -> 'a Dns_map.key -> t ->
+  (Dns_name.t -> 'a -> 'b -> 'b) -> 'b ->
+  ('b, [> `Delegation of Dns_name.t * (int32 * Dns_name.DomSet.t)
+       | `NotAuthoritative
+       | `NotFound of Dns_name.t * int32 * Dns_packet.soa ]) result
+(** [folde name key t f acc] calls [f] with [dname value acc] element in [t]
+    where [dname] has [name] as prefix, and ['a key = 'a = value], or an error. *)

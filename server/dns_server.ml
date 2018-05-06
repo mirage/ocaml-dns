@@ -391,17 +391,19 @@ let notify rng now trie zone soa =
     | _ -> IPS.empty
   and key_ips =
     let tx = Dns_name.prepend_exn ~hostname:false zone (operation_to_string Transfer) in
-    match Dns_trie.keys tx trie with
-    | Error () ->
-      Log.err (fun m -> m "no keys found for %a" Dns_name.pp tx) ; IPS.empty
-    | Ok es ->
-      List.fold_left (fun acc (n, _) ->
-          match extract_zone_and_ip ~secondary:true n with
-          | None ->
-            Log.err (fun m -> m "failed to parse secondary IP: %a" Dns_name.pp n) ;
-            acc
-          | Some (_, ip) -> IPS.add ip acc)
-        IPS.empty es
+    let accumulate name _ acc =
+      match extract_zone_and_ip ~secondary:true name with
+      | None ->
+        Log.err (fun m -> m "failed to parse secondary IP: %a" Dns_name.pp name) ;
+        acc
+      | Some (_, ip) -> IPS.add ip acc
+    in
+    match
+      Dns_trie.folde tx Dns_map.K.Dnskey trie accumulate IPS.empty
+    with
+    | Error e ->
+      Log.err (fun m -> m "no keys found for %a: %a" Dns_name.pp tx Dns_trie.pp_e e) ; IPS.empty
+    | Ok es -> es
   in
   let ips = IPS.union ips key_ips in
   Log.debug (fun m -> m "notifying %a %a" Dns_name.pp zone
@@ -521,8 +523,15 @@ module Primary = struct
 
   let create ?(a = []) ~tsig_verify ~tsig_sign ~rng data =
     let notifications =
-      List.fold_left (fun acc (zone, soa) ->
-          acc @ notify rng 0L data zone soa) [] (Dns_trie.zones data)
+      let f name (_, soa) acc =
+        Log.debug (fun m -> m "soa found for %a" Dns_name.pp name) ;
+        acc @ notify rng 0L data name soa
+      in
+      match Dns_trie.folde Dns_name.root Dns_map.K.Soa data f [] with
+      | Ok ns -> ns
+      | Error e ->
+        Logs.warn (fun m -> m "error %a while collecting zones" Dns_trie.pp_e e) ;
+        []
     in
     let t = create data a rng tsig_verify tsig_sign in
     (t, notifications)
