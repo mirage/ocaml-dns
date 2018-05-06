@@ -35,6 +35,10 @@ module Primary : sig
 
   val server : s -> t
 
+  val data : s -> Dns_trie.t
+
+  val with_data : s -> Dns_trie.t -> s
+
   (* TODO: could make the Dns_trie.t optional, and have an optional key *)
   val create : ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->
@@ -53,8 +57,6 @@ end
 
 module Secondary : sig
   type s
-
-  val server : s -> t
 
   val create : ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->

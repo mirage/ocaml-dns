@@ -521,6 +521,10 @@ module Primary = struct
 
   let server (t, _) = t
 
+  let data (t, _) = t.data
+
+  let with_data (t, n) data = { t with data }, n
+
   let create ?(a = []) ~tsig_verify ~tsig_sign ~rng data =
     let notifications =
       let f name (_, soa) acc =
@@ -637,8 +641,6 @@ module Secondary = struct
 
   type s =
     t * (state * Ipaddr.V4.t * Dns_name.t) Dns_name.DomMap.t
-
-  let server (t, _) = t
 
   let create ?(a = []) ~tsig_verify ~tsig_sign ~rng keys =
     (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
