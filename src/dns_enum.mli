@@ -222,8 +222,9 @@ val pp_tlsa_cert_usage : tlsa_cert_usage Fmt.t
 
 [%%cenum
 type tlsa_selector =
-  | Full_certificate [@id 0]
-  | Subject_public_key_info [@id 1]
+  | Tlsa_full_certificate [@id 0]
+  | Tlsa_subject_public_key_info [@id 1]
+  | Tlsa_selector_private [@id 255]
 [@@uint8_t]
 ]
 
