@@ -157,7 +157,7 @@ let decode_ntc names buf off =
     Ok ((name, Dns_enum.TLSA, cls), names, off + 4)
   | Some Dns_enum.SRV when Dns_name.is_service name ->
     Ok ((name, Dns_enum.SRV, cls), names, off + 4)
-  | Some Dns_enum.SRV | Some Dns_enum.TLSA ->
+  | Some Dns_enum.SRV ->
     Error (`BadContent (Dns_name.to_string name))
   | Some (Dns_enum.DNSKEY | Dns_enum.TSIG | Dns_enum.TXT as t) ->
     Ok ((name, t, cls),names, off + 4)

@@ -279,8 +279,7 @@ let glue map =
           aaaa) @ acc)
     map []
 
-let to_rr_typ : v -> Dns_enum.rr_typ = fun (V (k, _)) ->
-  match k with
+let k_to_rr_typ : type a. a key -> Dns_enum.rr_typ = function
   | K.Any -> Dns_enum.ANY
   | K.Cname -> Dns_enum.CNAME
   | K.Mx -> Dns_enum.MX
@@ -295,6 +294,9 @@ let to_rr_typ : v -> Dns_enum.rr_typ = fun (V (k, _)) ->
   | K.Caa -> Dns_enum.CAA
   | K.Tlsa -> Dns_enum.TLSA
   | K.Sshfp -> Dns_enum.SSHFP
+
+let to_rr_typ : v -> Dns_enum.rr_typ = fun (V (k, _)) ->
+   k_to_rr_typ k
 
 let to_rr : Dns_name.t -> v -> Dns_packet.rr list = fun name (V (k, v)) ->
   match k, v with

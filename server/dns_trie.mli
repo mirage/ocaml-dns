@@ -81,6 +81,14 @@ val lookup : Dns_name.t -> Dns_enum.rr_typ -> t ->
 (** [lookup k ty t] finds [k, ty] in [t], which may lead to an error.  The
     authority information is returned as well. *)
 
+val lookup_direct : Dns_name.t -> 'a Dns_map.key -> t ->
+  ('a,
+   [> `Delegation of Dns_name.t * (int32 * Dns_name.DomSet.t)
+   | `EmptyNonTerminal of Dns_name.t * int32 * Dns_packet.soa
+   | `NotAuthoritative
+   | `NotFound of Dns_name.t * int32 * Dns_packet.soa ]) result
+(** [lookup_direct k ty t] finds [k, ty] in [t], which may lead to an error. *)
+
 val lookup_ignore : Dns_name.t -> Dns_enum.rr_typ -> t ->
   (Dns_map.v, unit) result
 (** [lookup_ignore k ty t] finds a [k, ty] in [t], which may lead to an error.

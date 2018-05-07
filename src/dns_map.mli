@@ -98,6 +98,7 @@ val filter : (v -> bool) -> t -> t
 val pp : Format.formatter -> t -> unit
 
 
+val k_to_rr_typ : 'a key -> Dns_enum.rr_typ
 val to_rr_typ : v -> Dns_enum.rr_typ
 val to_rr : Dns_name.t -> v -> Dns_packet.rr list
 val names : v -> Dns_name.DomSet.t

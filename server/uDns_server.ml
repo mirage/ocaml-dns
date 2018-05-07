@@ -634,13 +634,13 @@ module Primary = struct
 end
 
 module Secondary = struct
+
   type state =
     | Transferred of int64
+    | Requested_soa of int64 * int * int * Cstruct.t
     | Requested_axfr of int64 * int * Cstruct.t
-    | Requested_soa of int64 * int * Cstruct.t
 
-  type s =
-    t * (state * Ipaddr.V4.t * Dns_name.t) Dns_name.DomMap.t
+  type s = t * (state * Ipaddr.V4.t * Dns_name.t) Dns_name.DomMap.t
 
   let create ?(a = []) ~tsig_verify ~tsig_sign ~rng keys =
     (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
@@ -653,7 +653,7 @@ module Secondary = struct
           | Some (zone, ip) ->
             Log.info (fun m -> m "adding transfer key %a for %a" Dns_name.pp name Dns_name.pp zone) ;
             let zones =
-              let v = (Transferred 0L, ip, name) in
+              let v = (Requested_soa (0L, 0, 0, Cstruct.empty), ip, name) in
               Dns_name.DomMap.add zone v zones
             in
             (Dns_trie.insert name (Dns_map.V (Dns_map.K.Dnskey, [ key ])) trie, zones)
@@ -681,70 +681,97 @@ module Secondary = struct
 
   let header rng () =
     let id = Randomconv.int ~bound:(1 lsl 16 - 1) rng in
-    { Dns_packet.id ; query = true ; operation = Dns_enum.Query ;
-      authoritative = false ; truncation = false ;
-      recursion_desired = false ; recursion_available = false ;
-      authentic_data = false ; checking_disabled = false ;
-      rcode = Dns_enum.NoError }
+    id, { Dns_packet.id ; query = true ; operation = Dns_enum.Query ;
+          authoritative = false ; truncation = false ;
+          recursion_desired = false ; recursion_available = false ;
+          authentic_data = false ; checking_disabled = false ;
+          rcode = Dns_enum.NoError }
 
   let axfr t proto now ts q_name name =
-    let header = header t.rng ()
+    let id, header = header t.rng ()
     and question = [ { Dns_packet.q_name ; q_type = Dns_enum.AXFR } ]
     in
     let query = { Dns_packet.question ; answer = [] ; authority = [] ; additional = [] } in
     let buf, max_size = Dns_packet.encode proto (header, `Query query) in
-    match maybe_sign ~max_size t.tsig_sign t.data name now header.Dns_packet.id buf with
+    match maybe_sign ~max_size t.tsig_sign t.data name now id buf with
     | None -> None
-    | Some (buf, mac) -> Some (Requested_axfr (ts, header.Dns_packet.id, mac), buf)
+    | Some (buf, mac) -> Some (Requested_axfr (ts, id, mac), buf)
 
-  let query_soa t now ts q_name name =
-    let header = header t.rng ()
+  let query_soa ?(retry = 0) t proto now ts q_name name =
+    let id, header = header t.rng ()
     and question = [ { Dns_packet.q_name ; q_type = Dns_enum.SOA } ]
     in
     let query = { Dns_packet.question ; answer = [] ; authority = [] ; additional = [] } in
-    let buf, max_size = Dns_packet.encode `Udp (header, `Query query) in
-    match maybe_sign ~max_size t.tsig_sign t.data name now header.Dns_packet.id buf with
+    let buf, max_size = Dns_packet.encode proto (header, `Query query) in
+    match maybe_sign ~max_size t.tsig_sign t.data name now id buf with
     | None -> None
-    | Some (buf, mac) -> Some (Requested_soa (ts, header.Dns_packet.id, mac), buf)
+    | Some (buf, mac) -> Some (Requested_soa (ts, retry, id, mac), buf)
 
   let timer (t, zones) p_now now =
-    let zones, out =
-      Dns_name.DomMap.fold (fun zone (st, ip, name) (zones, acc) ->
-          let change =
-            match Dns_trie.lookup zone Dns_enum.SOA t.data with
-            | Ok (Dns_map.V (Dns_map.K.Soa, (_, soa)), _) ->
-              begin match st with
-                | Transferred ts ->
-                  (* TODO: integer overflows (Int64.add) *)
-                  let r = Duration.of_sec (Int32.to_int soa.Dns_packet.refresh) in
-                  if Int64.add ts r < now then
-                    query_soa t p_now now zone name
-                  else
-                    None
-                | Requested_soa (ts, _, _) | Requested_axfr (ts, _, _) ->
-                  let e = Duration.of_sec (Int32.to_int soa.Dns_packet.expiry) in
-                  if Int64.add ts e < now then
-                    query_soa t p_now now zone name
-                  else
-                    None
-              end
-            | Ok (v, _) ->
-              Log.err (fun m -> m "looked up SOA %a, got %a"
-                          Dns_name.pp zone Dns_map.pp_v v) ;
-              None
-            | Error e ->
-              Log.warn (fun m -> m "error %a while looking up SOA %a, querying SOA"
-                           Dns_trie.pp_e e Dns_name.pp zone) ;
-              query_soa t p_now now zone name
+    (* what is there to be done?
+       - request SOA on every soa.refresh interval
+       - if the primary server is not reachable, try every time after soa.retry
+       - once soa.expiry is over (from the initial SOA request), don't serve the zone anymore
+
+       - axfr (once soa is through and we know we have stale data) is retried every 5 seconds
+       - if we don't have a soa yet for the zone, retry every 5 seconds as well
+    *)
+    let t, out =
+      Dns_name.DomMap.fold (fun zone (st, ip, name) ((t, zones), acc) ->
+          let maybe_out data =
+            let st, out = match data with
+              | None -> st, acc
+              | Some (st, out) -> st, (`Tcp, ip, out) :: acc
+            in
+            ((t, Dns_name.DomMap.add zone (st, ip, name) zones), out)
           in
-          let st, out = match change with
-            | None -> st, acc
-            | Some (st, out) -> st, (`Udp, ip, out) :: acc
-          in
-          Dns_name.DomMap.add zone (st, ip, name) zones, out)
-        zones (Dns_name.DomMap.empty, [])
+
+          match Dns_trie.lookup_direct zone Dns_map.K.Soa t.data, st with
+          | Ok (_, soa), Transferred ts ->
+            (* TODO: integer overflows (Int64.add) *)
+            let r = Duration.of_sec (Int32.to_int soa.Dns_packet.refresh) in
+            maybe_out
+              (if Int64.add ts r < now then
+                 query_soa t `Tcp p_now now zone name
+               else
+                 None)
+          | Ok (_, soa), Requested_soa (ts, retry, _, _) ->
+            let expiry = Duration.of_sec (Int32.to_int soa.Dns_packet.expiry) in
+            if Int64.add ts expiry < now then begin
+              Log.warn (fun m -> m "expiry expired, dropping zone %a"
+                           Dns_name.pp zone) ;
+              let data = Dns_trie.remove_zone zone t.data in
+              (({ t with data }, zones), acc)
+            end else
+              let retry = succ retry in
+              let e = Duration.of_sec (retry * Int32.to_int soa.Dns_packet.retry) in
+              maybe_out
+                (if Int64.add ts e < now then
+                   query_soa ~retry t `Tcp p_now ts zone name
+                 else
+                   None)
+          | Error _, Requested_soa (ts, retry, _, _) ->
+            let e = Duration.of_sec 5 in
+            maybe_out
+              (if Int64.add ts e < now then
+                 let retry = succ retry in
+                 query_soa ~retry t `Tcp p_now ts zone name
+               else
+                 None)
+          | _, Requested_axfr (ts, _, _) ->
+            let e = Duration.of_sec 5 in
+            maybe_out
+              (if Int64.add ts e < now then
+                 axfr t `Tcp p_now ts zone name
+               else
+                 None)
+          | Error e, _ ->
+            Log.err (fun m -> m "unclear how we ended up here zone %a, error %a while looking for soa"
+                        Dns_name.pp zone Dns_trie.pp_e e) ;
+            maybe_out None)
+        zones ((t, Dns_name.DomMap.empty), [])
     in
-    (t, zones), out
+    t, out
 
   let handle_notify t zones now ts ip query =
     match query.Dns_packet.question with
@@ -760,16 +787,17 @@ module Secondary = struct
             | (_, ip', name) when Ipaddr.V4.compare ip ip' = 0 ->
               Log.debug (fun m -> m "received notify for %a, replying and requesting SOA"
                             Dns_name.pp q.Dns_packet.q_name) ;
+              (* TODO should we look in zones and if there's a fresh Requested_soa, leave it as is? *)
               let zones, out =
-                match query_soa t now ts zone name with
+                match query_soa t `Tcp now ts zone name with
                 | None -> zones, []
                 | Some (st, buf) ->
                   Dns_name.DomMap.add zone (st, ip, name) zones,
-                  [ (`Udp, ip, buf) ]
+                  [ (`Tcp, ip, buf) ]
               in
               Ok (zones, out)
             | (_, ip', _) ->
-              Log.warn (fun m -> m "ignoring notify for %a from %a (%a is primary"
+              Log.warn (fun m -> m "ignoring notify for %a from %a (%a is primary)"
                            Dns_name.pp q.Dns_packet.q_name
                            Ipaddr.V4.pp_hum ip Ipaddr.V4.pp_hum ip') ;
               Error Dns_enum.Refused
@@ -798,6 +826,7 @@ module Secondary = struct
           Log.debug (fun m -> m "in %a (keyname %a) got answer %a"
                         Dns_name.pp q.Dns_packet.q_name Dns_name.pp name
                         Dns_packet.pp_rrs query.Dns_packet.answer) ;
+          (* TODO use NotAuth instead of Refused here? *)
           Rresult.R.of_option
             ~none:(fun () ->
                 Log.err (fun m -> m "refusing (not authenticated)") ;
@@ -807,7 +836,7 @@ module Secondary = struct
           Rresult.R.of_option ~none:(fun () -> Error Dns_enum.Refused) key >>= fun key ->
           begin match st, q.Dns_packet.q_type with
             | Requested_axfr (_, id', _), Dns_enum.AXFR when header.Dns_packet.id = id' ->
-              (* TODO (a) check completeness of AXFR *)
+              (* TODO (a) check completeness of AXFR -- if not, accumulate q in state till complete *)
               (* (b) build vs from query.answer *)
               (* (c) drop zone from trie *)
               (* (d) insert vs into trie *)
@@ -828,7 +857,8 @@ module Secondary = struct
               let trie = Dns_trie.insert key_name (Dns_map.V (Dns_map.K.Dnskey, [ key ])) trie in
               let zones = Dns_name.DomMap.add zone (Transferred ts, ip, name) zones in
               Ok ({ t with data = trie }, zones, [])
-            | Requested_soa (_, id', _), Dns_enum.SOA when header.Dns_packet.id = id' ->
+            | Requested_soa (_, retry, id', _), Dns_enum.SOA when header.Dns_packet.id = id' ->
+              Log.debug (fun m -> m "received SOA after %d retries" retry) ;
               (* request AXFR now in case of serial is higher! *)
               begin match
                   Dns_trie.lookup zone Dns_enum.SOA t.data,
@@ -937,13 +967,13 @@ module Secondary = struct
               in
               let trie' = Dns_trie.insert name (Dns_map.V (Dns_map.K.Dnskey, keys)) trie in
               let t = { t with data = trie' } in
-              begin match query_soa t now ts zname name with
+              begin match query_soa t `Tcp now ts zname name with
                 | None ->
                   Log.err (fun m -> m "couldn't query soa for %a" Dns_name.pp zname) ;
                   (zones, trie, outs)
                 | Some (state, out) ->
                   let zones = Dns_name.DomMap.add zname (state, ip, name) zones in
-                  (zones, trie', (`Udp, ip, out) :: outs)
+                  (zones, trie', (`Tcp, ip, out) :: outs)
               end
             | Some (zname', _) ->
               Log.err (fun m -> m "found zone name %a in %a, expected %a"
@@ -1009,7 +1039,7 @@ module Secondary = struct
           begin match Dns_name.DomMap.find q.Dns_packet.q_name zones with
             | exception Not_found -> None
             | Requested_axfr (_, _id_, mac), _, _ -> Some mac
-            | Requested_soa (_, _id_, mac), _, _ -> Some mac
+            | Requested_soa (_, _, _id, mac), _, _ -> Some mac
             | _ -> None
           end
         | _ -> None

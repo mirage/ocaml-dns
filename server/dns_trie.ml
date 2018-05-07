@@ -103,6 +103,16 @@ let lookup name ty t =
   lookup_aux name t >>= fun (zone, _sub, map) ->
   lookup_res name zone ty map
 
+let lookup_direct name key t =
+  match lookup_aux name t with
+  | Error e -> Error e
+  | Ok (_zone, _sub, map) ->
+    match Dns_map.find key map with
+    | Some v -> Ok v
+    | None -> match Dns_map.find Dns_map.K.Soa map with
+      | None -> Error `NotAuthoritative
+      | Some (ttl, soa) -> Error (`NotFound (name, ttl, soa))
+
 let lookup_ignore name ty t =
   match lookup_aux name t with
   | Error _ -> Error ()

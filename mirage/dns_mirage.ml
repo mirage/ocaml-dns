@@ -8,6 +8,9 @@ let src = Logs.Src.create "dns_mirage" ~doc:"effectful DNS layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
+
+  module IM = Map.Make(Ipaddr.V4)
+
   module U = S.UDPV4
   module T = S.TCPV4
 
@@ -114,49 +117,69 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     in
     Lwt.async time
 
-  let secondary stack pclock mclock ?(timer = 300) ?(port = 53) t =
+  let secondary stack pclock mclock ?(timer = 5) ?(port = 53) t =
     let state = ref t in
-    let send (proto, ip, data) =
-      match proto with
-      | `Udp -> send_udp stack port ip port data
-      | `Tcp ->
-        Lwt.async (fun () ->
-            T.create_connection (S.tcpv4 stack) (ip, port) >>= function
-            | Error e ->
-              Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
-                          T.pp_error e Ipaddr.V4.pp_hum ip port) ;
+    let tcp_out = ref IM.empty in
+
+    let rec read_and_handle ip f =
+      read_tcp f >>= function
+      | Error () ->
+        Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
+        tcp_out := IM.remove ip !tcp_out ;
+        T.close f.flow
+      | Ok data ->
+        let now = Ptime.v (P.now_d_ps pclock) in
+        let elapsed = M.elapsed_ns mclock in
+        let t, answer, out =
+          UDns_server.Secondary.handle !state now elapsed `Tcp ip data
+        in
+        state := t ;
+        (* assume that answer is empty *)
+        (match answer with Some _ -> Log.warn (fun m -> m "got unexpected answer") | None -> ()) ;
+        Lwt_list.iter_s request out >>= fun () ->
+        read_and_handle ip f
+    and request (proto, ip, data) =
+      match IM.find ip !tcp_out with
+      | exception Not_found ->
+        begin
+          T.create_connection (S.tcpv4 stack) (ip, port) >>= function
+          | Error e ->
+            Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
+                        T.pp_error e Ipaddr.V4.pp_hum ip port) ;
+            Lwt.return_unit
+          | Ok flow ->
+            send_tcp flow data >>= function
+            | Error () -> T.close flow
+            | Ok () ->
+              tcp_out := IM.add ip flow !tcp_out ;
+              Lwt.async (fun () -> read_and_handle ip (of_flow flow)) ;
               Lwt.return_unit
-            | Ok flow ->
-              send_tcp flow data >>= function
-              | Error () -> Lwt.return_unit
-              | Ok () ->
-                let f = of_flow flow in
-                read_tcp f >>= function
-                | Error () -> Lwt.return_unit
-                | Ok data ->
-                  let now = Ptime.v (P.now_d_ps pclock) in
-                  let elapsed = M.elapsed_ns mclock in
-                  let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Tcp ip data in
-                  state := t ;
-                  (* assume that answer and out are empty *)
-                  (match answer with Some _ -> Log.err (fun m -> m "expected no answer") | None -> ()) ;
-                  (match out with [] -> () | _ -> Log.err (fun m -> m "expected no out")) ;
-                  T.close flow) ;
-        Lwt.return_unit
+        end
+      | flow ->
+        send_tcp flow data >>= function
+        | Ok () -> Lwt.return_unit
+        | Error () ->
+          Log.warn (fun m -> m "closing tcp flow to %a:%d, retrying request"
+                       Ipaddr.V4.pp_hum ip port) ;
+          tcp_out := IM.remove ip !tcp_out ;
+          T.close flow >>= fun () ->
+          request (proto, ip, data)
     in
+
     let udp_cb ~src ~dst:_ ~src_port buf =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
       let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Udp src buf in
       state := t ;
-      Lwt_list.iter_p send out >>= fun () ->
+      List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
       match answer with
       | None -> Lwt.return_unit
       | Some out -> send_udp stack port src src_port out
     in
     S.listen_udpv4 stack ~port udp_cb ;
     Log.info (fun m -> m "secondary DNS listening on UDP port %d" port) ;
+
     let tcp_cb flow =
       let dst_ip, dst_port = T.dst flow in
       Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
@@ -167,9 +190,11 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
         | Ok data ->
           let now = Ptime.v (P.now_d_ps pclock) in
           let elapsed = M.elapsed_ns mclock in
-          let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Tcp dst_ip data in
+          let t, answer, out =
+            UDns_server.Secondary.handle !state now elapsed `Tcp dst_ip data
+          in
           state := t ;
-          Lwt_list.iter_p send out >>= fun () ->
+          List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
           match answer with
           | None ->
             Log.warn (fun m -> m "no TCP output") ;
@@ -183,12 +208,13 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     in
     S.listen_tcpv4 stack ~port tcp_cb ;
     Log.info (fun m -> m "secondary DNS listening on TCP port %d" port) ;
+
     let rec time () =
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
       let t, out = UDns_server.Secondary.timer !state now elapsed in
       state := t ;
-      Lwt_list.iter_p send out >>= fun () ->
+      List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
       TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
       time ()
     in
@@ -201,8 +227,6 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
         | 0 -> compare p p'
         | x -> x
     end)
-
-  module IM = Map.Make(Ipaddr.V4)
 
   let resolver stack pclock mclock ?(root = false) ?(timer = 500) ?(port = 53) t =
     (* according to RFC5452 4.5, we can chose source port between 1024-49152 *)
@@ -219,7 +243,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
                     T.pp_error e Ipaddr.V4.pp_hum dst port) ;
         Error ()
       | Ok flow ->
-        Logs.info (fun m -> m "established new outgoing TCP connection to %a:%d"
+        Log.debug (fun m -> m "established new outgoing TCP connection to %a:%d"
                       Ipaddr.V4.pp_hum dst port);
         tcp_out := IM.add dst flow !tcp_out ;
         Lwt.async (fun () ->
@@ -227,7 +251,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
             let rec loop () =
               read_tcp f >>= function
               | Error () ->
-                Logs.info (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum dst) ;
+                Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum dst) ;
                 tcp_out := IM.remove dst !tcp_out ;
                 Lwt.return_unit
               | Ok data ->
@@ -277,7 +301,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       | `Udp -> send_udp stack port dst dst_port data
       | `Tcp -> match try Some (FM.find (dst, dst_port) !tcp_in) with Not_found -> None with
         | None ->
-          Logs.err (fun m -> m "wanted to answer %a:%d via TCP, but couldn't find a flow"
+          Log.err (fun m -> m "wanted to answer %a:%d via TCP, but couldn't find a flow"
                        Ipaddr.V4.pp_hum dst dst_port) ;
           Lwt.return_unit
         | Some flow -> send_tcp flow data >|= function
@@ -295,7 +319,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       Lwt_list.iter_p handle_query queries
     in
     S.listen_udpv4 stack ~port (udp_cb true) ;
-    Logs.app (fun f -> f "DNS resolver listening on UDP port %d" port);
+    Log.app (fun f -> f "DNS resolver listening on UDP port %d" port);
 
     let tcp_cb query flow =
       let dst_ip, dst_port = T.dst flow in

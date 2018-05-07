@@ -14,19 +14,20 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
     and ip = Ipaddr.V4.of_string_exn
     and s = Dns_name.DomSet.singleton
     in
-    let m host = n (host ^ ".mirage") in
+    let domain = n "mirage" in
+    let m = Dns_name.prepend_exn domain in
     let ns = m "ns"
     and ttl = 2560l
     in
     let soa = Dns_packet.({ nameserver = ns ;
                             hostmaster = m "hostmaster" ;
-                            serial = 1l ; refresh = 16384l ; retry = 2048l ;
-                            expiry = 1048576l ; minimum = ttl })
+                            serial = 1l ; refresh = 10l ; retry = 5l ;
+                            expiry = 60l ; minimum = ttl })
     in
     let open Dns_trie in
     let open Dns_map in
-    let t = insert (n "mirage") (V (K.Soa, (ttl, soa))) Dns_trie.empty in
-    let t = insert (n "mirage") (V (K.Ns, (ttl, s ns))) t in
+    let t = insert domain (V (K.Soa, (ttl, soa))) Dns_trie.empty in
+    let t = insert domain (V (K.Ns, (ttl, s ns))) t in
     let t = insert (m "router") (V (K.A, (ttl, [ ip "10.0.42.1" ]))) t in
     let t = insert ns (V (K.A, (ttl, [ ip "10.0.42.2" ]))) t in
     let t = insert (m "charrua") (V (K.A, (ttl, [ ip "10.0.42.3" ]))) t in
@@ -36,7 +37,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
     let key_algorithm = Dns_enum.SHA256
     and flags = 0
     in
-    let key = Cstruct.of_string "E0A7MFr4kfcGIRngRVBcBdFPg43XIb2qbGswcn66q4Q=" in
+    let key = Cstruct.of_string "G/7zDZr98BTzoi9N6HEUFOg7byKfH9rsPav5JMm9l8Y=" in
     let t = insert (Dns_name.of_string_exn ~hostname:false "10.0.42.2.10.0.42.4._transfer.mirage")
         (V (K.Dnskey, [ { Dns_packet.flags ; key_algorithm ; key } ])) t
     in
@@ -58,13 +59,14 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
                                 serial = 1l ; refresh = 16384l ; retry = 2048l ;
                                 expiry = 1048576l ; minimum = ttl })
     in
+    let ptr_name = Dns_name.prepend_exn ptr_zone in
     let t = insert ptr_zone (V (K.Soa, (ttl, ptr_soa))) t in
     let t = insert ptr_zone (V (K.Ns, (ttl, s ns))) t in
-    let t = insert (Dns_name.prepend_exn ptr_zone "1") (V (K.Ptr, (ttl, m "router"))) t in
-    let t = insert (Dns_name.prepend_exn ptr_zone "2") (V (K.Ptr, (ttl, m "ns"))) t in
-    let t = insert (Dns_name.prepend_exn ptr_zone "3") (V (K.Ptr, (ttl, m "charrua"))) t in
-    let t = insert (Dns_name.prepend_exn ptr_zone "4") (V (K.Ptr, (ttl, m "secondary"))) t in
-    let t = insert (Dns_name.prepend_exn ptr_zone "5") (V (K.Ptr, (ttl, m "resolver"))) t in
+    let t = insert (ptr_name "1") (V (K.Ptr, (ttl, m "router"))) t in
+    let t = insert (ptr_name "2") (V (K.Ptr, (ttl, m "ns"))) t in
+    let t = insert (ptr_name "3") (V (K.Ptr, (ttl, m "charrua"))) t in
+    let t = insert (ptr_name "4") (V (K.Ptr, (ttl, m "secondary"))) t in
+    let t = insert (ptr_name "5") (V (K.Ptr, (ttl, m "resolver"))) t in
     t
 
   let start _rng pclock mclock _ s _ =
