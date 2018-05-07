@@ -70,7 +70,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
-      let t, answer, notify = Dns_server.Primary.handle !state now elapsed `Udp src buf in
+      let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Udp src buf in
       state := t ;
       (match answer with
        | None -> Log.warn (fun m -> m "empty answer") ; Lwt.return_unit
@@ -89,7 +89,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
         | Ok data ->
           let now = Ptime.v (P.now_d_ps pclock) in
           let elapsed = M.elapsed_ns mclock in
-          let t, answer, notify = Dns_server.Primary.handle !state now elapsed `Tcp dst_ip data in
+          let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Tcp dst_ip data in
           state := t ;
           Lwt_list.iter_p send_notify notify >>= fun () ->
           match answer with
@@ -104,7 +104,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     S.listen_tcpv4 stack ~port tcp_cb ;
     Log.info (fun m -> m "DNS server listening on TCP port %d" port) ;
     let rec time () =
-      let t, notifies = Dns_server.Primary.timer !state (M.elapsed_ns mclock) in
+      let t, notifies = UDns_server.Primary.timer !state (M.elapsed_ns mclock) in
       state := t ;
       Lwt_list.iter_p send_notify notifies >>= fun () ->
       TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
@@ -134,7 +134,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
                 | Ok data ->
                   let now = Ptime.v (P.now_d_ps pclock) in
                   let elapsed = M.elapsed_ns mclock in
-                  let t, answer, out = Dns_server.Secondary.handle !state now elapsed `Tcp ip data in
+                  let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Tcp ip data in
                   state := t ;
                   (* assume that answer and out are empty *)
                   (match answer with Some _ -> Log.err (fun m -> m "expected no answer") | None -> ()) ;
@@ -146,7 +146,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
-      let t, answer, out = Dns_server.Secondary.handle !state now elapsed `Udp src buf in
+      let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Udp src buf in
       state := t ;
       Lwt_list.iter_p send out >>= fun () ->
       match answer with
@@ -165,7 +165,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
         | Ok data ->
           let now = Ptime.v (P.now_d_ps pclock) in
           let elapsed = M.elapsed_ns mclock in
-          let t, answer, out = Dns_server.Secondary.handle !state now elapsed `Tcp dst_ip data in
+          let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Tcp dst_ip data in
           state := t ;
           Lwt_list.iter_p send out >>= fun () ->
           match answer with
@@ -184,7 +184,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     let rec time () =
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
-      let t, out = Dns_server.Secondary.timer !state now elapsed in
+      let t, out = UDns_server.Secondary.timer !state now elapsed in
       state := t ;
       Lwt_list.iter_p send out >>= fun () ->
       TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->

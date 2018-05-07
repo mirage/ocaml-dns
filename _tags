@@ -17,7 +17,7 @@ true : package(rresult cstruct astring fmt ipaddr logs ptime)
 "resolver" : include
 
 <server/*> : warn_error(+1..49)
-<server/dns_server.{ml,mli}>: package(randomconv duration)
+<server/uDns_server.{ml,mli}>: package(randomconv duration)
 "server" : include
 
 <mirage/*> : package(mirage-types-lwt lwt duration randomconv)

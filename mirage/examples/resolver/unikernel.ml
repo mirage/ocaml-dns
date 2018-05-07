@@ -25,7 +25,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
        Logs.err (fun m -> m "check after update returned %a" Dns_trie.pp_err e)) ;
     let now = M.elapsed_ns mclock in
     let server =
-      Dns_server.Primary.create ~a:[Dns_server.tsig_auth]
+      UDns_server.Primary.create ~a:[UDns_server.tsig_auth]
         ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign ~rng:R.generate
         trie
     in

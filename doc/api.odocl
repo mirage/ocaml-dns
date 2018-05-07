@@ -3,7 +3,7 @@ src/Dns_map
 src/Dns_name
 src/Dns_packet
 crypto/Dns_tsig
-server/Dns_server
+server/UDns_server
 server/Dns_trie
 zonefile/Zone_state
 zonefile/Zone_lexer

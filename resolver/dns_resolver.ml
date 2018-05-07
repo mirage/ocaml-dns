@@ -55,7 +55,7 @@ let pp_stats pf s =
 
 type t = {
   rng : int -> Cstruct.t ;
-  primary : Dns_server.Primary.s ;
+  primary : UDns_server.Primary.s ;
   cache : Dns_resolver_cache.t ;
   transit : awaiting QM.t ;
   queried : awaiting list QM.t ;
@@ -229,7 +229,7 @@ let handle_primary t now ts proto sender header v tsig_off buf =
     if not header.Dns_packet.query then
       `No
     else
-      match Dns_server.Primary.handle_frame t ts sender proto name (header, v) with
+      match UDns_server.Primary.handle_frame t ts sender proto name (header, v) with
       | Ok (t, answer, _) ->
         begin match answer with
           | None ->
@@ -255,7 +255,7 @@ let handle_primary t now ts proto sender header v tsig_off buf =
         Logs.debug (fun m -> m "authoritative returned %a" Dns_enum.pp_rcode rcode) ;
         `No
   in
-  match Dns_server.handle_tsig (Dns_server.Primary.server t) now (header, v) tsig_off buf with
+  match UDns_server.handle_tsig (UDns_server.Primary.server t) now (header, v) tsig_off buf with
   | Error data -> `Reply (t, data)
   | Ok None ->
     begin match handle_inner None with
@@ -268,7 +268,7 @@ let handle_primary t now ts proto sender header v tsig_off buf =
     | `Delegation a -> `Delegation a
     | `No -> `No
     | `Reply (t, (buf, max_size)) ->
-      match Dns_server.((Primary.server t).tsig_sign) ~max_size ~mac name tsig ~key buf with
+      match UDns_server.((Primary.server t).tsig_sign) ~max_size ~mac name tsig ~key buf with
       | None ->
         Logs.warn (fun m -> m "couldn't use %a to tsig sign, using unsigned reply" Dns_name.pp name) ;
         `Reply (t, buf)
