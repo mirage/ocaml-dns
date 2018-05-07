@@ -4,6 +4,14 @@ open Mirage_types_lwt
 
 module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) : sig
 
+  type f
+
+  val of_flow : S.TCPV4.flow -> f
+
+  val read_tcp : f -> (Cstruct.t, unit) result Lwt.t
+
+  val send_tcp : S.TCPV4.flow -> Cstruct.t -> (unit, unit) result Lwt.t
+
   val primary : S.t -> P.t -> M.t -> ?timer:int -> ?port:int -> UDns_server.Primary.s -> unit
 
   val secondary : S.t -> P.t -> M.t -> ?timer:int -> ?port:int -> UDns_server.Secondary.s -> unit

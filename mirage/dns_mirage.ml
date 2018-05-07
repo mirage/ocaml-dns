@@ -16,6 +16,8 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     mutable linger : Cstruct.t ;
   }
 
+  let of_flow flow = { flow ; linger = Cstruct.empty }
+
   let rec read_exactly f length =
     let dst_ip, dst_port = T.dst f.flow in
     if Cstruct.len f.linger >= length then
@@ -82,7 +84,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     let tcp_cb flow =
       let dst_ip, dst_port = T.dst flow in
       Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
-      let f = { flow ; linger = Cstruct.create 0 } in
+      let f = of_flow flow in
       let rec loop () =
         read_tcp f >>= function
         | Error () -> Lwt.return_unit
@@ -128,7 +130,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
               send_tcp flow data >>= function
               | Error () -> Lwt.return_unit
               | Ok () ->
-                let f = { flow ; linger = Cstruct.create 0 } in
+                let f = of_flow flow in
                 read_tcp f >>= function
                 | Error () -> Lwt.return_unit
                 | Ok data ->
@@ -158,7 +160,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     let tcp_cb flow =
       let dst_ip, dst_port = T.dst flow in
       Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
-      let f = { flow ; linger = Cstruct.create 0 } in
+      let f = of_flow flow in
       let rec loop () =
         read_tcp f >>= function
         | Error () -> Lwt.return_unit
@@ -221,7 +223,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
                       Ipaddr.V4.pp_hum dst port);
         tcp_out := IM.add dst flow !tcp_out ;
         Lwt.async (fun () ->
-            let f = { flow ; linger = Cstruct.create 0 } in
+            let f = of_flow flow in
             let rec loop () =
               read_tcp f >>= function
               | Error () ->
@@ -299,7 +301,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       let dst_ip, dst_port = T.dst flow in
       Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
       tcp_in := FM.add (dst_ip, dst_port) flow !tcp_in ;
-      let f = { flow ; linger = Cstruct.create 0 } in
+      let f = of_flow flow in
       let rec loop () =
         read_tcp f >>= function
         | Error () ->
