@@ -68,21 +68,25 @@ let sign ?mac ?max_size name tsig ~key buf =
           None
         | Some out -> Some (out, mac)
 
+let verify_raw ?mac now name ~key tsig tbs =
+  Rresult.R.of_option ~none:(fun () -> Error (`BadKey (name, tsig)))
+    (Nocrypto.Base64.decode key.Dns_packet.key) >>= fun priv ->
+  let ac = Cstruct.BE.get_uint16 tbs 10 in
+  Cstruct.BE.set_uint16 tbs 10 (pred ac) ;
+  let prep = mac_to_prep mac in
+  let computed = compute_tsig name tsig ~key:priv (Cstruct.append prep tbs) in
+  (* TODO: could be truncated to NN bytes ?!?! *)
+  let mac = tsig.Dns_packet.mac in
+  guard (Cstruct.equal computed mac) (`InvalidMac (name, tsig)) >>= fun () ->
+  guard (Dns_packet.valid_time now tsig) (`BadTimestamp (name, tsig, key)) >>= fun () ->
+  Rresult.R.of_option ~none:(fun () -> Error (`BadTimestamp (name, tsig, key)))
+    (Dns_packet.with_signed tsig now) >>= fun tsig ->
+  Ok (tsig, mac)
+
 let verify ?mac now v header name ~key tsig tbs =
   match
     Rresult.R.of_option ~none:(fun () -> Error (`BadKey (name, tsig))) key >>= fun key ->
-    Rresult.R.of_option ~none:(fun () -> Error (`BadKey (name, tsig)))
-      (Nocrypto.Base64.decode key.Dns_packet.key) >>= fun priv ->
-    let ac = Cstruct.BE.get_uint16 tbs 10 in
-    Cstruct.BE.set_uint16 tbs 10 (pred ac) ;
-    let prep = mac_to_prep mac in
-    let computed = compute_tsig name tsig ~key:priv (Cstruct.append prep tbs) in
-    (* TODO: could be truncated to NN bytes ?!?! *)
-    let mac = tsig.Dns_packet.mac in
-    guard (Cstruct.equal computed mac) (`InvalidMac (name, tsig)) >>= fun () ->
-    guard (Dns_packet.valid_time now tsig) (`BadTimestamp (name, tsig, key)) >>= fun () ->
-    Rresult.R.of_option ~none:(fun () -> Error (`BadTimestamp (name, tsig, key)))
-      (Dns_packet.with_signed tsig now) >>= fun tsig ->
+    verify_raw ?mac now name ~key tsig tbs >>= fun (tsig, mac) ->
     Ok (tsig, mac, key)
   with
   | Ok x -> Ok x
@@ -105,3 +109,27 @@ let verify ?mac now v header name ~key tsig tbs =
         match sign ~max_size ~mac:tsig.Dns_packet.mac name tsig ~key err with
         | None -> Error err
         | Some (buf, _) -> Error buf
+
+let encode_and_sign ?(proto = `Udp) (header, v) now key keyname =
+  let b, _ = Dns_packet.encode proto (header, v) in
+  match Dns_packet.dnskey_to_tsig_algo key with
+  | None -> Error "cannot discover tsig algorithm of key"
+  | Some algorithm -> match Dns_packet.tsig ~algorithm ~signed:now () with
+    | None -> Error "couldn't create tsig"
+    | Some tsig -> match sign keyname ~key tsig b with
+      | None -> Error "key is not good"
+      | Some r -> Ok r
+
+let decode_and_verify now key keyname ?mac buf =
+  match Dns_packet.decode buf with
+  | Error _ -> Error "decode"
+  | Ok (_, None) -> Error "not signed"
+  | Ok ((header, v), Some tsig_off) ->
+    match Dns_packet.find_tsig v with
+    | None -> Error "no tsig"
+    | Some (name, tsig) when Dns_name.equal keyname name ->
+      begin match verify_raw ?mac now keyname ~key tsig (Cstruct.sub buf 0 tsig_off) with
+        | Ok (_, mac) -> Ok ((header, v), mac)
+        | Error _ -> Error "invalid signature"
+      end
+    | Some _ -> Error "invalid key name"
