@@ -21,6 +21,8 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
 
   let of_flow flow = { flow ; linger = Cstruct.empty }
 
+  let flow { flow ; _ } = flow
+
   let rec read_exactly f length =
     let dst_ip, dst_port = T.dst f.flow in
     if Cstruct.len f.linger >= length then

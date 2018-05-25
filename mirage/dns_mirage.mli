@@ -8,6 +8,8 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) : si
 
   val of_flow : S.TCPV4.flow -> f
 
+  val flow : f -> S.TCPV4.flow
+
   val read_tcp : f -> (Cstruct.t, unit) result Lwt.t
 
   val send_tcp : S.TCPV4.flow -> Cstruct.t -> (unit, unit) result Lwt.t
