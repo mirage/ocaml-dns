@@ -370,7 +370,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
 
     if root then
       let rec root () =
-        let new_state, q = UDns_resolver.query_root !state (M.elapsed_ns mclock) `Tcp in
+        let new_state, q = UDns_resolver.query_root !state R.generate (M.elapsed_ns mclock) `Tcp in
         state := new_state ;
         handle_query q >>= fun () ->
         TIME.sleep_ns (Duration.of_day 6) >>= fun () ->

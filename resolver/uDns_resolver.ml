@@ -512,22 +512,27 @@ let handle t now ts query proto sender sport buf =
       Logs.err (fun m -> m "ignoring unsolicited packet (query allowed? %b)" query);
       t, [], []
 
-let query_root t now proto =
+let query_root t rng now proto =
   let q_name = Dns_name.root
   and q_type = Dns_enum.NS
   in
-  match Dns_resolver_cache.find_ns t.cache t.rng now Dns_name.DomSet.empty q_name with
-  | `HaveIP ip, cache ->
-    let q = { Dns_packet.q_name ; q_type }
-    and id = Randomconv.int16 t.rng
-    in
-    let packet = header id, `Query { Dns_packet.question = [q] ; answer = [] ; authority = [] ; additional = [] } in
-    let edns = Some [] in
-    let el = (now, 0, proto, edns, ip, 53, q, id) in
-    let t = { t with transit = QM.add (q_type, q_name) el t.transit ; cache } in
-    let cs, _ = Dns_packet.encode ?edns proto packet in
-    t, (proto, ip, cs)
-  | _ -> assert false
+  let ip, cache =
+    match Dns_resolver_cache.find_ns t.cache t.rng now Dns_name.DomSet.empty q_name with
+    | `HaveIP ip, cache -> ip, cache
+    | _ ->
+      let roots = snd (List.split Dns_resolver_root.root_servers) in
+      (List.nth roots (Randomconv.int ~bound:(List.length roots) rng),
+       t.cache)
+  in
+  let q = { Dns_packet.q_name ; q_type }
+  and id = Randomconv.int16 t.rng
+  in
+  let packet = header id, `Query { Dns_packet.question = [q] ; answer = [] ; authority = [] ; additional = [] } in
+  let edns = Some [] in
+  let el = (now, 0, proto, edns, ip, 53, q, id) in
+  let t = { t with transit = QM.add (q_type, q_name) el t.transit ; cache } in
+  let cs, _ = Dns_packet.encode ?edns proto packet in
+  t, (proto, ip, cs)
 
 let max_retries = 5
 
