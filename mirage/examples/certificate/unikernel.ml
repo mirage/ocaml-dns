@@ -1,3 +1,5 @@
+(* (c) 2018 Hannes Mehnert, all rights reserved *)
+
 open Mirage_types_lwt
 
 open Lwt.Infix
@@ -124,6 +126,10 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
               None q.Dns_packet.answer
           in
           Lwt.return tlsa
+        | Ok ((_, v), _) ->
+          Logs.err (fun m -> m "expected a response, but got %a"
+                       Dns_packet.pp_v v) ;
+          Lwt.return None
         | Error e ->
           Logs.err (fun m -> m "error %a while decoding answer"
                        Dns_packet.pp_err e) ;

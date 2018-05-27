@@ -25,6 +25,7 @@ let () =
     Pkg.mllib ~api:["Zonefile"] "zonefile/udns_zonefile.mllib" ;
     Pkg.mllib "resolver/udns_resolver.mllib" ;
     Pkg.mllib "mirage/udns_mirage.mllib" ;
+    Pkg.bin "app/ocertify" ;
     Pkg.test "test/tests" ;
     Pkg.test "test/tsig" ;
     Pkg.test "test/resolver" ;

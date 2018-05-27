@@ -28,3 +28,5 @@ true : package(rresult cstruct astring fmt ipaddr logs ptime)
 
 <test/afl.{ml,native,byte}> : package(afl-persistent)
 <test/bench.{ml,native,byte}> : package(mtime.clock.os mtime re re.str hashcons)
+
+<app/ocertify.{ml,native,byte}> : package(cmdliner bos fpath x509 nocrypto nocrypto.unix ptime ptime.clock.os logs.fmt fmt.cli logs.cli fmt.tty)
