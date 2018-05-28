@@ -27,7 +27,7 @@ depends: [
   "duration"
   "lwt"
   "mirage-types-lwt"
-  "x509"
+  "x509" "cmdliner" "bos" "fpath"
   "alcotest" {test}
 #  "afl-persistent" {test}
   "mtime" {test}
