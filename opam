@@ -27,6 +27,7 @@ depends: [
   "duration"
   "lwt"
   "mirage-types-lwt"
+  "x509"
   "alcotest" {test}
 #  "afl-persistent" {test}
   "mtime" {test}
