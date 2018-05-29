@@ -67,7 +67,7 @@ let parse_label base buf =
     | 0 ->
         Z base, 1
 
-    | v when ((v land 0b0_11000000) != 0) ->
+    | v when ((v land 0b0_11000000) == 0b0_11000000) ->
         let ptr = ((v land 0b0_00111111) lsl 8) + Cstruct.get_uint8 buf 1 in
         P (ptr, base), 2
 
