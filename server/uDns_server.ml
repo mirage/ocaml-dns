@@ -32,6 +32,21 @@ type t = {
   tsig_sign : Dns_packet.tsig_sign ;
 }
 
+let text name t =
+  let buf = Buffer.create 1024 in
+  Rresult.R.reword_error
+    (Fmt.to_to_string Dns_trie.pp_e)
+    (Dns_trie.fold name t.data
+       (fun name v () ->
+          (* TODO again Dnskey need to be treat specially, contains secrets *)
+          match v with
+          | Dns_map.V (Dns_map.K.Dnskey, _) -> ()
+          | _ ->
+            Buffer.add_string buf (Dns_map.text name v) ;
+            Buffer.add_char buf '\n')
+       ()) >>| fun () ->
+  Buffer.contents buf
+
 type operation =
   | Key_management
   | Update

@@ -16,6 +16,7 @@ depends: [
   "rresult"
   "astring"
   "fmt"
+  "hex"
   "cstruct" {>= "2.2.0"}
   "ipaddr"
   "logs"

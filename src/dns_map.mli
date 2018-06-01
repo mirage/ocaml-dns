@@ -66,6 +66,7 @@ module K : sig
     | Sshfp : (int32 * Dns_packet.sshfp list) t
   val compare : 'a t -> 'b t -> ('a, 'b) Order.t
   val pp : Format.formatter -> 'a t -> 'a -> unit
+  val text : Dns_name.t -> 'a t -> 'a -> string
 end
 
 type t
@@ -97,7 +98,6 @@ val exists : (v -> bool) -> t -> bool
 val filter : (v -> bool) -> t -> t
 val pp : Format.formatter -> t -> unit
 
-
 val k_to_rr_typ : 'a key -> Dns_enum.rr_typ
 val to_rr_typ : v -> Dns_enum.rr_typ
 val to_rr : Dns_name.t -> v -> Dns_packet.rr list
@@ -117,3 +117,5 @@ val pp_v : v Fmt.t
 val equal_v : v -> v -> bool
 
 val of_rrs : Dns_packet.rr list -> t Dns_name.DomMap.t
+
+val text : Dns_name.t -> v -> string

@@ -81,6 +81,9 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
         ~a:[UDns_server.tsig_auth] ~tsig_verify:Dns_tsig.verify
         ~tsig_sign:Dns_tsig.sign ~rng:R.generate trie
     in
+    Logs.info (fun m -> m "loaded zone: %a"
+                  (Rresult.R.pp ~ok:Fmt.string ~error:Fmt.string)
+                  (UDns_server.text (Dns_name.of_string_exn "mirage") (UDns_server.Primary.server t))) ;
     D.primary s pclock mclock t ;
     S.listen s
 end

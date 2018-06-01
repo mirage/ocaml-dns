@@ -138,6 +138,16 @@ let folde name key t f s =
   | Error e -> Error e
   | Ok (_zone, sub, map) -> Ok (collect name sub (get name map s))
 
+let fold name t f acc =
+  let rec foldm name (N (sub, map)) acc =
+    let acc' = Dns_map.fold (f name) map acc in
+    let dns_name = Dns_name.prepend_exn ~hostname:false in
+    M.fold (fun pre v acc -> foldm (dns_name name pre) v acc) sub acc'
+  in
+  match lookup_aux name t with
+  | Error e -> Error e
+  | Ok (_zone, sub, map) -> Ok (foldm name (N (sub, map)) acc)
+
 let collect_rrs name sub map =
   let collect_map name rrmap =
     (* collecting rr out of rrmap + name, no SOA! *)

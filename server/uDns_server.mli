@@ -15,6 +15,8 @@ type t = private {
 val create : Dns_trie.t -> a list -> (int -> Cstruct.t) ->
   Dns_packet.tsig_verify -> Dns_packet.tsig_sign -> t
 
+val text : Dns_name.t -> t -> (string, string) result
+
 val handle_query : t -> Dns_packet.proto -> Dns_name.t option -> Dns_packet.header ->
   Dns_packet.query ->
   (Dns_packet.t, Dns_enum.rcode) result

@@ -143,20 +143,20 @@ module K = struct
   let compare : type a b. a t -> b t -> (a, b) Order.t = fun t t' ->
     let open Order in
     match t, t' with
-    | Any, Any -> Eq | Any, _ -> Lt | _, Any -> Gt
-    | Cname, Cname -> Eq | Cname, _ -> Lt | _, Cname -> Gt
-    | Mx, Mx -> Eq | Mx, _ -> Lt | _, Mx -> Gt
-    | Ns, Ns -> Eq | Ns, _ -> Lt | _, Ns -> Gt
-    | Ptr, Ptr -> Eq | Ptr, _ -> Lt | _, Ptr -> Gt
     | Soa, Soa -> Eq | Soa, _ -> Lt | _, Soa -> Gt
-    | Txt, Txt -> Eq | Txt, _ -> Lt | _, Txt -> Gt
+    | Ns, Ns -> Eq | Ns, _ -> Lt | _, Ns -> Gt
+    | Mx, Mx -> Eq | Mx, _ -> Lt | _, Mx -> Gt
+    | Cname, Cname -> Eq | Cname, _ -> Lt | _, Cname -> Gt
     | A, A -> Eq | A, _ -> Lt | _, A -> Gt
     | Aaaa, Aaaa -> Eq | Aaaa, _ -> Lt | _, Aaaa -> Gt
+    | Ptr, Ptr -> Eq | Ptr, _ -> Lt | _, Ptr -> Gt
     | Srv, Srv -> Eq | Srv, _ -> Lt | _, Srv -> Gt
     | Dnskey, Dnskey -> Eq | Dnskey, _ -> Lt | _, Dnskey -> Gt
     | Caa, Caa -> Eq | Caa, _ -> Lt | _, Caa -> Gt
     | Tlsa, Tlsa -> Eq | Tlsa, _ -> Lt | _, Tlsa -> Gt
-    | Sshfp, Sshfp -> Eq (* | Sshfp, _ -> Lt | _, Sshfp -> Gt *)
+    | Sshfp, Sshfp -> Eq | Sshfp, _ -> Lt | _, Sshfp -> Gt
+    | Txt, Txt -> Eq | Txt, _ -> Lt | _, Txt -> Gt
+    | Any, Any -> Eq (* | Any, _ -> Lt | _, Any -> Gt *)
 
   let pp : type a. Format.formatter -> a t -> a -> unit = fun ppf t v ->
     match t, v with
@@ -196,6 +196,87 @@ module K = struct
     | Sshfp, (ttl, sshfps) ->
       Fmt.pf ppf "sshfp ttl %lu %a" ttl
         Fmt.(list ~sep:(unit ";@,") Dns_packet.pp_sshfp) sshfps
+
+
+  let text : type a. Dns_name.t -> a t -> a -> string = fun n t v ->
+    let name = Dns_name.to_string in
+    let str_name = name n in
+    let strs =
+      match t, v with
+      | Any, _ -> (* no *) []
+      | Cname, (ttl, alias) ->
+        [ Printf.sprintf "%s\t%lu\tCNAME\t%s" str_name ttl (name alias) ]
+      | Mx, (ttl, mxs) ->
+        List.map (fun (prio, mx) ->
+            Printf.sprintf "%s\t%lu\tMX\t%u\t%s" str_name ttl prio (name mx))
+          mxs
+    | Ns, (ttl, ns) ->
+      Dns_name.DomSet.fold (fun ns acc ->
+            Printf.sprintf "%s\t%lu\tNS\t%s" str_name ttl (name ns) :: acc)
+        ns []
+    | Ptr, (ttl, ptr) ->
+      [ Printf.sprintf "%s\t%lu\tPTR\t%s" str_name ttl (name ptr) ]
+    | Soa, (ttl, soa) ->
+      [ Printf.sprintf "%s\t%lu\tSOA\t%s\t%s\t%lu\t%lu\t%lu\t%lu\t%lu" str_name ttl
+          (name soa.Dns_packet.nameserver)
+          (name soa.Dns_packet.hostmaster)
+          soa.Dns_packet.serial soa.Dns_packet.refresh soa.Dns_packet.retry
+          soa.Dns_packet.expiry soa.Dns_packet.minimum ]
+    | Txt, (ttl, txts) ->
+      List.map (fun txt ->
+          Printf.sprintf "%s\t%lu\tTXT\t%s" str_name ttl
+            (String.concat "" txt))
+        txts
+    | A, (ttl, a) ->
+      List.map (fun ip ->
+          Printf.sprintf "%s\t%lu\tA\t%s" str_name ttl
+            (Ipaddr.V4.to_string ip))
+        a
+    | Aaaa, (ttl, aaaa) ->
+      List.map (fun ip ->
+          Printf.sprintf "%s\t%lu\tAAAA\t%s" str_name ttl
+            (Ipaddr.V6.to_string ip))
+        aaaa
+    | Srv, (ttl, srvs) ->
+      List.map (fun srv ->
+          Printf.sprintf "%s\t%lu\tSRV\t%u\t%u\t%u\t%s"
+            str_name ttl srv.Dns_packet.priority srv.Dns_packet.weight
+            srv.Dns_packet.port (name srv.Dns_packet.target))
+        srvs
+    | Dnskey, keys ->
+      List.map (fun key ->
+          let `Hex hex = Hex.of_cstruct key.Dns_packet.key in
+          Printf.sprintf "%s\t300\tDNSKEY\t%u\t3\t%d\t%s"
+            str_name key.Dns_packet.flags
+            (Dns_enum.dnskey_to_int key.Dns_packet.key_algorithm)
+            hex)
+        keys
+    | Caa, (ttl, caas) ->
+      List.map (fun caa ->
+          Printf.sprintf "%s\t%lu\tCAA\t%s\t%s\t%s"
+            str_name ttl (if caa.Dns_packet.critical then "128" else "0")
+            caa.Dns_packet.tag (String.concat ";" caa.Dns_packet.value))
+        caas
+    | Tlsa, (ttl, tlsas) ->
+      List.map (fun tlsa ->
+          let `Hex hex = Hex.of_cstruct tlsa.Dns_packet.tlsa_data in
+          Printf.sprintf "%s\t%lu\tTLSA\t%u\t%u\t%u\t%s"
+            str_name ttl
+            (Dns_enum.tlsa_cert_usage_to_int tlsa.Dns_packet.tlsa_cert_usage)
+            (Dns_enum.tlsa_selector_to_int tlsa.Dns_packet.tlsa_selector)
+            (Dns_enum.tlsa_matching_type_to_int tlsa.Dns_packet.tlsa_matching_type)
+            hex)
+        tlsas
+    | Sshfp, (ttl, sshfps) ->
+      List.map (fun sshfp ->
+          let `Hex hex = Hex.of_cstruct sshfp.Dns_packet.sshfp_fingerprint in
+          Printf.sprintf "%s\t%lu\tSSHFP\t%u\t%u\t%s" str_name ttl
+            (Dns_enum.sshfp_algorithm_to_int sshfp.Dns_packet.sshfp_algorithm)
+            (Dns_enum.sshfp_type_to_int sshfp.Dns_packet.sshfp_type)
+            hex)
+        sshfps
+    in
+    String.concat "\n" strs
 end
 
 include Make(K)
@@ -501,3 +582,5 @@ let of_rrs rrs =
       in
       Dns_name.DomMap.add rr.Dns_packet.name m' map)
     Dns_name.DomMap.empty rrs
+
+let text name (V (key, v)) = K.text name key v
