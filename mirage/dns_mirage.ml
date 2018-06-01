@@ -23,6 +23,9 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
 
   let flow { flow ; _ } = flow
 
+  let safe_close f =
+    Lwt.catch (fun () -> T.close f) (fun _ -> Lwt.return_unit)
+
   let rec read_exactly f length =
     let dst_ip, dst_port = T.dst f.flow in
     if Cstruct.len f.linger >= length then
@@ -33,11 +36,11 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       T.read f.flow >>= function
       | Ok `Eof ->
         Log.warn (fun m -> m "end of file on flow %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
-        T.close f.flow >>= fun () ->
+        safe_close f.flow >>= fun () ->
         Lwt.return (Error ())
       | Error e ->
         Log.err (fun m -> m "error %a reading flow %a:%d" T.pp_error e Ipaddr.V4.pp_hum dst_ip dst_port) ;
-        T.close f.flow >>= fun () ->
+        safe_close f.flow >>= fun () ->
         Lwt.return (Error ())
       | Ok (`Data b) ->
         f.linger <- Cstruct.append f.linger b ;
@@ -60,7 +63,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     | Ok () -> Lwt.return (Ok ())
     | Error e ->
       Log.err (fun m -> m "tcp: error %a while writing to %a:%d" T.pp_write_error e Ipaddr.V4.pp_hum dst_ip dst_port) ;
-      T.close flow >|= fun () ->
+      safe_close flow >|= fun () ->
       Error ()
 
   let read_tcp flow =
@@ -137,7 +140,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       | Error () ->
         Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
         tcp_out := IM.remove ip !tcp_out ;
-        T.close f.flow
+        safe_close f.flow
       | Ok data ->
         let now = Ptime.v (P.now_d_ps pclock) in
         let elapsed = M.elapsed_ns mclock in
@@ -145,10 +148,16 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
           UDns_server.Secondary.handle !state now elapsed `Tcp ip data
         in
         maybe_update_state t !state >>= fun () ->
-        (* assume that answer is empty *)
-        (match answer with Some _ -> Log.warn (fun m -> m "got unexpected answer") | None -> ()) ;
         Lwt_list.iter_s request out >>= fun () ->
-        read_and_handle ip f
+        match answer with
+        | None -> read_and_handle ip f
+        | Some x ->
+          send_tcp f.flow data >>= function
+          | Error () ->
+            Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
+            tcp_out := IM.remove ip !tcp_out ;
+            safe_close f.flow
+          | Ok () -> read_and_handle ip f
     and request (proto, ip, data) =
       match IM.find ip !tcp_out with
       | exception Not_found ->
@@ -161,7 +170,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
             Lwt.return_unit
           | Ok flow ->
             send_tcp flow data >>= function
-            | Error () -> T.close flow
+            | Error () -> safe_close flow
             | Ok () ->
               tcp_out := IM.add ip flow !tcp_out ;
               Lwt.async (fun () -> read_and_handle ip (of_flow flow)) ;
@@ -174,7 +183,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
           Log.warn (fun m -> m "closing tcp flow to %a:%d, retrying request"
                        Ipaddr.V4.pp_hum ip port) ;
           tcp_out := IM.remove ip !tcp_out ;
-          T.close flow >>= fun () ->
+          safe_close flow >>= fun () ->
           request (proto, ip, data)
     in
 
