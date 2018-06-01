@@ -13,4 +13,4 @@ PKG ptime nocrypto randomconv
 
 PKG lwt mirage-stack-lwt mirage-types-lwt
 
-PKG cmdliner ptime.clock.os bos x509
+PKG cmdliner ptime.clock.os bos x509 irmin-unix

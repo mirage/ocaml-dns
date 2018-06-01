@@ -657,6 +657,10 @@ module Secondary = struct
 
   type s = t * (state * Ipaddr.V4.t * Dns_name.t) Dns_name.DomMap.t
 
+  let server (t, _) = t
+
+  let zones (_, zones) = fst (List.split (Dns_name.DomMap.bindings zones))
+
   let create ?(a = []) ~tsig_verify ~tsig_sign ~rng keys =
     (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
     let trie, zones =

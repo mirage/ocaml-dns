@@ -28,6 +28,8 @@ val pp : t Fmt.t
 val empty : t
 (** [empty] is the empty trie. *)
 
+val equal : t -> t -> bool
+
 (** {1 Operations to modify the trie} *)
 
 val insert_map : Dns_map.t Dns_name.DomMap.t -> t -> t

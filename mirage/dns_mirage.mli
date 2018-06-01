@@ -16,7 +16,10 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) : si
 
   val primary : S.t -> P.t -> M.t -> ?timer:int -> ?port:int -> UDns_server.Primary.s -> unit
 
-  val secondary : S.t -> P.t -> M.t -> ?timer:int -> ?port:int -> UDns_server.Secondary.s -> unit
+  val secondary :
+    ?on_update:(UDns_server.Secondary.s -> unit Lwt.t) ->
+    S.t -> P.t -> M.t -> ?timer:int -> ?port:int -> UDns_server.Secondary.s ->
+    unit
 
   val resolver : S.t -> P.t -> M.t -> ?root:bool -> ?timer:int -> ?port:int -> UDns_resolver.t -> unit
 

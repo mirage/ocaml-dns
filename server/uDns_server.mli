@@ -60,6 +60,10 @@ end
 module Secondary : sig
   type s
 
+  val server : s -> t
+
+  val zones : s -> Dns_name.t list
+
   val create : ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->
     (Dns_name.t * Dns_packet.dnskey) list -> s

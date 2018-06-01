@@ -26,6 +26,9 @@ let pp ppf t =
     (bindings t)
 (*BISECT-IGNORE-END*)
 
+let rec equal (N (sub, map)) (N (sub', map')) =
+  Dns_map.equal Dns_map.equal_v map map' && M.equal equal sub sub'
+
 open Rresult.R.Infix
 
 let guard p err = if p then Ok () else Error err

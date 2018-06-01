@@ -119,9 +119,18 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
     in
     Lwt.async time
 
-  let secondary stack pclock mclock ?(timer = 5) ?(port = 53) t =
+  let secondary ?(on_update = fun _trie -> Lwt.return_unit)  stack pclock mclock ?(timer = 5) ?(port = 53) t =
     let state = ref t in
     let tcp_out = ref IM.empty in
+
+    let maybe_update_state t t' =
+      let trie server = UDns_server.((Secondary.server server).data) in
+      state := t ;
+      if Dns_trie.equal (trie t) (trie t') then
+        Lwt.return_unit
+      else
+        on_update t
+    in
 
     let rec read_and_handle ip f =
       read_tcp f >>= function
@@ -135,7 +144,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
         let t, answer, out =
           UDns_server.Secondary.handle !state now elapsed `Tcp ip data
         in
-        state := t ;
+        maybe_update_state t !state >>= fun () ->
         (* assume that answer is empty *)
         (match answer with Some _ -> Log.warn (fun m -> m "got unexpected answer") | None -> ()) ;
         Lwt_list.iter_s request out >>= fun () ->
@@ -173,7 +182,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
       let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Udp src buf in
-      state := t ;
+      maybe_update_state t !state >>= fun () ->
       List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
       match answer with
       | None -> Lwt.return_unit
@@ -195,7 +204,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
           let t, answer, out =
             UDns_server.Secondary.handle !state now elapsed `Tcp dst_ip data
           in
-          state := t ;
+          maybe_update_state t !state >>= fun () ->
           List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
           match answer with
           | None ->
@@ -215,7 +224,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
       let t, out = UDns_server.Secondary.timer !state now elapsed in
-      state := t ;
+      maybe_update_state t !state >>= fun () ->
       List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
       TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
       time ()
