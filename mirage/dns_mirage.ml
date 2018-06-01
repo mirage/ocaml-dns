@@ -153,6 +153,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       match IM.find ip !tcp_out with
       | exception Not_found ->
         begin
+          Logs.info (fun m -> m "creating connectiong to %a:%d" Ipaddr.V4.pp_hum ip port) ;
           T.create_connection (S.tcpv4 stack) (ip, port) >>= function
           | Error e ->
             Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"

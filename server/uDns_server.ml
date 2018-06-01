@@ -772,7 +772,7 @@ module Secondary = struct
           | Error _, Requested_soa (ts, retry, _, _) ->
             let e = Duration.of_sec 5 in
             maybe_out
-              (if Int64.add ts e < now then
+              (if Int64.add ts e < now || ts = 0L then
                  let retry = succ retry in
                  query_soa ~retry t `Tcp p_now ts zone name
                else
