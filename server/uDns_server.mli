@@ -62,6 +62,10 @@ module Secondary : sig
 
   val server : s -> t
 
+  val data : s -> Dns_trie.t
+
+  val with_data : s -> Dns_trie.t -> s
+
   val zones : s -> Dns_name.t list
 
   val create : ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->

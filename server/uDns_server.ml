@@ -659,6 +659,10 @@ module Secondary = struct
 
   let server (t, _) = t
 
+  let data (t, _) = t.data
+
+  let with_data (t, zones) data = ({ t with data }, zones)
+
   let zones (_, zones) = fst (List.split (Dns_name.DomMap.bindings zones))
 
   let create ?(a = []) ~tsig_verify ~tsig_sign ~rng keys =
