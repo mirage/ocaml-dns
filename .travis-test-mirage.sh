@@ -4,9 +4,14 @@ eval `opam config env`
 
 opam install mirage
 
-UNIKERNELS="primary primary-with-zone secondary resolver stub"
+UNIKERNELS="primary primary-with-zone secondary resolver stub certificate"
 
 cd mirage/examples
+
+cd secondary-git
+echo "now working in secondary-git, compiling for unix"
+mirage configure -t unix && make depend && mirage build && mirage clean
+cd ..
 
 for x in $UNIKERNELS; do
     cd $x
