@@ -22,9 +22,7 @@
 open Zone_state
 
 let parse_error s =
-  raise (Zone_parse_problem ("Error (" ^ state.filename
-		             ^ " line " ^ (string_of_int (state.lineno - 1))
-		             ^ "): " ^ s))
+  raise (Zone_parse_problem s)
 
 (* Parsers for numbers *)
 let parse_uint8 s =

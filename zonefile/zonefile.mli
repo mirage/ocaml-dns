@@ -16,8 +16,5 @@
  *
  *)
 
-(** Raised when load fails to parse the zone. Argument indicates line number. *)
-exception Zone_parse_error of int * string
-
 (** Load a domain's zone from a string. *)
-val load : string list -> string -> Dns_packet.rr list
+val load : string list -> string -> (Dns_packet.rr list, string) result

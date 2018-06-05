@@ -18,7 +18,6 @@
 
 type parserstate = {
     mutable paren : int;
-    mutable filename : string;
     mutable lineno : int;
     mutable origin : Dns_name.t;
     mutable ttl : int32;

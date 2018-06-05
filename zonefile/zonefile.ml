@@ -20,20 +20,17 @@
 
 open Zone_state
 
-exception Zone_parse_error of int * string
-
 (** Can raise {! ZoneParseError } *)
 let load origin buf =
   try
     let lexbuf = Lexing.from_string buf in
     state.paren <- 0;
-    state.filename <- "<string>";
-    state.lineno <- 1;
+    state.lineno <- 0;
     state.origin <- Dns_name.of_strings_exn origin;
     state.ttl <- Int32.of_int 3600;
     state.owner <- state.origin;
-    Zone_parser.zfile Zone_lexer.token lexbuf
+    Ok (Zone_parser.zfile Zone_lexer.token lexbuf)
   with
-    | Parsing.Parse_error -> raise (Zone_parse_error (state.lineno, ""))
-    | Zone_parse_problem s -> raise (Zone_parse_error (state.lineno, s))
-    | exn -> raise (Zone_parse_error (state.lineno, Printexc.to_string exn))
+    | Parsing.Parse_error -> Error (Printf.sprintf "zone parse error at line %d" state.lineno)
+    | Zone_parse_problem s -> Error (Printf.sprintf "zone parse problem at line %d: %s" state.lineno s)
+    | exn -> Error (Printexc.to_string exn)

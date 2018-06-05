@@ -21,7 +21,6 @@
 (* State variables for the parser & lexer *)
 type parserstate = {
   mutable paren : int;
-  mutable filename : string;
   mutable lineno : int;
   mutable origin : Dns_name.t;
   mutable ttl : int32;
@@ -30,7 +29,6 @@ type parserstate = {
 
 let state = {
   paren = 0 ;
-  filename = "" ;
   lineno = 1 ;
   ttl = Int32.of_int 3600 ;
   origin = Dns_name.root ;
