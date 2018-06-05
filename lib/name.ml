@@ -51,7 +51,7 @@ let to_string = String.concat "."
 (* TODO: this looks wrong for the trailing dot case/we should ensure
    we handle the trailing dot case consistently *)
 let of_string (s:string) : t =
-  Re_str.split (Re_str.regexp "\\.") (String.lowercase_ascii s)
+  Re.Str.split (Re.Str.regexp "\\.") (String.lowercase_ascii s)
 let string_to_domain_name = of_string
 
 let of_ipaddr ip = of_string_list (Ipaddr.to_domain_name ip)
@@ -80,36 +80,43 @@ let parse_label base buf =
           failwith (sprintf "Name.parse_label: invalid length %d" v)
 
 let parse names base buf = (* what. a. mess. *)
-  let rec aux offsets name base buf =
+  let rec aux offsets name base buf size =
     match parse_label base buf with
-      | (Z o as zero, offset) ->
-          Hashtbl.add names o zero;
-          name, base+offset, Cstruct.shift buf offset
+    | (Z o as zero, offset) ->
+      Hashtbl.add names o zero;
+      name, base+offset, Cstruct.shift buf offset, (size + 1)
 
-      | (L (n, o) as label, offset) ->
-          Hashtbl.add names o label;
-          offsets |> List.iter (fun off -> (Hashtbl.add names off label));
-          aux (o :: offsets) (n :: name) (base+offset) (Cstruct.shift buf offset)
-
-      | (P (p, _), offset) ->
-          (match Hashtbl.find_all names p with
-           | [] -> failwith (sprintf "Name.parse_pointer: Cannot dereference pointer to (%n) at position (%n)" p base);
-           | all ->
-             let labels = (all |> List.filter (function L _ -> true | _ -> false)) in
-             (* update the list of offsets-so-far to include current label *)
-             (base :: offsets) |> List.iter (fun o ->
-               (List.rev labels) |> List.iter (fun n -> Hashtbl.add names o n)
-             );
-             (* convert label list into string list *)
-             (labels ||> (function
-               | L (nm,_) -> nm
-               | _ -> failwith "Name.parse")
-             ) @ name, base+offset, Cstruct.shift buf offset
-          )
+    | (L (n, o) as label, offset) ->
+      Hashtbl.add names o label;
+      offsets |> List.iter (fun off -> (Hashtbl.add names off label));
+      aux (o :: offsets) (n :: name) (base+offset) (Cstruct.shift buf offset) (size + offset)
+      
+    | (P (p, _), offset) ->
+      (match Hashtbl.find_all names p with
+       | [] -> failwith (sprintf "Name.parse_pointer: Cannot dereference pointer to (%n) at position (%n)" p base);
+       | all ->
+         let labels = (all |> List.filter (function L _ -> true | _ -> false)) in
+         (* update the list of offsets-so-far to include current label *)
+         (base :: offsets) |> List.iter (fun o ->
+             (List.rev labels) |> List.iter (fun n -> Hashtbl.add names o n)
+           );
+         (* convert label list into string list *)
+         let labels_str  = (labels ||> (function
+             | L (nm,_) -> nm
+             | _ -> failwith "Name.parse")
+           )
+         in
+         let nb_labels = List.length labels_str in
+         let label_size = List.fold_left (fun size str -> size + (String.length str)) nb_labels labels_str in
+         labels_str@name, base+offset, Cstruct.shift buf offset, (size + label_size)
+      )
 
   in
-  let name, base, buf = aux [] [] base buf in
-  List.rev name, (base,buf)
+  let name, base, buf, size = aux [] [] base buf 0 in
+  if size > 255 then
+    failwith (sprintf "Name.parse: invalid length %d" size)
+  else
+    List.rev name, (base,buf)
 
 let marshal ?(compress=true) names base buf name =
   let not_compressed names base buf name =
