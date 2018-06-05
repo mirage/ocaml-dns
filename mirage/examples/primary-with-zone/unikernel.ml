@@ -22,23 +22,22 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) (KV 
 
   let start _rng pclock mclock _ s kv _ =
     read_full kv "zone" >>= fun data ->
-    let rrs =
-      try Zonefile.load [] (Cstruct.to_string data) with
-      | Zonefile.Zone_parse_error (line, msg) ->
-        Logs.err (fun m -> m "error while parsing zonefile in line %d: %s" line msg) ;
-        invalid_arg "zone parser"
-    in
-    let trie = Dns_trie.insert_map (Dns_map.of_rrs rrs) Dns_trie.empty in
-    (match Dns_trie.check trie with
-     | Ok () -> ()
-     | Error e ->
-       Logs.err (fun m -> m "error %a during check()" Dns_trie.pp_err e) ;
-       invalid_arg "check failed") ;
-    let t =
-      UDns_server.Primary.create ~a:[UDns_server.tsig_auth]
-        ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign
-        ~rng:R.generate trie
-    in
-    D.primary s pclock mclock t ;
-    S.listen s
+    match Zonefile.load [] (Cstruct.to_string data) with
+    | Error msg ->
+      Logs.err (fun m -> m "zonefile.load: %s" msg) ;
+      invalid_arg "zone parser"
+    | Ok rrs ->
+      let trie = Dns_trie.insert_map (Dns_map.of_rrs rrs) Dns_trie.empty in
+      (match Dns_trie.check trie with
+       | Ok () -> ()
+       | Error e ->
+         Logs.err (fun m -> m "error %a during check()" Dns_trie.pp_err e) ;
+         invalid_arg "check failed") ;
+      let t =
+        UDns_server.Primary.create ~a:[UDns_server.tsig_auth]
+          ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign
+          ~rng:R.generate trie
+      in
+      D.primary s pclock mclock t ;
+      S.listen s
 end

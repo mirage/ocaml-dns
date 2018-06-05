@@ -24,11 +24,20 @@ transfer, and key-management.
 The [`primary-with-zone`](primary-with-zone/) contains no hardcoded
 configuration, but serves [`data/zone`](primary-with-zone/data/zone) instead.
 
+The [`primary-git`](primary-git/) subdirectory contains a unikernel which get as
+boot parameter (`--remote`) a git repository where it expects at the top level
+zonefiles, parses and serves them via DNS.
+
 ## Secondary authoritative nameserver
 
 The [`secondary`](secondary/) subdirectory contains an example unikernel which
 listens on `10.0.42.4/24` by default and accepts TSIG keys as command line
 arguments (`--keys`, can be provided multiple times).
+
+The [`secondary-git`](secondary-git/) subdirectory contains a secondary that at
+the moment only works with the unix target of mirage and dumps zonefiles in a
+configurable local git repository (whenever a notify is received / AXFR has
+succeeded).
 
 An example setup how they play together could be:
 ```

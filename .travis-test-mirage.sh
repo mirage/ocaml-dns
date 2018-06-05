@@ -4,7 +4,7 @@ eval `opam config env`
 
 opam install mirage
 
-UNIKERNELS="primary primary-with-zone secondary resolver stub certificate"
+UNIKERNELS="primary primary-with-zone secondary resolver stub certificate primary-git"
 
 cd mirage/examples
 

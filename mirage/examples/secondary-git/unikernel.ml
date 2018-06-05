@@ -47,9 +47,9 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
                 | _ ->
                   Store.set branch ~info:(info "zone transferred") k str) >|= fun () ->
             match Zonefile.load [] str with
-            | exception Zonefile.Zone_parse_error (line, msg) ->
-              Logs.err (fun m -> m "error while parsing zonefile in line %d: %s" line msg)
-            | rrs ->
+            | Error msg ->
+              Logs.err (fun m -> m "zonefile: %s" msg)
+            | Ok rrs ->
               let trie = Dns_trie.insert_map (Dns_map.of_rrs rrs) Dns_trie.empty in
               (match Dns_trie.check trie with
                | Ok () -> ()
