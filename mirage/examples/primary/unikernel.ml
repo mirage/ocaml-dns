@@ -9,7 +9,6 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
   module D = Dns_mirage.Make(R)(P)(M)(T)(S)
 
   let data =
-    let open Rresult.R.Infix in
     let n = Dns_name.of_string_exn
     and ip = Ipaddr.V4.of_string_exn
     and s = Dns_name.DomSet.singleton

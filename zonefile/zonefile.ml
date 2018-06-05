@@ -36,3 +36,4 @@ let load origin buf =
   with
     | Parsing.Parse_error -> raise (Zone_parse_error (state.lineno, ""))
     | Zone_parse_problem s -> raise (Zone_parse_error (state.lineno, s))
+    | exn -> raise (Zone_parse_error (state.lineno, Printexc.to_string exn))

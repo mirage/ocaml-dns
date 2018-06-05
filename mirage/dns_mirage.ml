@@ -152,7 +152,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
         match answer with
         | None -> read_and_handle ip f
         | Some x ->
-          send_tcp f.flow data >>= function
+          send_tcp f.flow x >>= function
           | Error () ->
             Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
             tcp_out := IM.remove ip !tcp_out ;
