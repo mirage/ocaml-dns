@@ -113,8 +113,8 @@ let verify ?mac now v header name ~key tsig tbs =
         | None -> Error err
         | Some (buf, _) -> Error buf
 
-let encode_and_sign ?(proto = `Udp) (header, v) now key keyname =
-  let b, _ = Dns_packet.encode proto (header, v) in
+let encode_and_sign ?(proto = `Udp) header v now key keyname =
+  let b, _ = Dns_packet.encode proto header v in
   match Dns_packet.dnskey_to_tsig_algo key with
   | None -> Error "cannot discover tsig algorithm of key"
   | Some algorithm -> match Dns_packet.tsig ~algorithm ~signed:now () with
@@ -127,12 +127,12 @@ let decode_and_verify now key keyname ?mac buf =
   match Dns_packet.decode buf with
   | Error _ -> Error "decode"
   | Ok (_, None) -> Error "not signed"
-  | Ok ((header, v), Some tsig_off) ->
-    match Dns_packet.find_tsig v with
+  | Ok ((header, v, opt, t), Some tsig_off) ->
+    match t with
     | None -> Error "no tsig"
     | Some (name, tsig) when Dns_name.equal keyname name ->
       begin match verify_raw ?mac now keyname ~key tsig (Cstruct.sub buf 0 tsig_off) with
-        | Ok (_, mac) -> Ok ((header, v), mac)
+        | Ok (_, mac) -> Ok ((header, v, opt, t), mac)
         | Error _ -> Error "invalid signature"
       end
     | Some _ -> Error "invalid key name"

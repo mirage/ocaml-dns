@@ -86,11 +86,11 @@ let query_certificate sock public_key fqdn =
   and question = { Dns_packet.q_name = fqdn ; q_type = Dns_enum.TLSA }
   in
   let query = { Dns_packet.question = [ question ] ; answer = [] ; authority = [] ; additional = [] } in
-  let buf, _ = Dns_packet.encode `Tcp (header, `Query query) in
+  let buf, _ = Dns_packet.encode `Tcp header (`Query query) in
   send_tcp sock buf ;
   let data = recv_tcp sock in
   match Dns_packet.decode data with
-  | Ok ((_, `Query q), _) ->
+  | Ok ((_, `Query q, _, _), _) ->
     (* collect TLSA pems *)
     let tlsa =
       List.fold_left (fun acc rr -> match rr.Dns_packet.rdata with
@@ -103,7 +103,7 @@ let query_certificate sock public_key fqdn =
         None q.Dns_packet.answer
     in
     tlsa
-  | Ok ((_, v), _) ->
+  | Ok ((_, v, _, _), _) ->
     Logs.err (fun m -> m "expected a response, but got %a"
                  Dns_packet.pp_v v) ;
     None
@@ -133,7 +133,7 @@ let nsupdate_csr sock now hostname keyname zone dnskey csr =
     { hdr with Dns_packet.operation = Dns_enum.Update }
   in
   match
-    Dns_tsig.encode_and_sign ~proto:`Tcp (header, `Update nsupdate) now dnskey keyname >>= fun (data, mac) ->
+    Dns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname >>= fun (data, mac) ->
     send_tcp sock data ;
     let data = recv_tcp sock in
     Dns_tsig.decode_and_verify now dnskey keyname ~mac data

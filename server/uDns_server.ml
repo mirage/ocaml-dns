@@ -213,6 +213,10 @@ let safe_decode buf =
     Log.err (fun m -> m "bad content error %s while decoding@.%a"
                  x Cstruct.hexdump_pp buf) ;
     Error Dns_enum.FormErr
+  | Error (`Bad_edns_version i) ->
+    Log.err (fun m -> m "bad edns version error %u while decoding@.%a"
+                 i Cstruct.hexdump_pp buf) ;
+    Error Dns_enum.BadVersOrSig
   | Error e ->
     Log.err (fun m -> m "error %a while decoding@.%a"
                  Dns_packet.pp_err e Cstruct.hexdump_pp buf) ;
@@ -503,16 +507,25 @@ let raw_server_error buf rcode =
     (* manually copy the opcode from the incoming buf *)
     Cstruct.set_uint8 hdr 2 (notq lor ((Cstruct.get_uint8 buf 2) land 0x78)) ;
     (* set rcode *)
-    Cstruct.set_uint8 hdr 3 (Dns_enum.rcode_to_int rcode) ;
-    Some hdr
+    Cstruct.set_uint8 hdr 3 ((Dns_enum.rcode_to_int rcode) land 0xF) ;
+    let extended_rcode = Dns_enum.rcode_to_int rcode lsr 4 in
+    if extended_rcode = 0 then
+      Some hdr
+    else
+      (* need an edns! *)
+      let edns = Dns_packet.opt ~extended_rcode () in
+      let buf = Dns_packet.encode_opt edns in
+      Cstruct.BE.set_uint16 hdr 10 1 ;
+      Some (Cstruct.append hdr buf)
+
 
 let find_key trie name p =
   match Dns_trie.lookup_ignore name Dns_enum.DNSKEY trie with
   | Ok (Dns_map.V (Dns_map.K.Dnskey, keys)) -> List.filter p keys
   | _ -> []
 
-let handle_tsig ?mac t now (header, v) off buf =
-  match off, Dns_packet.find_tsig v with
+let handle_tsig ?mac t now header v tsig off buf =
+  match off, tsig with
   | None, _ | _, None -> Ok None
   | Some off, Some (name, tsig) ->
     let algo = tsig.Dns_packet.algorithm in
@@ -555,7 +568,7 @@ module Primary = struct
     let t = create data a rng tsig_verify tsig_sign in
     (t, notifications)
 
-  let handle_frame (t, ns) ts ip proto key (header, v) =
+  let handle_frame (t, ns) ts ip proto key header v =
     match v, header.Dns_packet.query with
     | `Query q, true ->
       handle_query t proto key header q >>= fun answer ->
@@ -564,8 +577,10 @@ module Primary = struct
       (* TODO: intentional? all other notifications apart from the new ones are dropped *)
       handle_update t ts proto key u >>= fun (data, ns) ->
       let out =
+        let edns = Dns_packet.opt () in
         List.map (fun (_, _, ip, hdr, q) ->
-            (ip, fst (Dns_packet.encode ~edns:[] `Udp (hdr, `Query q)))) ns
+            (ip, fst (Dns_packet.encode ~edns `Udp hdr (`Query q))))
+          ns
       in
       let answer =
         s_header header,
@@ -580,6 +595,7 @@ module Primary = struct
       in
       Ok ((t, notifications), None, [])
     | _, false ->
+      (* this happens when the other side is a tinydns and we're sending notify *)
       Log.err (fun m -> m "ignoring unsolicited answer, replying with FormErr") ;
       Error Dns_enum.FormErr
     | `Notify _, true ->
@@ -588,27 +604,28 @@ module Primary = struct
 
   let handle (t, ns) now ts proto ip buf =
     match
-      safe_decode buf >>= fun ((header, v), tsig_off) ->
+      safe_decode buf >>= fun ((header, v, opt, tsig), tsig_off) ->
       guard (not header.Dns_packet.truncation) Dns_enum.FormErr >>= fun () ->
-      Ok ((header, v), tsig_off)
+      Ok ((header, v, opt, tsig), tsig_off)
     with
     | Error rcode -> (t, ns), raw_server_error buf rcode, []
-    | Ok ((header, v), tsig_off) ->
-      Log.debug (fun m -> m "%a sent %a" Ipaddr.V4.pp_hum ip Dns_packet.pp (header, v)) ;
+    | Ok ((header, v, opt, tsig), tsig_off) ->
+      Log.debug (fun m -> m "%a sent %a" Ipaddr.V4.pp_hum ip
+                    Dns_packet.pp (header, v, opt, tsig)) ;
       let handle_inner keyname =
-        match handle_frame (t, ns) ts ip proto keyname (header, v) with
-        | Ok (t, Some answer, out) ->
+        match handle_frame (t, ns) ts ip proto keyname header v with
+        | Ok (t, Some (header, answer), out) ->
           let max_size, edns =
-            match Dns_packet.find_edns v with
+            match opt with
             | None -> None, None
-            | Some edns -> Dns_packet.payload_size edns, Some []
+            | Some edns -> Some edns.Dns_packet.payload_size, Some edns
           in
           (* be aware, this may be truncated... here's where AXFR is assembled! *)
-          (t, Some (Dns_packet.encode ?max_size ?edns proto answer), out)
+          (t, Some (Dns_packet.encode ?max_size ?edns proto header answer), out)
         | Ok (t, None, out) -> (t, None, out)
         | Error rcode -> ((t, ns), err header v rcode, [])
       in
-      match handle_tsig t now (header, v) tsig_off buf with
+      match handle_tsig t now header v tsig tsig_off buf with
       | Error data -> ((t, ns), Some data, [])
       | Ok None ->
         begin match handle_inner None with
@@ -629,7 +646,7 @@ module Primary = struct
 
   let timer (t, ns) now =
     let max = pred (Array.length retransmit) in
-    let encode hdr q = fst @@ Dns_packet.encode `Udp (hdr, `Query q) in
+    let encode hdr q = fst @@ Dns_packet.encode `Udp hdr (`Query q) in
     let notifications, out =
       List.fold_left (fun (ns, acc) (ts, count, ip, hdr, q) ->
           if Int64.add ts retransmit.(count) < now then
@@ -715,7 +732,7 @@ module Secondary = struct
     and question = [ { Dns_packet.q_name ; q_type = Dns_enum.AXFR } ]
     in
     let query = { Dns_packet.question ; answer = [] ; authority = [] ; additional = [] } in
-    let buf, max_size = Dns_packet.encode proto (header, `Query query) in
+    let buf, max_size = Dns_packet.encode proto header (`Query query) in
     match maybe_sign ~max_size t.tsig_sign t.data name now id buf with
     | None -> None
     | Some (buf, mac) -> Some (Requested_axfr (ts, id, mac), buf)
@@ -725,7 +742,7 @@ module Secondary = struct
     and question = [ { Dns_packet.q_name ; q_type = Dns_enum.SOA } ]
     in
     let query = { Dns_packet.question ; answer = [] ; authority = [] ; additional = [] } in
-    let buf, max_size = Dns_packet.encode proto (header, `Query query) in
+    let buf, max_size = Dns_packet.encode proto header (`Query query) in
     match maybe_sign ~max_size t.tsig_sign t.data name now id buf with
     | None -> None
     | Some (buf, mac) -> Some (Requested_soa (ts, retry, id, mac), buf)
@@ -1027,7 +1044,7 @@ module Secondary = struct
     in
     Ok (trie, zones, outs)
 
-  let handle_frame (t, zones) now ts ip proto keyname key (header, v) =
+  let handle_frame (t, zones) now ts ip proto keyname key header v =
     match v, header.Dns_packet.query with
     | `Query q, true ->
       handle_query t proto keyname header q >>= fun answer ->
@@ -1071,25 +1088,25 @@ module Secondary = struct
 
   let handle (t, zones) now ts proto ip buf =
     match
-      safe_decode buf >>= fun ((header, v), tsig_off) ->
+      safe_decode buf >>= fun ((header, v, opt, tsig), tsig_off) ->
       guard (not header.Dns_packet.truncation) Dns_enum.FormErr >>= fun () ->
-      Ok ((header, v), tsig_off)
+      Ok ((header, v, opt, tsig), tsig_off)
     with
     | Error rcode -> ((t, zones), raw_server_error buf rcode, [])
-    | Ok ((header, v), tsig_off) ->
+    | Ok ((header, v, opt, tsig), tsig_off) ->
       let handle_inner name key =
-        match handle_frame (t, zones) now ts ip proto name key (header, v) with
-        | Ok (t, Some answer, out) ->
-          let max_size, edns = match Dns_packet.find_edns v with
+        match handle_frame (t, zones) now ts ip proto name key header v with
+        | Ok (t, Some (header, answer), out) ->
+          let max_size, edns = match opt with
             | None -> None, None
-            | Some e -> Dns_packet.payload_size e, Some []
+            | Some e -> Some e.Dns_packet.payload_size, Some e
           in
-          (t, Some (Dns_packet.encode ?max_size ?edns proto answer), out)
+          (t, Some (Dns_packet.encode ?max_size ?edns proto header answer), out)
         | Ok (t, None, out) -> (t, None, out)
         | Error rcode -> ((t, zones), err header v rcode, [])
       in
       let mac = find_mac zones header v in
-      match handle_tsig ?mac t now (header, v) tsig_off buf with
+      match handle_tsig ?mac t now header v tsig tsig_off buf with
       | Error data -> ((t, zones), Some data, [])
       | Ok None ->
         begin match handle_inner None None with

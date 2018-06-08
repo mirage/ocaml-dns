@@ -14,6 +14,11 @@ val pp_err : [< Dns_name.err | `BadTTL of int32
              | `BadOpt | `BadKeepalive
              | `BadTlsaCertUsage of int | `BadTlsaSelector of int | `BadTlsaMatchingType of int
              | `BadSshfpAlgorithm of int | `BadSshfpType of int
+             | `Bad_edns_version of int
+             | `Multiple_tsig
+             | `Multiple_edns
+             | `Tsig_not_last
+             | `Edns_not_last
              ] Fmt.t
 
 type header = {
@@ -144,25 +149,33 @@ val compare_caa : caa -> caa -> int
 
 val pp_caa : caa Fmt.t
 
-type opt =
-  | Payload_size of int
+type extension =
   | Nsid of Cstruct.t
   | Cookie of Cstruct.t
   | Tcp_keepalive of int option
   | Padding of int
-  | Option of int * Cstruct.t
+  | Extension of int * Cstruct.t
 
-type opts = opt list
+type opt = {
+  extended_rcode : int ;
+  version : int ;
+  dnssec_ok : bool ;
+  payload_size : int ;
+  extensions : extension list ;
+}
 
-val payload_size : opts -> int option
+val opt : ?extended_rcode:int -> ?version:int -> ?dnssec_ok:bool ->
+  ?payload_size:int -> ?extensions:extension list -> unit -> opt
+
+val compare_extension : extension -> extension -> int
 
 val compare_opt : opt -> opt -> int
 
-val compare_opts : opts -> opts -> int
+val pp_extension : extension Fmt.t
 
 val pp_opt : opt Fmt.t
 
-val pp_opts : opts Fmt.t
+val encode_opt : opt -> Cstruct.t
 
 type tlsa = {
   tlsa_cert_usage : Dns_enum.tlsa_cert_usage ;
@@ -198,7 +211,7 @@ type rdata =
   | TSIG of tsig
   | DNSKEY of dnskey
   | CAA of caa
-  | OPTS of opt list
+  | OPTS of opt
   | TLSA of tlsa
   | SSHFP of sshfp
   | Raw of Dns_enum.rr_typ * Cstruct.t
@@ -265,7 +278,7 @@ val pp_update : update Fmt.t
 type v = [ `Query of query | `Update of update | `Notify of query ]
 val pp_v : v Fmt.t
 
-type t = header * v
+type t = header * v * opt option * (Dns_name.t * tsig) option
 val pp : t Fmt.t
 
 type tsig_verify = ?mac:Cstruct.t -> Ptime.t -> v -> header ->
@@ -293,12 +306,11 @@ val decode : Cstruct.t ->
    | `InvalidZoneRR of Dns_enum.rr_typ
    | `BadTlsaCertUsage of int | `BadTlsaSelector of int | `BadTlsaMatchingType of int
    | `BadSshfpAlgorithm of int | `BadSshfpType of int
+   | `Bad_edns_version of int
+   | `Multiple_tsig | `Multiple_edns
+   | `Tsig_not_last | `Edns_not_last
    ]) result
 
-val encode : ?max_size:int -> ?edns:opts -> proto -> t -> Cstruct.t * int
-
-val find_tsig : v -> (Dns_name.t * tsig) option
-
-val find_edns : v -> opts option
+val encode : ?max_size:int -> ?edns:opt -> proto -> header -> v -> Cstruct.t * int
 
 val error : header -> v -> Dns_enum.rcode -> (Cstruct.t * int) option

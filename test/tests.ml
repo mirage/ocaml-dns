@@ -302,6 +302,9 @@ module Packet = struct
                | `InvalidZoneRR of Dns_enum.rr_typ
                | `BadTlsaCertUsage of int | `BadTlsaSelector of int | `BadTlsaMatchingType of int
                | `BadSshfpAlgorithm of int | `BadSshfpType of int
+               | `Bad_edns_version of int
+               | `Multiple_tsig | `Multiple_edns
+               | `Tsig_not_last | `Edns_not_last
              ]
       let pp = pp_err
       let equal a b = match a, b with
@@ -335,6 +338,11 @@ module Packet = struct
         | `BadTlsaMatchingType m, `BadTlsaMatchingType n -> m = n
         | `BadSshfpAlgorithm i, `BadSshfpAlgorithm j -> i = j
         | `BadSshfpType i, `BadSshfpType j -> i = j
+        | `Bad_edns_version a, `Bad_edns_version b -> a = b
+        | `Multiple_tsig, `Multiple_tsig -> true
+        | `Multiple_edns, `Multiple_edns -> true
+        | `Tsig_not_last, `Tsig_not_last -> true
+        | `Edns_not_last, `Edns_not_last -> true
         | _ -> false
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
@@ -445,7 +453,7 @@ module Packet = struct
   let decode cs =
     match decode cs with
     | Error e -> Error e
-    | Ok ((header, `Query query), _) -> Ok (header, query)
+    | Ok ((header, `Query query, _, _), _) -> Ok (header, query)
     | Ok _ -> Error (`BadOpcode 10)
 
   let bad_query () =
@@ -589,7 +597,7 @@ module Packet = struct
       let prio, n = (1000, Dns_name.of_string_exn ~hostname:false "0.0.0.0") in
       [ { name = Dns_name.of_string_exn "foo.com" ; ttl = 556l ; rdata = MX (prio, n) } ]
     and additional =
-      let opt = [ Payload_size 450 ] in
+      let opt = Dns_packet.opt ~payload_size:450 () in
       [ { name = Dns_name.root ; ttl = 0l ; rdata = OPTS opt } ]
     in
     Alcotest.(check (result q_ok p_err) "regression 4 decodes"
@@ -626,7 +634,7 @@ module Packet = struct
       in
       [ { name = Dns_name.of_string_exn "riseup.net" ; ttl = 300l ; rdata = SOA soa } ]
     and additional =
-      let opt = [ Payload_size 4096 ] in
+      let opt = Dns_packet.opt ~payload_size:4096 () in
       [ { name = Dns_name.root ; ttl = 0l ; rdata = OPTS opt } ]
     in
     Alcotest.(check (result q_ok p_err) "regression 4 decodes"

@@ -33,7 +33,7 @@ val follow_cname : t -> int64 -> Dns_enum.rr_typ -> Dns_name.t -> Dns_packet.rr 
 
 val answer : t -> int64 -> Dns_packet.question -> int ->
   [ `Query of Dns_name.t * t
-  | `Packet of Dns_packet.t * t ]
+  | `Packet of Dns_packet.header * Dns_packet.v * t ]
 
 val resolve_ns : t -> int64 -> Dns_name.t ->
   ([ `NeedA of Dns_name.t
@@ -48,6 +48,6 @@ val find_ns : t -> (int -> Cstruct.t) -> int64 -> Dns_name.DomSet.t -> Dns_name.
 val resolve : t -> rng:(int -> Cstruct.t) ->  int64 -> Dns_name.t -> Dns_enum.rr_typ -> (Dns_name.t * Dns_enum.rr_typ * Ipaddr.V4.t * t, string) result
 
 val handle_query : t -> rng:(int -> Cstruct.t) -> int64 -> Dns_packet.question -> int ->
-  [ `Answer of Dns_packet.t
+  [ `Answer of Dns_packet.header * Dns_packet.v
   | `Nothing
   | `Query of Dns_name.t * Dns_enum.rr_typ * Ipaddr.V4.t ] * t

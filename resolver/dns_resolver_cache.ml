@@ -427,7 +427,7 @@ let answer t ts q id =
     and additional, t = if add then additionals t ts answer else [], t
     and question = [ q ]
     in
-    (header, `Query { Dns_packet.question ; answer ; authority ; additional }), t
+    (header, `Query { Dns_packet.question ; answer ; authority ; additional }, t)
   in
   match cached t ts q.Dns_packet.q_type q.Dns_packet.q_name with
   | Error _ -> `Query (q.Dns_packet.q_name, t)
@@ -450,7 +450,7 @@ let answer t ts q id =
 
 let handle_query t ~rng ts q qid =
   match answer t ts q qid with
-  | `Packet (pkt, t) -> `Answer pkt, t
+  | `Packet (hdr, pkt, t) -> `Answer (hdr, pkt), t
   | `Query (name, t) ->
     let r =
       match q.Dns_packet.q_type with

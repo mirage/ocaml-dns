@@ -69,7 +69,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       { hdr with Dns_packet.operation = Dns_enum.Update }
     in
     let now = Ptime.v (P.now_d_ps pclock) in
-    match Dns_tsig.encode_and_sign ~proto:`Tcp (header, `Update nsupdate) now dnskey keyname with
+    match Dns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname with
     | Error msg -> Lwt.return_error msg
     | Ok (data, mac) ->
       DNS.send_tcp (DNS.flow flow) data >>= function
@@ -105,7 +105,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
     and question = { Dns_packet.q_name ; q_type = Dns_enum.TLSA }
     in
     let query = { Dns_packet.question = [ question ] ; answer = [] ; authority = [] ; additional = [] } in
-    let buf, _ = Dns_packet.encode `Tcp (header, `Query query) in
+    let buf, _ = Dns_packet.encode `Tcp header (`Query query) in
     DNS.send_tcp (DNS.flow flow) buf >>= function
     | Error () -> Lwt.fail_with "couldn't send tcp"
     | Ok () ->
@@ -113,7 +113,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       | Error () -> Lwt.fail_with "couldn't read tcp"
       | Ok data ->
         match Dns_packet.decode data with
-        | Ok ((header, `Query q), _) ->
+        | Ok ((header, `Query q, _, _), _) ->
           (* collect TLSA pems *)
           let tlsa =
             List.fold_left (fun acc rr -> match rr.Dns_packet.rdata with
@@ -126,7 +126,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
               None q.Dns_packet.answer
           in
           Lwt.return tlsa
-        | Ok ((_, v), _) ->
+        | Ok ((_, v, _, _), _) ->
           Logs.err (fun m -> m "expected a response, but got %a"
                        Dns_packet.pp_v v) ;
           Lwt.return None

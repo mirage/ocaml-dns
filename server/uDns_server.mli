@@ -19,7 +19,7 @@ val text : Dns_name.t -> t -> (string, string) result
 
 val handle_query : t -> Dns_packet.proto -> Dns_name.t option -> Dns_packet.header ->
   Dns_packet.query ->
-  (Dns_packet.t, Dns_enum.rcode) result
+  (Dns_packet.header * Dns_packet.v, Dns_enum.rcode) result
 
 module IPS : (Set.S with type elt = Ipaddr.V4.t)
 
@@ -27,8 +27,8 @@ val notify : (int -> Cstruct.t) -> int64 -> Dns_trie.t -> Dns_name.t ->
   Dns_packet.soa ->
   (int64 * int * IPS.elt * Dns_packet.header * Dns_packet.query) list
 
-val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Dns_packet.t ->
-  int option -> Cstruct.t ->
+val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Dns_packet.header ->
+  Dns_packet.v -> (Dns_name.t * Dns_packet.tsig) option -> int option -> Cstruct.t ->
   ((Dns_name.t * Dns_packet.tsig * Cstruct.t * Dns_packet.dnskey) option,
    Cstruct.t) result
 
@@ -47,8 +47,8 @@ module Primary : sig
     Dns_trie.t -> s
 
   val handle_frame : s -> int64 -> Ipaddr.V4.t -> Dns_packet.proto ->
-    Dns_name.t option -> Dns_packet.t ->
-    (s * Dns_packet.t option * (Ipaddr.V4.t * Cstruct.t) list,
+    Dns_name.t option -> Dns_packet.header -> Dns_packet.v ->
+    (s * (Dns_packet.header * Dns_packet.v) option * (Ipaddr.V4.t * Cstruct.t) list,
      Dns_enum.rcode) result
 
   val handle : s -> Ptime.t -> int64 -> Dns_packet.proto -> Ipaddr.V4.t -> Cstruct.t ->
@@ -73,8 +73,8 @@ module Secondary : sig
     (Dns_name.t * Dns_packet.dnskey) list -> s
 
   val handle_frame : s -> Ptime.t -> int64 -> Ipaddr.V4.t -> Dns_packet.proto ->
-    Dns_name.t option -> Dns_packet.dnskey option -> Dns_packet.t ->
-    (s * Dns_packet.t option * (Dns_packet.proto * Ipaddr.V4.t * Cstruct.t) list,
+    Dns_name.t option -> Dns_packet.dnskey option -> Dns_packet.header -> Dns_packet.v ->
+    (s * (Dns_packet.header * Dns_packet.v) option * (Dns_packet.proto * Ipaddr.V4.t * Cstruct.t) list,
      Dns_enum.rcode) result
 
   val handle : s -> Ptime.t -> int64 -> Dns_packet.proto -> Ipaddr.V4.t -> Cstruct.t ->
