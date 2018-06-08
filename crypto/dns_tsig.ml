@@ -75,8 +75,8 @@ let verify_raw ?mac now name ~key tsig tbs =
   Cstruct.BE.set_uint16 tbs 10 (pred ac) ;
   let prep = mac_to_prep mac in
   let computed = compute_tsig name tsig ~key:priv (Cstruct.append prep tbs) in
-  (* TODO: could be truncated to NN bytes ?!?! *)
   let mac = tsig.Dns_packet.mac in
+  guard (Cstruct.len mac = Cstruct.len computed) (`BadTruncation (name, tsig)) >>= fun () ->
   guard (Cstruct.equal computed mac) (`InvalidMac (name, tsig)) >>= fun () ->
   guard (Dns_packet.valid_time now tsig) (`BadTimestamp (name, tsig, key)) >>= fun () ->
   Rresult.R.of_option ~none:(fun () -> Error (`BadTimestamp (name, tsig, key)))
@@ -100,6 +100,9 @@ let verify ?mac now v header name ~key tsig tbs =
       Error (or_empty (add_tsig ~max_size name tsig err))
     | Some (err, max_size), `InvalidMac (name, tsig) ->
       let tsig = Dns_packet.with_error (Dns_packet.with_mac tsig (Cstruct.create 0)) Dns_enum.BadVersOrSig in
+      Error (or_empty (add_tsig ~max_size name tsig err))
+    | Some (err, max_size), `BadTruncation (name, tsig) ->
+      let tsig = Dns_packet.with_error (Dns_packet.with_mac tsig (Cstruct.create 0)) Dns_enum.BadTrunc in
       Error (or_empty (add_tsig ~max_size name tsig err))
     | Some (err, max_size), `BadTimestamp (name, tsig, key) ->
       let tsig = Dns_packet.with_error tsig Dns_enum.BadTime in
