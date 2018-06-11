@@ -321,7 +321,7 @@ val parse_question :
 type qr = Query | Response
 
 (** A DNS opcode, with the usual conversion functions. *)
-type opcode = Standard | Inverse | Status | Reserved | Notify | Update
+type opcode = Standard | Inverse | Status | Notify | Update | Reserved of int
 val opcode_to_string : opcode -> string
 
 (** A DNS response code, with the usual conversion functions. *)

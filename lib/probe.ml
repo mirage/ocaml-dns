@@ -211,10 +211,10 @@ let rename_unique state old_name =
   let increment_name name =
     match Name.to_string_list name with
     | head :: tail ->
-      let re = Re_str.regexp "\\(.*\\)\\([0-9]+\\)" in
-      let new_head = if Re_str.string_match re head 0 then begin
-          let num = int_of_string (Re_str.matched_group 2 head) in
-          (Re_str.matched_group 1 head) ^ (string_of_int (num + 1))
+      let re = Re.Str.regexp "\\(.*\\)\\([0-9]+\\)" in
+      let new_head = if Re.Str.string_match re head 0 then begin
+          let num = int_of_string (Re.Str.matched_group 2 head) in
+          (Re.Str.matched_group 1 head) ^ (string_of_int (num + 1))
         end else
           head ^ "2"
       in

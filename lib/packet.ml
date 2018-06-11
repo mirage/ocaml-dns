@@ -406,7 +406,7 @@ type rr = {
   rdlen: uint16_t;
 } [@@big_endian]
 ]
-
+ 
 type rr = {
   name  : Name.t;
   cls   : rr_class;
@@ -1344,16 +1344,42 @@ type qr =
   [@@uint8_t]
 ]
 
-[%%cenum
 type opcode =
-  | Standard [@id 0]
-  | Inverse  [@id 1]
-  | Status   [@id 2]
-  | Reserved [@id 3]
-  | Notify   [@id 4]
-  | Update   [@id 5]
-  [@@uint8_t]
-]
+  | Standard        (*ID: 0*)
+  | Inverse         (*ID: 1*)
+  | Status          (*ID: 2*)
+  | Notify          (*ID: 4*)
+  | Update          (*ID: 5*)
+  | Reserved of int (*ID: either 3 or 6-15*)
+
+let opcode_to_int opcode = match opcode with
+  | Standard -> 0
+  | Inverse -> 1
+  | Status -> 2
+  | Notify -> 4
+  | Update -> 5
+  | Reserved k -> match k with
+    | 0 | 1 | 2 | 4 | 5 -> failwith (sprintf "bad opcode: %d exists and is not reserved" k)
+    | _ -> k
+
+let int_to_opcode n = match n with
+  | 0 -> Standard
+  | 1 -> Inverse
+  | 2 -> Status
+  | 4 -> Notify
+  | 5 -> Update
+  | k when k <= 15 -> Reserved k
+  | k -> failwith (sprintf "bad opcode: %d is not on 4 bits" k)
+
+let opcode_to_string opcode = match opcode with
+  | Standard -> "Query"
+  | Inverse -> "IQuery"
+  | Status -> "Status"
+  | Notify -> "Notify"
+  | Update -> "Update"
+  | Reserved k -> sprintf "Reserved%d" k
+
+
 
 [%%cenum
 type rcode =
@@ -1423,9 +1449,7 @@ let parse_detail d =
     | Some qr -> qr
     | None -> failwith "bad qr"
   in
-  let opcode = match (d lsr 11 land 0b0_1111) |> int_to_opcode with
-    | Some opcode -> opcode
-    | None -> failwith "bad opcode"
+  let opcode = int_to_opcode (d lsr 11 land 0b0_1111)
   in
   let int_to_bool = function
     | 0 -> false
