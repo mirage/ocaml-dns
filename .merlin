@@ -8,7 +8,7 @@ B _build/**
 
 PKG astring alcotest cstruct rresult afl-persistent cstruct.ppx ipaddr fmt hex
 PKG mtime mtime.clock.os
-PKG duration lru logs
+PKG duration lru logs gmap domain-name
 PKG ptime nocrypto randomconv
 
 PKG lwt mirage-stack-lwt mirage-types-lwt

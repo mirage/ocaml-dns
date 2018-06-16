@@ -21,7 +21,7 @@ module V = struct
         (Dns_enum.RRMap.bindings tm)
 end
 
-module LRU = Lru.F.Make(Dns_name)(V)
+module LRU = Lru.F.Make(Domain_name)(V)
 
 type t = LRU.t
 
@@ -54,9 +54,9 @@ let items = LRU.items
 
 let capacity = LRU.capacity
 
-let pp = LRU.pp Fmt.(pair ~sep:(unit ": ") Dns_name.pp V.pp)
+let pp = LRU.pp Fmt.(pair ~sep:(unit ": ") Domain_name.pp V.pp)
 
-module N = Dns_name.DomSet
+module N = Domain_name.Set
 
 let update_ttl created ts rr =
   let used = Duration.to_sec (Int64.sub ts created) in
@@ -150,7 +150,7 @@ let maybe_insert typ nam ts rank res t =
   match res with
   | NoErr [] ->
     Logs.warn (fun m -> m "won't add an empty rr for %a (%a)!"
-                  Dns_name.pp nam Dns_enum.pp_rr_typ typ) ;
+                  Domain_name.pp nam Dns_enum.pp_rr_typ typ) ;
     t
   | _ ->
     let entry tm =
@@ -204,7 +204,7 @@ let resolve_ns t ts name =
             | Dns_packet.CNAME name, `No -> `Cname name
             | rdata, x ->
               Logs.warn (fun m -> m "resolve_ns: ignoring %a (looked A %a)"
-                           Dns_packet.pp_rdata rdata Dns_name.pp name) ;
+                           Dns_packet.pp_rdata rdata Domain_name.pp name) ;
               x)
           `No answer
       with
@@ -213,16 +213,16 @@ let resolve_ns t ts name =
       | `Cname cname ->
         Logs.warn
           (fun m -> m "resolve_ns: asked for A record of NS %a, got cname %a"
-              Dns_name.pp name Dns_name.pp cname) ;
+              Domain_name.pp name Domain_name.pp cname) ;
         `NeedCname cname, t
     end
   | Ok (NoDom rr, t) ->
     Logs.warn (fun m -> m "resolve_ns: NoDom, cache lookup for %a is %a"
-                  Dns_name.pp name Dns_packet.pp_rr rr) ;
+                  Domain_name.pp name Dns_packet.pp_rr rr) ;
     `NoDom, t
   | Ok (r, t) ->
     Logs.warn (fun m -> m "resolve_ns: No, cache lookup for %a is %a"
-                  Dns_name.pp name pp_res r) ;
+                  Domain_name.pp name pp_res r) ;
     `No, t
 
 let find_ns t rng ts stash name =
@@ -244,30 +244,30 @@ let find_ns t rng ts stash name =
     begin match
         List.fold_left (fun acc rr ->
             match acc, rr.Dns_packet.rdata with
-            | `Name ns, Dns_packet.NS n -> `Name (Dns_name.DomSet.add n ns)
-            | _, Dns_packet.NS n -> `Name (Dns_name.DomSet.singleton n)
+            | `Name ns, Dns_packet.NS n -> `Name (Domain_name.Set.add n ns)
+            | _, Dns_packet.NS n -> `Name (Domain_name.Set.singleton n)
             | `Nothing, Dns_packet.CNAME name -> `Cname name (* foo.com CNAME bar.com case *)
             | acc, x ->
               Logs.err (fun m -> m "find_ns: looked for NS %a, but got %a"
-                           Dns_name.pp name Dns_packet.pp_rdata x) ;
+                           Domain_name.pp name Dns_packet.pp_rdata x) ;
               acc) `Nothing xs
       with
       | `Cname name -> `Cname name, t
       | `Nothing -> `No, t
       | `Name ns ->
-        let actual = Dns_name.DomSet.diff ns stash in
-        if Dns_name.DomSet.is_empty actual then begin
+        let actual = Domain_name.Set.diff ns stash in
+        if Domain_name.Set.is_empty actual then begin
           Logs.warn (fun m -> m "find_ns: couldn't take any name from %a (stash: %a), returning loop"
-                         Fmt.(list ~sep:(unit ",@ ") Dns_name.pp) (Dns_name.DomSet.elements ns)
-                         Fmt.(list ~sep:(unit ",@ ") Dns_name.pp) (Dns_name.DomSet.elements stash)) ;
+                         Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements ns)
+                         Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements stash)) ;
           `Loop, t
         end else
-          let nsname = pick (Dns_name.DomSet.elements actual) in
+          let nsname = pick (Domain_name.Set.elements actual) in
           (* tricky conditional:
               foo.com NS ns1.foo.com ; ns1.foo.com CNAME ns1.bar.com (well, may not happen ;)
               foo.com NS ns1.foo.com -> NeedGlue foo.com *)
           match resolve_ns t ts nsname with
-          | `NeedA aname, t when Dns_name.sub ~subdomain:aname ~domain:name -> `NeedGlue name, t
+          | `NeedA aname, t when Domain_name.sub ~subdomain:aname ~domain:name -> `NeedGlue name, t
           | `NeedCname cname, t -> `NeedA cname, t
           | `HaveIPS ips, t -> `HaveIP (pick ips), t
           | `NeedA aname, t -> `NeedA aname, t
@@ -304,39 +304,39 @@ let resolve t ~rng ts name typ =
   in
   let rec go t stash typ cur rest ip =
     Logs.debug (fun m -> m "resolve entry: stash %a typ %a cur %a rest %a ip %a"
-                   Fmt.(list ~sep:(unit ", ") Dns_name.pp) (N.elements stash)
-                   Dns_enum.pp_rr_typ typ Dns_name.pp cur
-                   Dns_name.pp (Dns_name.of_strings_exn ~hostname:false rest)
+                   Fmt.(list ~sep:(unit ", ") Domain_name.pp) (N.elements stash)
+                   Dns_enum.pp_rr_typ typ Domain_name.pp cur
+                   Domain_name.pp (Domain_name.of_strings_exn ~hostname:false rest)
                    Ipaddr.V4.pp_hum ip) ;
     match find_ns t rng ts stash cur with
-    | `NeedNS, t when Dns_name.equal cur Dns_name.root ->
+    | `NeedNS, t when Domain_name.equal cur Domain_name.root ->
       (* we don't have any root servers *)
       Ok (cur, Dns_enum.NS, root, t)
     | `HaveIP ip, t ->
       Logs.debug (fun m -> m "resolve: have ip %a" Ipaddr.V4.pp_hum ip) ;
       begin match rest with
         | [] -> Ok (cur, typ, ip, t)
-        | hd::tl -> go t stash typ (Dns_name.prepend_exn cur hd) tl ip
+        | hd::tl -> go t stash typ (Domain_name.prepend_exn cur hd) tl ip
       end
     | `NeedNS, t ->
       Logs.debug (fun m -> m "resolve: needns") ;
       Ok (cur, Dns_enum.NS, ip, t)
     | `Cname name, t ->
       (* NS name -> CNAME foo, only use foo is rest is empty *)
-      Logs.debug (fun m -> m "resolve: cname %a" Dns_name.pp name) ;
+      Logs.debug (fun m -> m "resolve: cname %a" Domain_name.pp name) ;
       begin match rest with
         | [] ->
-          let rest = List.rev (Dns_name.to_strings name) in
-          go t (N.add name stash) typ Dns_name.root rest root
+          let rest = List.rev (Domain_name.to_strings name) in
+          go t (N.add name stash) typ Domain_name.root rest root
         | hd::tl ->
-          go t stash typ (Dns_name.prepend_exn cur hd) tl ip
+          go t stash typ (Domain_name.prepend_exn cur hd) tl ip
       end
     | `NoDom, _ ->
       (* this is wrong for NS which NoDom for too much (even if its a ENT) *)
-      Logs.debug (fun m -> m "resolve: nodom to %a!" Dns_name.pp cur) ;
+      Logs.debug (fun m -> m "resolve: nodom to %a!" Domain_name.pp cur) ;
       Error "can't resolve"
     | `No, _ ->
-      Logs.debug (fun m -> m "resolve: no to %a!" Dns_name.pp cur) ;
+      Logs.debug (fun m -> m "resolve: no to %a!" Domain_name.pp cur) ;
       (* we tried to locate the NS for cur, but failed to find it *)
       (* it was ServFail/NoData in our cache.  how can we proceed? *)
       (* - ask the very same question to ips (NS / cur) - but we need to stop at some point *)
@@ -349,22 +349,22 @@ let resolve t ~rng ts name typ =
          a.b.c.d.e.f results in 6 requests (for f, e.f, d.e.f, c.d.e.f, b.c.d.e.f, a.b.c.d.e.f)  *)
       begin match rest with
         | [] -> Ok (cur, typ, ip, t)
-        | hd::tl -> go t stash typ (Dns_name.prepend_exn cur hd) tl ip
+        | hd::tl -> go t stash typ (Domain_name.prepend_exn cur hd) tl ip
       end
     | `NeedGlue name, t ->
-      Logs.debug (fun m -> m "resolve: needGlue %a" Dns_name.pp name) ;
+      Logs.debug (fun m -> m "resolve: needGlue %a" Domain_name.pp name) ;
       Ok (name, Dns_enum.NS, ip, t)
     | `Loop, _ -> Error "resolve: cycle detected in find_ns"
     | `NeedA name, t ->
-      Logs.debug (fun m -> m "resolve: needA %a" Dns_name.pp name) ;
+      Logs.debug (fun m -> m "resolve: needA %a" Domain_name.pp name) ;
       (* TODO: unclear whether this conditional is needed *)
       if N.mem name stash then begin
         Error "resolve: cycle detected during NeedA"
       end else
-        let n = List.rev (Dns_name.to_strings name) in
-        go t (N.add name stash) Dns_enum.A Dns_name.root n root
+        let n = List.rev (Domain_name.to_strings name) in
+        go t (N.add name stash) Dns_enum.A Domain_name.root n root
   in
-  go t (N.singleton name) typ Dns_name.root (List.rev (Dns_name.to_strings name)) root
+  go t (N.singleton name) typ Domain_name.root (List.rev (Domain_name.to_strings name)) root
 
 let follow_cname t ts typ name answer =
   let rec follow t names acc curr =
@@ -379,7 +379,7 @@ let follow_cname t ts typ name answer =
     with
     | None ->
       Logs.debug (fun m -> m "follow_cname: followed names %a noerror"
-                     Fmt.(list ~sep:(unit ", ") Dns_name.pp) (N.elements names)) ;
+                     Fmt.(list ~sep:(unit ", ") Domain_name.pp) (N.elements names)) ;
       `NoError (acc, t)
     | Some n ->
       if N.mem n names then begin
@@ -388,7 +388,7 @@ let follow_cname t ts typ name answer =
       end else
         match cached t ts typ n with
         | Error _ ->
-          Logs.debug (fun m -> m "follow_cname: cache miss, need to query %a" Dns_name.pp n) ;
+          Logs.debug (fun m -> m "follow_cname: cache miss, need to query %a" Domain_name.pp n) ;
           `Query (n, t)
         | Ok (NoErr ans, t) ->
           Logs.debug (fun m -> m "follow_cname: noerr, follow again") ;
@@ -454,12 +454,11 @@ let handle_query t ~rng ts q qid =
   | `Query (name, t) ->
     let r =
       match q.Dns_packet.q_type with
-      | Dns_enum.SRV when Dns_name.is_service name ->
-        let a = Dns_name.to_array name in
-        Ok (Dns_name.of_array Array.(sub a 0 (length a - 2)), Dns_enum.NS)
+      | Dns_enum.SRV when Domain_name.is_service name ->
+        Ok (Domain_name.drop_labels_exn ~amount:2 name, Dns_enum.NS)
       | Dns_enum.SRV ->
         Logs.err (fun m -> m "requested SRV record %a, but not a service name"
-                     Dns_name.pp name) ;
+                     Domain_name.pp name) ;
         Error ()
       | x -> Ok (name, x)
     in
@@ -472,11 +471,11 @@ let handle_query t ~rng ts q qid =
         `Nothing, t
       | Ok (name', typ, ip, t) ->
         let name, typ =
-          match Dns_name.equal name' qname, q.Dns_packet.q_type with
+          match Domain_name.equal name' qname, q.Dns_packet.q_type with
           | true, Dns_enum.SRV -> name, Dns_enum.SRV
           | _ -> name', typ
         in
-        Logs.debug (fun m -> m "resolve returned %a %a, %a" Dns_name.pp name
+        Logs.debug (fun m -> m "resolve returned %a %a, %a" Domain_name.pp name
                        Dns_enum.pp_rr_typ typ
                        Ipaddr.V4.pp_hum ip) ;
         `Query (name, typ, ip), t

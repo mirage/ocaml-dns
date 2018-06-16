@@ -21,17 +21,15 @@ let of_hex s =
   (match part with None -> () | Some _ -> invalid_arg "missing a hex char") ;
   Cstruct.sub cs 0 idx
 
-let n_of_s = Dns_name.of_string_exn
+let n_of_s = Domain_name.of_string_exn
 
 let p_cs = Alcotest.testable Cstruct.hexdump_pp Cstruct.equal
 
 module Name = struct
-  open Dns_name
-
   let p_err =
     let module M = struct
-      type t = err
-      let pp = pp_err
+      type t = Dns_name.err
+      let pp = Dns_name.pp_err
       let equal a b = match a, b with
         | `Partial, `Partial -> true
         | `TooLong, `TooLong -> true
@@ -44,19 +42,19 @@ module Name = struct
 
   let p_ok =
     let module M = struct
-      type t = Dns_name.t * (Dns_name.t * int) IntMap.t * int
+      type t = Domain_name.t * (Domain_name.t * int) Dns_name.IntMap.t * int
       let pp ppf (name, map, off) =
         Fmt.pf ppf "%a (map: %a) %d"
-          pp name
+          Domain_name.pp name
           (Fmt.list ~sep:(Fmt.unit ";@ ")
              (Fmt.pair ~sep:(Fmt.unit "->") Fmt.int
-                (Fmt.pair ~sep:(Fmt.unit " ") pp Fmt.int)))
-          (IntMap.bindings map)
+                (Fmt.pair ~sep:(Fmt.unit " ") Domain_name.pp Fmt.int)))
+          (Dns_name.IntMap.bindings map)
           off
       let equal (n, m, off) (n', m', off') =
-        equal n n' && off = off' &&
-        IntMap.equal
-          (fun (nam, siz) (nam', siz') -> equal nam nam' && siz = siz')
+        Domain_name.equal n n' && off = off' &&
+        Dns_name.IntMap.equal
+          (fun (nam, siz) (nam', siz') -> Domain_name.equal nam nam' && siz = siz')
           m m'
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
@@ -69,134 +67,94 @@ module Name = struct
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
-  let p_name = Alcotest.testable pp equal
+  let p_name = Alcotest.testable Domain_name.pp Domain_name.equal
 
   let p_enc =
     let module M = struct
-      type t = int DomMap.t * int
+      type t = int Domain_name.Map.t * int
       let pp ppf (names, off) =
         Fmt.pf ppf "map: %a, off: %d"
           (Fmt.list ~sep:(Fmt.unit ";@ ")
-             (Fmt.pair ~sep:(Fmt.unit "->") pp Fmt.int))
-          (DomMap.bindings names)
+             (Fmt.pair ~sep:(Fmt.unit "->") Domain_name.pp Fmt.int))
+          (Domain_name.Map.bindings names)
           off
       let equal (m, off) (m', off') =
         off = off' &&
-        DomMap.equal (fun off off' -> off = off') m m'
+        Domain_name.Map.equal (fun off off' -> off = off') m m'
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
-  let basic_preds () =
-    Alcotest.(check bool "root is_hostname" true (is_hostname root)) ;
-    Alcotest.(check bool "root is no service" false (is_service root)) ;
-    Alcotest.(check bool "_tcp.foo is no service" false
-                (is_service (n_of_s ~hostname:false "_tcp.foo"))) ;
-    Alcotest.(check bool "_._tcp.foo is no service" false
-                (is_service (n_of_s ~hostname:false "_._tcp.foo"))) ;
-    Alcotest.(check bool "foo._tcp.foo is no service" false
-                (is_service (n_of_s ~hostname:false "foo._tcp.foo"))) ;
-    Alcotest.(check bool "f_oo._tcp.foo is no service" false
-                (is_service (n_of_s ~hostname:false "f_oo._tcp.foo"))) ;
-    Alcotest.(check bool "foo_._tcp.foo is no service" false
-                (is_service (n_of_s ~hostname:false "foo_._tcp.foo"))) ;
-    Alcotest.(check bool "_xmpp-server._tcp.foo is a service" true
-                (is_service (n_of_s ~hostname:false "_xmpp-server._tcp.foo"))) ;
-    Alcotest.(check bool "_xmpp-server._tcp2.foo is no service" false
-                (is_service (n_of_s ~hostname:false "_xmpp-server._tcp2.foo"))) ;
-    Alcotest.(check bool "_xmpp_server._tcp.foo is no service" false
-                (is_service (n_of_s ~hostname:false "_xmpp_server._tcp.foo"))) ;
-    Alcotest.(check bool "_xmpp-server-server._tcp.foo is no service" false
-                (is_service (n_of_s ~hostname:false "_xmpp_server-server._tcp.foo"))) ;
-    Alcotest.(check bool "foo is no subdomain of foo.bar" false
-                (sub ~subdomain:(n_of_s "foo") ~domain:(n_of_s "foo.bar")))
-
-  let basic_name () =
-    Alcotest.(check (result p_name p_msg) "prepend '_foo' to root is not valid"
-                (Error (`Msg "")) (prepend root "_foo")) ;
-    Alcotest.(check_raises "prepend_exn '_foo' to root raises"
-                (Invalid_argument "invalid host name")
-                (fun () -> ignore (prepend_exn root "_foo"))) ;
-    Alcotest.(check (result p_name p_msg) "of_strings '_foo' ; 'bar' is not valid"
-                (Error (`Msg "")) (of_strings [ "_foo" ; "bar" ])) ;
-    Alcotest.(check_raises "of_strings_exn '_foo.bar' raises"
-                (Invalid_argument "invalid host name")
-                (fun () -> ignore (of_strings_exn [ "_foo" ; "bar" ]))) ;
-    Alcotest.(check (result p_name p_msg) "of_string 'foo.bar' is valid"
-                (Ok (n_of_s "foo.bar")) (of_string "foo.bar")) ;
-    Alcotest.(check p_name "of_array 'foo.bar' is good"
-                (n_of_s "foo.bar") (of_array [| "bar" ; "foo" |]))
-
   let simple () =
     let m =
-      IntMap.add 0 (n_of_s "foo.com", 9)
-        (IntMap.add 4 (n_of_s "com", 5)
-           (IntMap.add 8 (root, 1) IntMap.empty))
+      Dns_name.IntMap.add 0 (n_of_s "foo.com", 9)
+        (Dns_name.IntMap.add 4 (n_of_s "com", 5)
+           (Dns_name.IntMap.add 8 (Domain_name.root, 1) Dns_name.IntMap.empty))
     in
     Alcotest.(check (result p_ok p_err) "simple name decode test"
                 (Ok (n_of_s "foo.com", m, 9))
-                (decode IntMap.empty (Cstruct.of_string "\003foo\003com\000") 0)) ;
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\003foo\003com\000") 0)) ;
     Alcotest.(check (result p_ok p_err) "another simple name decode test"
-                (Ok (n_of_s "foo.com", IntMap.add 9 (n_of_s "foo.com", 9) m, 11))
-                (decode m (Cstruct.of_string "\003foo\003com\000\xC0\000") 9)) ;
+                (Ok (n_of_s "foo.com", Dns_name.IntMap.add 9 (n_of_s "foo.com", 9) m, 11))
+                (Dns_name.decode m (Cstruct.of_string "\003foo\003com\000\xC0\000") 9)) ;
     Alcotest.(check (result p_ok p_err) "a ptr added to the name decode test"
                 (Ok (n_of_s "bar.foo.com",
-                     IntMap.add 13 (n_of_s "foo.com", 9)
-                       (IntMap.add 9 (n_of_s "bar.foo.com", 13) m),
+                     Dns_name.IntMap.add 13 (n_of_s "foo.com", 9)
+                       (Dns_name.IntMap.add 9 (n_of_s "bar.foo.com", 13) m),
                      15))
-                (decode m (Cstruct.of_string "\003foo\003com\000\003bar\xC0\000") 9)) ;
+                (Dns_name.decode m (Cstruct.of_string "\003foo\003com\000\003bar\xC0\000") 9)) ;
     Alcotest.(check (result p_ok p_err) "a ptr with bar- added to the name decode test"
                 (Ok (n_of_s "bar-.foo.com",
-                     IntMap.add 14 (n_of_s "foo.com", 9)
-                       (IntMap.add 9 (n_of_s "bar-.foo.com", 14) m),
+                     Dns_name.IntMap.add 14 (n_of_s "foo.com", 9)
+                       (Dns_name.IntMap.add 9 (n_of_s "bar-.foo.com", 14) m),
                      16))
-                (decode m (Cstruct.of_string "\003foo\003com\000\004bar-\xC0\000") 9)) ;
+                (Dns_name.decode m (Cstruct.of_string "\003foo\003com\000\004bar-\xC0\000") 9)) ;
     let m =
-      IntMap.add 0 (n_of_s "f23", 5) (IntMap.add 4 (root, 1) IntMap.empty)
+      Dns_name.IntMap.add 0 (n_of_s "f23", 5) (Dns_name.IntMap.add 4 (Domain_name.root, 1) Dns_name.IntMap.empty)
     in
     Alcotest.(check (result p_ok p_err) "simple name decode test of f23"
                 (Ok (n_of_s "f23", m, 5))
-                (decode IntMap.empty (Cstruct.of_string "\003f23\000") 0)) ;
-    let m = IntMap.add 0 (n_of_s ~hostname:false "23", 4)
-        (IntMap.add 3 (root, 1) IntMap.empty)
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\003f23\000") 0)) ;
+    let m = Dns_name.IntMap.add 0 (n_of_s ~hostname:false "23", 4)
+        (Dns_name.IntMap.add 3 (Domain_name.root, 1) Dns_name.IntMap.empty)
     in
     Alcotest.(check (result p_ok p_err) "simple DNS name decode test of 23"
                 (Ok (n_of_s ~hostname:false "23", m, 4))
-                (decode ~hostname:false IntMap.empty
+                (Dns_name.decode ~hostname:false Dns_name.IntMap.empty
                    (Cstruct.of_string "\00223\000") 0))
 
   let encode () =
     let cs = Cstruct.create 30 in
     Alcotest.check p_enc "compressed encode of root is good"
-      (DomMap.empty, 1) (encode DomMap.empty cs 0 root) ;
+      (Domain_name.Map.empty, 1) (Dns_name.encode Domain_name.Map.empty cs 0 Domain_name.root) ;
     Alcotest.check p_cs "cstruct is good" (of_hex "00") (Cstruct.sub cs 0 1) ;
     Alcotest.check p_enc "uncompressed encode of root is good"
-      (DomMap.empty, 1) (encode ~compress:false DomMap.empty cs 0 root) ;
+      (Domain_name.Map.empty, 1) (Dns_name.encode ~compress:false Domain_name.Map.empty cs 0 Domain_name.root) ;
     Alcotest.check p_cs "cstruct is good" (of_hex "00") (Cstruct.sub cs 0 1) ;
     let map =
-      DomMap.add (n_of_s "foo.bar") 0
-        (DomMap.add (n_of_s "bar") 4 DomMap.empty)
+      Domain_name.Map.add (n_of_s "foo.bar") 0
+        (Domain_name.Map.add (n_of_s "bar") 4 Domain_name.Map.empty)
     in
     Alcotest.check p_enc "encode of 'foo.bar' is good"
-      (map, 9) (encode DomMap.empty cs 0 (n_of_s "foo.bar")) ;
+      (map, 9) (Dns_name.encode Domain_name.Map.empty cs 0 (n_of_s "foo.bar")) ;
     Alcotest.check p_cs "cstruct is good" (of_hex "03 66 6f 6f 03 62 61 72 00")
       (Cstruct.sub cs 0 9) ;
     Alcotest.check p_enc "uncompressed encode of 'foo.bar' is good"
-      (map, 9) (encode ~compress:false DomMap.empty cs 0 (n_of_s "foo.bar")) ;
+      (map, 9) (Dns_name.encode ~compress:false Domain_name.Map.empty cs 0 (n_of_s "foo.bar")) ;
     Alcotest.check p_cs "cstruct is good" (of_hex "03 66 6f 6f 03 62 61 72 00")
       (Cstruct.sub cs 0 9) ;
-    let emap = DomMap.add (n_of_s "baz.foo.bar") 9 map in
+    let emap = Domain_name.Map.add (n_of_s "baz.foo.bar") 9 map in
     Alcotest.check p_enc "encode of 'baz.foo.bar' is good"
-      (emap, 15) (encode map cs 9 (n_of_s "baz.foo.bar")) ;
+      (emap, 15) (Dns_name.encode map cs 9 (n_of_s "baz.foo.bar")) ;
     Alcotest.check p_cs "cstruct is good"
       (of_hex "03 66 6f 6f 03 62 61 72 00 03 62 61 7a c0 00")
       (Cstruct.sub cs 0 15) ;
     let map' =
-      DomMap.add (n_of_s "baz.foo.bar") 9
-        (DomMap.add (n_of_s "foo.bar") 13
-           (DomMap.add (n_of_s "bar") 17 DomMap.empty))
+      Domain_name.Map.add (n_of_s "baz.foo.bar") 9
+        (Domain_name.Map.add (n_of_s "foo.bar") 13
+           (Domain_name.Map.add (n_of_s "bar") 17 Domain_name.Map.empty))
     in
     Alcotest.check p_enc "uncompressed encode of 'baz.foo.bar' is good"
-      (map', 22) (encode ~compress:false map cs 9 (n_of_s "baz.foo.bar")) ;
+      (map', 22) (Dns_name.encode ~compress:false map cs 9 (n_of_s "baz.foo.bar")) ;
     Alcotest.check p_cs "cstruct is good"
       (of_hex "03 66 6f 6f 03 62 61 72 00 03 62 61 7a 03 66 6f 6f 03 62 61 72 00")
       (Cstruct.sub cs 0 22)
@@ -204,43 +162,43 @@ module Name = struct
   let partial () =
     Alcotest.(check (result p_ok p_err) "partial domain name (bar)"
                 (Error `Partial)
-                (decode IntMap.empty (Cstruct.of_string "\003bar") 0));
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\003bar") 0));
     Alcotest.(check (result p_ok p_err) "partial domain name (one byte ptr)"
                 (Error `Partial)
-                (decode IntMap.empty (Cstruct.of_string "\xC0") 0)) ;
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\xC0") 0)) ;
     Alcotest.(check (result p_ok p_err) "partial domain name (5foo)"
                 (Error `Partial)
-                (decode IntMap.empty (Cstruct.of_string "\005foo") 0))
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\005foo") 0))
 
   let bad_ptr () =
     Alcotest.(check (result p_ok p_err) "bad pointer in label"
                 (Error (`BadOffset 10))
-                (decode IntMap.empty (Cstruct.of_string "\xC0\x0A") 0)) ;
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\xC0\x0A") 0)) ;
     Alcotest.(check (result p_ok p_err) "cyclic self-pointer in label"
                 (Error (`BadOffset 0))
-                (decode IntMap.empty (Cstruct.of_string "\xC0\x00") 0)) ;
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\xC0\x00") 0)) ;
     Alcotest.(check (result p_ok p_err) "cyclic self-pointer in label"
                 (Error (`BadOffset 1))
-                (decode IntMap.empty (Cstruct.of_string "\xC0\x01") 0))
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\xC0\x01") 0))
 
   let bad_tag () =
     Alcotest.(check (result p_ok p_err) "bad tag (0x40) in label"
                 (Error (`BadTag 0x40))
-                (decode IntMap.empty (Cstruct.of_string "\x40") 0)) ;
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\x40") 0)) ;
     Alcotest.(check (result p_ok p_err) "bad tag (0x80) in label"
                 (Error (`BadTag 0x80))
-                (decode IntMap.empty (Cstruct.of_string "\x80") 0))
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\x80") 0))
 
   let bad_content () =
     Alcotest.(check (result p_ok p_err) "bad content '-' in label"
                 (Error (`BadContent "-"))
-                (decode IntMap.empty (Cstruct.of_string "\001-\000") 0)) ;
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\001-\000") 0)) ;
     Alcotest.(check (result p_ok p_err) "bad content 'foo-+' in label"
                 (Error (`BadContent "foo-+"))
-                (decode IntMap.empty (Cstruct.of_string "\005foo-+\000") 0)) ;
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\005foo-+\000") 0)) ;
     Alcotest.(check (result p_ok p_err) "bad content '23' in label"
                 (Error (`BadContent "23"))
-                (decode IntMap.empty (Cstruct.of_string "\00223\000") 0))
+                (Dns_name.decode Dns_name.IntMap.empty (Cstruct.of_string "\00223\000") 0))
 
   let length () =
     let max = "s23456789012345678901234567890123456789012345678901234567890123" in
@@ -248,29 +206,27 @@ module Name = struct
     let full = n_of_s (String.concat ~sep:"." [ max ; max ; max ; lst ]) in
     Alcotest.(check (result p_ok p_err) "longest allowed domain name"
                 (Ok (full,
-                     IntMap.add 0 (full, 255)
-                       (IntMap.add 64 (n_of_s (String.concat ~sep:"." [ max ; max ; lst ]), 191)
-                          (IntMap.add 128 (n_of_s (String.concat ~sep:"." [ max ; lst ]), 127)
-                             (IntMap.add 192 (n_of_s lst, 63)
-                                (IntMap.add 254 (root, 1) IntMap.empty)))),
+                     Dns_name.IntMap.add 0 (full, 255)
+                       (Dns_name.IntMap.add 64 (n_of_s (String.concat ~sep:"." [ max ; max ; lst ]), 191)
+                          (Dns_name.IntMap.add 128 (n_of_s (String.concat ~sep:"." [ max ; lst ]), 127)
+                             (Dns_name.IntMap.add 192 (n_of_s lst, 63)
+                                (Dns_name.IntMap.add 254 (Domain_name.root, 1) Dns_name.IntMap.empty)))),
                      255))
-                (decode IntMap.empty
+                (Dns_name.decode Dns_name.IntMap.empty
                    (Cstruct.of_string ("\x3F" ^ max ^ "\x3F" ^ max ^ "\x3F" ^ max ^ "\x3D" ^ lst ^ "\000"))
                    0)) ;
     Alcotest.(check (result p_ok p_err) "domain name too long"
                 (Error `TooLong)
-                (decode IntMap.empty
+                (Dns_name.decode Dns_name.IntMap.empty
                    (Cstruct.of_string ("\x3F" ^ max ^ "\x3F" ^ max ^ "\x3F" ^ max ^ "\x3E" ^ lst ^ "1\000"))
                    0)) ;
     Alcotest.(check (result p_ok p_err) "domain name really too long"
                 (Error `TooLong)
-                (decode IntMap.empty
+                (Dns_name.decode Dns_name.IntMap.empty
                    (Cstruct.of_string ("\x3F" ^ max ^ "\x3F" ^ max ^ "\x3F" ^ max ^ "\x3F" ^ max ^ "\000"))
                    0))
 
   let code_tests = [
-    "basic predicates", `Quick, basic_preds ;
-    "basic name stuff", `Quick, basic_name ;
     "simple decode", `Quick, simple ;
     "encode", `Quick, encode ;
     "partial", `Quick, partial ;
@@ -296,7 +252,7 @@ module Packet = struct
                | `BadOpt | `BadKeepalive
                | `BadCaaTag
                | `LeftOver | `InvalidTimestamp of int64
-               | `InvalidAlgorithm of Dns_name.t
+               | `InvalidAlgorithm of Domain_name.t
                | `NonZeroTTL of int32
                | `NonZeroRdlen of int | `InvalidZoneCount of int
                | `InvalidZoneRR of Dns_enum.rr_typ
@@ -328,7 +284,7 @@ module Packet = struct
         | `BadOpt, `BadOpt -> true
         | `BadKeepalive, `BadKeepalive -> true
         | `InvalidTimestamp a, `InvalidTimestamp b -> a = b
-        | `InvalidAlgorithm a, `InvalidAlgorithm b -> Dns_name.equal a b
+        | `InvalidAlgorithm a, `InvalidAlgorithm b -> Domain_name.equal a b
         | `NonZeroTTL a, `NonZeroTTL b -> a = b
         | `NonZeroRdlen a, `NonZeroRdlen b -> a = b
         | `InvalidZoneCount a, `InvalidZoneCount b -> a = b
@@ -348,7 +304,7 @@ module Packet = struct
     (module M: Alcotest.TESTABLE with type t = M.t)
 
   let q_equal a b =
-    Dns_name.compare a.q_name b.q_name = 0 &&
+    Domain_name.compare a.q_name b.q_name = 0 &&
     compare a.q_type b.q_type = 0
 
   let header_equal a b =
@@ -500,7 +456,7 @@ module Packet = struct
     let soa = {
       nameserver = n_of_s "CON1R.NIPR.MIL" ;
       hostmaster =
-        Dns_name.of_strings_exn ~hostname:false
+        Domain_name.of_strings_exn ~hostname:false
           ["DANIEL.W.KNOPPS.CIV" ; "MAIL" ; "MIL" ] ;
       serial = 0x7839c3d1l ; refresh = 0x2a30l ; retry = 0x384l ;
       expiry = 0x127500l ; minimum = 0x2a30l
@@ -591,14 +547,14 @@ module Packet = struct
         checking_disabled = false ; rcode }
     in
     let question =
-      [ { q_name = Dns_name.of_string_exn ~hostname:false "foo.com" ;
+      [ { q_name = Domain_name.of_string_exn ~hostname:false "foo.com" ;
           q_type = Dns_enum.MX } ]
     and answer =
-      let prio, n = (1000, Dns_name.of_string_exn ~hostname:false "0.0.0.0") in
-      [ { name = Dns_name.of_string_exn "foo.com" ; ttl = 556l ; rdata = MX (prio, n) } ]
+      let prio, n = (1000, Domain_name.of_string_exn ~hostname:false "0.0.0.0") in
+      [ { name = Domain_name.of_string_exn "foo.com" ; ttl = 556l ; rdata = MX (prio, n) } ]
     and additional =
       let opt = Dns_packet.opt ~payload_size:450 () in
-      [ { name = Dns_name.root ; ttl = 0l ; rdata = OPTS opt } ]
+      [ { name = Domain_name.root ; ttl = 0l ; rdata = OPTS opt } ]
     in
     Alcotest.(check (result q_ok p_err) "regression 4 decodes"
                 (Ok (header, {
@@ -624,18 +580,18 @@ module Packet = struct
         checking_disabled = false ; rcode }
     in
     let question =
-      [ { q_name = Dns_name.of_string_exn ~hostname:false "_tcp.keys.riseup.net" ;
+      [ { q_name = Domain_name.of_string_exn ~hostname:false "_tcp.keys.riseup.net" ;
           q_type = Dns_enum.NS } ]
     and authority =
-      let soa = { nameserver = Dns_name.of_string_exn "primary.riseup.net" ;
-                  hostmaster = Dns_name.of_string_exn "collective.riseup.net" ;
+      let soa = { nameserver = Domain_name.of_string_exn "primary.riseup.net" ;
+                  hostmaster = Domain_name.of_string_exn "collective.riseup.net" ;
                   serial = 0x78488b04l ; refresh = 0x1c20l ; retry = 0x0e10l ;
                   expiry = 0x127500l ; minimum = 0x012cl }
       in
-      [ { name = Dns_name.of_string_exn "riseup.net" ; ttl = 300l ; rdata = SOA soa } ]
+      [ { name = Domain_name.of_string_exn "riseup.net" ; ttl = 300l ; rdata = SOA soa } ]
     and additional =
       let opt = Dns_packet.opt ~payload_size:4096 () in
-      [ { name = Dns_name.root ; ttl = 0l ; rdata = OPTS opt } ]
+      [ { name = Domain_name.root ; ttl = 0l ; rdata = OPTS opt } ]
     in
     Alcotest.(check (result q_ok p_err) "regression 4 decodes"
                 (Ok (header, {
@@ -657,7 +613,7 @@ module Packet = struct
         checking_disabled = false ; rcode }
     in
     let question =
-      [ { q_name = Dns_name.of_string_exn "ns4.bbc.net.uk" ; q_type = Dns_enum.NS } ]
+      [ { q_name = Domain_name.of_string_exn "ns4.bbc.net.uk" ; q_type = Dns_enum.NS } ]
     in
     Alcotest.(check (result q_ok p_err) "regression 5 decodes"
                 (Ok (header, {

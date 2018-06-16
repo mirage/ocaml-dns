@@ -8,7 +8,7 @@ let empty = empty 100
 
 let ip = Ipaddr.V4.of_string_exn
 let ip6 = Ipaddr.V6.of_string_exn
-let name = Dns_name.of_string_exn
+let name = Domain_name.of_string_exn
 let sec = Duration.of_sec
 
 let invalid_soa = Dns_resolver_utils.invalid_soa
@@ -19,7 +19,7 @@ let a_root = List.hd root_servers
 let rng i = Cstruct.create 1
 
 let rr_equal a b =
-  Dns_name.equal a.name b.name &&
+  Domain_name.equal a.name b.name &&
   a.ttl = b.ttl &&
   compare_rdata a.rdata b.rdata = 0
 
@@ -30,7 +30,7 @@ let follow_res =
       | `NoData of (rr list * rr) * Dns_resolver_cache.t
       | `NoDom of (rr list * rr) * Dns_resolver_cache.t
       | `NoError of rr list * Dns_resolver_cache.t
-      | `Query of Dns_name.t * Dns_resolver_cache.t
+      | `Query of Domain_name.t * Dns_resolver_cache.t
       | `ServFail of rr * Dns_resolver_cache.t
       ]
       let pp ppf = function
@@ -38,14 +38,14 @@ let follow_res =
         | `NoData ((rrs, soa), _) -> Fmt.pf ppf "nodata %a, soa %a" pp_rrs rrs pp_rr soa
         | `NoDom ((rrs, soa), _) -> Fmt.pf ppf "nodom %a, soa %a" pp_rrs rrs pp_rr soa
         | `NoError (rrs, _) -> Fmt.pf ppf "noerror %a" pp_rrs rrs
-        | `Query (name, _) -> Fmt.pf ppf "query %a" Dns_name.pp name
+        | `Query (name, _) -> Fmt.pf ppf "query %a" Domain_name.pp name
         | `ServFail (soa, _) -> Fmt.pf ppf "servfail %a" pp_rr soa
       let equal a b = match a, b with
         | `Cycle (rrs, _), `Cycle (rrs', _) -> List.for_all2 rr_equal rrs rrs'
         | `NoData ((rrs, soa), _), `NoData ((rrs', soa'), _) -> List.for_all2 rr_equal rrs rrs' && rr_equal soa soa'
         | `NoDom ((rrs, soa), _), `NoDom ((rrs', soa'), _) -> List.for_all2 rr_equal rrs rrs' && rr_equal soa soa'
         | `NoError (rrs, _), `NoError (rrs', _) -> List.for_all2 rr_equal rrs rrs'
-        | `Query (name, _), `Query (name', _) -> Dns_name.equal name name'
+        | `Query (name, _), `Query (name', _) -> Domain_name.equal name name'
         | `ServFail (soa, _), `ServFail (soa', _) -> rr_equal soa soa'
         | _, _ -> false
     end in
@@ -85,16 +85,16 @@ let follow_cname_tests = [
 
 let resolve_ns_ret =
   let module M = struct
-    type t = [ `NeedA of Dns_name.t | `NeedCname of Dns_name.t | `HaveIPS of Ipaddr.V4.t list | `No | `NoDom ] * Dns_resolver_cache.t
+    type t = [ `NeedA of Domain_name.t | `NeedCname of Domain_name.t | `HaveIPS of Ipaddr.V4.t list | `No | `NoDom ] * Dns_resolver_cache.t
     let pp ppf = function
-      | `NeedA nam, _ -> Fmt.pf ppf "need A of %a" Dns_name.pp nam
-      | `NeedCname nam, _ -> Fmt.pf ppf "need cname of %a" Dns_name.pp nam
+      | `NeedA nam, _ -> Fmt.pf ppf "need A of %a" Domain_name.pp nam
+      | `NeedCname nam, _ -> Fmt.pf ppf "need cname of %a" Domain_name.pp nam
       | `HaveIPS ips, _ -> Fmt.pf ppf "have IPs %a" Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) ips
       | `No, _ -> Fmt.string ppf "no"
       | `NoDom, _ -> Fmt.string ppf "nodom"
     let equal a b = match a, b with
-      | (`NeedA n, _), (`NeedA n', _) -> Dns_name.equal n n'
-      | (`NeedCname n, _), (`NeedCname n', _) -> Dns_name.equal n n'
+      | (`NeedA n, _), (`NeedA n', _) -> Domain_name.equal n n'
+      | (`NeedCname n, _), (`NeedCname n', _) -> Domain_name.equal n n'
       | (`HaveIPS ips, _), (`HaveIPS ips', _) -> List.for_all2 (fun a b -> Ipaddr.V4.compare a b = 0) ips ips'
       | (`No, _), (`No, _) -> true
       | (`NoDom, _), (`NoDom, _) -> true
@@ -224,22 +224,22 @@ let resolve_ns_tests = [
 
 let find_ns_ret =
   let module M = struct
-    type t = [ `Loop | `NeedNS | `No | `NoDom | `Cname of Dns_name.t | `NeedA of Dns_name.t | `HaveIP of Ipaddr.V4.t | `NeedGlue of Dns_name.t ] * Dns_resolver_cache.t
+    type t = [ `Loop | `NeedNS | `No | `NoDom | `Cname of Domain_name.t | `NeedA of Domain_name.t | `HaveIP of Ipaddr.V4.t | `NeedGlue of Domain_name.t ] * Dns_resolver_cache.t
     let pp ppf = function
-      | `NeedA name, _ -> Fmt.pf ppf "need A of %a" Dns_name.pp name
-      | `NeedGlue name, _ -> Fmt.pf ppf "need glue for %a" Dns_name.pp name
+      | `NeedA name, _ -> Fmt.pf ppf "need A of %a" Domain_name.pp name
+      | `NeedGlue name, _ -> Fmt.pf ppf "need glue for %a" Domain_name.pp name
       | `HaveIP ip, _ -> Fmt.pf ppf "have IP %a" Ipaddr.V4.pp_hum ip
       | `NeedNS, _ -> Fmt.string ppf "need NS"
-      | `Cname nam, _ -> Fmt.pf ppf "cname %a" Dns_name.pp nam
+      | `Cname nam, _ -> Fmt.pf ppf "cname %a" Domain_name.pp nam
       | `No, _ -> Fmt.string ppf "no"
       | `NoDom, _ -> Fmt.string ppf "nodom"
       | `Loop, _ -> Fmt.string ppf "loop"
     let equal a b = match a, b with
-      | (`NeedA n, _), (`NeedA n', _) -> Dns_name.equal n n'
-      | (`NeedGlue n, _), (`NeedGlue n', _) -> Dns_name.equal n n'
+      | (`NeedA n, _), (`NeedA n', _) -> Domain_name.equal n n'
+      | (`NeedGlue n, _), (`NeedGlue n', _) -> Domain_name.equal n n'
       | (`HaveIP ip, _), (`HaveIP ip', _) -> Ipaddr.V4.compare ip ip' = 0
       | (`NeedNS, _), (`NeedNS, _) -> true
-      | (`Cname n, _), (`Cname n', _) -> Dns_name.equal n n'
+      | (`Cname n, _), (`Cname n', _) -> Domain_name.equal n n'
       | (`No, _), (`No, _) -> true
       | (`NoDom, _), (`NoDom, _) -> true
       | (`Loop, _), (`Loop, _) -> true
@@ -247,13 +247,13 @@ let find_ns_ret =
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)
 
-let eds = Dns_name.DomSet.empty
+let eds = Domain_name.Set.empty
 
 let find_ns_empty () =
   Alcotest.check find_ns_ret "looking for NS in empty cache `NeedNS"
     (`NeedNS, empty) (find_ns empty rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in empty cache for root `NeedNS"
-    (`NeedNS, empty) (find_ns empty rng 0L eds Dns_name.root)
+    (`NeedNS, empty) (find_ns empty rng 0L eds Domain_name.root)
 
 let with_root =
   let cache =
@@ -264,7 +264,7 @@ let with_root =
       empty Dns_resolver_root.a_records
   in
   Dns_resolver_cache.maybe_insert
-    Dns_enum.NS Dns_name.root 0L Dns_resolver_entry.Additional
+    Dns_enum.NS Domain_name.root 0L Dns_resolver_entry.Additional
     (Dns_resolver_entry.NoErr Dns_resolver_root.ns_records) cache
 
 let find_ns_prefilled () =
@@ -272,7 +272,7 @@ let find_ns_prefilled () =
     (`NeedNS, empty) (find_ns with_root rng 0L eds (name "foo.com")) ;
   Alcotest.check find_ns_ret "looking for NS in empty cache for root `HaveIP"
     (`HaveIP a_root, empty)
-    (find_ns with_root rng 0L eds Dns_name.root)
+    (find_ns with_root rng 0L eds Domain_name.root)
 
 let find_ns_cname () =
   let cname_rr =
@@ -425,13 +425,13 @@ let find_ns_tests = [
 
 let resolve_ret =
   let module M = struct
-    type t = Dns_name.t * Dns_enum.rr_typ * Ipaddr.V4.t * Dns_resolver_cache.t
+    type t = Domain_name.t * Dns_enum.rr_typ * Ipaddr.V4.t * Dns_resolver_cache.t
     let pp ppf (name, typ, ip, _) =
       Fmt.pf ppf "requesting %a for %a (asking %a)"
-        Dns_enum.pp_rr_typ typ Dns_name.pp name
+        Dns_enum.pp_rr_typ typ Domain_name.pp name
         Ipaddr.V4.pp_hum ip
     let equal (n, t, i, _) (n', t', i', _) =
-      Dns_name.equal n n' && t = t' && Ipaddr.V4.compare i i' = 0
+      Domain_name.equal n n' && t = t' && Ipaddr.V4.compare i i' = 0
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)
 
@@ -447,22 +447,22 @@ let resolve_res = Alcotest.result resolve_ret str_err
 
 let resolve_empty () =
   Alcotest.check resolve_res "looking for NS in empty cache for root -> look for NS . @a_root"
-    (Ok (Dns_name.root, Dns_enum.NS, List.hd root_servers, empty))
-    (resolve ~rng empty 0L Dns_name.root Dns_enum.NS) ;
+    (Ok (Domain_name.root, Dns_enum.NS, List.hd root_servers, empty))
+    (resolve ~rng empty 0L Domain_name.root Dns_enum.NS) ;
   Alcotest.check resolve_res  "resolving A foo.com in empty cache -> look for NS . @a_root"
-    (Ok (Dns_name.root, Dns_enum.NS, List.hd root_servers, empty))
+    (Ok (Domain_name.root, Dns_enum.NS, List.hd root_servers, empty))
     (resolve ~rng empty 0L (name "foo.com") Dns_enum.A) ;
   Alcotest.check resolve_res  "resolving NS foo.com in empty cache -> look for NS . @a_root"
-    (Ok (Dns_name.root, Dns_enum.NS, List.hd root_servers, empty))
+    (Ok (Domain_name.root, Dns_enum.NS, List.hd root_servers, empty))
     (resolve ~rng empty 0L (name "foo.com") Dns_enum.NS) ;
   Alcotest.check resolve_res  "resolving PTR 1.2.3.4.in-addr.arpa in empty cache -> look for NS . @a_root"
-    (Ok (Dns_name.root, Dns_enum.NS, List.hd root_servers, empty))
+    (Ok (Domain_name.root, Dns_enum.NS, List.hd root_servers, empty))
     (resolve ~rng empty 0L (name "1.2.3.4.in-addr.arpa") Dns_enum.PTR)
 
 let resolve_with_root () =
   Alcotest.check resolve_res "looking for NS in with_root -> look for NS . @a_root"
-    (Ok (Dns_name.root, Dns_enum.NS, a_root, empty))
-    (resolve ~rng with_root 0L Dns_name.root Dns_enum.NS) ;
+    (Ok (Domain_name.root, Dns_enum.NS, a_root, empty))
+    (resolve ~rng with_root 0L Domain_name.root Dns_enum.NS) ;
   Alcotest.check resolve_res  "resolving A foo.com in with_root -> look for NS .com @a_root "
     (Ok (name "com", Dns_enum.NS, a_root, empty))
     (resolve ~rng with_root 0L (name "foo.com") Dns_enum.A) ;
@@ -692,24 +692,24 @@ let typ =
 
 let nam =
   let module M = struct
-    type t = Dns_name.t
-    let pp = Dns_name.pp
-    let equal = Dns_name.equal
+    type t = Domain_name.t
+    let pp = Domain_name.pp
+    let equal a b = Domain_name.equal a b
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)
 
 (* once again the complete thingy since I don't care about list ordering (Alcotest.list is order-enforcing) *)
 let res =
   let module M = struct
-    type t = (Dns_enum.rr_typ * Dns_name.t * rank * res) list
+    type t = (Dns_enum.rr_typ * Domain_name.t * rank * res) list
     let pp ppf xs =
       let pp_elem ppf (t, n, r, e) =
-        Fmt.pf ppf "%a %a (%a): %a" Dns_name.pp n Dns_enum.pp_rr_typ t pp_rank r pp_res e
+        Fmt.pf ppf "%a %a (%a): %a" Domain_name.pp n Dns_enum.pp_rr_typ t pp_rank r pp_res e
       in
       Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ";@,") pp_elem) xs
     let equal a a' =
       let eq (t, n, r, e) (t', n', r', e') =
-        Dns_name.equal n n' && t = t' &&
+        Domain_name.equal n n' && t = t' &&
         compare_rank r r' = `Equal &&
         res_eq e e'
       in

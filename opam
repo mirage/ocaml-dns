@@ -13,22 +13,16 @@ depends: [
   "ocamlbuild" {build}
   "topkg" {build}
   "ppx_cstruct" {build}
-  "rresult"
-  "astring"
-  "fmt"
-  "hex"
-  "cstruct" {>= "2.2.0"}
-  "ipaddr"
-  "logs"
-  "duration"
+  "rresult" "astring" "fmt" "logs" "ptime" "cmdliner" "bos" "fpath"
+  "x509"
   "nocrypto"
   "lru"
-  "ptime"
-  "randomconv"
-  "duration"
+  "randomconv" "duration" "gmap" "domain-name"
+  "cstruct" {>= "2.2.0"}
+  "hex"
+  "ipaddr"
   "lwt"
   "mirage-types-lwt"
-  "x509" "cmdliner" "bos" "fpath"
   "alcotest" {test}
 #  "afl-persistent" {test}
   "mtime" {test}

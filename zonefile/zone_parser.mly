@@ -210,12 +210,12 @@ owner:
  | domain { state.owner <- $1 ; state.owner }
 
 domain:
-   DOT { Dns_name.root }
+   DOT { Domain_name.root }
  | AT { state.origin }
- | label_except_at { Dns_name.prepend_exn state.origin $1 }
- | label DOT { Dns_name.of_strings_exn [$1] }
- | label DOT domain_labels { Dns_name.of_strings_exn ($1 :: $3 @ (Dns_name.to_strings state.origin)) }
- | label DOT domain_labels DOT { Dns_name.of_strings_exn ($1 :: $3) }
+ | label_except_at { Domain_name.prepend_exn state.origin $1 }
+ | label DOT { Domain_name.of_strings_exn [$1] }
+ | label DOT domain_labels { Domain_name.of_strings_exn ($1 :: $3 @ (Domain_name.to_strings state.origin)) }
+ | label DOT domain_labels DOT { Domain_name.of_strings_exn ($1 :: $3) }
 
 domain_labels:
    label { [$1] }

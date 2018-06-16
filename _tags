@@ -1,6 +1,6 @@
 true : bin_annot, safe_string, principal, color(always)
 true : warn(+A-4-44)
-true : package(rresult cstruct astring fmt ipaddr logs ptime hex)
+true : package(rresult cstruct astring fmt ipaddr logs ptime hex gmap domain-name)
 
 <mirage/examples>: -traverse
 

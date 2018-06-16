@@ -1,7 +1,7 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
 let root_servers =
-  List.map (fun (n, ip) -> Dns_name.of_string_exn n, Ipaddr.V4.of_string_exn ip)
+  List.map (fun (n, ip) -> Domain_name.of_string_exn n, Ipaddr.V4.of_string_exn ip)
     [
       "a.root-servers.net", "198.41.0.4" ; (* , 2001:503:ba3e::2:30 VeriSign, Inc. *)
       "b.root-servers.net", "199.9.14.201" ; (* , 2001:500:200::b University of Southern California (ISI) *)
@@ -26,7 +26,7 @@ let ns_records =
       let ttl = ns_ttl
       and rdata = Dns_packet.NS name
       in
-      { Dns_packet.name = Dns_name.root ; ttl ; rdata })
+      { Dns_packet.name = Domain_name.root ; ttl ; rdata })
     root_servers
 
 let a_records =
@@ -38,10 +38,10 @@ let a_records =
     root_servers
 
 let reserved_zone_records =
-  let n = Dns_name.of_string_exn in
+  let n = Domain_name.of_string_exn in
   (* RFC 6761, avoid them to get out of here + multicast DNS 6762 *)
   let zones =
-    Dns_name.DomSet.(add (n "local") (* multicast dns, RFC 6762 *)
+    Domain_name.Set.(add (n "local") (* multicast dns, RFC 6762 *)
                        (add (n "test") (add (n "invalid") (* RFC 6761 *)
                                           (add (n "localhost") (* RFC 6761, draft let-localhost-be-localhost *)
                                              empty))))
@@ -69,7 +69,7 @@ let reserved_zone_records =
   in
   List.fold_left (fun m net ->
       let name = net ^ ".in-addr.arpa" in
-      Dns_name.DomSet.add (n name) m)
+      Domain_name.Set.add (n name) m)
     zones nets
 (* XXX V6 reserved nets (also RFC6890) *)
 
@@ -79,6 +79,6 @@ let reserved_zones =
                 serial = 0l ; refresh = 300l ; retry = 300l ;
                 expiry = 300l ; minimum = 300l }
     in
-    Dns_map.(V (K.Soa, (300l, soa)))
+    Dns_map.(V (Soa, (300l, soa)))
   in
-  Dns_name.DomSet.fold (fun n acc -> (n, inv n) :: acc) reserved_zone_records []
+  Domain_name.Set.fold (fun n acc -> (n, inv n) :: acc) reserved_zone_records []

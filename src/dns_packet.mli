@@ -9,7 +9,7 @@ val pp_err : [< Dns_name.err | `BadTTL of int32
              | `NonZeroTTL of int32
              | `NonZeroRdlen of int | `InvalidZoneCount of int
              | `InvalidZoneRR of Dns_enum.rr_typ
-             | `InvalidTimestamp of int64 | `InvalidAlgorithm of Dns_name.t
+             | `InvalidTimestamp of int64 | `InvalidAlgorithm of Domain_name.t
              | `BadProto of int | `BadAlgorithm of int
              | `BadOpt | `BadKeepalive
              | `BadTlsaCertUsage of int | `BadTlsaSelector of int | `BadTlsaMatchingType of int
@@ -42,14 +42,14 @@ val decode_header : Cstruct.t ->
   (header, [> `Partial | `BadOpcode of int | `BadRcode of int ]) result
 
 type question = {
-  q_name : Dns_name.t ;
+  q_name : Domain_name.t ;
   q_type : Dns_enum.rr_typ ;
 }
 
-val decode_question : (Dns_name.t * int) Dns_name.IntMap.t ->
+val decode_question : (Domain_name.t * int) Dns_name.IntMap.t ->
   Cstruct.t ->
   int ->
-  (question * (Dns_name.t * int) Dns_name.IntMap.t * int,
+  (question * (Domain_name.t * int) Dns_name.IntMap.t * int,
    [> `BadClass of Cstruct.uint16
    | `BadContent of string
    | `BadOffset of int
@@ -63,8 +63,8 @@ val decode_question : (Dns_name.t * int) Dns_name.IntMap.t ->
 val pp_question : question Fmt.t
 
 type soa = {
-  nameserver : Dns_name.t ;
-  hostmaster : Dns_name.t ;
+  nameserver : Domain_name.t ;
+  hostmaster : Domain_name.t ;
   serial : int32 ;
   refresh : int32 ;
   retry : int32 ;
@@ -111,8 +111,8 @@ val with_other : tsig -> Ptime.t option -> tsig option
 
 val pp_tsig : tsig Fmt.t
 
-val encode_raw_tsig : Dns_name.t -> tsig -> Cstruct.t
-val encode_full_tsig : Dns_name.t -> tsig -> Cstruct.t
+val encode_raw_tsig : Domain_name.t -> tsig -> Cstruct.t
+val encode_full_tsig : Domain_name.t -> tsig -> Cstruct.t
 
 type dnskey = {
   flags : int ; (* uint16 *)
@@ -132,7 +132,7 @@ type srv = {
   priority : int ;
   weight : int ;
   port : int ;
-  target : Dns_name.t
+  target : Domain_name.t
 }
 
 val pp_srv : srv Fmt.t
@@ -199,10 +199,10 @@ val compare_sshfp : sshfp -> sshfp -> int
 val pp_sshfp : sshfp Fmt.t
 
 type rdata =
-  | CNAME of Dns_name.t
-  | MX of int * Dns_name.t
-  | NS of Dns_name.t
-  | PTR of Dns_name.t
+  | CNAME of Domain_name.t
+  | MX of int * Domain_name.t
+  | NS of Domain_name.t
+  | PTR of Domain_name.t
   | SOA of soa
   | TXT of string list
   | A of Ipaddr.V4.t
@@ -218,23 +218,23 @@ type rdata =
 
 val pp_rdata : rdata Fmt.t
 
-val rdata_name : rdata -> Dns_name.DomSet.t
+val rdata_name : rdata -> Domain_name.Set.t
 
 val compare_rdata : rdata -> rdata -> int
 
 val rdata_to_rr_typ : rdata -> Dns_enum.rr_typ
 
 type rr = {
-  name : Dns_name.t ;
+  name : Domain_name.t ;
   ttl : int32 ;
   rdata : rdata ;
 }
 
 val rr_equal : rr -> rr -> bool
 
-val rr_name : rr -> Dns_name.DomSet.t
+val rr_name : rr -> Domain_name.Set.t
 
-val rr_names : rr list -> Dns_name.DomSet.t
+val rr_names : rr list -> Domain_name.Set.t
 
 val pp_rr : rr Fmt.t
 
@@ -250,19 +250,19 @@ type query = {
 val pp_query : query Fmt.t
 
 type rr_prereq =
-  | Exists of Dns_name.t * Dns_enum.rr_typ
-  | Exists_data of Dns_name.t * rdata
-  | Not_exists of Dns_name.t * Dns_enum.rr_typ
-  | Name_inuse of Dns_name.t
-  | Not_name_inuse of Dns_name.t
+  | Exists of Domain_name.t * Dns_enum.rr_typ
+  | Exists_data of Domain_name.t * rdata
+  | Not_exists of Domain_name.t * Dns_enum.rr_typ
+  | Name_inuse of Domain_name.t
+  | Not_name_inuse of Domain_name.t
 
 type rr_update =
-  | Remove of Dns_name.t * Dns_enum.rr_typ
-  | Remove_all of Dns_name.t
-  | Remove_single of Dns_name.t * rdata
+  | Remove of Domain_name.t * Dns_enum.rr_typ
+  | Remove_all of Domain_name.t
+  | Remove_single of Domain_name.t * rdata
   | Add of rr
 
-val rr_update_name : rr_update -> Dns_name.t
+val rr_update_name : rr_update -> Domain_name.t
 
 val pp_rr_update : rr_update Fmt.t
 
@@ -278,14 +278,14 @@ val pp_update : update Fmt.t
 type v = [ `Query of query | `Update of update | `Notify of query ]
 val pp_v : v Fmt.t
 
-type t = header * v * opt option * (Dns_name.t * tsig) option
+type t = header * v * opt option * (Domain_name.t * tsig) option
 val pp : t Fmt.t
 
 type tsig_verify = ?mac:Cstruct.t -> Ptime.t -> v -> header ->
-  Dns_name.t -> key:dnskey option -> tsig -> Cstruct.t ->
+  Domain_name.t -> key:dnskey option -> tsig -> Cstruct.t ->
   (tsig * Cstruct.t * dnskey, Cstruct.t) result
 
-type tsig_sign = ?mac:Cstruct.t -> ?max_size:int -> Dns_name.t -> tsig ->
+type tsig_sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> tsig ->
   key:dnskey -> Cstruct.t -> (Cstruct.t * Cstruct.t) option
 
 val decode : Cstruct.t ->
@@ -300,7 +300,7 @@ val decode : Cstruct.t ->
    | `BadProto of int | `BadAlgorithm of int | `BadOpt | `BadKeepalive
    | `BadCaaTag
    | `LeftOver
-   | `InvalidTimestamp of int64 | `InvalidAlgorithm of Dns_name.t
+   | `InvalidTimestamp of int64 | `InvalidAlgorithm of Domain_name.t
    | `NonZeroTTL of int32
    | `NonZeroRdlen of int | `InvalidZoneCount of int
    | `InvalidZoneRR of Dns_enum.rr_typ

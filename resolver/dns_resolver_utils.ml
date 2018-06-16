@@ -6,12 +6,12 @@ open Dns_resolver_entry
 
 open Rresult.R.Infix
 
-module N = Dns_name.DomSet
-module NM = Dns_name.DomMap
+module N = Domain_name.Set
+module NM = Domain_name.Map
 
 let invalid_soa name =
   let p pre =
-    match Dns_name.(prepend name "invalid" >>= fun n -> prepend n pre) with
+    match Domain_name.(prepend name "invalid" >>= fun n -> prepend n pre) with
     | Ok name -> name
     | Error _ -> name
   in
@@ -25,7 +25,7 @@ let invalid_soa name =
 let noerror q hdr dns =
   (* ANSWER *)
   let answers, anames =
-    match List.filter (fun rr -> Dns_name.equal rr.name q.q_name) dns.answer with
+    match List.filter (fun rr -> Domain_name.equal rr.name q.q_name) dns.answer with
     | [] ->
       (* NODATA (no answer, but SOA (or not) in authority) *)
       begin
@@ -39,14 +39,14 @@ let noerror q hdr dns =
         let rank = if hdr.authoritative then AuthoritativeAuthority else Additional in
         match
           List.partition
-            (fun rr -> Dns_name.sub ~subdomain:q.q_name ~domain:rr.name &&
+            (fun rr -> Domain_name.sub ~subdomain:q.q_name ~domain:rr.name &&
                        match rr.rdata with SOA _ -> true | _ -> false)
             dns.authority
         with
         | [ soa ], _ -> [ q.q_type, q.q_name, rank, NoData soa ]
         | [], [] ->
           Logs.warn (fun m -> m "noerror answer, but nothing in authority whose sub is %a (%a) in %a, invalid_soa!"
-                        Dns_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type Dns_packet.pp_rrs dns.authority) ;
+                        Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type Dns_packet.pp_rrs dns.authority) ;
           [ q.q_type, q.q_name, Additional, NoData (invalid_soa q.q_name) ]
         | _, _ -> [] (* general case when we get an answer from root server *)
       end, N.empty
@@ -63,7 +63,7 @@ let noerror q hdr dns =
         (* case multiple cnames or cname and sth else *)
         (* fail hard already here!? -- there's either multiple cname or cname and others *)
         Logs.warn (fun m -> m "noerror answer with right name, but not either one or no cname in %a, invalid soa for %a (%a)"
-                      Dns_packet.pp_rrs answer Dns_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
+                      Dns_packet.pp_rrs answer Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
         [ q.q_type, q.q_name, rank, NoData (invalid_soa q.q_name) ], N.empty
   in
 
@@ -73,7 +73,7 @@ let noerror q hdr dns =
     (* we collect a list of NS records and the ns names *)
     match
       List.fold_left (fun acc rr ->
-          if Dns_name.equal q.q_name rr.name then
+          if Domain_name.equal q.q_name rr.name then
             match rr.rdata with
             | NS _ -> rr :: acc
             | _ -> acc
@@ -121,12 +121,12 @@ let noerror q hdr dns =
   | [], [] when not answer_complete && hdr.truncation ->
     (* special handling for truncated replies.. better not add anything *)
     Logs.warn (fun m -> m "truncated reply for %a (%a), ignoring completely"
-                  Dns_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
+                  Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
     []
   | [], [] ->
     (* not sure if this can happen, maybe discard everything? *)
     Logs.warn (fun m -> m "reply without answers or ns invalid so for %a (%a)"
-                  Dns_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
+                  Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
     [ q.q_type, q.q_name, Additional, NoData (invalid_soa q.q_name) ]
   | _, _ -> answers @ ns @ glues
 

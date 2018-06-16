@@ -22,7 +22,7 @@ let err header v rcode =
   in
   Dns_packet.error header v rcode
 
-type a = Dns_trie.t -> proto -> Dns_name.t option -> string -> Dns_name.t -> bool
+type a = Dns_trie.t -> proto -> Domain_name.t option -> string -> Domain_name.t -> bool
 
 type t = {
   data : Dns_trie.t ;
@@ -40,7 +40,7 @@ let text name t =
        (fun name v () ->
           (* TODO again Dnskey need to be treat specially, contains secrets *)
           match v with
-          | Dns_map.V (Dns_map.K.Dnskey, _) -> ()
+          | Dns_map.V (Dns_map.Dnskey, _) -> ()
           | _ ->
             Buffer.add_string buf (Dns_map.text name v) ;
             Buffer.add_char buf '\n')
@@ -64,10 +64,10 @@ let tsig_auth _ _ keyname op zone =
   match keyname with
   | None -> false
   | Some subdomain ->
-    let root = Dns_name.of_string_exn ~hostname:false op
-    and zone = Dns_name.prepend_exn ~hostname:false zone op
+    let root = Domain_name.of_string_exn ~hostname:false op
+    and zone = Domain_name.prepend_exn ~hostname:false zone op
     in
-    Dns_name.sub ~subdomain ~domain:zone || Dns_name.sub ~subdomain ~domain:root
+    Domain_name.sub ~subdomain ~domain:zone || Domain_name.sub ~subdomain ~domain:root
 
 let authorise t proto keyname zone operation =
   let op = operation_to_string operation in
@@ -77,7 +77,7 @@ let create data authorised rng tsig_verify tsig_sign =
   { data ; authorised ; rng ; tsig_verify ; tsig_sign }
 
 let to_ns_rrs name ttl ns =
-  Dns_name.DomSet.fold (fun ns acc ->
+  Domain_name.Set.fold (fun ns acc ->
       { Dns_packet.name ; ttl ; rdata = Dns_packet.NS ns } :: acc)
     ns []
 
@@ -86,7 +86,7 @@ let to_soa name ttl soa =
 
 let find_glue trie typ name names =
   let a, aaaa =
-    let open Dns_name.DomSet in
+    let open Domain_name.Set in
     match typ with
     | Dns_enum.A -> singleton name, empty
     | Dns_enum.AAAA -> empty, singleton name
@@ -98,9 +98,9 @@ let find_glue trie typ name names =
     | Ok (v, _) -> Dns_map.to_rr name v
     | _ -> []
   in
-  Dns_name.DomSet.fold (fun name acc ->
-      (if Dns_name.DomSet.mem name a then [] else find_rr Dns_enum.A name) @
-      (if Dns_name.DomSet.mem name aaaa then [] else find_rr Dns_enum.AAAA name) @
+  Domain_name.Set.fold (fun name acc ->
+      (if Domain_name.Set.mem name a then [] else find_rr Dns_enum.A name) @
+      (if Domain_name.Set.mem name aaaa then [] else find_rr Dns_enum.AAAA name) @
       acc)
     names []
 
@@ -135,16 +135,16 @@ let lookup trie hdr q =
     and au = to_ns_rrs name ttl ns
     in
     let ad =
-      let names = Dns_name.DomSet.union (Dns_map.names v) ns in
+      let names = Domain_name.Set.union (Dns_map.names v) ns in
       find_glue trie q.q_type q.q_name names
     in
     answer ~an ~au ~ad ()
   | Error (`Delegation (name, (ttl, ns))) ->
     let ad =
-      Dns_name.DomSet.fold (fun name acc ->
+      Domain_name.Set.fold (fun name acc ->
           (* TODO aaaa records! *)
           match Dns_trie.lookup_ignore name Dns_enum.A trie with
-          | Ok (Dns_map.V (Dns_map.K.A, _) as v) -> Dns_map.to_rr name v @ acc
+          | Ok (Dns_map.V (Dns_map.A, _) as v) -> Dns_map.to_rr name v @ acc
           | _ -> acc)
         ns []
     in
@@ -188,7 +188,7 @@ let axfr t proto key q zone =
   | Error `NotAuthoritative
   | Error `NotFound _ ->
     Log.err (fun m -> m "AXFR attempted on %a, where we're not authoritative"
-                 Dns_name.pp zone) ;
+                 Domain_name.pp zone) ;
     Error Dns_enum.NXDomain
 
 let key_retrieval t proto key hdr q =
@@ -246,7 +246,7 @@ let handle_query t proto key header query =
                 Fmt.(list ~sep:(unit ",@ ") Dns_packet.pp_question) qs) ;
     Error Dns_enum.FormErr
 
-let in_zone zone name = Dns_name.sub ~subdomain:name ~domain:zone
+let in_zone zone name = Domain_name.sub ~subdomain:name ~domain:zone
 
 (* this implements RFC 2136 Section 2.4 + 3.2 *)
 let handle_rr_prereq trie zone acc = function
@@ -280,7 +280,7 @@ let handle_rr_prereq trie zone acc = function
 
 let check_exists trie rrs =
   let map = Dns_map.of_rrs rrs in
-  Dns_name.DomMap.fold (fun name map r ->
+  Domain_name.Map.fold (fun name map r ->
       r >>= fun () ->
       Dns_map.fold (fun v r ->
           r >>= fun () ->
@@ -297,7 +297,7 @@ let handle_rr_update trie = function
     begin match typ with
       | Dns_enum.ANY ->
         Log.warn (fun m -> m "ignoring request to remove %a %a"
-                      Dns_enum.pp_rr_typ typ Dns_name.pp name) ;
+                      Dns_enum.pp_rr_typ typ Domain_name.pp name) ;
         trie
       | Dns_enum.SOA ->
         (* this does not follow 2136, but we want to be able to remove a zone *)
@@ -310,17 +310,17 @@ let handle_rr_update trie = function
     begin match typ with
       | Dns_enum.ANY | Dns_enum.SOA ->
         Log.warn (fun m -> m "ignoring request to remove %a %a %a"
-                      Dns_enum.pp_rr_typ typ Dns_name.pp name
+                      Dns_enum.pp_rr_typ typ Domain_name.pp name
                       Dns_packet.pp_rdata rdata) ;
         trie
       | _ ->
         begin match Dns_trie.lookup name typ trie with
-          | Ok (Dns_map.V (Dns_map.K.Cname, _), _) when Dns_enum.CNAME = typ ->
+          | Ok (Dns_map.V (Dns_map.Cname, _), _) when Dns_enum.CNAME = typ ->
             (* we could be picky and require rdata.name == alias *)
             Dns_trie.remove name typ trie
-          | Ok (Dns_map.V (Dns_map.K.Cname, _), _) ->
+          | Ok (Dns_map.V (Dns_map.Cname, _), _) ->
             Log.warn (fun m -> m "ignoring request to remove %a %a %a (got a cname on lookup)"
-                          Dns_enum.pp_rr_typ typ Dns_name.pp name Dns_packet.pp_rdata rdata) ;
+                          Dns_enum.pp_rr_typ typ Domain_name.pp name Dns_packet.pp_rdata rdata) ;
             trie
           | Ok (v, _) ->
             begin match Dns_map.remove_rdata v rdata with
@@ -330,7 +330,7 @@ let handle_rr_update trie = function
           | Error e ->
             Log.warn (fun m -> m "error %a while looking up %a %a %a for removal"
                           Dns_trie.pp_e e Dns_enum.pp_rr_typ typ
-                          Dns_name.pp name Dns_packet.pp_rdata rdata) ;
+                          Domain_name.pp name Dns_packet.pp_rdata rdata) ;
             trie
         end
     end
@@ -347,9 +347,9 @@ let handle_rr_update trie = function
           trie
         | _ ->
           match Dns_trie.lookup rr.Dns_packet.name typ trie with
-          | Ok (Dns_map.V (Dns_map.K.Cname, (_, alias)), _) ->
+          | Ok (Dns_map.V (Dns_map.Cname, (_, alias)), _) ->
             Log.warn (fun m -> m "found a CNAME %a, won't add %a"
-                          Dns_name.pp alias Dns_packet.pp_rr rr) ;
+                          Domain_name.pp alias Dns_packet.pp_rr rr) ;
             trie
           | Ok (v, _) ->
             begin match Dns_map.add_rdata v rr.Dns_packet.rdata with
@@ -375,14 +375,14 @@ let handle_rr_update trie = function
 
 let extract_zone_and_ip ?(secondary = false) name =
   (* the name of a key is primaryip.secondaryip._transfer.zone *)
-  let arr = Dns_name.to_array name in
+  let arr = Domain_name.to_array name in
   try
     let rec go idx = if Array.get arr idx = "_transfer" then idx else go (succ idx) in
     let zone_idx = go 0 in
-    let zone = Dns_name.of_array (Array.sub arr 0 zone_idx) in
+    let zone = Domain_name.of_array (Array.sub arr 0 zone_idx) in
     let mip = succ zone_idx + if secondary then 0 else 4 in
-    let host = Dns_name.of_array (Array.sub arr mip 4) in
-    match Ipaddr.V4.of_string (Dns_name.to_string host) with
+    let host = Domain_name.of_array (Array.sub arr mip 4) in
+    match Ipaddr.V4.of_string (Domain_name.to_string host) with
     | None -> None
     | Some ip -> Some (zone, ip)
   with
@@ -395,37 +395,37 @@ let notify rng now trie zone soa =
      servers which have transfer keys for the zone *)
   let ips =
     match Dns_trie.lookup zone Dns_enum.NS trie with
-    | Ok (Dns_map.V (Dns_map.K.Ns, (_, ns)), _) ->
-      let secondaries = Dns_name.DomSet.remove soa.Dns_packet.nameserver ns in
+    | Ok (Dns_map.V (Dns_map.Ns, (_, ns)), _) ->
+      let secondaries = Domain_name.Set.remove soa.Dns_packet.nameserver ns in
       (* TODO AAAA records *)
-      Dns_name.DomSet.fold (fun ns acc ->
+      Domain_name.Set.fold (fun ns acc ->
           let ips = match Dns_trie.lookup ns Dns_enum.A trie with
-            | Ok (Dns_map.V (Dns_map.K.A, (_, ips)), _) -> IPS.of_list ips
+            | Ok (Dns_map.V (Dns_map.A, (_, ips)), _) -> IPS.of_list ips
             | _ ->
               Log.err (fun m -> m "lookup for A %a returned nothing as well"
-                          Dns_name.pp ns) ;
+                          Domain_name.pp ns) ;
               IPS.empty
           in
           IPS.union ips acc) secondaries IPS.empty
     | _ -> IPS.empty
   and key_ips =
-    let tx = Dns_name.prepend_exn ~hostname:false zone (operation_to_string Transfer) in
+    let tx = Domain_name.prepend_exn ~hostname:false zone (operation_to_string Transfer) in
     let accumulate name _ acc =
       match extract_zone_and_ip ~secondary:true name with
       | None ->
-        Log.err (fun m -> m "failed to parse secondary IP: %a" Dns_name.pp name) ;
+        Log.err (fun m -> m "failed to parse secondary IP: %a" Domain_name.pp name) ;
         acc
       | Some (_, ip) -> IPS.add ip acc
     in
     match
-      Dns_trie.folde tx Dns_map.K.Dnskey trie accumulate IPS.empty
+      Dns_trie.folde tx Dns_map.Dnskey trie accumulate IPS.empty
     with
     | Error e ->
-      Log.err (fun m -> m "no keys found for %a: %a" Dns_name.pp tx Dns_trie.pp_e e) ; IPS.empty
+      Log.err (fun m -> m "no keys found for %a: %a" Domain_name.pp tx Dns_trie.pp_e e) ; IPS.empty
     | Ok es -> es
   in
   let ips = IPS.union ips key_ips in
-  Log.debug (fun m -> m "notifying %a %a" Dns_name.pp zone
+  Log.debug (fun m -> m "notifying %a %a" Domain_name.pp zone
                 Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) (IPS.elements ips)) ;
   let notify =
     let question = [ { Dns_packet.q_name = zone ; q_type = Dns_enum.SOA } ] in
@@ -453,8 +453,8 @@ let handle_update t ts proto key u =
   let need_key =
     let f subdomain =
       List.exists (fun p ->
-          let domain = Dns_name.prepend_exn ~hostname:false zone p in
-          Dns_name.sub ~subdomain ~domain)
+          let domain = Domain_name.prepend_exn ~hostname:false zone p in
+          Domain_name.sub ~subdomain ~domain)
         all_operations
     in
     Dns_packet.(List.exists f (List.map rr_update_name u.update))
@@ -482,12 +482,12 @@ let handle_update t ts proto key u =
      Log.err (fun m -> m "check after update returned %a" Dns_trie.pp_err e) ;
      Error Dns_enum.FormErr) >>= fun () ->
   match Dns_trie.lookup zone Dns_enum.SOA t.data, Dns_trie.lookup zone Dns_enum.SOA trie with
-  | Ok (Dns_map.V (Dns_map.K.Soa, (_, oldsoa)), _), Ok (Dns_map.V (Dns_map.K.Soa, (_, soa)), _) when oldsoa.Dns_packet.serial < soa.Dns_packet.serial ->
+  | Ok (Dns_map.V (Dns_map.Soa, (_, oldsoa)), _), Ok (Dns_map.V (Dns_map.Soa, (_, soa)), _) when oldsoa.Dns_packet.serial < soa.Dns_packet.serial ->
     let notifies = notify t.rng ts trie zone soa in
     Ok (trie, notifies)
-  | _, Ok (Dns_map.V (Dns_map.K.Soa, (ttl, soa)), _) ->
+  | _, Ok (Dns_map.V (Dns_map.Soa, (ttl, soa)), _) ->
     let soa = { soa with Dns_packet.serial = Int32.succ soa.Dns_packet.serial } in
-    let trie = Dns_trie.insert zone (Dns_map.V (Dns_map.K.Soa, (ttl, soa))) trie in
+    let trie = Dns_trie.insert zone (Dns_map.V (Dns_map.Soa, (ttl, soa))) trie in
     let notifies = notify t.rng ts trie zone soa in
     Ok (trie, notifies)
   | _, _ -> Ok (trie, [])
@@ -521,7 +521,7 @@ let raw_server_error buf rcode =
 
 let find_key trie name p =
   match Dns_trie.lookup_ignore name Dns_enum.DNSKEY trie with
-  | Ok (Dns_map.V (Dns_map.K.Dnskey, keys)) -> List.filter p keys
+  | Ok (Dns_map.V (Dns_map.Dnskey, keys)) -> List.filter p keys
   | _ -> []
 
 let handle_tsig ?mac t now header v tsig off buf =
@@ -556,10 +556,10 @@ module Primary = struct
   let create ?(a = []) ~tsig_verify ~tsig_sign ~rng data =
     let notifications =
       let f name (_, soa) acc =
-        Log.debug (fun m -> m "soa found for %a" Dns_name.pp name) ;
+        Log.debug (fun m -> m "soa found for %a" Domain_name.pp name) ;
         acc @ notify rng 0L data name soa
       in
-      match Dns_trie.folde Dns_name.root Dns_map.K.Soa data f [] with
+      match Dns_trie.folde Domain_name.root Dns_map.Soa data f [] with
       | Ok ns -> ns
       | Error e ->
         Logs.warn (fun m -> m "error %a while collecting zones" Dns_trie.pp_e e) ;
@@ -638,7 +638,7 @@ module Primary = struct
         | (a, Some (buf, max_size), out) ->
           match t.tsig_sign ~max_size ~mac name tsig ~key buf with
           | None ->
-            Log.warn (fun m -> m "couldn't use %a to tsig sign" Dns_name.pp name) ;
+            Log.warn (fun m -> m "couldn't use %a to tsig sign" Domain_name.pp name) ;
             (a, None, out)
           | Some (buf, _) -> (a, Some buf, out)
 
@@ -672,7 +672,7 @@ module Secondary = struct
     | Requested_soa of int64 * int * int * Cstruct.t
     | Requested_axfr of int64 * int * Cstruct.t
 
-  type s = t * (state * Ipaddr.V4.t * Dns_name.t) Dns_name.DomMap.t
+  type s = t * (state * Ipaddr.V4.t * Domain_name.t) Domain_name.Map.t
 
   let server (t, _) = t
 
@@ -680,27 +680,27 @@ module Secondary = struct
 
   let with_data (t, zones) data = ({ t with data }, zones)
 
-  let zones (_, zones) = fst (List.split (Dns_name.DomMap.bindings zones))
+  let zones (_, zones) = fst (List.split (Domain_name.Map.bindings zones))
 
   let create ?(a = []) ~tsig_verify ~tsig_sign ~rng keys =
     (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
     let trie, zones =
       List.fold_left (fun (trie, zones) (name, key) ->
           match extract_zone_and_ip name with
-          | None when Dns_name.sub ~subdomain:name ~domain:(Dns_name.of_string_exn ~hostname:false (operation_to_string Key_management)) ->
-            Log.info (fun m -> m "adding key management key %a" Dns_name.pp name) ;
-            (Dns_trie.insert name (Dns_map.V (Dns_map.K.Dnskey, [ key ])) trie, zones)
+          | None when Domain_name.sub ~subdomain:name ~domain:(Domain_name.of_string_exn ~hostname:false (operation_to_string Key_management)) ->
+            Log.info (fun m -> m "adding key management key %a" Domain_name.pp name) ;
+            (Dns_trie.insert name (Dns_map.V (Dns_map.Dnskey, [ key ])) trie, zones)
           | Some (zone, ip) ->
-            Log.info (fun m -> m "adding transfer key %a for %a" Dns_name.pp name Dns_name.pp zone) ;
+            Log.info (fun m -> m "adding transfer key %a for %a" Domain_name.pp name Domain_name.pp zone) ;
             let zones =
               let v = (Requested_soa (0L, 0, 0, Cstruct.empty), ip, name) in
-              Dns_name.DomMap.add zone v zones
+              Domain_name.Map.add zone v zones
             in
-            (Dns_trie.insert name (Dns_map.V (Dns_map.K.Dnskey, [ key ])) trie, zones)
+            (Dns_trie.insert name (Dns_map.V (Dns_map.Dnskey, [ key ])) trie, zones)
           | _ ->
-            Log.warn (fun m -> m "don't know what to do with %a, ignoring" Dns_name.pp name) ;
+            Log.warn (fun m -> m "don't know what to do with %a, ignoring" Domain_name.pp name) ;
             (trie, zones))
-        (Dns_trie.empty, Dns_name.DomMap.empty) keys
+        (Dns_trie.empty, Domain_name.Map.empty) keys
     in
     (create trie a rng tsig_verify tsig_sign, zones)
 
@@ -757,16 +757,16 @@ module Secondary = struct
        - if we don't have a soa yet for the zone, retry every 5 seconds as well
     *)
     let t, out =
-      Dns_name.DomMap.fold (fun zone (st, ip, name) ((t, zones), acc) ->
+      Domain_name.Map.fold (fun zone (st, ip, name) ((t, zones), acc) ->
           let maybe_out data =
             let st, out = match data with
               | None -> st, acc
               | Some (st, out) -> st, (`Tcp, ip, out) :: acc
             in
-            ((t, Dns_name.DomMap.add zone (st, ip, name) zones), out)
+            ((t, Domain_name.Map.add zone (st, ip, name) zones), out)
           in
 
-          match Dns_trie.lookup_direct zone Dns_map.K.Soa t.data, st with
+          match Dns_trie.lookup_direct zone Dns_map.Soa t.data, st with
           | Ok (_, soa), Transferred ts ->
             (* TODO: integer overflows (Int64.add) *)
             let r = Duration.of_sec (Int32.to_int soa.Dns_packet.refresh) in
@@ -779,7 +779,7 @@ module Secondary = struct
             let expiry = Duration.of_sec (Int32.to_int soa.Dns_packet.expiry) in
             if Int64.add ts expiry < now then begin
               Log.warn (fun m -> m "expiry expired, dropping zone %a"
-                           Dns_name.pp zone) ;
+                           Domain_name.pp zone) ;
               let data = Dns_trie.remove_zone zone t.data in
               (({ t with data }, zones), acc)
             end else
@@ -807,9 +807,9 @@ module Secondary = struct
                  None)
           | Error e, _ ->
             Log.err (fun m -> m "unclear how we ended up here zone %a, error %a while looking for soa"
-                        Dns_name.pp zone Dns_trie.pp_e e) ;
+                        Domain_name.pp zone Dns_trie.pp_e e) ;
             maybe_out None)
-        zones ((t, Dns_name.DomMap.empty), [])
+        zones ((t, Domain_name.Map.empty), [])
     in
     t, out
 
@@ -819,32 +819,32 @@ module Secondary = struct
       begin match q.Dns_packet.q_type with
         | Dns_enum.SOA ->
           let zone = q.Dns_packet.q_name in
-          begin match Dns_name.DomMap.find zone zones with
+          begin match Domain_name.Map.find zone zones with
             | exception Not_found -> (* we don't know anything about the notified zone *)
               Log.warn (fun m -> m "ignoring notify for %a, no such zone"
-                           Dns_name.pp q.Dns_packet.q_name) ;
+                           Domain_name.pp q.Dns_packet.q_name) ;
               Error Dns_enum.Refused
             | (_, ip', name) when Ipaddr.V4.compare ip ip' = 0 ->
               Log.debug (fun m -> m "received notify for %a, replying and requesting SOA"
-                            Dns_name.pp q.Dns_packet.q_name) ;
+                            Domain_name.pp q.Dns_packet.q_name) ;
               (* TODO should we look in zones and if there's a fresh Requested_soa, leave it as is? *)
               let zones, out =
                 match query_soa t `Tcp now ts zone name with
                 | None -> zones, []
                 | Some (st, buf) ->
-                  Dns_name.DomMap.add zone (st, ip, name) zones,
+                  Domain_name.Map.add zone (st, ip, name) zones,
                   [ (`Tcp, ip, buf) ]
               in
               Ok (zones, out)
             | (_, ip', _) ->
               Log.warn (fun m -> m "ignoring notify for %a from %a (%a is primary)"
-                           Dns_name.pp q.Dns_packet.q_name
+                           Domain_name.pp q.Dns_packet.q_name
                            Ipaddr.V4.pp_hum ip Ipaddr.V4.pp_hum ip') ;
               Error Dns_enum.Refused
           end
         | t ->
           Log.warn (fun m -> m "ignoring notify %a with type %a"
-                       Dns_name.pp q.Dns_packet.q_name Dns_enum.pp_rr_typ t) ;
+                       Domain_name.pp q.Dns_packet.q_name Dns_enum.pp_rr_typ t) ;
           Error Dns_enum.FormErr
       end
     | qs ->
@@ -856,15 +856,15 @@ module Secondary = struct
     match query.Dns_packet.question with
     | [ q ] ->
       let zone = q.Dns_packet.q_name in
-      begin match Dns_name.DomMap.find zone zones with
+      begin match Domain_name.Map.find zone zones with
         | exception Not_found ->
           Log.warn (fun m -> m "ignoring %a (%a), unknown zone"
-                       Dns_name.pp q.Dns_packet.q_name
+                       Domain_name.pp q.Dns_packet.q_name
                        Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
           Error Dns_enum.Refused
         | (st, ip, name) ->
           Log.debug (fun m -> m "in %a (keyname %a) got answer %a"
-                        Dns_name.pp q.Dns_packet.q_name Dns_name.pp name
+                        Domain_name.pp q.Dns_packet.q_name Domain_name.pp name
                         Dns_packet.pp_rrs query.Dns_packet.answer) ;
           (* TODO use NotAuth instead of Refused here? *)
           Rresult.R.of_option
@@ -872,7 +872,7 @@ module Secondary = struct
                 Log.err (fun m -> m "refusing (not authenticated)") ;
                 Error Dns_enum.Refused)
             keyname >>= fun key_name ->
-          guard (Dns_name.equal name key_name) Dns_enum.Refused >>= fun () ->
+          guard (Domain_name.equal name key_name) Dns_enum.Refused >>= fun () ->
           Rresult.R.of_option ~none:(fun () -> Error Dns_enum.Refused) key >>= fun key ->
           begin match st, q.Dns_packet.q_type with
             | Requested_axfr (_, id', _), Dns_enum.AXFR when header.Dns_packet.id = id' ->
@@ -894,8 +894,8 @@ module Secondary = struct
                 in
                 Dns_trie.insert_map map trie
               in
-              let trie = Dns_trie.insert key_name (Dns_map.V (Dns_map.K.Dnskey, [ key ])) trie in
-              let zones = Dns_name.DomMap.add zone (Transferred ts, ip, name) zones in
+              let trie = Dns_trie.insert key_name (Dns_map.V (Dns_map.Dnskey, [ key ])) trie in
+              let zones = Domain_name.Map.add zone (Transferred ts, ip, name) zones in
               Ok ({ t with data = trie }, zones, [])
             | Requested_soa (_, retry, id', _), Dns_enum.SOA when header.Dns_packet.id = id' ->
               Log.debug (fun m -> m "received SOA after %d retries" retry) ;
@@ -908,26 +908,26 @@ module Secondary = struct
                 with
                 | exception Not_found ->
                   Log.err (fun m -> m "didn't get a SOA answer for %a from %a"
-                              Dns_name.pp q.Dns_packet.q_name Ipaddr.V4.pp_hum ip) ;
+                              Domain_name.pp q.Dns_packet.q_name Ipaddr.V4.pp_hum ip) ;
                   Error Dns_enum.FormErr
-                | Ok (Dns_map.V (Dns_map.K.Soa, (_, cached_soa)), _), fresh_soa ->
+                | Ok (Dns_map.V (Dns_map.Soa, (_, cached_soa)), _), fresh_soa ->
                   (* TODO: > with wraparound in mind *)
                   let fresh = match fresh_soa.Dns_packet.rdata with Dns_packet.SOA soa -> soa | _ -> assert false in
                   if fresh.Dns_packet.serial > cached_soa.Dns_packet.serial then
                     match axfr t `Tcp now ts zone name with
                     | None ->
                       Log.warn (fun m -> m "trouble creating axfr for %a (using %a)"
-                                   Dns_name.pp zone Dns_name.pp name) ;
+                                   Domain_name.pp zone Domain_name.pp name) ;
                       (* TODO: reset state? *)
                       Ok (t, zones, [])
                     | Some (st, buf) ->
-                      Log.debug (fun m -> m "requesting AXFR for %a now!" Dns_name.pp zone) ;
-                      let zones = Dns_name.DomMap.add zone (st, ip, name) zones in
+                      Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone) ;
+                      let zones = Domain_name.Map.add zone (st, ip, name) zones in
                       Ok (t, zones, [ (`Tcp, ip, buf) ])
                   else begin
                     Log.info (fun m -> m "received soa (%a) for %a is not newer than cached (%a), moving on"
-                                 Dns_packet.pp_soa fresh Dns_name.pp zone Dns_packet.pp_soa cached_soa) ;
-                    let zones = Dns_name.DomMap.add zone (Transferred ts, ip, name) zones in
+                                 Dns_packet.pp_soa fresh Domain_name.pp zone Dns_packet.pp_soa cached_soa) ;
+                    let zones = Domain_name.Map.add zone (Transferred ts, ip, name) zones in
                     Ok (t, zones, [])
                   end
                 | Error _, _ ->
@@ -935,18 +935,18 @@ module Secondary = struct
                   begin match axfr t `Tcp now ts zone name with
                     | None -> Log.warn (fun m -> m "trouble building axfr") ; Ok (t, zones, [])
                     | Some (st, buf) ->
-                      Log.debug (fun m -> m "requesting AXFR for %a now!" Dns_name.pp zone) ;
-                      let zones = Dns_name.DomMap.add zone (st, ip, name) zones in
+                      Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone) ;
+                      let zones = Domain_name.Map.add zone (st, ip, name) zones in
                       Ok (t, zones, [ (`Tcp, ip, buf) ])
                   end
                 | Ok (v, _), _ ->
                   Log.warn (fun m -> m "expected SOA for %a, but found %a"
-                               Dns_name.pp zone Dns_map.pp_v v) ;
+                               Domain_name.pp zone Dns_map.pp_v v) ;
                   Ok (t, zones, [])
               end
             | _ ->
               Log.warn (fun m -> m "ignoring %a (%a) unmatched state"
-                           Dns_name.pp q.Dns_packet.q_name
+                           Domain_name.pp q.Dns_packet.q_name
                            Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
               Error Dns_enum.Refused
           end
@@ -958,15 +958,15 @@ module Secondary = struct
 
   let handle_rr_update t now ts zname (zones, trie, outs) u =
     let rm_zone trie key =
-      match Dns_name.DomMap.find zname zones with
+      match Domain_name.Map.find zname zones with
       | exception Not_found ->
-        Log.warn (fun m -> m "couldn't find zone %a" Dns_name.pp zname) ;
+        Log.warn (fun m -> m "couldn't find zone %a" Domain_name.pp zname) ;
         (zones, trie, outs)
-      | (_, _, keyname) when Dns_name.equal key keyname ->
-        (Dns_name.DomMap.remove key zones, Dns_trie.remove_zone zname trie, outs)
+      | (_, _, keyname) when Domain_name.equal key keyname ->
+        (Domain_name.Map.remove key zones, Dns_trie.remove_zone zname trie, outs)
       | (_, _, keyname) ->
         Log.warn (fun m -> m "key %a not registered for zone %a (but %a is)"
-                     Dns_name.pp key Dns_name.pp zname Dns_name.pp keyname) ;
+                     Domain_name.pp key Domain_name.pp zname Domain_name.pp keyname) ;
         (zones, trie, outs)
     in
     match u with
@@ -978,7 +978,7 @@ module Secondary = struct
       rm_zone trie name
     | Dns_packet.Remove_single (name, Dns_packet.DNSKEY key) ->
       begin match Dns_trie.lookup name Dns_enum.DNSKEY trie with
-        | Ok (Dns_map.V (Dns_map.K.Dnskey, _) as v, _) ->
+        | Ok (Dns_map.V (Dns_map.Dnskey, _) as v, _) ->
           begin match Dns_map.remove_rdata v (Dns_packet.DNSKEY key) with
             | None ->
               let trie = Dns_trie.remove name Dns_enum.DNSKEY trie in
@@ -988,11 +988,11 @@ module Secondary = struct
               (zones, trie, outs)
           end
         | Ok (v, _) ->
-          Log.warn (fun m -> m "looked for DNSKEY %a, found %a, ignoring" Dns_name.pp name Dns_map.pp_v v) ;
+          Log.warn (fun m -> m "looked for DNSKEY %a, found %a, ignoring" Domain_name.pp name Dns_map.pp_v v) ;
           (zones, trie, outs)
         | Error e ->
           Log.err (fun m -> m "error %a while looking up DNSKEY for %a, didn't remove %a"
-                      Dns_trie.pp_e e Dns_name.pp name Dns_packet.pp_dnskey key) ;
+                      Dns_trie.pp_e e Domain_name.pp name Dns_packet.pp_dnskey key) ;
           (zones, trie, outs)
       end
     | Dns_packet.Add rr ->
@@ -1000,27 +1000,27 @@ module Secondary = struct
         | Dns_packet.DNSKEY key ->
           let name = rr.Dns_packet.name in
           begin match extract_zone_and_ip name with
-            | Some (zname', ip) when Dns_name.equal zname zname' ->
+            | Some (zname', ip) when Domain_name.equal zname zname' ->
               let keys = match Dns_trie.lookup name Dns_enum.DNSKEY trie with
-                | Ok (Dns_map.V (Dns_map.K.Dnskey, keys), _) -> key :: keys
+                | Ok (Dns_map.V (Dns_map.Dnskey, keys), _) -> key :: keys
                 | _ -> [ key ]
               in
-              let trie' = Dns_trie.insert name (Dns_map.V (Dns_map.K.Dnskey, keys)) trie in
+              let trie' = Dns_trie.insert name (Dns_map.V (Dns_map.Dnskey, keys)) trie in
               let t = { t with data = trie' } in
               begin match query_soa t `Tcp now ts zname name with
                 | None ->
-                  Log.err (fun m -> m "couldn't query soa for %a" Dns_name.pp zname) ;
+                  Log.err (fun m -> m "couldn't query soa for %a" Domain_name.pp zname) ;
                   (zones, trie, outs)
                 | Some (state, out) ->
-                  let zones = Dns_name.DomMap.add zname (state, ip, name) zones in
+                  let zones = Domain_name.Map.add zname (state, ip, name) zones in
                   (zones, trie', (`Tcp, ip, out) :: outs)
               end
             | Some (zname', _) ->
               Log.err (fun m -> m "found zone name %a in %a, expected %a"
-                          Dns_name.pp zname' Dns_name.pp name Dns_name.pp zname) ;
+                          Domain_name.pp zname' Domain_name.pp name Domain_name.pp zname) ;
               (zones, trie, outs)
             | None ->
-              Log.err (fun m -> m "couldn't find ip and zone name in %a" Dns_name.pp name) ;
+              Log.err (fun m -> m "couldn't find ip and zone name in %a" Domain_name.pp name) ;
               (zones, trie, outs)
           end
         | _ ->
@@ -1076,7 +1076,7 @@ module Secondary = struct
     | `Query q when not header.Dns_packet.query ->
       begin match q.Dns_packet.question with
         | [ q ] ->
-          begin match Dns_name.DomMap.find q.Dns_packet.q_name zones with
+          begin match Domain_name.Map.find q.Dns_packet.q_name zones with
             | exception Not_found -> None
             | Requested_axfr (_, _id_, mac), _, _ -> Some mac
             | Requested_soa (_, _, _id, mac), _, _ -> Some mac
@@ -1119,7 +1119,7 @@ module Secondary = struct
           begin match t.tsig_sign ~max_size ~mac name tsig ~key buf with
             | None ->
               Log.warn (fun m -> m "couldn't use %a to tsig sign"
-                           Dns_name.pp name) ;
+                           Domain_name.pp name) ;
               (a, None, out)
             | Some (buf, _) -> (a, Some buf, out)
           end

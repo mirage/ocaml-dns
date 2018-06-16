@@ -22,17 +22,17 @@
 type parserstate = {
   mutable paren : int;
   mutable lineno : int;
-  mutable origin : Dns_name.t;
+  mutable origin : Domain_name.t;
   mutable ttl : int32;
-  mutable owner : Dns_name.t;
+  mutable owner : Domain_name.t;
 }
 
 let state = {
   paren = 0 ;
   lineno = 1 ;
   ttl = Int32.of_int 3600 ;
-  origin = Dns_name.root ;
-  owner = Dns_name.root ;
+  origin = Domain_name.root ;
+  owner = Domain_name.root ;
 }
 
 exception Zone_parse_problem of string

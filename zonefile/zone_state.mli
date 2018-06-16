@@ -19,9 +19,9 @@
 type parserstate = {
     mutable paren : int;
     mutable lineno : int;
-    mutable origin : Dns_name.t;
+    mutable origin : Domain_name.t;
     mutable ttl : int32;
-    mutable owner : Dns_name.t;
+    mutable owner : Domain_name.t;
   }
 
 val state : parserstate

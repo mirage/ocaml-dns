@@ -459,17 +459,17 @@ let long_name = "foo.bar.baz.foo.bar.baz.foo.bar.baz.foo.bar.baz"
 let buf = Cstruct.create (2 + String.length long_name)
 
 let curbody () =
-  let n = Dns_name.of_string_exn ~hostname:false long_name in
-  let _ = Dns_name.(encode DomMap.empty buf 0 n) in
+  let n = Domain_name.of_string_exn ~hostname:false long_name in
+  let _ = Dns_name.(encode Domain_name.Map.empty buf 0 n) in
   let _ = Dns_name.(decode ~hostname:false IntMap.empty buf 0) in
-  let _ = Dns_name.compare n n in
+  let _ = Domain_name.compare n n in
   ()
 
 let chkbody () =
-  let n = Dns_name.of_string_exn long_name in
-  let _ = Dns_name.(encode DomMap.empty buf 0 n) in
+  let n = Domain_name.of_string_exn long_name in
+  let _ = Dns_name.(encode Domain_name.Map.empty buf 0 n) in
   let _ = Dns_name.(decode IntMap.empty buf 0) in
-  let _ = Dns_name.compare n n in
+  let _ = Domain_name.compare n n in
   ()
 
 let strbody () =

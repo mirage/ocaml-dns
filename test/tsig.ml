@@ -24,7 +24,7 @@ let key =
   | None -> assert false
   | Some x -> x
 
-let key_name = Dns_name.of_string_exn "mykey.bla.example"
+let key_name = Domain_name.of_string_exn "mykey.bla.example"
 
 let of_h = Nocrypto.Uncommon.Cs.of_hex
 

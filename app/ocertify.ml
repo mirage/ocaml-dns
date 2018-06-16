@@ -147,16 +147,15 @@ let jump dns_key dns_server hostname csr key seed bits cert force _ =
     match Astring.String.cut ~sep:":" dns_key with
     | None -> invalid_arg "couldn't parse dnskey"
     | Some (name, key) ->
-      match Dns_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
+      match Domain_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
       | Error _, _ | _, None -> invalid_arg "failed to parse dnskey"
       | Ok name, Some dnskey ->
         let zone = (* drop first two labels of dnskey *)
-          let arr = Dns_name.to_array name in
-          Dns_name.of_array Array.(sub arr 0 (length arr - 2))
+          Domain_name.drop_labels_exn ~amount:2 name
         in
         (name, zone, dnskey)
   in
-  let fqdn = Dns_name.prepend_exn zone hostname
+  let fqdn = Domain_name.prepend_exn zone hostname
   and ip = Unix.inet_addr_of_string dns_server
   in
   let fn suffix = function
@@ -174,7 +173,7 @@ let jump dns_key dns_server hostname csr key seed bits cert force _ =
        | _ -> Error (`Msg "while parsing certificate signing request"))
     | false ->
       find_or_generate_key key_filename bits seed >>= fun key ->
-      let req = X509.CA.request [ `CN (Dns_name.to_string fqdn) ] key in
+      let req = X509.CA.request [ `CN (Domain_name.to_string fqdn) ] key in
       let pem = X509.Encoding.Pem.Certificate_signing_request.to_pem_cstruct1 req in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
       Ok req) >>= fun req ->

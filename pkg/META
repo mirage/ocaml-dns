@@ -1,6 +1,6 @@
 description = "micro DNS, some domain name system code"
 version = "%%VERSION_NUM%%"
-requires = "rresult cstruct astring fmt ipaddr logs ptime hex"
+requires = "rresult cstruct astring fmt ipaddr logs ptime hex gmap domain-name"
 archive(byte) = "udns.cma"
 archive(native) = "udns.cmxa"
 plugin(byte) = "udns.cma"

@@ -26,7 +26,7 @@ let load origin buf =
     let lexbuf = Lexing.from_string buf in
     state.paren <- 0;
     state.lineno <- 0;
-    state.origin <- Dns_name.of_strings_exn origin;
+    state.origin <- Domain_name.of_strings_exn origin;
     state.ttl <- Int32.of_int 3600;
     state.owner <- state.origin;
     Ok (Zone_parser.zfile Zone_lexer.token lexbuf)

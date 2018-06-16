@@ -130,7 +130,7 @@ let decode_and_verify now key keyname ?mac buf =
   | Ok ((header, v, opt, t), Some tsig_off) ->
     match t with
     | None -> Error "no tsig"
-    | Some (name, tsig) when Dns_name.equal keyname name ->
+    | Some (name, tsig) when Domain_name.equal keyname name ->
       begin match verify_raw ?mac now keyname ~key tsig (Cstruct.sub buf 0 tsig_off) with
         | Ok (_, mac) -> Ok ((header, v, opt, t), mac)
         | Error _ -> Error "invalid signature"

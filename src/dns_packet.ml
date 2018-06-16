@@ -23,7 +23,7 @@ let pp_err ppf = function
   | `InvalidZoneCount x -> Fmt.pf ppf "invalid zone count %u, must be 0" x
   | `InvalidZoneRR typ -> Fmt.pf ppf "invalid zone typ %a, must be SOA" Dns_enum.pp_rr_typ typ
   | `InvalidTimestamp ts -> Fmt.pf ppf "invalid timestamp %Lu in TSIG" ts
-  | `InvalidAlgorithm n -> Fmt.pf ppf "invalid algorithm %a" Dns_name.pp n
+  | `InvalidAlgorithm n -> Fmt.pf ppf "invalid algorithm %a" Domain_name.pp n
   | `BadProto num -> Fmt.pf ppf "bad protocol %u" num
   | `BadAlgorithm num -> Fmt.pf ppf "bad algorithm %u" num
   | `BadOpt -> Fmt.pf ppf "bad option"
@@ -158,17 +158,17 @@ let decode_ntc names buf off =
   in
   match Dns_enum.int_to_rr_typ typ with
   | None -> Error (`BadRRTyp typ)
-  | Some Dns_enum.TLSA when Dns_name.is_service name ->
+  | Some Dns_enum.TLSA when Domain_name.is_service name ->
     Ok ((name, Dns_enum.TLSA, cls), names, off + 4)
-  | Some Dns_enum.SRV when Dns_name.is_service name ->
+  | Some Dns_enum.SRV when Domain_name.is_service name ->
     Ok ((name, Dns_enum.SRV, cls), names, off + 4)
   | Some Dns_enum.SRV ->
-    Error (`BadContent (Dns_name.to_string name))
+    Error (`BadContent (Domain_name.to_string name))
   | Some (Dns_enum.DNSKEY | Dns_enum.TSIG | Dns_enum.TXT as t) ->
     Ok ((name, t, cls),names, off + 4)
-  | Some t when Dns_name.is_hostname name ->
+  | Some t when Domain_name.is_hostname name ->
     Ok ((name, t, cls), names, off + 4)
-  | Some _ -> Error (`BadContent (Dns_name.to_string name))
+  | Some _ -> Error (`BadContent (Domain_name.to_string name))
 
 let encode_ntc offs buf off (n, t, c) =
   let offs, off = Dns_name.encode offs buf off n in
@@ -177,13 +177,13 @@ let encode_ntc offs buf off (n, t, c) =
   (offs, off + 4)
 
 type question = {
-  q_name : Dns_name.t ;
+  q_name : Domain_name.t ;
   q_type : Dns_enum.rr_typ ;
 }
 
 (*BISECT-IGNORE-BEGIN*)
 let pp_question ppf q =
-  Fmt.pf ppf "%a %a?" Dns_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type
+  Fmt.pf ppf "%a %a?" Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type
 (*BISECT-IGNORE-END*)
 
 let decode_question names buf off =
@@ -208,8 +208,8 @@ let dec_character_str buf off =
   (data, off + l + 1)
 
 type soa = {
-  nameserver : Dns_name.t ;
-  hostmaster : Dns_name.t ;
+  nameserver : Domain_name.t ;
+  hostmaster : Domain_name.t ;
   serial : int32 ;
   refresh : int32 ;
   retry : int32 ;
@@ -220,7 +220,7 @@ type soa = {
 (*BISECT-IGNORE-BEGIN*)
 let pp_soa ppf soa =
   Fmt.pf ppf "SOA %a %a %lu %lu %lu %lu %lu"
-    Dns_name.pp soa.nameserver Dns_name.pp soa.hostmaster
+    Domain_name.pp soa.nameserver Domain_name.pp soa.hostmaster
     soa.serial soa.refresh soa.retry soa.expiry soa.minimum
 (*BISECT-IGNORE-END*)
 
@@ -228,8 +228,8 @@ let andThen v f = match v with 0 -> f | x -> x
 
 let compare_soa soa soa' =
   andThen (compare soa.serial soa.serial)
-    (andThen (Dns_name.compare soa.nameserver soa'.nameserver)
-       (andThen (Dns_name.compare soa.hostmaster soa'.hostmaster)
+    (andThen (Domain_name.compare soa.nameserver soa'.nameserver)
+       (andThen (Domain_name.compare soa.hostmaster soa'.hostmaster)
           (andThen (compare soa.refresh soa'.refresh)
              (andThen (compare soa.retry soa'.retry)
                 (andThen (compare soa.expiry soa'.expiry)
@@ -254,7 +254,7 @@ type tsig = {
 }
 
 let algo_to_name, algo_of_name =
-  let of_s = Dns_name.of_string_exn in
+  let of_s = Domain_name.of_string_exn in
   let map =
     [ (* of_s "HMAC-MD5.SIG-ALG.REG.INT", MD5 ; *)
       of_s "hmac-sha1", SHA1 ;
@@ -265,11 +265,11 @@ let algo_to_name, algo_of_name =
   in
   (fun a -> fst (List.find (fun (_, t) -> t = a) map)),
   (fun b ->
-     try Some (snd (List.find (fun (n, _) -> Dns_name.equal b n) map))
+     try Some (snd (List.find (fun (n, _) -> Domain_name.equal b n) map))
      with Not_found -> None)
 
 (*BISECT-IGNORE-BEGIN*)
-let pp_tsig_algo ppf a = Dns_name.pp ppf (algo_to_name a)
+let pp_tsig_algo ppf a = Domain_name.pp ppf (algo_to_name a)
 (*BISECT-IGNORE-END*)
 
 (* this is here because I don't like float, and rather convert Ptime.t to int64 *)
@@ -436,8 +436,8 @@ let encode_tsig t offs buf off =
 
 let canonical_name name =
   let buf = Cstruct.create 255
-  and emp = Dns_name.DomMap.empty
-  and nam = Dns_name.canonical name
+  and emp = Domain_name.Map.empty
+  and nam = Domain_name.canonical name
   in
   let _, off = Dns_name.encode ~compress:false emp buf 0 nam in
   Cstruct.sub buf 0 off
@@ -563,20 +563,20 @@ type srv = {
   priority : int ;
   weight : int ;
   port : int ;
-  target : Dns_name.t
+  target : Domain_name.t
 }
 
 let compare_srv a b =
   andThen (compare a.priority b.priority)
     (andThen (compare a.weight b.weight)
        (andThen (compare a.port b.port)
-          (Dns_name.compare a.target b.target)))
+          (Domain_name.compare a.target b.target)))
 
 (*BISECT-IGNORE-BEGIN*)
 let pp_srv ppf t =
   Fmt.pf ppf
     "SRV priority %d weight %d port %d target %a"
-    t.priority t.weight t.port Dns_name.pp t.target
+    t.priority t.weight t.port Domain_name.pp t.target
 (*BISECT-IGNORE-END*)
 
 let decode_srv names buf off =
@@ -821,10 +821,10 @@ let encode_sshfp sshfp buf off =
   off + l + 2
 
 type rdata =
-  | CNAME of Dns_name.t
-  | MX of int * Dns_name.t
-  | NS of Dns_name.t
-  | PTR of Dns_name.t
+  | CNAME of Domain_name.t
+  | MX of int * Domain_name.t
+  | NS of Domain_name.t
+  | PTR of Domain_name.t
   | SOA of soa
   | TXT of string list
   | A of Ipaddr.V4.t
@@ -839,13 +839,13 @@ type rdata =
   | Raw of Dns_enum.rr_typ * Cstruct.t
 
 let compare_rdata a b = match a, b with
-  | CNAME a, CNAME a' -> Dns_name.compare a a'
+  | CNAME a, CNAME a' -> Domain_name.compare a a'
   | CNAME _, _ -> 1 | _, CNAME _ -> -1
-  | MX (p, a), MX (p', a') -> andThen (compare p p') (Dns_name.compare a a')
+  | MX (p, a), MX (p', a') -> andThen (compare p p') (Domain_name.compare a a')
   | MX _, _ -> 1 | _, MX _ -> -1
-  | NS a, NS a' -> Dns_name.compare a a'
+  | NS a, NS a' -> Domain_name.compare a a'
   | NS _, _ -> 1 | _, NS _ -> -1
-  | PTR a, PTR a' -> Dns_name.compare a a'
+  | PTR a, PTR a' -> Domain_name.compare a a'
   | PTR _, _ -> 1 | _, PTR _ -> -1
   | SOA s, SOA s' -> compare_soa s s'
   | SOA _, _ -> 1 | _, SOA _ -> -1
@@ -878,10 +878,10 @@ let compare_rdata a b = match a, b with
 
 (*BISECT-IGNORE-BEGIN*)
 let pp_rdata ppf = function
-  | CNAME n -> Fmt.pf ppf "CNAME %a" Dns_name.pp n
-  | MX (prio, n) -> Fmt.pf ppf "MX %d %a" prio Dns_name.pp n
-  | NS n -> Fmt.pf ppf "NS %a" Dns_name.pp n
-  | PTR n -> Fmt.pf ppf "PTR %a" Dns_name.pp n
+  | CNAME n -> Fmt.pf ppf "CNAME %a" Domain_name.pp n
+  | MX (prio, n) -> Fmt.pf ppf "MX %d %a" prio Domain_name.pp n
+  | NS n -> Fmt.pf ppf "NS %a" Domain_name.pp n
+  | PTR n -> Fmt.pf ppf "PTR %a" Domain_name.pp n
   | SOA s -> pp_soa ppf s
   | TXT ds -> Fmt.pf ppf "TXT %a" (Fmt.list ~sep:(Fmt.unit ";@ ") Fmt.string) ds
   | A ip -> Fmt.pf ppf "A %a" Ipaddr.V4.pp_hum ip
@@ -916,10 +916,10 @@ let rdata_to_rr_typ = function
   | Raw (t, _) -> t
 
 let rdata_name = function
-  | MX (_, n) -> Dns_name.DomSet.singleton n
-  | NS n -> Dns_name.DomSet.singleton n
-  | SRV srv -> Dns_name.DomSet.singleton srv.target
-  | _ -> Dns_name.DomSet.empty
+  | MX (_, n) -> Domain_name.Set.singleton n
+  | NS n -> Domain_name.Set.singleton n
+  | SRV srv -> Domain_name.Set.singleton srv.target
+  | _ -> Domain_name.Set.empty
 
 let decode_rdata names buf off len = function
   | Dns_enum.CNAME ->
@@ -1026,20 +1026,20 @@ let encode_rdata offs buf off = function
     offs, off + len
 
 type rr = {
-  name : Dns_name.t ;
+  name : Domain_name.t ;
   ttl : int32 ;
   rdata : rdata
 }
 
 (*BISECT-IGNORE-BEGIN*)
 let pp_rr ppf rr =
-  Fmt.pf ppf "%a TTL %lu %a" Dns_name.pp rr.name rr.ttl pp_rdata rr.rdata
+  Fmt.pf ppf "%a TTL %lu %a" Domain_name.pp rr.name rr.ttl pp_rdata rr.rdata
 
 let pp_rrs = Fmt.(list ~sep:(unit ";@.") pp_rr)
 (*BISECT-IGNORE-END*)
 
 let rr_equal a b =
-  Dns_name.compare a.name b.name = 0 &&
+  Domain_name.compare a.name b.name = 0 &&
   a.ttl = b.ttl &&
   compare_rdata a.rdata b.rdata = 0
 
@@ -1047,8 +1047,8 @@ let rr_name rr = rdata_name rr.rdata
 
 let rr_names =
   List.fold_left
-    (fun acc rr -> Dns_name.DomSet.union (rr_name rr) acc)
-    Dns_name.DomSet.empty
+    (fun acc rr -> Domain_name.Set.union (rr_name rr) acc)
+    Domain_name.Set.empty
 
 let safe_decode_rdata names buf off len typ =
   (* decode_rdata is mostly safe, apart from some Cstruct._.get_ *)
@@ -1199,7 +1199,7 @@ let encode_query buf data =
   Cstruct.BE.set_uint16 buf 8 (List.length data.authority) ;
   let offs, off =
     List.fold_left (fun (offs, off) q -> encode_question offs buf off q)
-      (Dns_name.DomMap.empty, hdr_len) data.question
+      (Domain_name.Map.empty, hdr_len) data.question
   in
   List.fold_left (fun (offs, off) rr -> encode_rr offs buf off rr)
     (offs, off) (data.answer @ data.authority)
@@ -1216,23 +1216,23 @@ let pp_query ppf t =
 
 (* UPDATE *)
 type rr_prereq =
-  | Exists of Dns_name.t * Dns_enum.rr_typ
-  | Exists_data of Dns_name.t * rdata
-  | Not_exists of Dns_name.t * Dns_enum.rr_typ
-  | Name_inuse of Dns_name.t
-  | Not_name_inuse of Dns_name.t
+  | Exists of Domain_name.t * Dns_enum.rr_typ
+  | Exists_data of Domain_name.t * rdata
+  | Not_exists of Domain_name.t * Dns_enum.rr_typ
+  | Name_inuse of Domain_name.t
+  | Not_name_inuse of Domain_name.t
 
 (*BISECT-IGNORE-BEGIN*)
 let pp_rr_prereq ppf = function
   | Exists (name, typ) ->
-    Fmt.pf ppf "exists? %a %a" Dns_name.pp name Dns_enum.pp_rr_typ typ
+    Fmt.pf ppf "exists? %a %a" Domain_name.pp name Dns_enum.pp_rr_typ typ
   | Exists_data (name, rd) ->
     Fmt.pf ppf "exists data? %a %a"
-      Dns_name.pp name pp_rdata rd
+      Domain_name.pp name pp_rdata rd
   | Not_exists (name, typ) ->
-    Fmt.pf ppf "doesn't exists? %a %a" Dns_name.pp name Dns_enum.pp_rr_typ typ
-  | Name_inuse name -> Fmt.pf ppf "name inuse? %a" Dns_name.pp name
-  | Not_name_inuse name -> Fmt.pf ppf "name not inuse? %a" Dns_name.pp name
+    Fmt.pf ppf "doesn't exists? %a %a" Domain_name.pp name Dns_enum.pp_rr_typ typ
+  | Name_inuse name -> Fmt.pf ppf "name inuse? %a" Domain_name.pp name
+  | Not_name_inuse name -> Fmt.pf ppf "name not inuse? %a" Domain_name.pp name
 (*BISECT-IGNORE-END*)
 
 let decode_rr_prereq names buf off =
@@ -1290,9 +1290,9 @@ let encode_rr_prereq offs buf off = function
     (offs, off + 6)
 
 type rr_update =
-  | Remove of Dns_name.t * Dns_enum.rr_typ
-  | Remove_all of Dns_name.t
-  | Remove_single of Dns_name.t * rdata
+  | Remove of Domain_name.t * Dns_enum.rr_typ
+  | Remove_all of Domain_name.t
+  | Remove_single of Domain_name.t * rdata
   | Add of rr
 
 let rr_update_name = function
@@ -1304,10 +1304,10 @@ let rr_update_name = function
 (*BISECT-IGNORE-BEGIN*)
 let pp_rr_update ppf = function
   | Remove (name, typ) ->
-    Fmt.pf ppf "remove! %a %a" Dns_name.pp name Dns_enum.pp_rr_typ typ
-  | Remove_all name -> Fmt.pf ppf "remove all! %a" Dns_name.pp name
+    Fmt.pf ppf "remove! %a %a" Domain_name.pp name Dns_enum.pp_rr_typ typ
+  | Remove_all name -> Fmt.pf ppf "remove all! %a" Domain_name.pp name
   | Remove_single (name, rd) ->
-    Fmt.pf ppf "remove single! %a %a" Dns_name.pp name pp_rdata rd
+    Fmt.pf ppf "remove single! %a %a" Domain_name.pp name pp_rdata rd
   | Add rr ->
     Fmt.pf ppf "add! %a" pp_rr rr
 (*BISECT-IGNORE-END*)
@@ -1418,7 +1418,7 @@ let encode_update buf data =
   Cstruct.BE.set_uint16 buf 6 (List.length data.prereq) ;
   Cstruct.BE.set_uint16 buf 8 (List.length data.update) ;
   let offs, off =
-    encode_question Dns_name.DomMap.empty buf hdr_len data.zone
+    encode_question Domain_name.Map.empty buf hdr_len data.zone
   in
   let offs, off =
     List.fold_left (fun (offs, off) rr -> encode_rr_prereq offs buf off rr)
@@ -1428,7 +1428,7 @@ let encode_update buf data =
     (offs, off) data.update
 
 type v = [ `Query of query | `Update of update | `Notify of query ]
-type t = header * v * opt option * (Dns_name.t * tsig) option
+type t = header * v * opt option * (Domain_name.t * tsig) option
 
 (*BISECT-IGNORE-BEGIN*)
 let pp_v ppf = function
@@ -1443,10 +1443,10 @@ let pp ppf (hdr, v, _, _) =
 (*BISECT-IGNORE-END*)
 
 type tsig_verify = ?mac:Cstruct.t -> Ptime.t -> v -> header ->
-  Dns_name.t -> key:dnskey option -> tsig -> Cstruct.t ->
+  Domain_name.t -> key:dnskey option -> tsig -> Cstruct.t ->
   (tsig * Cstruct.t * dnskey, Cstruct.t) result
 
-type tsig_sign = ?mac:Cstruct.t -> ?max_size:int -> Dns_name.t -> tsig ->
+type tsig_sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> tsig ->
   key:dnskey -> Cstruct.t -> (Cstruct.t * Cstruct.t) option
 
 let decode_notify buf t =
@@ -1508,13 +1508,13 @@ let encode_v buf v =
   | `Query q | `Notify q -> encode_query buf q
   | `Update u -> encode_update buf u
 
-let opt_rr opt = { name = Dns_name.root ; ttl = 0l ; rdata = OPTS opt }
+let opt_rr opt = { name = Domain_name.root ; ttl = 0l ; rdata = OPTS opt }
 
 let encode_opt opt =
   (* this is unwise! *)
   let rr = opt_rr opt in
   let buf = Cstruct.create 128 in
-  let _, off = encode_rr Dns_name.DomMap.empty buf 0 rr in
+  let _, off = encode_rr Domain_name.Map.empty buf 0 rr in
   Cstruct.sub buf 0 off
 
 let encode_ad hdr ?edns offs buf off ads =
@@ -1592,7 +1592,7 @@ let error header v rcode =
     let extended_rcode = (Dns_enum.rcode_to_int rcode) lsr 4 in
     let off =
       if extended_rcode > 0 then
-        encode_ad header ~edns:(opt ()) Dns_name.DomMap.empty errbuf off []
+        encode_ad header ~edns:(opt ()) Domain_name.Map.empty errbuf off []
       else
         off
     in
