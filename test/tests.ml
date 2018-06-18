@@ -260,7 +260,7 @@ module Packet = struct
                | `BadSshfpAlgorithm of int | `BadSshfpType of int
                | `Bad_edns_version of int
                | `Multiple_tsig | `Multiple_edns
-               | `Tsig_not_last | `Edns_not_last
+               | `Tsig_not_last
              ]
       let pp = pp_err
       let equal a b = match a, b with
@@ -298,7 +298,6 @@ module Packet = struct
         | `Multiple_tsig, `Multiple_tsig -> true
         | `Multiple_edns, `Multiple_edns -> true
         | `Tsig_not_last, `Tsig_not_last -> true
-        | `Edns_not_last, `Edns_not_last -> true
         | _ -> false
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)

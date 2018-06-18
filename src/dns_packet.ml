@@ -37,7 +37,6 @@ let pp_err ppf = function
   | `Multiple_tsig -> Fmt.string ppf "multiple TSIG"
   | `Multiple_edns -> Fmt.string ppf "multiple EDNS"
   | `Tsig_not_last -> Fmt.string ppf "TSIG not last"
-  | `Edns_not_last -> Fmt.string ppf "EDNS not last"
 (*BISECT-IGNORE-END*)
 
 let guard p err = if p then Ok () else Error err
@@ -1142,7 +1141,6 @@ let rdata_edns_tsig_ok rr edns tsig =
   | OPTS opt, None, None -> Ok (Some opt, None)
   | OPTS _, Some _, _ -> Error `Multiple_edns
   | _, _, Some _ -> Error `Tsig_not_last
-  | _, Some _, _ -> Error `Edns_not_last
   | _, opt, ts -> Ok (opt, ts)
 
 let rec decode_n_additional_partial names buf off r (acc, opt, tsig) = function

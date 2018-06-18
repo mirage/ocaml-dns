@@ -18,7 +18,6 @@ val pp_err : [< Dns_name.err | `BadTTL of int32
              | `Multiple_tsig
              | `Multiple_edns
              | `Tsig_not_last
-             | `Edns_not_last
              ] Fmt.t
 
 type header = {
@@ -308,7 +307,7 @@ val decode : Cstruct.t ->
    | `BadSshfpAlgorithm of int | `BadSshfpType of int
    | `Bad_edns_version of int
    | `Multiple_tsig | `Multiple_edns
-   | `Tsig_not_last | `Edns_not_last
+   | `Tsig_not_last
    ]) result
 
 val encode : ?max_size:int -> ?edns:opt -> proto -> header -> v -> Cstruct.t * int
