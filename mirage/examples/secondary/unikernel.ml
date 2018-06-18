@@ -11,7 +11,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
     let keys = List.fold_left (fun acc key ->
         match Astring.String.cut ~sep:":" key with
         | None -> Logs.err (fun m -> m "couldn't parse %s" key) ; acc
-        | Some (name, key) -> match Dns_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
+        | Some (name, key) -> match Domain_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
           | Error _, _ | _, None -> Logs.err (fun m -> m "failed to parse key %s" key) ; acc
           | Ok name, Some dnskey -> (name, dnskey) :: acc)
         [] (Key_gen.keys ())

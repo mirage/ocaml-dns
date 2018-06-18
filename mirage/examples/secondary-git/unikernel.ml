@@ -14,7 +14,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
     let keys = List.fold_left (fun acc key ->
         match Astring.String.cut ~sep:":" key with
         | None -> Logs.err (fun m -> m "couldn't parse %s" key) ; acc
-        | Some (name, key) -> match Dns_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
+        | Some (name, key) -> match Domain_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
           | Error _, _ | _, None -> Logs.err (fun m -> m "failed to parse key %s" key) ; acc
           | Ok name, Some dnskey -> (name, dnskey) :: acc)
         [] (Key_gen.keys ())
@@ -35,11 +35,11 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
       Lwt_list.iter_s (fun zone ->
           match UDns_server.text zone server with
           | Error str ->
-            Logs.err (fun m -> m "updated zone %a, but failed text %s" Dns_name.pp zone str) ;
+            Logs.err (fun m -> m "updated zone %a, but failed text %s" Domain_name.pp zone str) ;
             Lwt.return_unit
           | Ok str ->
-            Logs.info (fun m -> m "updated zone %a\n%s" Dns_name.pp zone str) ;
-            let k = [ Dns_name.to_string zone ] in
+            Logs.info (fun m -> m "updated zone %a\n%s" Domain_name.pp zone str) ;
+            let k = [ Domain_name.to_string zone ] in
             Store.find branch k >>= (function
                 | Some old_str when String.equal str old_str ->
                   Logs.info (fun m -> m "nothing to do here") ;
@@ -58,10 +58,10 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
               let s = UDns_server.Secondary.with_data t trie in
               match UDns_server.text zone (UDns_server.Secondary.server s) with
               | Error str ->
-                Logs.err (fun m -> m "failed to produce zone %a second time %s" Dns_name.pp zone str)
+                Logs.err (fun m -> m "failed to produce zone %a second time %s" Domain_name.pp zone str)
               | Ok str' ->
                 Logs.info (fun m -> m "generated zone (equal %b) %a:%s"
-                              (String.equal str str') Dns_name.pp zone str'))
+                              (String.equal str str') Domain_name.pp zone str'))
         zones
     in
     D.secondary ~on_update s pclock mclock t ;

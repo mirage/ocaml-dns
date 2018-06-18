@@ -48,7 +48,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       rcode = Dns_enum.NoError }
 
   let nsupdate_csr flow pclock keyname zone dnskey csr =
-    let hostname = Dns_name.prepend_exn zone (Key_gen.hostname ()) in
+    let hostname = Domain_name.prepend_exn zone (Key_gen.hostname ()) in
     let tlsa =
       { Dns_packet.tlsa_cert_usage = Dns_enum.Domain_issued_certificate ;
         tlsa_selector = Dns_enum.Tlsa_selector_private ;
@@ -210,22 +210,19 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       match Astring.String.cut ~sep:":" (Key_gen.dns_key ()) with
       | None -> invalid_arg "couldn't parse dnskey"
       | Some (name, key) ->
-        match Dns_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
+        match Domain_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
         | Error _, _ | _, None -> invalid_arg "failed to parse dnskey"
         | Ok name, Some dnskey ->
-          let zone = (* drop first two labels of dnskey *)
-            let arr = Dns_name.to_array name in
-            Dns_name.of_array Array.(sub arr 0 (length arr - 2))
-          in
+          let zone = Domain_name.drop_labels_exn ~amount:2 name in
           (name, zone, dnskey)
     in
-    let hostname = Dns_name.prepend_exn zone (Key_gen.hostname ())
+    let hostname = Domain_name.prepend_exn zone (Key_gen.hostname ())
     and seed = Key_gen.key_seed ()
     and dns = Key_gen.dns_server ()
     and port = Key_gen.port ()
     in
 
-    let priv, pub, csr = initialise_csr (Dns_name.to_string hostname) seed in
+    let priv, pub, csr = initialise_csr (Domain_name.to_string hostname) seed in
     S.TCPV4.create_connection (S.tcpv4 stack) (dns, 53) >>= function
     | Error e ->
       Logs.err (fun m -> m "error %a while connecting to name server, shutting down" S.TCPV4.pp_error e) ;
