@@ -44,7 +44,7 @@ let noerror q hdr dns =
             dns.authority
         with
         | [ soa ], _ -> [ q.q_type, q.q_name, rank, NoData soa ]
-        | [], [] ->
+        | [], [] when not hdr.truncation ->
           Logs.warn (fun m -> m "noerror answer, but nothing in authority whose sub is %a (%a) in %a, invalid_soa!"
                         Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type Dns_packet.pp_rrs dns.authority) ;
           [ q.q_type, q.q_name, Additional, NoData (invalid_soa q.q_name) ]
