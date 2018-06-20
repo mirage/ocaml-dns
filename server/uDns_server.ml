@@ -373,22 +373,37 @@ let handle_rr_update trie = function
             end
     end
 
-let extract_zone_and_ip ?(secondary = false) name =
-  (* the name of a key is primaryip.secondaryip._transfer.zone *)
+let find_zone_ips name =
+  (* the name of a key is primaryip.secondaryip._transfer.zone
+     e.g. 192.168.42.2_1053.192.168.42.1._transfer.mirage
+  *)
   let arr = Domain_name.to_array name in
   try
     let rec go idx = if Array.get arr idx = "_transfer" then idx else go (succ idx) in
     let zone_idx = go 0 in
     let zone = Domain_name.of_array (Array.sub arr 0 zone_idx) in
-    let mip = succ zone_idx + if secondary then 0 else 4 in
-    let host = Domain_name.of_array (Array.sub arr mip 4) in
-    match Ipaddr.V4.of_string (Domain_name.to_string host) with
-    | None -> None
-    | Some ip -> Some (zone, ip)
+    let start = succ zone_idx in
+    let ip_port start =
+      let subarr = Array.sub arr start 4 in
+      let content, port =
+        let last = Array.get subarr 0 in
+        match Astring.String.cut ~sep:"_" last with
+        | None -> last, 53
+        | Some (a, b) -> a, int_of_string b
+      in
+      Array.set subarr 0 content ;
+      let host = Domain_name.of_array subarr in
+      Ipaddr.V4.of_string (Domain_name.to_string host), port
+    in
+    match ip_port (start + 4), ip_port start with
+    | (None, _), _ | _, (None, _) -> None
+    | (Some primary, pport), (Some secondary, sport) ->
+      Some (zone, (primary, pport), (secondary, sport))
   with
     Invalid_argument _ -> None
 
 module IPS = Set.Make(Ipaddr.V4)
+module IPM = Map.Make(Ipaddr.V4)
 
 let notify rng now trie zone soa =
   (* we use both the NS records of the zone, and the IP addresses of secondary
@@ -408,25 +423,27 @@ let notify rng now trie zone soa =
           in
           IPS.union ips acc) secondaries IPS.empty
     | _ -> IPS.empty
-  and key_ips =
+  and key_ip_ports =
     let tx = Domain_name.prepend_exn ~hostname:false zone (operation_to_string Transfer) in
     let accumulate name _ acc =
-      match extract_zone_and_ip ~secondary:true name with
+      match find_zone_ips name with
       | None ->
         Log.err (fun m -> m "failed to parse secondary IP: %a" Domain_name.pp name) ;
         acc
-      | Some (_, ip) -> IPS.add ip acc
+      | Some (_, _prim, (secondary, port)) -> IPM.add secondary port acc
     in
     match
-      Dns_trie.folde tx Dns_map.Dnskey trie accumulate IPS.empty
+      Dns_trie.folde tx Dns_map.Dnskey trie accumulate IPM.empty
     with
     | Error e ->
-      Log.err (fun m -> m "no keys found for %a: %a" Domain_name.pp tx Dns_trie.pp_e e) ; IPS.empty
+      Log.err (fun m -> m "no keys found for %a: %a" Domain_name.pp tx Dns_trie.pp_e e) ; IPM.empty
     | Ok es -> es
   in
-  let ips = IPS.union ips key_ips in
+  let ips = IPS.fold (fun ip m -> IPM.add ip 53 m) ips IPM.empty in
+  let ips = IPM.union (fun _ _ p -> Some p) ips key_ip_ports in
   Log.debug (fun m -> m "notifying %a %a" Domain_name.pp zone
-                Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) (IPS.elements ips)) ;
+                Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ":") Ipaddr.V4.pp_hum int))
+                (IPM.bindings ips)) ;
   let notify =
     let question = [ { Dns_packet.q_name = zone ; q_type = Dns_enum.SOA } ] in
     let answer =
@@ -434,7 +451,7 @@ let notify rng now trie zone soa =
     in
     { Dns_packet.question ; answer ; authority = [] ; additional = [] }
   in
-  let one ip =
+  let one ip port =
     let id = Randomconv.int ~bound:(1 lsl 16 - 1) rng in
     let header = {
       Dns_packet.id ; query = true ; operation = Dns_enum.Notify ;
@@ -443,9 +460,9 @@ let notify rng now trie zone soa =
       checking_disabled = false ; rcode = Dns_enum.NoError
     }
     in
-    (now, 0, ip, header, notify)
+    (now, 0, ip, port, header, notify)
   in
-  IPS.fold (fun ip acc -> one ip :: acc) ips []
+  IPM.fold (fun ip port acc -> one ip port :: acc) ips []
 
 let handle_update t ts proto key u =
   (* first of all, see whether we think we're authoritative for the zone *)
@@ -545,7 +562,7 @@ module Primary = struct
 
   (* TODO: there's likely a better data structure for outstanding notifications *)
   type s =
-    t * (int64 * int * Ipaddr.V4.t * Dns_packet.header * Dns_packet.query) list
+    t * (int64 * int * Ipaddr.V4.t * int * Dns_packet.header * Dns_packet.query) list
 
   let server (t, _) = t
 
@@ -578,8 +595,8 @@ module Primary = struct
       handle_update t ts proto key u >>= fun (data, ns) ->
       let out =
         let edns = Dns_packet.opt () in
-        List.map (fun (_, _, ip, hdr, q) ->
-            (ip, fst (Dns_packet.encode ~edns `Udp hdr (`Query q))))
+        List.map (fun (_, _, ip, port, hdr, q) ->
+            (ip, port, fst (Dns_packet.encode ~edns `Udp hdr (`Query q))))
           ns
       in
       let answer =
@@ -589,7 +606,7 @@ module Primary = struct
       Ok (({ t with data }, ns), Some answer, out)
     | `Notify _, false ->
       let notifications =
-        List.filter (fun (_, _, ip', hdr', _) ->
+        List.filter (fun (_, _, ip', _, hdr', _) ->
             not (Ipaddr.V4.compare ip ip' = 0 && header.Dns_packet.id = hdr'.Dns_packet.id))
           ns
       in
@@ -648,18 +665,18 @@ module Primary = struct
     let max = pred (Array.length retransmit) in
     let encode hdr q = fst @@ Dns_packet.encode `Udp hdr (`Query q) in
     let notifications, out =
-      List.fold_left (fun (ns, acc) (ts, count, ip, hdr, q) ->
+      List.fold_left (fun (ns, acc) (ts, count, ip, port, hdr, q) ->
           if Int64.add ts retransmit.(count) < now then
             (if count = max then begin
-                Log.warn (fun m -> m "retransmitting to %a the last time %a %a"
-                             Ipaddr.V4.pp_hum ip Dns_packet.pp_header hdr
+                Log.warn (fun m -> m "retransmitting to %a:%d the last time %a %a"
+                             Ipaddr.V4.pp_hum ip port Dns_packet.pp_header hdr
                              Dns_packet.pp_query q) ;
                 ns
               end else
-               (ts, succ count, ip, hdr, q) :: ns),
-            (ip, encode hdr q) :: acc
+               (ts, succ count, ip, port, hdr, q) :: ns),
+            (ip, port, encode hdr q) :: acc
           else
-            (ts, count, ip, hdr, q) :: ns, acc)
+            (ts, count, ip, port, hdr, q) :: ns, acc)
         ([], []) ns
     in
     (t, notifications), out
@@ -672,7 +689,7 @@ module Secondary = struct
     | Requested_soa of int64 * int * int * Cstruct.t
     | Requested_axfr of int64 * int * Cstruct.t
 
-  type s = t * (state * Ipaddr.V4.t * Domain_name.t) Domain_name.Map.t
+  type s = t * (state * Ipaddr.V4.t * int * Domain_name.t) Domain_name.Map.t
 
   let server (t, _) = t
 
@@ -686,14 +703,14 @@ module Secondary = struct
     (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
     let trie, zones =
       List.fold_left (fun (trie, zones) (name, key) ->
-          match extract_zone_and_ip name with
+          match find_zone_ips name with
           | None when Domain_name.sub ~subdomain:name ~domain:(Domain_name.of_string_exn ~hostname:false (operation_to_string Key_management)) ->
             Log.info (fun m -> m "adding key management key %a" Domain_name.pp name) ;
             (Dns_trie.insert name (Dns_map.V (Dns_map.Dnskey, [ key ])) trie, zones)
-          | Some (zone, ip) ->
+          | Some (zone, (pip, pport), _) ->
             Log.info (fun m -> m "adding transfer key %a for %a" Domain_name.pp name Domain_name.pp zone) ;
             let zones =
-              let v = (Requested_soa (0L, 0, 0, Cstruct.empty), ip, name) in
+              let v = (Requested_soa (0L, 0, 0, Cstruct.empty), pip, pport, name) in
               Domain_name.Map.add zone v zones
             in
             (Dns_trie.insert name (Dns_map.V (Dns_map.Dnskey, [ key ])) trie, zones)
@@ -757,13 +774,13 @@ module Secondary = struct
        - if we don't have a soa yet for the zone, retry every 5 seconds as well
     *)
     let t, out =
-      Domain_name.Map.fold (fun zone (st, ip, name) ((t, zones), acc) ->
+      Domain_name.Map.fold (fun zone (st, ip, port, name) ((t, zones), acc) ->
           let maybe_out data =
             let st, out = match data with
               | None -> st, acc
-              | Some (st, out) -> st, (`Tcp, ip, out) :: acc
+              | Some (st, out) -> st, (`Tcp, ip, port, out) :: acc
             in
-            ((t, Domain_name.Map.add zone (st, ip, name) zones), out)
+            ((t, Domain_name.Map.add zone (st, ip, port, name) zones), out)
           in
 
           match Dns_trie.lookup_direct zone Dns_map.Soa t.data, st with
@@ -824,7 +841,7 @@ module Secondary = struct
               Log.warn (fun m -> m "ignoring notify for %a, no such zone"
                            Domain_name.pp q.Dns_packet.q_name) ;
               Error Dns_enum.Refused
-            | (_, ip', name) when Ipaddr.V4.compare ip ip' = 0 ->
+            | (_, ip', port', name) when Ipaddr.V4.compare ip ip' = 0 ->
               Log.debug (fun m -> m "received notify for %a, replying and requesting SOA"
                             Domain_name.pp q.Dns_packet.q_name) ;
               (* TODO should we look in zones and if there's a fresh Requested_soa, leave it as is? *)
@@ -832,11 +849,11 @@ module Secondary = struct
                 match query_soa t `Tcp now ts zone name with
                 | None -> zones, []
                 | Some (st, buf) ->
-                  Domain_name.Map.add zone (st, ip, name) zones,
-                  [ (`Tcp, ip, buf) ]
+                  Domain_name.Map.add zone (st, ip, port', name) zones,
+                  [ (`Tcp, ip, port', buf) ]
               in
               Ok (zones, out)
-            | (_, ip', _) ->
+            | (_, ip', _, _) ->
               Log.warn (fun m -> m "ignoring notify for %a from %a (%a is primary)"
                            Domain_name.pp q.Dns_packet.q_name
                            Ipaddr.V4.pp_hum ip Ipaddr.V4.pp_hum ip') ;
@@ -862,7 +879,7 @@ module Secondary = struct
                        Domain_name.pp q.Dns_packet.q_name
                        Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
           Error Dns_enum.Refused
-        | (st, ip, name) ->
+        | (st, ip, port, name) ->
           Log.debug (fun m -> m "in %a (keyname %a) got answer %a"
                         Domain_name.pp q.Dns_packet.q_name Domain_name.pp name
                         Dns_packet.pp_rrs query.Dns_packet.answer) ;
@@ -895,7 +912,7 @@ module Secondary = struct
                 Dns_trie.insert_map map trie
               in
               let trie = Dns_trie.insert key_name (Dns_map.V (Dns_map.Dnskey, [ key ])) trie in
-              let zones = Domain_name.Map.add zone (Transferred ts, ip, name) zones in
+              let zones = Domain_name.Map.add zone (Transferred ts, ip, port, name) zones in
               Ok ({ t with data = trie }, zones, [])
             | Requested_soa (_, retry, id', _), Dns_enum.SOA when header.Dns_packet.id = id' ->
               Log.debug (fun m -> m "received SOA after %d retries" retry) ;
@@ -922,12 +939,12 @@ module Secondary = struct
                       Ok (t, zones, [])
                     | Some (st, buf) ->
                       Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone) ;
-                      let zones = Domain_name.Map.add zone (st, ip, name) zones in
-                      Ok (t, zones, [ (`Tcp, ip, buf) ])
+                      let zones = Domain_name.Map.add zone (st, ip, port, name) zones in
+                      Ok (t, zones, [ (`Tcp, ip, port, buf) ])
                   else begin
                     Log.info (fun m -> m "received soa (%a) for %a is not newer than cached (%a), moving on"
                                  Dns_packet.pp_soa fresh Domain_name.pp zone Dns_packet.pp_soa cached_soa) ;
-                    let zones = Domain_name.Map.add zone (Transferred ts, ip, name) zones in
+                    let zones = Domain_name.Map.add zone (Transferred ts, ip, port, name) zones in
                     Ok (t, zones, [])
                   end
                 | Error _, _ ->
@@ -936,8 +953,8 @@ module Secondary = struct
                     | None -> Log.warn (fun m -> m "trouble building axfr") ; Ok (t, zones, [])
                     | Some (st, buf) ->
                       Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone) ;
-                      let zones = Domain_name.Map.add zone (st, ip, name) zones in
-                      Ok (t, zones, [ (`Tcp, ip, buf) ])
+                      let zones = Domain_name.Map.add zone (st, ip, port, name) zones in
+                      Ok (t, zones, [ (`Tcp, ip, port, buf) ])
                   end
                 | Ok (v, _), _ ->
                   Log.warn (fun m -> m "expected SOA for %a, but found %a"
@@ -962,9 +979,9 @@ module Secondary = struct
       | exception Not_found ->
         Log.warn (fun m -> m "couldn't find zone %a" Domain_name.pp zname) ;
         (zones, trie, outs)
-      | (_, _, keyname) when Domain_name.equal key keyname ->
+      | (_, _, _, keyname) when Domain_name.equal key keyname ->
         (Domain_name.Map.remove key zones, Dns_trie.remove_zone zname trie, outs)
-      | (_, _, keyname) ->
+      | (_, _, _, keyname) ->
         Log.warn (fun m -> m "key %a not registered for zone %a (but %a is)"
                      Domain_name.pp key Domain_name.pp zname Domain_name.pp keyname) ;
         (zones, trie, outs)
@@ -999,8 +1016,8 @@ module Secondary = struct
       begin match rr.Dns_packet.rdata with
         | Dns_packet.DNSKEY key ->
           let name = rr.Dns_packet.name in
-          begin match extract_zone_and_ip name with
-            | Some (zname', ip) when Domain_name.equal zname zname' ->
+          begin match find_zone_ips name with
+            | Some (zname', (pip, pport), _) when Domain_name.equal zname zname' ->
               let keys = match Dns_trie.lookup name Dns_enum.DNSKEY trie with
                 | Ok (Dns_map.V (Dns_map.Dnskey, keys), _) -> key :: keys
                 | _ -> [ key ]
@@ -1012,10 +1029,10 @@ module Secondary = struct
                   Log.err (fun m -> m "couldn't query soa for %a" Domain_name.pp zname) ;
                   (zones, trie, outs)
                 | Some (state, out) ->
-                  let zones = Domain_name.Map.add zname (state, ip, name) zones in
-                  (zones, trie', (`Tcp, ip, out) :: outs)
+                  let zones = Domain_name.Map.add zname (state, pip, pport, name) zones in
+                  (zones, trie', (`Tcp, pip, pport, out) :: outs)
               end
-            | Some (zname', _) ->
+            | Some (zname', _, _) ->
               Log.err (fun m -> m "found zone name %a in %a, expected %a"
                           Domain_name.pp zname' Domain_name.pp name Domain_name.pp zname) ;
               (zones, trie, outs)
@@ -1078,8 +1095,8 @@ module Secondary = struct
         | [ q ] ->
           begin match Domain_name.Map.find q.Dns_packet.q_name zones with
             | exception Not_found -> None
-            | Requested_axfr (_, _id_, mac), _, _ -> Some mac
-            | Requested_soa (_, _, _id, mac), _, _ -> Some mac
+            | Requested_axfr (_, _id_, mac), _, _, _ -> Some mac
+            | Requested_soa (_, _, _id, mac), _, _, _ -> Some mac
             | _ -> None
           end
         | _ -> None

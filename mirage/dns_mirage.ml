@@ -75,7 +75,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
 
   let primary stack pclock mclock ?(timer = 2) ?(port = 53) t =
     let state = ref t in
-    let send_notify (ip, data) = send_udp stack port ip port data in
+    let send_notify (ip, dport, data) = send_udp stack port ip dport data in
     let udp_cb ~src ~dst:_ ~src_port buf =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
       let now = Ptime.v (P.now_d_ps pclock) in
@@ -158,7 +158,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
             tcp_out := IM.remove ip !tcp_out ;
             safe_close f.flow
           | Ok () -> read_and_handle ip f
-    and request (proto, ip, data) =
+    and request (proto, ip, port, data) =
       match IM.find ip !tcp_out with
       | exception Not_found ->
         begin
@@ -184,7 +184,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
                        Ipaddr.V4.pp_hum ip port) ;
           tcp_out := IM.remove ip !tcp_out ;
           safe_close flow >>= fun () ->
-          request (proto, ip, data)
+          request (proto, ip, port, data)
     in
 
     let udp_cb ~src ~dst:_ ~src_port buf =
