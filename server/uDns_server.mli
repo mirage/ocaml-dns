@@ -1,18 +1,28 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-type a = Dns_trie.t -> Dns_packet.proto -> Domain_name.t option -> string -> Domain_name.t -> bool
+module Authentication : sig
+  type a = Dns_trie.t -> Dns_packet.proto -> Domain_name.t option -> string -> Domain_name.t -> bool
 
-val tsig_auth : a
+  val tsig_auth : a
+
+  type operation = [
+    | `Key_management
+    | `Update
+    | `Transfer
+  ]
+
+  type t = Dns_trie.t * a list
+end
 
 type t = private {
   data : Dns_trie.t ;
-  authorised : a list ;
+  auth : Authentication.t ;
   rng : int -> Cstruct.t ;
   tsig_verify : Dns_packet.tsig_verify ;
   tsig_sign : Dns_packet.tsig_sign ;
 }
 
-val create : Dns_trie.t -> a list -> (int -> Cstruct.t) ->
+val create : Dns_trie.t -> Authentication.t -> (int -> Cstruct.t) ->
   Dns_packet.tsig_verify -> Dns_packet.tsig_sign -> t
 
 val text : Domain_name.t -> t -> (string, string) result
@@ -21,7 +31,7 @@ val handle_query : t -> Dns_packet.proto -> Domain_name.t option -> Dns_packet.h
   Dns_packet.query ->
   (Dns_packet.header * Dns_packet.v, Dns_enum.rcode) result
 
-val notify : (int -> Cstruct.t) -> int64 -> Dns_trie.t -> Domain_name.t ->
+val notify : t -> int64 -> Domain_name.t ->
   Dns_packet.soa ->
   (int64 * int * Ipaddr.V4.t * int * Dns_packet.header * Dns_packet.query) list
 
@@ -40,7 +50,9 @@ module Primary : sig
   val with_data : s -> Dns_trie.t -> s
 
   (* TODO: could make the Dns_trie.t optional, and have an optional key *)
-  val create : ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->
+  val create :
+    ?keys:(Domain_name.t * Dns_packet.dnskey) list ->
+    ?a:Authentication.a list -> tsig_verify:Dns_packet.tsig_verify ->
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->
     Dns_trie.t -> s
 
@@ -66,12 +78,12 @@ module Secondary : sig
 
   val zones : s -> Domain_name.t list
 
-  val create : ?a:a list -> tsig_verify:Dns_packet.tsig_verify ->
+  val create : ?a:Authentication.a list -> tsig_verify:Dns_packet.tsig_verify ->
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->
     (Domain_name.t * Dns_packet.dnskey) list -> s
 
   val handle_frame : s -> Ptime.t -> int64 -> Ipaddr.V4.t -> Dns_packet.proto ->
-    Domain_name.t option -> Dns_packet.dnskey option -> Dns_packet.header -> Dns_packet.v ->
+    Domain_name.t option -> Dns_packet.header -> Dns_packet.v ->
     (s * (Dns_packet.header * Dns_packet.v) option * (Dns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list,
      Dns_enum.rcode) result
 

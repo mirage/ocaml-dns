@@ -319,6 +319,7 @@ let names = function
 
 let of_rdata : int32 -> Dns_packet.rdata -> v option = fun ttl rd ->
   match rd with
+  | Dns_packet.CNAME alias -> Some (V (Cname, (ttl, alias)))
   | Dns_packet.MX (prio, name) -> Some (V (Mx, (ttl, [ (prio, name) ])))
   | Dns_packet.NS ns -> Some (V (Ns, (ttl, Domain_name.Set.singleton ns)))
   | Dns_packet.PTR ptr -> Some (V (Ptr, (ttl, ptr)))
@@ -457,7 +458,9 @@ let of_rrs rrs =
         | Some v -> add_rdata v rr.Dns_packet.rdata
       in
       let m' = match v with
-        | None -> (* warn? *) m
+        | None ->
+          Logs.warn (fun m -> m "failed to insert rr %a" Dns_packet.pp_rr rr) ;
+          m
         | Some v -> addv v m
       in
       Domain_name.Map.add rr.Dns_packet.name m' map)

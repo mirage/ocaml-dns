@@ -187,18 +187,14 @@ let collect_entries name sub map =
     Ok ({ Dns_packet.name ; ttl ; rdata = Dns_packet.SOA soa }, entries)
 
 let entries name t =
-  if Domain_name.(equal root name) then
-    let N (sub, map) = t in
+  lookup_aux name t >>= fun (zone, sub, map) ->
+  match zone with
+  | None -> Error `NotAuthoritative
+  | Some (`Delegation (name, (ttl, ns))) ->
+    Error (`Delegation (name, (ttl, ns)))
+  | Some (`Soa (name', _)) when Domain_name.equal name name' ->
     collect_entries name sub map
-  else
-    lookup_aux name t >>= fun (zone, sub, map) ->
-    match zone with
-    | None -> Error `NotAuthoritative
-    | Some (`Delegation (name, (ttl, ns))) ->
-      Error (`Delegation (name, (ttl, ns)))
-    | Some (`Soa (name', _)) when Domain_name.equal name name' ->
-      collect_entries name sub map
-    | Some (`Soa (_, _)) -> Error `NotAuthoritative
+  | Some (`Soa (_, _)) -> Error `NotAuthoritative
 
 type err = [ `Missing_soa of Domain_name.t
            | `Cname_other of Domain_name.t
