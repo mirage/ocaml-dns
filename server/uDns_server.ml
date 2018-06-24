@@ -938,11 +938,11 @@ module Secondary = struct
         | Dns_enum.SOA ->
           let zone = q.Dns_packet.q_name in
           begin match Domain_name.Map.find zone zones with
-            | exception Not_found -> (* we don't know anything about the notified zone *)
+            | None -> (* we don't know anything about the notified zone *)
               Log.warn (fun m -> m "ignoring notify for %a, no such zone"
                            Domain_name.pp q.Dns_packet.q_name) ;
               Error Dns_enum.Refused
-            | (_, ip', port', name) when Ipaddr.V4.compare ip ip' = 0 ->
+            | Some (_, ip', port', name) when Ipaddr.V4.compare ip ip' = 0 ->
               Log.debug (fun m -> m "received notify for %a, replying and requesting SOA"
                             Domain_name.pp q.Dns_packet.q_name) ;
               (* TODO should we look in zones and if there's a fresh Requested_soa, leave it as is? *)
@@ -954,7 +954,7 @@ module Secondary = struct
                   [ (`Tcp, ip, port', buf) ]
               in
               Ok (zones, out)
-            | (_, ip', _, _) ->
+            | Some (_, ip', _, _) ->
               Log.warn (fun m -> m "ignoring notify for %a from %a (%a is primary)"
                            Domain_name.pp q.Dns_packet.q_name
                            Ipaddr.V4.pp_hum ip Ipaddr.V4.pp_hum ip') ;
@@ -999,12 +999,12 @@ module Secondary = struct
     | [ q ] ->
       let zone = q.Dns_packet.q_name in
       begin match Domain_name.Map.find zone zones with
-        | exception Not_found ->
+        | None ->
           Log.warn (fun m -> m "ignoring %a (%a), unknown zone"
                        Domain_name.pp q.Dns_packet.q_name
                        Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
           Error Dns_enum.Refused
-        | (st, ip, port, name) ->
+        | Some (st, ip, port, name) ->
           Log.debug (fun m -> m "in %a (name %a) got answer %a"
                         Domain_name.pp q.Dns_packet.q_name Domain_name.pp name
                         Dns_packet.pp_rrs query.Dns_packet.answer) ;
@@ -1110,7 +1110,7 @@ module Secondary = struct
       (* this is asymmetric - for transfer key additions, we send SOA requests *)
       let maybe_rm_zone keyname zones =
         let zone = Authentication.zone keyname in
-        match Domain_name.Map.find_opt zone zones with
+        match Domain_name.Map.find zone zones with
         | Some (_, _, _, kname) when Domain_name.equal keyname kname ->
           Domain_name.Map.remove zone zones
         | _ -> zones
@@ -1169,9 +1169,9 @@ module Secondary = struct
       begin match q.Dns_packet.question with
         | [ q ] ->
           begin match Domain_name.Map.find q.Dns_packet.q_name zones with
-            | exception Not_found -> None
-            | Requested_axfr (_, _id_, mac), _, _, _ -> Some mac
-            | Requested_soa (_, _, _id, mac), _, _, _ -> Some mac
+            | None -> None
+            | Some (Requested_axfr (_, _id_, mac), _, _, _) -> Some mac
+            | Some (Requested_soa (_, _, _id, mac), _, _, _) -> Some mac
             | _ -> None
           end
         | _ -> None

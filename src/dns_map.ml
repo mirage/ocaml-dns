@@ -450,8 +450,8 @@ let remove_rr : Dns_enum.rr_typ -> t -> t = fun rr t ->
 let of_rrs rrs =
   List.fold_left (fun map rr ->
       let m = match Domain_name.Map.find rr.Dns_packet.name map with
-        | exception Not_found -> empty
-        | map -> map
+        | None -> empty
+        | Some map -> map
       in
       let v = match lookup_rr (Dns_packet.rdata_to_rr_typ rr.Dns_packet.rdata) m with
         | None -> of_rdata rr.Dns_packet.ttl rr.Dns_packet.rdata

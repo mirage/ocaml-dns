@@ -87,13 +87,13 @@ let encode ?(compress = true) names buf off name =
           names, z off
         else
           match Map.find name names with
-          | exception Not_found ->
+          | None ->
             let last = Array.get arr (pred l)
             and rem = Array.sub arr 0 (pred l)
             in
             let l = encode_lbl last off in
             one (Map.add name off names) l (of_array rem)
-          | ptr ->
+          | Some ptr ->
             let data = ptr_tag lsl 8 + ptr in
             Cstruct.BE.set_uint16 buf off data ;
             names, off + 2

@@ -97,7 +97,10 @@ let noerror q hdr dns =
     let aaaaa =
       List.fold_left (fun acc rr ->
           if N.mem rr.name names then
-            let a, aaaa = try NM.find rr.name acc with Not_found -> [], [] in
+            let a, aaaa = match NM.find rr.name acc with
+              | None -> [], []
+              | Some x -> x
+            in
             match rr.rdata with
             | A _ -> NM.add rr.name (rr :: a, aaaa) acc
             | AAAA _ -> NM.add rr.name (a, rr :: aaaa) acc
