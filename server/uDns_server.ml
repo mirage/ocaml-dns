@@ -31,6 +31,8 @@ module Authentication = struct
 
   type t = Dns_trie.t * a list
 
+  let keys (keys, _) = keys
+
   type operation = [
     | `Key_management
     | `Update
@@ -92,7 +94,7 @@ module Authentication = struct
   let all_operations =
     List.map operation_to_string [ `Key_management ; `Update ; `Transfer ]
 
-  let drop_op_data name =
+  let zone name =
     let arr = Domain_name.to_array name in
     let len = Array.length arr in
     let rec go idx =
@@ -105,16 +107,75 @@ module Authentication = struct
     let zidx = go 0 in
     Domain_name.of_array (Array.sub arr 0 zidx)
 
+  let soa name =
+    let soa = { Dns_packet.nameserver = name ; hostmaster = name ;
+                serial = 0l ; refresh = 16384l ; retry = 2048l ;
+                expiry = 1048576l ; minimum = 300l }
+    in
+    (300l, soa)
+
+  let add_key trie name key =
+    let zone = zone name in
+    let soa, keys =
+      match
+        Dns_trie.lookup_direct name Dns_map.Dnskey trie,
+        Dns_trie.lookup_direct zone Dns_map.Soa trie
+      with
+      | Error _, Ok (ttl, soa) ->
+        let soa' = { soa with Dns_packet.serial = Int32.succ soa.Dns_packet.serial } in
+        (ttl, soa'), [ key ]
+      | Error _, Error _ ->
+        soa name, [ key ]
+      | Ok _, _ ->
+        Log.err (fun m -> m "got unexpected Dnskey" ) ;
+        assert false
+    in
+    let trie' = Dns_trie.insert zone Dns_map.(B (Soa, soa)) trie in
+    Dns_trie.insert name Dns_map.(B (Dnskey, keys)) trie'
+
   let of_keys keys =
-    List.fold_left (fun trie (name, key) ->
-        let soa = { Dns_packet.nameserver = name ; hostmaster = name ;
-                    serial = 0l ; refresh = 16384l ; retry = 2048l ;
-                    expiry = 1048576l ; minimum = 300l }
-        in
-        let zone = drop_op_data name in
-        let trie = Dns_trie.insert name (Dns_map.B (Dns_map.Dnskey, [ key ])) trie in
-        Dns_trie.insert zone (Dns_map.B (Dns_map.Soa, (300l, soa))) trie)
+    List.fold_left (fun trie (name, key) -> add_key trie name key)
       Dns_trie.empty keys
+
+  let remove_key trie name =
+    let trie' = Dns_trie.remove name Dns_enum.DNSKEY trie in
+    let zone = zone name in
+    match Dns_trie.entries zone trie' with
+    | Ok (_soa, []) -> Dns_trie.remove_zone zone trie'
+    | Ok _ -> trie'
+    | Error e ->
+      Log.err (fun m -> m "expected a zone for dnskeys, got error %a"
+                  Dns_trie.pp_e e) ;
+      assert false
+
+  let find_key t name =
+    match Dns_trie.lookup_direct name Dns_map.Dnskey (fst t) with
+    | Ok [ key ] -> Some key
+    | _ -> None
+
+  let handle_update keys us =
+    List.fold_left (fun (keys, actions) -> function
+        | Dns_packet.Remove_all name
+        | Dns_packet.Remove (name, Dns_enum.DNSKEY)
+        | Dns_packet.Remove_single (name, Dns_packet.DNSKEY _) ->
+          let keys = remove_key keys name in
+          keys, `Removed_key name :: actions
+        | Dns_packet.Add rr ->
+          begin match rr.Dns_packet.rdata with
+            | Dns_packet.DNSKEY key ->
+              let name = rr.Dns_packet.name in
+              let keys = add_key keys name key in
+              keys, `Added_key name :: actions
+            | rdata ->
+              Log.warn (fun m -> m "only accepting Dnskey here, got %a"
+                           Dns_packet.pp_rdata rdata) ;
+              keys, actions
+          end
+        | u ->
+          Log.warn (fun m -> m "only Dnskey, not sure what you intended %a"
+                       Dns_packet.pp_rr_update u) ;
+          keys, actions)
+      (keys, []) us
 
   let tsig_auth _ _ keyname op zone =
     match keyname with
@@ -253,7 +314,7 @@ let axfr t proto key q zone =
       Log.info (fun m -> m "key-management key %a authorised for AXFR %a"
                    Fmt.(option ~none:(unit "none") Domain_name.pp) key
                    Dns_packet.pp_query q) ;
-      Ok (fst t.auth)
+      Ok (Authentication.keys t.auth)
     end else if Authentication.authorise t.auth proto key zone `Transfer then begin
       Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
                    Fmt.(option ~none:(unit "none") Domain_name.pp) key
@@ -269,7 +330,7 @@ let lookup t proto key hdr q =
       Log.info (fun m -> m "key-management key %a authorised for lookup %a"
                    Fmt.(option ~none:(unit "none") Domain_name.pp) key
                    Dns_packet.pp_question q) ;
-      fst t.auth
+      Authentication.keys t.auth
     end else
       t.data
   in
@@ -450,8 +511,6 @@ let handle_rr_update trie = function
             end
     end
 
-module IPS = Set.Make(Ipaddr.V4)
-
 let notify t now zone soa =
   (* we use both the NS records of the zone, and the IP addresses of secondary
      servers which have transfer keys for the zone *)
@@ -503,51 +562,54 @@ let notify t now zone soa =
   in
   IPM.fold (fun ip port acc -> one ip port :: acc) ips []
 
-let handle_update t ts proto key u =
-  (* first of all, see whether we think we're authoritative for the zone *)
-  let zone = Dns_packet.(u.zone.q_name) in
-  (if Authentication.authorise t.auth proto key zone `Key_management then begin
-     Log.info (fun m -> m "key-management key %a authorised for update %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Dns_packet.pp_update u) ;
-     Ok ((fst t.auth), None, fun trie -> { t with auth = (trie, snd t.auth) })
-   end else if Authentication.authorise t.auth proto key zone `Update then begin
-     Log.info (fun m -> m "update key %a authorised for update %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Dns_packet.pp_update u) ;
-     Ok (t.data, Some notify, fun data -> { t with data })
-   end else
-     Error Dns_enum.NotAuth) >>= fun (trie, notify, update) ->
+let update_data trie zone u =
   List.fold_left (fun r pre ->
       r >>= fun acc ->
       handle_rr_prereq trie zone acc pre)
     (Ok []) u.Dns_packet.prereq >>= fun acc ->
   check_exists trie acc >>= fun () ->
-  List.fold_left (fun acc up ->
-      acc >>= fun () ->
-      guard (in_zone zone (Dns_packet.rr_update_name up)) Dns_enum.NotZone)
-    (Ok ()) u.Dns_packet.update >>= fun () ->
   let trie' = List.fold_left handle_rr_update trie u.Dns_packet.update in
   (match Dns_trie.check trie' with
    | Ok () -> Ok ()
    | Error e ->
      Log.err (fun m -> m "check after update returned %a" Dns_trie.pp_err e) ;
      Error Dns_enum.FormErr) >>= fun () ->
-  let t, soa =
-    match Dns_trie.lookup zone Dns_enum.SOA trie, Dns_trie.lookup zone Dns_enum.SOA trie' with
-    | Ok (Dns_map.B (Dns_map.Soa, (_, oldsoa)), _), Ok (Dns_map.B (Dns_map.Soa, (_, soa)), _) when oldsoa.Dns_packet.serial < soa.Dns_packet.serial ->
-      update trie', Some soa
-    | _, Ok (Dns_map.B (Dns_map.Soa, (ttl, soa)), _) ->
-      let soa = { soa with Dns_packet.serial = Int32.succ soa.Dns_packet.serial } in
-      let trie'' = Dns_trie.insert zone (Dns_map.B (Dns_map.Soa, (ttl, soa))) trie' in
-      update trie'', Some soa
-    | _, _ -> update trie', None
-  in
-  let notifies = match notify, soa with
-    | None, _ | _, None -> []
-    | Some n, Some soa -> n t ts zone soa
-  in
-  Ok (t, notifies)
+  match Dns_trie.lookup zone Dns_enum.SOA trie, Dns_trie.lookup zone Dns_enum.SOA trie' with
+  | Ok (Dns_map.B (Dns_map.Soa, (_, oldsoa)), _), Ok (Dns_map.B (Dns_map.Soa, (_, soa)), _) when oldsoa.Dns_packet.serial < soa.Dns_packet.serial ->
+    Ok (trie', Some soa)
+  | _, Ok (Dns_map.B (Dns_map.Soa, (ttl, soa)), _) ->
+    let soa = { soa with Dns_packet.serial = Int32.succ soa.Dns_packet.serial } in
+    let trie'' = Dns_trie.insert zone (Dns_map.B (Dns_map.Soa, (ttl, soa))) trie' in
+    Ok (trie'', Some soa)
+  | _, _ -> Ok (trie', None)
+
+let handle_update t ts proto key u =
+  (* first of all, see whether we think we're authoritative for the zone *)
+  let zone = Dns_packet.(u.zone.q_name) in
+  guard (List.for_all (fun u -> in_zone zone (Dns_packet.rr_update_name u)) u.Dns_packet.update)
+    Dns_enum.NotZone >>= fun () ->
+  if Authentication.authorise t.auth proto key zone `Key_management then begin
+     Log.info (fun m -> m "key-management key %a authorised for update %a"
+                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
+                   Dns_packet.pp_update u) ;
+     let keys, _actions =
+       Authentication.(handle_update (keys t.auth) u.Dns_packet.update)
+     in
+     let t = { t with auth = (keys, snd t.auth) } in
+     Ok (t, [])
+   end else if Authentication.authorise t.auth proto key zone `Update then begin
+     Log.info (fun m -> m "update key %a authorised for update %a"
+                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
+                   Dns_packet.pp_update u) ;
+     update_data t.data zone u >>= fun (data', soa) ->
+     let t = { t with data = data' } in
+     let notifies = match soa with
+       | None -> []
+       | Some soa -> notify t ts zone soa
+     in
+     Ok (t, notifies)
+   end else
+     Error Dns_enum.NotAuth
 
 let raw_server_error buf rcode =
   (* copy id from header, retain opcode, set rcode to ServFail
@@ -581,15 +643,11 @@ let handle_tsig ?mac t now header v tsig off buf =
   | Some off, Some (name, tsig) ->
     let algo = tsig.Dns_packet.algorithm in
     let key =
-      match Dns_trie.lookup_direct name Dns_map.Dnskey (fst t.auth) with
-      | Error _ -> None
-      | Ok keys ->
-        match List.filter (fun k ->
-            match Dns_packet.dnskey_to_tsig_algo k with
-            | Some a when a = algo -> true | _ -> false)
-            keys
-        with
-        | [key] -> Some key
+      match Authentication.find_key t.auth name with
+      | None -> None
+      | Some key ->
+        match Dns_packet.dnskey_to_tsig_algo key with
+        | Some a when a = algo -> Some key
         | _ -> None
     in
     t.tsig_verify ?mac now v header name ~key tsig (Cstruct.sub buf 0 off) >>= fun (tsig, mac, key) ->
@@ -765,8 +823,8 @@ module Secondary = struct
     (create Dns_trie.empty (keys, a) rng tsig_verify tsig_sign, zones)
 
   let maybe_sign ?max_size t name signed original_id buf =
-    match Dns_trie.lookup_direct name Dns_map.Dnskey (fst t.auth) with
-    | Ok [key] ->
+    match Authentication.find_key t.auth name with
+    | Some key ->
       begin match Dns_packet.dnskey_to_tsig_algo key with
         | Some algorithm ->
           begin match Dns_packet.tsig ~algorithm ~original_id ~signed () with
@@ -1036,93 +1094,6 @@ module Secondary = struct
                    Fmt.(list ~sep:(unit ",@,") Dns_packet.pp_question) qs) ;
       Error Dns_enum.FormErr
 
-  let handle_rr_update now ts zname (t, zones, outs) u =
-    let rm_zone t name =
-      match Domain_name.Map.find_opt zname zones with
-      | None ->
-        Log.warn (fun m -> m "couldn't find zone %a" Domain_name.pp zname) ;
-        (t, zones, outs)
-      | Some (_, _, _, keyname) when Domain_name.equal name keyname ->
-        let data = Dns_trie.remove_zone zname t.data in
-        ({ t with data }, Domain_name.Map.remove zname zones, outs)
-      | Some (_, _, _, keyname) ->
-        Log.warn (fun m -> m "key %a not registered for zone %a (but %a is)"
-                     Domain_name.pp name Domain_name.pp zname Domain_name.pp keyname) ;
-        (t, zones, outs)
-    in
-    let keys = fst t.auth in
-    let up_keys t k = { t with auth = (k, snd t.auth) } in
-    match u with
-    | Dns_packet.Remove_all name ->
-      let keys = Dns_trie.remove name Dns_enum.DNSKEY keys in
-      rm_zone (up_keys t keys) name
-    | Dns_packet.Remove (name, Dns_enum.DNSKEY) ->
-      let keys = Dns_trie.remove name Dns_enum.DNSKEY keys in
-      rm_zone (up_keys t keys) name
-    | Dns_packet.Remove_single (name, Dns_packet.DNSKEY key) ->
-      begin match Dns_trie.lookup_direct name Dns_map.Dnskey keys with
-        | Ok dnskeys ->
-          begin match List.filter (fun k -> Dns_packet.compare_dnskey key k <> 0) dnskeys with
-            | [] ->
-              let keys = Dns_trie.remove name Dns_enum.DNSKEY keys in
-              rm_zone (up_keys t keys) name
-            | dnskeys ->
-              let keys = Dns_trie.insert name (Dns_map.B (Dns_map.Dnskey, dnskeys)) keys in
-              (up_keys t keys, zones, outs)
-          end
-        | Error e ->
-          Log.err (fun m -> m "error %a while looking up DNSKEY for %a, didn't remove %a"
-                      Dns_trie.pp_e e Domain_name.pp name Dns_packet.pp_dnskey key) ;
-          (t, zones, outs)
-      end
-    | Dns_packet.Add rr ->
-      begin match rr.Dns_packet.rdata with
-        | Dns_packet.DNSKEY key ->
-          let name = rr.Dns_packet.name in
-          let t' =
-            let dnskeys, soa = match Dns_trie.lookup_direct name Dns_map.Dnskey keys with
-              | Ok keys -> key :: keys, None
-              | _ -> [ key ], Some ({ Dns_packet.nameserver = name ; hostmaster = name ;
-                                      serial = 0l ; refresh = 16384l ; retry = 2048l ;
-                                      expiry = 1048576l ; minimum = 300l })
-            in
-            let keys' = Dns_trie.insert name (Dns_map.B (Dns_map.Dnskey, dnskeys)) keys in
-            let keys'' = match soa with
-              | None -> keys'
-              | Some soa -> Dns_trie.insert zname (Dns_map.B (Dns_map.Soa, (300l, soa))) keys'
-            in
-            up_keys t keys''
-          in
-          begin match Authentication.find_zone_ips name with
-            | Some (zname', (pip, pport), _) when Domain_name.equal zname zname' ->
-              begin match query_soa t `Tcp now ts zname name with
-                | None ->
-                  Log.err (fun m -> m "couldn't query soa for %a" Domain_name.pp zname) ;
-                  (t', zones, outs)
-                | Some (state, out) ->
-                  let zones = Domain_name.Map.add zname (state, pip, pport, name) zones in
-                  (t', zones, (`Tcp, pip, pport, out) :: outs)
-              end
-            | _ ->
-              (* ensure that the zone name and the key name is equal:
-                  foo._key-management.bar may not insert into _key-management.foo or _key-management *)
-              if Domain_name.equal zname (Authentication.drop_op_data name) then
-                (t' , zones, outs)
-              else begin
-                Logs.warn (fun m -> m "zone %a and keyname %a do not match, ignoring"
-                              Domain_name.pp zname Domain_name.pp name) ;
-                (t, zones, outs)
-              end
-          end
-        | _ ->
-          Log.warn (fun m -> m "ignoring add %a" Dns_packet.pp_rr_update u);
-          (t, zones, outs)
-      end
-    | u ->
-      (* TODO: should be forwarded to primary *)
-      Log.warn (fun m -> m "ignoring update %a" Dns_packet.pp_rr_update u) ;
-      (t, zones, outs)
-
   let handle_update t zones now ts proto keyname u =
     (* TODO: handle prereq *)
     let zname = u.Dns_packet.zone.Dns_packet.q_name in
@@ -1133,10 +1104,37 @@ module Secondary = struct
                  Dns_packet.pp_update u) ;
     let ups = u.Dns_packet.update in
     guard (List.for_all (fun u -> in_zone zname (Dns_packet.rr_update_name u)) ups) Dns_enum.NotZone >>= fun () ->
-    let t, zones, outs =
-      List.fold_left (handle_rr_update now ts zname) (t, zones, []) ups
+    let keys, actions = Authentication.(handle_update (keys t.auth) ups) in
+    let t = { t with auth = (keys, snd t.auth) } in
+    let data, zones, outs =
+      (* this is asymmetric - for transfer key additions, we send SOA requests *)
+      let maybe_rm_zone keyname zones =
+        let zone = Authentication.zone keyname in
+        match Domain_name.Map.find_opt zone zones with
+        | Some (_, _, _, kname) when Domain_name.equal keyname kname ->
+          Domain_name.Map.remove zone zones
+        | _ -> zones
+      in
+      List.fold_left (fun (trie, zones, outs) -> function
+          | `Added_key keyname ->
+            begin match Authentication.find_zone_ips keyname with
+              | Some (zname, (pip, pport), _) ->
+                begin match query_soa t `Tcp now ts zname keyname with
+                  | None ->
+                    Log.err (fun m -> m "couldn't query soa for %a" Domain_name.pp zname) ;
+                    (trie, zones, outs)
+                  | Some (state, out) ->
+                    let zones = Domain_name.Map.add zname (state, pip, pport, keyname) zones in
+                    (trie, zones, (`Tcp, pip, pport, out) :: outs)
+                end
+              | None -> (trie, zones, outs)
+            end
+          | `Removed_key keyname ->
+            let zones = maybe_rm_zone keyname zones in
+            (trie, zones, outs))
+        (t.data, zones, []) actions
     in
-    Ok ((t, zones), outs)
+    Ok (({ t with data }, zones), outs)
 
   let handle_frame (t, zones) now ts ip proto keyname header v =
     match v, header.Dns_packet.query with
