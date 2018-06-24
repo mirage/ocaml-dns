@@ -40,10 +40,10 @@ let pp_stats pf s =
 let stats () = !s
 
 (* this could be improved:
-   lookup : t -> Dns_name.t -> Dns_enum.rr_typ -> int64 ->
-            (Dns_map.V, [ `NoErr | `NoDom | `ServFail | `Timeout ]) result
+   lookup : t -> Domain_name.t -> Dns_enum.rr_typ -> int64 ->
+            (Dns_map.B, [ `NoErr | `NoDom | `ServFail | `Timeout ]) result
 
-   need to massage a bit more Dns_map (by providing some more type parameters)
+   a bit more types for Dns_map (by providing some more type parameters)
 
    or ask someone who knows more about GADT to help me fixing that data
    structure properly. *)

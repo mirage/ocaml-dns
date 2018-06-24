@@ -27,7 +27,7 @@ let pp ppf t =
 (*BISECT-IGNORE-END*)
 
 let rec equal (N (sub, map)) (N (sub', map')) =
-  Dns_map.equal Dns_map.equal_v map map' && M.equal equal sub sub'
+  Dns_map.equal Dns_map.equal_b map map' && M.equal equal sub sub'
 
 open Rresult.R.Infix
 
@@ -60,10 +60,10 @@ let lookup_res name zone ty m =
           (fun acc v -> Domain_name.Set.union acc (Dns_map.names v))
           Domain_name.Set.empty bindings
       in
-      Ok (Dns_map.V (Dns_map.Any, (rrs, names)), to_ns z zmap)
+      Ok (Dns_map.B (Dns_map.Any, (rrs, names)), to_ns z zmap)
     | _ -> match Dns_map.lookup_rr ty m with
       | Some v -> Ok (v, to_ns z zmap)
-      | None -> match Dns_map.findv Dns_map.Cname m with
+      | None -> match Dns_map.findb Dns_map.Cname m with
         | None when Dns_map.cardinal m = 1 && Dns_map.(mem Soa m) ->
           (* this is primary a hack for localhost, which must be NXDomain,
              but there's a SOA for localhost (to handle it authoritatively) *)
@@ -156,7 +156,7 @@ let collect_rrs name sub map =
     (* collecting rr out of rrmap + name, no SOA! *)
     Dns_map.fold (fun v acc ->
         match v with
-        | Dns_map.V (Dns_map.Soa, _) -> acc
+        | Dns_map.B (Dns_map.Soa, _) -> acc
         | v -> Dns_map.to_rr name v @ acc)
       rrmap []
   in
@@ -199,7 +199,7 @@ let entries name t =
 type err = [ `Missing_soa of Domain_name.t
            | `Cname_other of Domain_name.t
            | `Any_not_allowed of Domain_name.t
-           | `Bad_ttl of Domain_name.t * Dns_map.v
+           | `Bad_ttl of Domain_name.t * Dns_map.b
            | `Empty of Domain_name.t * Dns_enum.rr_typ
            | `Missing_address of Domain_name.t
            | `Soa_not_ns of Domain_name.t ]
@@ -229,9 +229,9 @@ let check trie =
     Dns_map.fold (fun v r ->
         r >>= fun () ->
         match v with
-        | Dns_map.V (Dns_map.Dnskey, _) -> Ok ()
-        | Dns_map.V (Dns_map.Any, _) -> Error (`Any_not_allowed name)
-        | Dns_map.V (Dns_map.Ns, (ttl, names)) ->
+        | Dns_map.B (Dns_map.Dnskey, _) -> Ok ()
+        | Dns_map.B (Dns_map.Any, _) -> Error (`Any_not_allowed name)
+        | Dns_map.B (Dns_map.Ns, (ttl, names)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else if Domain_name.Set.cardinal names = 0 then
             Error (`Empty (name, Dns_enum.NS))
@@ -243,9 +243,9 @@ let check trie =
                   guard (has_address name) (`Missing_address name)
                 else
                   Ok ()) names (Ok ())
-        | Dns_map.V (Dns_map.Cname, (ttl, _)) ->
+        | Dns_map.B (Dns_map.Cname, (ttl, _)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v)) else Ok ()
-        | Dns_map.V (Dns_map.Mx, (ttl, mxs)) ->
+        | Dns_map.B (Dns_map.Mx, (ttl, mxs)) ->
           if ttl < 0l then
             Error (`Bad_ttl (name, v))
           else begin match mxs with
@@ -260,9 +260,9 @@ let check trie =
                     Ok ())
                 (Ok ()) mxs
           end
-        | Dns_map.V (Dns_map.Ptr, (ttl, name)) ->
+        | Dns_map.B (Dns_map.Ptr, (ttl, name)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v)) else Ok ()
-        | Dns_map.V (Dns_map.Soa, (ttl, soa)) ->
+        | Dns_map.B (Dns_map.Soa, (ttl, soa)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else begin match Dns_map.find Dns_map.Ns map with
             | Some (_, names) ->
@@ -272,7 +272,7 @@ let check trie =
                 Error (`Soa_not_ns soa.Dns_packet.nameserver)
             | None -> Ok () (* we're happy to only have a soa, but nothing else -- useful for grounding zones! *)
           end
-        | Dns_map.V (Dns_map.Txt, (ttl, txts)) ->
+        | Dns_map.B (Dns_map.Txt, (ttl, txts)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else begin match txts with
             | [] -> Error (`Empty (name, Dns_enum.TXT))
@@ -280,32 +280,32 @@ let check trie =
               if List.for_all (fun txt -> List.length txt > 0 && List.for_all (fun x -> String.length x > 0) txt) xs then
                 Ok ()
               else Error (`Empty (name, Dns_enum.TXT)) end
-        | Dns_map.V (Dns_map.A, (ttl, a)) ->
+        | Dns_map.B (Dns_map.A, (ttl, a)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else begin match a with
             | [] -> Error (`Empty (name, Dns_enum.A))
             | _ -> Ok () end
-        | Dns_map.V (Dns_map.Aaaa, (ttl, aaaa)) ->
+        | Dns_map.B (Dns_map.Aaaa, (ttl, aaaa)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else begin match aaaa with
             | [] -> Error (`Empty (name, Dns_enum.AAAA))
             | _ -> Ok () end
-        | Dns_map.V (Dns_map.Srv, (ttl, srvs)) ->
+        | Dns_map.B (Dns_map.Srv, (ttl, srvs)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else begin match srvs with
             | [] -> Error (`Empty (name, Dns_enum.SRV))
             | _ -> Ok () end
-        | Dns_map.V (Dns_map.Caa, (ttl, caas)) ->
+        | Dns_map.B (Dns_map.Caa, (ttl, caas)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else begin match caas with
             | [] -> Error (`Empty (name, Dns_enum.CAA))
             | _ -> Ok () end
-        | Dns_map.V (Dns_map.Tlsa, (ttl, tlsas)) ->
+        | Dns_map.B (Dns_map.Tlsa, (ttl, tlsas)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else begin match tlsas with
             | [] -> Error (`Empty (name, Dns_enum.TLSA))
             | _ -> Ok () end
-        | Dns_map.V (Dns_map.Sshfp, (ttl, sshfps)) ->
+        | Dns_map.B (Dns_map.Sshfp, (ttl, sshfps)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else begin match sshfps with
             | [] -> Error (`Empty (name, Dns_enum.SSHFP))
@@ -323,7 +323,7 @@ let insert name v t =
   let l = Array.length k in
   let rec go idx (N (sub, map)) =
     if idx = l then
-      N (sub, Dns_map.addv v map)
+      N (sub, Dns_map.addb v map)
     else
       let lbl = Array.get k idx in
       let node = match M.find lbl sub with
@@ -388,7 +388,7 @@ let pp_err ppf = function
   | `Missing_soa name -> Fmt.pf ppf "missing soa for %a" Domain_name.pp name
   | `Cname_other name -> Fmt.pf ppf "%a contains a cname record, and also other entries" Domain_name.pp name
   | `Any_not_allowed name -> Fmt.pf ppf "resource type ANY is not allowed, but present for %a" Domain_name.pp name
-  | `Bad_ttl (name, v) -> Fmt.pf ppf "bad TTL for %a %a" Domain_name.pp name Dns_map.pp_v v
+  | `Bad_ttl (name, v) -> Fmt.pf ppf "bad TTL for %a %a" Domain_name.pp name Dns_map.pp_b v
   | `Empty (name, typ) -> Fmt.pf ppf "%a empty %a" Domain_name.pp name Dns_enum.pp_rr_typ typ
   | `Missing_address name -> Fmt.pf ppf "missing address record for %a" Domain_name.pp name
   | `Soa_not_ns name -> Fmt.pf ppf "%a nameserver of SOA is not in nameserver set" Domain_name.pp name

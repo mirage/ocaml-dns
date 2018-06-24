@@ -79,6 +79,6 @@ let reserved_zones =
                 serial = 0l ; refresh = 300l ; retry = 300l ;
                 expiry = 300l ; minimum = 300l }
     in
-    Dns_map.(V (Soa, (300l, soa)))
+    Dns_map.(B (Soa, (300l, soa)))
   in
   Domain_name.Set.fold (fun n acc -> (n, inv n) :: acc) reserved_zone_records []

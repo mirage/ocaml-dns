@@ -161,31 +161,31 @@ end
 
 include Gmap.Make(K)
 
-let pp_v ppf (V (k, v)) = K.pp ppf k v
+let pp_b ppf (B (k, v)) = K.pp ppf k v
 
-let equal_v v v' = match v, v' with
-  | V (Any, (entries, names)), V (Any, (entries', names')) ->
+let equal_b b b' = match b, b' with
+  | B (Any, (entries, names)), B (Any, (entries', names')) ->
     List.length entries = List.length entries' &&
     List.for_all (fun e ->
         List.exists (fun e' -> Dns_packet.rr_equal e e') entries')
       entries &&
     Domain_name.Set.equal names names'
-  | V (Cname, (_, alias)), V (Cname, (_, alias')) ->
+  | B (Cname, (_, alias)), B (Cname, (_, alias')) ->
     Domain_name.equal alias alias'
-  | V (Mx, (_, mxs)), V (Mx, (_, mxs')) ->
+  | B (Mx, (_, mxs)), B (Mx, (_, mxs')) ->
     List.length mxs = List.length mxs' &&
     List.for_all (fun (prio, name) ->
         List.exists (fun (prio', name') ->
             prio = prio' && Domain_name.equal name name')
           mxs')
       mxs
-  | V (Ns, (_, ns)), V (Ns, (_, ns')) ->
+  | B (Ns, (_, ns)), B (Ns, (_, ns')) ->
     Domain_name.Set.equal ns ns'
-  | V (Ptr, (_, name)), V (Ptr, (_, name')) ->
+  | B (Ptr, (_, name)), B (Ptr, (_, name')) ->
     Domain_name.equal name name'
-  | V (Soa, (_, soa)), V (Soa, (_, soa')) ->
+  | B (Soa, (_, soa)), B (Soa, (_, soa')) ->
     Dns_packet.compare_soa soa soa' = 0
-  | V (Txt, (_, txts)), V (Txt, (_, txts')) ->
+  | B (Txt, (_, txts)), B (Txt, (_, txts')) ->
     List.length txts = List.length txts &&
     List.for_all (fun txt ->
         List.exists (fun txt' ->
@@ -193,37 +193,37 @@ let equal_v v v' = match v, v' with
             List.for_all2 String.equal txt txt')
           txts')
       txts
-  | V (A, (_, aas)), V (A, (_, aas')) ->
+  | B (A, (_, aas)), B (A, (_, aas')) ->
     List.length aas = List.length aas' &&
     List.for_all (fun a ->
         List.exists (fun a' -> Ipaddr.V4.compare a a' = 0) aas')
       aas
-  | V (Aaaa, (_, aaaas)), V (Aaaa, (_, aaaas')) ->
+  | B (Aaaa, (_, aaaas)), B (Aaaa, (_, aaaas')) ->
     List.length aaaas = List.length aaaas' &&
     List.for_all (fun aaaa ->
         List.exists (fun aaaa' -> Ipaddr.V6.compare aaaa aaaa' = 0) aaaas')
       aaaas
-  | V (Srv, (_, srvs)), V (Srv, (_, srvs')) ->
+  | B (Srv, (_, srvs)), B (Srv, (_, srvs')) ->
     List.length srvs = List.length srvs' &&
     List.for_all (fun srv ->
         List.exists (fun srv' -> Dns_packet.compare_srv srv srv' = 0) srvs')
       srvs
-  | V (Dnskey, keys), V (Dnskey, keys') ->
+  | B (Dnskey, keys), B (Dnskey, keys') ->
     List.length keys = List.length keys' &&
     List.for_all (fun key ->
         List.exists (fun key' -> Dns_packet.compare_dnskey key key' = 0) keys')
       keys
-  | V (Caa, (_, caas)), V (Caa, (_, caas')) ->
+  | B (Caa, (_, caas)), B (Caa, (_, caas')) ->
     List.length caas = List.length caas' &&
     List.for_all (fun caa ->
         List.exists (fun caa' -> Dns_packet.compare_caa caa caa' = 0) caas')
       caas
-  | V (Tlsa, (_, tlsas)), V (Tlsa, (_, tlsas')) ->
+  | B (Tlsa, (_, tlsas)), B (Tlsa, (_, tlsas')) ->
     List.length tlsas = List.length tlsas' &&
     List.for_all (fun tlsa ->
         List.exists (fun tlsa' -> Dns_packet.compare_tlsa tlsa tlsa' = 0) tlsas')
       tlsas
-  | V (Sshfp, (_, sshfps)), V (Sshfp, (_, sshfps')) ->
+  | B (Sshfp, (_, sshfps)), B (Sshfp, (_, sshfps')) ->
     List.length sshfps = List.length sshfps' &&
     List.for_all (fun sshfp ->
         List.exists (fun sshfp' -> Dns_packet.compare_sshfp sshfp sshfp' = 0) sshfps')
@@ -256,10 +256,10 @@ let k_to_rr_typ : type a. a key -> Dns_enum.rr_typ = function
   | Tlsa -> Dns_enum.TLSA
   | Sshfp -> Dns_enum.SSHFP
 
-let to_rr_typ : v -> Dns_enum.rr_typ = fun (V (k, _)) ->
+let to_rr_typ : b -> Dns_enum.rr_typ = fun (B (k, _)) ->
    k_to_rr_typ k
 
-let to_rr : Domain_name.t -> v -> Dns_packet.rr list = fun name (V (k, v)) ->
+let to_rr : Domain_name.t -> b -> Dns_packet.rr list = fun name (B (k, v)) ->
   match k, v with
   | Any, (entries, _) -> entries
   | Cname, (ttl, alias) ->
@@ -310,125 +310,125 @@ let to_rr : Domain_name.t -> v -> Dns_packet.rr list = fun name (V (k, v)) ->
       sshfps
 
 let names = function
-  | V (Any, (_, names)) -> names
-  | V (Mx, (_, mxs)) -> Domain_name.Set.of_list (snd (List.split mxs))
-  | V (Ns, (_, names)) -> names
-  | V (Srv, (_, srvs)) ->
+  | B (Any, (_, names)) -> names
+  | B (Mx, (_, mxs)) -> Domain_name.Set.of_list (snd (List.split mxs))
+  | B (Ns, (_, names)) -> names
+  | B (Srv, (_, srvs)) ->
     Domain_name.Set.of_list (List.map (fun x -> x.Dns_packet.target) srvs)
   | _ -> Domain_name.Set.empty
 
-let of_rdata : int32 -> Dns_packet.rdata -> v option = fun ttl rd ->
+let of_rdata : int32 -> Dns_packet.rdata -> b option = fun ttl rd ->
   match rd with
-  | Dns_packet.CNAME alias -> Some (V (Cname, (ttl, alias)))
-  | Dns_packet.MX (prio, name) -> Some (V (Mx, (ttl, [ (prio, name) ])))
-  | Dns_packet.NS ns -> Some (V (Ns, (ttl, Domain_name.Set.singleton ns)))
-  | Dns_packet.PTR ptr -> Some (V (Ptr, (ttl, ptr)))
-  | Dns_packet.SOA soa -> Some (V (Soa, (ttl, soa)))
-  | Dns_packet.TXT txt -> Some (V (Txt, (ttl, [ txt ])))
-  | Dns_packet.A ip -> Some (V (A, (ttl, [ ip ])))
-  | Dns_packet.AAAA ip -> Some (V (Aaaa, (ttl, [ ip ])))
-  | Dns_packet.SRV srv -> Some (V (Srv, (ttl, [ srv ])))
-  | Dns_packet.DNSKEY key -> Some (V (Dnskey, [ key ]))
-  | Dns_packet.CAA caa -> Some (V (Caa, (ttl, [ caa ])))
-  | Dns_packet.TLSA tlsa -> Some (V (Tlsa, (ttl, [ tlsa ])))
-  | Dns_packet.SSHFP sshfp -> Some (V (Sshfp, (ttl, [ sshfp ])))
+  | Dns_packet.CNAME alias -> Some (B (Cname, (ttl, alias)))
+  | Dns_packet.MX (prio, name) -> Some (B (Mx, (ttl, [ (prio, name) ])))
+  | Dns_packet.NS ns -> Some (B (Ns, (ttl, Domain_name.Set.singleton ns)))
+  | Dns_packet.PTR ptr -> Some (B (Ptr, (ttl, ptr)))
+  | Dns_packet.SOA soa -> Some (B (Soa, (ttl, soa)))
+  | Dns_packet.TXT txt -> Some (B (Txt, (ttl, [ txt ])))
+  | Dns_packet.A ip -> Some (B (A, (ttl, [ ip ])))
+  | Dns_packet.AAAA ip -> Some (B (Aaaa, (ttl, [ ip ])))
+  | Dns_packet.SRV srv -> Some (B (Srv, (ttl, [ srv ])))
+  | Dns_packet.DNSKEY key -> Some (B (Dnskey, [ key ]))
+  | Dns_packet.CAA caa -> Some (B (Caa, (ttl, [ caa ])))
+  | Dns_packet.TLSA tlsa -> Some (B (Tlsa, (ttl, [ tlsa ])))
+  | Dns_packet.SSHFP sshfp -> Some (B (Sshfp, (ttl, [ sshfp ])))
   | _ -> None
 
-let add_rdata : v -> Dns_packet.rdata -> v option = fun v rdata ->
+let add_rdata : b -> Dns_packet.rdata -> b option = fun v rdata ->
   let add n xs = if List.mem n xs then xs else n :: xs in
   match v, rdata with
-  | V (Mx, (ttl, mxs)), Dns_packet.MX (prio, name) ->
-    Some (V (Mx, (ttl, add (prio, name) mxs)))
-  | V (Ns, (ttl, nss)), Dns_packet.NS ns ->
-    Some (V (Ns, (ttl, Domain_name.Set.add ns nss)))
-  | V (Txt, (ttl, txts)), Dns_packet.TXT txt ->
-    Some (V (Txt, (ttl, add txt txts)))
-  | V (A, (ttl, ips)), Dns_packet.A ip ->
-    Some (V (A, (ttl, add ip ips)))
-  | V (Aaaa, (ttl, ips)), Dns_packet.AAAA ip ->
-    Some (V (Aaaa, (ttl, add ip ips)))
-  | V (Srv, (ttl, srvs)), Dns_packet.SRV srv ->
-    Some (V (Srv, (ttl, add srv srvs)))
-  | V (Dnskey, keys), Dns_packet.DNSKEY key ->
-    Some (V (Dnskey, add key keys))
-  | V (Caa, (ttl, caas)), Dns_packet.CAA caa ->
-    Some (V (Caa, (ttl, add caa caas)))
-  | V (Tlsa, (ttl, tlsas)), Dns_packet.TLSA tlsa ->
-    Some (V (Tlsa, (ttl, add tlsa tlsas)))
-  | V (Sshfp, (ttl, sshfps)), Dns_packet.SSHFP sshfp ->
-    Some (V (Sshfp, (ttl, add sshfp sshfps)))
+  | B (Mx, (ttl, mxs)), Dns_packet.MX (prio, name) ->
+    Some (B (Mx, (ttl, add (prio, name) mxs)))
+  | B (Ns, (ttl, nss)), Dns_packet.NS ns ->
+    Some (B (Ns, (ttl, Domain_name.Set.add ns nss)))
+  | B (Txt, (ttl, txts)), Dns_packet.TXT txt ->
+    Some (B (Txt, (ttl, add txt txts)))
+  | B (A, (ttl, ips)), Dns_packet.A ip ->
+    Some (B (A, (ttl, add ip ips)))
+  | B (Aaaa, (ttl, ips)), Dns_packet.AAAA ip ->
+    Some (B (Aaaa, (ttl, add ip ips)))
+  | B (Srv, (ttl, srvs)), Dns_packet.SRV srv ->
+    Some (B (Srv, (ttl, add srv srvs)))
+  | B (Dnskey, keys), Dns_packet.DNSKEY key ->
+    Some (B (Dnskey, add key keys))
+  | B (Caa, (ttl, caas)), Dns_packet.CAA caa ->
+    Some (B (Caa, (ttl, add caa caas)))
+  | B (Tlsa, (ttl, tlsas)), Dns_packet.TLSA tlsa ->
+    Some (B (Tlsa, (ttl, add tlsa tlsas)))
+  | B (Sshfp, (ttl, sshfps)), Dns_packet.SSHFP sshfp ->
+    Some (B (Sshfp, (ttl, add sshfp sshfps)))
   | _ -> None
 
-let remove_rdata : v -> Dns_packet.rdata -> v option = fun v rdata ->
+let remove_rdata : b -> Dns_packet.rdata -> b option = fun v rdata ->
   let rm n xs = List.filter (fun x -> compare x n <> 0) xs in
   match v, rdata with
-  | V (Mx, (ttl, mxs)), Dns_packet.MX (prio, name) ->
+  | B (Mx, (ttl, mxs)), Dns_packet.MX (prio, name) ->
     begin match rm (prio, name) mxs with
       | [] -> None
-      | mxs -> Some (V (Mx, (ttl, mxs)))
+      | mxs -> Some (B (Mx, (ttl, mxs)))
     end
-  | V (Ns, (ttl, nss)), Dns_packet.NS ns ->
+  | B (Ns, (ttl, nss)), Dns_packet.NS ns ->
     let left = Domain_name.Set.remove ns nss in
     if left = Domain_name.Set.empty then
       None
     else
-      Some (V (Ns, (ttl, left)))
-  | V (Txt, (ttl, txts)), Dns_packet.TXT txt ->
+      Some (B (Ns, (ttl, left)))
+  | B (Txt, (ttl, txts)), Dns_packet.TXT txt ->
     begin match rm txt txts with
       | [] -> None
-      | txts -> Some (V (Txt, (ttl, txts)))
+      | txts -> Some (B (Txt, (ttl, txts)))
     end
-  | V (A, (ttl, ips)), Dns_packet.A ip ->
+  | B (A, (ttl, ips)), Dns_packet.A ip ->
     begin match rm ip ips with
       | [] -> None
-      | ips -> Some (V (A, (ttl, ips)))
+      | ips -> Some (B (A, (ttl, ips)))
     end
-  | V (Aaaa, (ttl, ips)), Dns_packet.AAAA ip ->
+  | B (Aaaa, (ttl, ips)), Dns_packet.AAAA ip ->
     begin match rm ip ips with
       | [] -> None
-      | ips -> Some (V (Aaaa, (ttl, ips)))
+      | ips -> Some (B (Aaaa, (ttl, ips)))
     end
-  | V (Srv, (ttl, srvs)), Dns_packet.SRV srv ->
+  | B (Srv, (ttl, srvs)), Dns_packet.SRV srv ->
     begin match rm srv srvs with
       | [] -> None
-      | srvs -> Some (V (Srv, (ttl, srvs)))
+      | srvs -> Some (B (Srv, (ttl, srvs)))
     end
-  | V (Dnskey, keys), Dns_packet.DNSKEY key ->
+  | B (Dnskey, keys), Dns_packet.DNSKEY key ->
     begin match rm key keys with
       | [] -> None
-      | keys -> Some (V (Dnskey, keys))
+      | keys -> Some (B (Dnskey, keys))
     end
-  | V (Caa, (ttl, caas)), Dns_packet.CAA caa ->
+  | B (Caa, (ttl, caas)), Dns_packet.CAA caa ->
     begin match rm caa caas with
       | [] -> None
-      | caas -> Some (V (Caa, (ttl, caas)))
+      | caas -> Some (B (Caa, (ttl, caas)))
     end
-  | V (Tlsa, (ttl, tlsas)), Dns_packet.TLSA tlsa ->
+  | B (Tlsa, (ttl, tlsas)), Dns_packet.TLSA tlsa ->
     begin match rm tlsa tlsas with
       | [] -> None
-      | tlsas -> Some (V (Tlsa, (ttl, tlsas)))
+      | tlsas -> Some (B (Tlsa, (ttl, tlsas)))
     end
-  | V (Sshfp, (ttl, sshfps)), Dns_packet.SSHFP sshfp ->
+  | B (Sshfp, (ttl, sshfps)), Dns_packet.SSHFP sshfp ->
     begin match rm sshfp sshfps with
       | [] -> None
-      | sshfps -> Some (V (Sshfp, (ttl, sshfps)))
+      | sshfps -> Some (B (Sshfp, (ttl, sshfps)))
     end
   | _ -> None
 
-let lookup_rr : Dns_enum.rr_typ -> t -> v option = fun rr t ->
+let lookup_rr : Dns_enum.rr_typ -> t -> b option = fun rr t ->
   match rr with
-  | Dns_enum.MX -> findv Mx t
-  | Dns_enum.NS -> findv Ns t
-  | Dns_enum.PTR -> findv Ptr t
-  | Dns_enum.SOA -> findv Soa t
-  | Dns_enum.TXT -> findv Txt t
-  | Dns_enum.A -> findv A t
-  | Dns_enum.AAAA -> findv Aaaa t
-  | Dns_enum.SRV -> findv Srv t
-  | Dns_enum.DNSKEY -> findv Dnskey t
-  | Dns_enum.CAA -> findv Caa t
-  | Dns_enum.TLSA -> findv Tlsa t
-  | Dns_enum.SSHFP -> findv Sshfp t
+  | Dns_enum.MX -> findb Mx t
+  | Dns_enum.NS -> findb Ns t
+  | Dns_enum.PTR -> findb Ptr t
+  | Dns_enum.SOA -> findb Soa t
+  | Dns_enum.TXT -> findb Txt t
+  | Dns_enum.A -> findb A t
+  | Dns_enum.AAAA -> findb Aaaa t
+  | Dns_enum.SRV -> findb Srv t
+  | Dns_enum.DNSKEY -> findb Dnskey t
+  | Dns_enum.CAA -> findb Caa t
+  | Dns_enum.TLSA -> findb Tlsa t
+  | Dns_enum.SSHFP -> findb Sshfp t
   | _ -> None
 
 let remove_rr : Dns_enum.rr_typ -> t -> t = fun rr t ->
@@ -461,9 +461,9 @@ let of_rrs rrs =
         | None ->
           Logs.warn (fun m -> m "failed to insert rr %a" Dns_packet.pp_rr rr) ;
           m
-        | Some v -> addv v m
+        | Some v -> addb v m
       in
       Domain_name.Map.add rr.Dns_packet.name m' map)
     Domain_name.Map.empty rrs
 
-let text name (V (key, v)) = K.text name key v
+let text name (B (key, v)) = K.text name key v

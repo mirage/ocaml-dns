@@ -25,23 +25,23 @@ module Trie = struct
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
-  let v_ok =
+  let b_ok =
     let module M = struct
-      type t = Dns_map.v
-      let pp = Dns_map.pp_v
-      let equal = Dns_map.equal_v
+      type t = Dns_map.b
+      let pp = Dns_map.pp_b
+      let equal = Dns_map.equal_b
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
   let l_ok =
     let module M = struct
-      type t = Dns_map.v * (Domain_name.t * int32 * Domain_name.Set.t)
+      type t = Dns_map.b * (Domain_name.t * int32 * Domain_name.Set.t)
       let pp ppf (v, (name, ttl, ns)) =
-        Fmt.pf ppf "%a auth %a TTL %lu %a" Dns_map.pp_v v Domain_name.pp name ttl
+        Fmt.pf ppf "%a auth %a TTL %lu %a" Dns_map.pp_b v Domain_name.pp name ttl
           Fmt.(list ~sep:(unit ",@,") Domain_name.pp) (Domain_name.Set.elements ns)
       let equal (a, (name, ttl, ns)) (a', (name', ttl', ns')) =
         ttl = ttl' && Domain_name.equal name name' && Domain_name.Set.equal ns ns' &&
-        Dns_map.equal_v a a'
+        Dns_map.equal_b a a'
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
@@ -49,8 +49,8 @@ module Trie = struct
   let ip = Ipaddr.V4.of_string_exn
 
   let ins_zone name soa ttl ns t =
-    insert name Dns_map.(V (Ns, (ttl, ns)))
-      (insert name Dns_map.(V (Soa, (soa.Dns_packet.minimum, soa))) t)
+    insert name Dns_map.(B (Ns, (ttl, ns)))
+      (insert name Dns_map.(B (Soa, (soa.Dns_packet.minimum, soa))) t)
 
   let simple () =
     Alcotest.(check (result l_ok e)
@@ -66,12 +66,12 @@ module Trie = struct
                 (Error (`NotFound (Domain_name.root, 4l, soa)))
                 (lookup (n_of_s "com") Dns_enum.A t)) ;
     Alcotest.(check (result l_ok e) "lookup for SOA . is SOA"
-                (Ok (Dns_map.V (Dns_map.Soa, (4l, soa)),
+                (Ok (Dns_map.B (Dns_map.Soa, (4l, soa)),
                      (Domain_name.root, 6l, sn (n_of_s "a"))))
                 (lookup Domain_name.root Dns_enum.SOA t)) ;
-    let t = insert (n_of_s "foo.com") (Dns_map.V (Dns_map.A, (23l, [ ip "1.4.5.2" ]))) t in
+    let t = insert (n_of_s "foo.com") (Dns_map.B (Dns_map.A, (23l, [ ip "1.4.5.2" ]))) t in
     Alcotest.(check (result l_ok e) "lookup for A foo.com is A"
-                (Ok (Dns_map.V (Dns_map.A, (23l, [ ip "1.4.5.2" ])),
+                (Ok (Dns_map.B (Dns_map.A, (23l, [ ip "1.4.5.2" ])),
                      (Domain_name.root, 6l, sn (n_of_s "a"))))
                 (lookup (n_of_s "foo.com") Dns_enum.A t)) ;
     Alcotest.(check (result l_ok e) "lookup for SOA com is ENT"
@@ -95,12 +95,12 @@ module Trie = struct
                 (lookup (n_of_s "bar.com") Dns_enum.SOA t)) ;
     Alcotest.(check (result l_ok e)
                 "lookup for SOA foo.com (after insert) is good"
-                (Ok (Dns_map.V (Dns_map.Soa, (4l, soa)),
+                (Ok (Dns_map.B (Dns_map.Soa, (4l, soa)),
                      (n_of_s "foo.com", 10l, sn (n_of_s "ns1.foo.com"))))
                 (lookup (n_of_s "foo.com") Dns_enum.SOA t)) ;
     Alcotest.(check (result l_ok e)
                 "lookup for NS foo.com (after insert) is good"
-                (Ok (Dns_map.V (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com"))),
+                (Ok (Dns_map.B (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com"))),
                      (n_of_s "foo.com", 10l, sn (n_of_s "ns1.foo.com"))))
                 (lookup (n_of_s "foo.com") Dns_enum.NS t)) ;
     Alcotest.(check (result l_ok e)
@@ -119,14 +119,14 @@ module Trie = struct
                 "lookup for MX bar.foo.com (after insert) is NoDomain"
                 (Error (`NotFound (n_of_s "foo.com", 4l, soa)))
                 (lookup (n_of_s "bar.foo.com") Dns_enum.MX t)) ;
-    let t = insert (n_of_s "foo.com") (Dns_map.V (Dns_map.A, (12l, [ ip "1.2.3.4" ]))) t in
+    let t = insert (n_of_s "foo.com") (Dns_map.B (Dns_map.A, (12l, [ ip "1.2.3.4" ]))) t in
     Alcotest.(check (result l_ok e)
                 "lookup for AAAA foo.com (after insert) is NoData"
                 (Error (`EmptyNonTerminal (n_of_s "foo.com", 4l, soa)))
                 (lookup (n_of_s "foo.com") Dns_enum.AAAA t)) ;
     Alcotest.(check (result l_ok e)
                 "lookup for A foo.com (after insert) is Found"
-                (Ok (Dns_map.V (Dns_map.A, (12l, [ ip "1.2.3.4" ])),
+                (Ok (Dns_map.B (Dns_map.A, (12l, [ ip "1.2.3.4" ])),
                      (n_of_s "foo.com", 10l, sn (n_of_s "ns1.foo.com"))))
                 (lookup (n_of_s "foo.com") Dns_enum.A t)) ;
     Alcotest.(check (result l_ok e)
@@ -153,10 +153,10 @@ module Trie = struct
     let t =
       ins_zone (n_of_s "foo.com") soa 10l (sn (n_of_s "ns1.foo.com")) empty
     in
-    let t = insert (n_of_s "bar.foo.com") (Dns_map.V (Dns_map.Cname, (14l, n_of_s "foo.bar.com"))) t in
+    let t = insert (n_of_s "bar.foo.com") (Dns_map.B (Dns_map.Cname, (14l, n_of_s "foo.bar.com"))) t in
     Alcotest.(check (result l_ok e)
                 "lookup for SOA bar.foo.com (after insert) is good"
-                (Ok (Dns_map.V (Dns_map.Cname, (14l, n_of_s "foo.bar.com")),
+                (Ok (Dns_map.B (Dns_map.Cname, (14l, n_of_s "foo.bar.com")),
                      (n_of_s "foo.com", 10l, sn (n_of_s "ns1.foo.com"))))
                 (lookup (n_of_s "bar.foo.com") Dns_enum.SOA t))
 
@@ -171,15 +171,15 @@ module Trie = struct
     in
     Alcotest.(check (result l_ok e)
                 "lookup for SOA foo.com (after insert) is good"
-                (Ok (Dns_map.V (Dns_map.Soa, (4l, soa)),
+                (Ok (Dns_map.B (Dns_map.Soa, (4l, soa)),
                      (n_of_s "foo.com", 10l, sn (n_of_s "ns1.foo.com"))))
                 (lookup (n_of_s "foo.com") Dns_enum.SOA t)) ;
     Alcotest.(check (result l_ok e)
                 "lookup for NS foo.com (after insert) is good"
-                (Ok (Dns_map.V (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com"))),
+                (Ok (Dns_map.B (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com"))),
                      (n_of_s "foo.com", 10l, sn (n_of_s "ns1.foo.com"))))
                 (lookup (n_of_s "foo.com") Dns_enum.NS t)) ;
-    let t = insert (n_of_s "bar.foo.com") (Dns_map.V (Dns_map.Ns, (12l, sn (n_of_s "ns3.bar.com")))) t in
+    let t = insert (n_of_s "bar.foo.com") (Dns_map.B (Dns_map.Ns, (12l, sn (n_of_s "ns3.bar.com")))) t in
     Alcotest.(check (result l_ok e) "lookup for A bar.foo.com is delegated"
                 (Error (`Delegation (n_of_s "bar.foo.com", (12l, sn (n_of_s "ns3.bar.com")))))
                 (lookup (n_of_s "bar.foo.com") Dns_enum.A t)) ;
@@ -191,7 +191,7 @@ module Trie = struct
                 (lookup (n_of_s "foobar.boo.bar.foo.com") Dns_enum.AAAA t)) ;
     let t = ins_zone (n_of_s "a.b.bar.foo.com") soa 10l (sn (n_of_s "ns1.foo.com")) t in
     Alcotest.(check (result l_ok e) "lookup for NS a.b.bar.foo.com is ns1.foo.com"
-                (Ok (Dns_map.V (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com"))),
+                (Ok (Dns_map.B (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com"))),
                      (n_of_s "a.b.bar.foo.com", 10l, sn (n_of_s "ns1.foo.com"))))
                 (lookup (n_of_s "a.b.bar.foo.com") Dns_enum.NS t)) ;
     Alcotest.(check (result l_ok e) "lookup for AAAA foobar.boo.bar.foo.com is delegated"
@@ -209,35 +209,35 @@ module Trie = struct
     let t =
       ins_zone (n_of_s "foo.com") soa 10l (sn (n_of_s "ns1.foo.com")) empty
     in
-    Alcotest.(check (result v_ok e) "lookup for NS foo.com is good"
-                (Ok (Dns_map.V (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
+    Alcotest.(check (result b_ok e) "lookup for NS foo.com is good"
+                (Ok (Dns_map.B (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
                 (r_fst (lookup (n_of_s "foo.com") Dns_enum.NS t))) ;
     let t' = remove_zone (n_of_s "foo.com") t in
-    Alcotest.(check (result v_ok e) "lookup for NS foo.com after removing zone is notauthoritative"
+    Alcotest.(check (result b_ok e) "lookup for NS foo.com after removing zone is notauthoritative"
                 (Error `NotAuthoritative)
                 (r_fst (lookup (n_of_s "foo.com") Dns_enum.NS t'))) ;
     let t =
       ins_zone (n_of_s "bar.foo.com") soa 10l (sn (n_of_s "ns1.foo.com")) t
     in
-    Alcotest.(check (result v_ok e) "lookup for NS bar.foo.com is good"
-                (Ok (Dns_map.V (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
+    Alcotest.(check (result b_ok e) "lookup for NS bar.foo.com is good"
+                (Ok (Dns_map.B (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
                 (r_fst (lookup (n_of_s "bar.foo.com") Dns_enum.NS t))) ;
-    Alcotest.(check (result v_ok e) "lookup for NS foo.com is good"
-                (Ok (Dns_map.V (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
+    Alcotest.(check (result b_ok e) "lookup for NS foo.com is good"
+                (Ok (Dns_map.B (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
                 (r_fst (lookup (n_of_s "foo.com") Dns_enum.NS t))) ;
     let t' = remove_zone (n_of_s "foo.com") t in
-    Alcotest.(check (result v_ok e) "lookup for NS bar.foo.com is good (after foo.com is removed)"
-                (Ok (Dns_map.V (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
+    Alcotest.(check (result b_ok e) "lookup for NS bar.foo.com is good (after foo.com is removed)"
+                (Ok (Dns_map.B (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
                 (r_fst (lookup (n_of_s "bar.foo.com") Dns_enum.NS t'))) ;
-    Alcotest.(check (result v_ok e) "lookup for NS foo.com is not authoritative"
+    Alcotest.(check (result b_ok e) "lookup for NS foo.com is not authoritative"
                 (Error `NotAuthoritative)
                 (r_fst (lookup (n_of_s "foo.com") Dns_enum.NS t'))) ;
     let t' = remove_zone (n_of_s "bar.foo.com") t in
-    Alcotest.(check (result v_ok e) "lookup for NS bar.foo.com is not authoritative"
+    Alcotest.(check (result b_ok e) "lookup for NS bar.foo.com is not authoritative"
                 (Error (`NotFound (n_of_s "foo.com", 4l, soa)))
                 (r_fst (lookup (n_of_s "bar.foo.com") Dns_enum.NS t'))) ;
-    Alcotest.(check (result v_ok e) "lookup for NS foo.com is good"
-                (Ok (Dns_map.V (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
+    Alcotest.(check (result b_ok e) "lookup for NS foo.com is good"
+                (Ok (Dns_map.B (Dns_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
                 (r_fst (lookup (n_of_s "foo.com") Dns_enum.NS t')))
 
 

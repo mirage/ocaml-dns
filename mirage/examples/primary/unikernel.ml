@@ -25,33 +25,14 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
     in
     let open Dns_trie in
     let open Dns_map in
-    let t = insert domain (V (Soa, (ttl, soa))) Dns_trie.empty in
-    let t = insert domain (V (Ns, (ttl, s ns))) t in
-    let t = insert (m "router") (V (A, (ttl, [ ip "10.0.42.1" ]))) t in
-    let t = insert ns (V (A, (ttl, [ ip "10.0.42.2" ]))) t in
-    let t = insert (m "charrua") (V (A, (ttl, [ ip "10.0.42.3" ]))) t in
-    let t = insert (m "secondary") (V (A, (ttl, [ ip "10.0.42.4" ]))) t in
-    let t = insert (m "resolver") (V (A, (ttl, [ ip "10.0.42.5" ]))) t in
-    let t = insert (m "www") (V (Cname, (ttl, m "router"))) t in
-    let key_algorithm = Dns_enum.SHA256
-    and flags = 0
-    in
-    let key = Cstruct.of_string "G/7zDZr98BTzoi9N6HEUFOg7byKfH9rsPav5JMm9l8Y=" in
-    let t = insert (Domain_name.of_string_exn ~hostname:false "10.0.42.2.10.0.42.4._transfer.mirage")
-        (V (Dnskey, [ { Dns_packet.flags ; key_algorithm ; key } ])) t
-    in
-    let key = Cstruct.of_string "/WcnjpqrErYrXi1dd4sv8dfwCwDFg0ZGm6N6Bq1VwMI=" in
-    let t = insert (Domain_name.of_string_exn ~hostname:false "key._transfer.mirage")
-        (V (Dnskey, [ { Dns_packet.flags ; key_algorithm ; key } ])) t
-    in
-    let key = Cstruct.of_string "eRhj4OoaGIIJ3I9hJFwYGhAkdiR5DNzia0WoGrYy70k=" in
-    let t = insert (Domain_name.of_string_exn ~hostname:false "one._update.mirage")
-        (V (Dnskey, [ { Dns_packet.flags ; key_algorithm ; key } ])) t
-    in
-    let key = Cstruct.of_string "/NzgCgIc4yKa7nZvWmODrHMbU+xpMeGiDLkZJGD/Evo=" in
-    let t = insert (Domain_name.of_string_exn ~hostname:false "foo._key-management")
-        (V (Dnskey, [ { Dns_packet.flags ; key_algorithm ; key } ])) t
-    in
+    let t = insert domain (B (Soa, (ttl, soa))) Dns_trie.empty in
+    let t = insert domain (B (Ns, (ttl, s ns))) t in
+    let t = insert (m "router") (B (A, (ttl, [ ip "10.0.42.1" ]))) t in
+    let t = insert ns (B (A, (ttl, [ ip "10.0.42.2" ]))) t in
+    let t = insert (m "charrua") (B (A, (ttl, [ ip "10.0.42.3" ]))) t in
+    let t = insert (m "secondary") (B (A, (ttl, [ ip "10.0.42.4" ]))) t in
+    let t = insert (m "resolver") (B (A, (ttl, [ ip "10.0.42.5" ]))) t in
+    let t = insert (m "www") (B (Cname, (ttl, m "router"))) t in
     let ptr_zone = n "42.0.10.in-addr.arpa" in
     let ptr_soa = Dns_packet.({ nameserver = ns ;
                                 hostmaster = n "hostmaster.example" ;
@@ -59,13 +40,13 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
                                 expiry = 1048576l ; minimum = ttl })
     in
     let ptr_name = Domain_name.prepend_exn ptr_zone in
-    let t = insert ptr_zone (V (Soa, (ttl, ptr_soa))) t in
-    let t = insert ptr_zone (V (Ns, (ttl, s ns))) t in
-    let t = insert (ptr_name "1") (V (Ptr, (ttl, m "router"))) t in
-    let t = insert (ptr_name "2") (V (Ptr, (ttl, m "ns"))) t in
-    let t = insert (ptr_name "3") (V (Ptr, (ttl, m "charrua"))) t in
-    let t = insert (ptr_name "4") (V (Ptr, (ttl, m "secondary"))) t in
-    let t = insert (ptr_name "5") (V (Ptr, (ttl, m "resolver"))) t in
+    let t = insert ptr_zone (B (Soa, (ttl, ptr_soa))) t in
+    let t = insert ptr_zone (B (Ns, (ttl, s ns))) t in
+    let t = insert (ptr_name "1") (B (Ptr, (ttl, m "router"))) t in
+    let t = insert (ptr_name "2") (B (Ptr, (ttl, m "ns"))) t in
+    let t = insert (ptr_name "3") (B (Ptr, (ttl, m "charrua"))) t in
+    let t = insert (ptr_name "4") (B (Ptr, (ttl, m "secondary"))) t in
+    let t = insert (ptr_name "5") (B (Ptr, (ttl, m "resolver"))) t in
     t
 
   let start _rng pclock mclock _ s _ =
@@ -75,9 +56,25 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
      | Error e ->
        Logs.err (fun m -> m "error %a during check()" Dns_trie.pp_err e) ;
        invalid_arg "check") ;
+    let keys =
+      let key key =
+        let key = Cstruct.of_string key in
+        { Dns_packet.flags = 0 ; key_algorithm = Dns_enum.SHA256 ; key }
+      in
+      [
+        Domain_name.of_string_exn ~hostname:false "10.0.42.2.10.0.42.4._transfer.mirage" ,
+        key "G/7zDZr98BTzoi9N6HEUFOg7byKfH9rsPav5JMm9l8Y=" ;
+        Domain_name.of_string_exn ~hostname:false "key._transfer.mirage" ,
+        key "/WcnjpqrErYrXi1dd4sv8dfwCwDFg0ZGm6N6Bq1VwMI=" ;
+        Domain_name.of_string_exn ~hostname:false "one._update.mirage" ,
+        key "eRhj4OoaGIIJ3I9hJFwYGhAkdiR5DNzia0WoGrYy70k=" ;
+        Domain_name.of_string_exn ~hostname:false "foo._key-management" ,
+        key "/NzgCgIc4yKa7nZvWmODrHMbU+xpMeGiDLkZJGD/Evo=" ;
+      ]
+    in
     let t =
-      UDns_server.Primary.create
-        ~a:[UDns_server.tsig_auth] ~tsig_verify:Dns_tsig.verify
+      UDns_server.Primary.create ~keys
+        ~a:[UDns_server.Authentication.tsig_auth] ~tsig_verify:Dns_tsig.verify
         ~tsig_sign:Dns_tsig.sign ~rng:R.generate trie
     in
     Logs.info (fun m -> m "loaded zone: %a"

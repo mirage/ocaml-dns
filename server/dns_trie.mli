@@ -35,7 +35,7 @@ val equal : t -> t -> bool
 val insert_map : Dns_map.t Domain_name.Map.t -> t -> t
 (** [insert_map m t] inserts all elements of the domain name map [m] into [t]. *)
 
-val insert : Domain_name.t -> Dns_map.v -> t -> t
+val insert : Domain_name.t -> Dns_map.b -> t -> t
 (** [insert k v t] insert [v] under [k] in [t].  The type is already included in
     [v].  Existing entries are replaced. *)
 
@@ -54,7 +54,7 @@ val remove_zone : Domain_name.t -> t -> t
 type err = [ `Missing_soa of Domain_name.t
            | `Cname_other of Domain_name.t
            | `Any_not_allowed of Domain_name.t
-           | `Bad_ttl of Domain_name.t * Dns_map.v
+           | `Bad_ttl of Domain_name.t * Dns_map.b
            | `Empty of Domain_name.t * Dns_enum.rr_typ
            | `Missing_address of Domain_name.t
            | `Soa_not_ns of Domain_name.t ]
@@ -75,7 +75,7 @@ val pp_e : [< `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
 
 
 val lookup : Domain_name.t -> Dns_enum.rr_typ -> t ->
-  (Dns_map.v * (Domain_name.t * int32 * Domain_name.Set.t),
+  (Dns_map.b * (Domain_name.t * int32 * Domain_name.Set.t),
    [> `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
    | `EmptyNonTerminal of Domain_name.t * int32 * Dns_packet.soa
    | `NotAuthoritative
@@ -92,7 +92,7 @@ val lookup_direct : Domain_name.t -> 'a Dns_map.key -> t ->
 (** [lookup_direct k ty t] finds [k, ty] in [t], which may lead to an error. *)
 
 val lookup_ignore : Domain_name.t -> Dns_enum.rr_typ -> t ->
-  (Dns_map.v, unit) result
+  (Dns_map.b, unit) result
 (** [lookup_ignore k ty t] finds a [k, ty] in [t], which may lead to an error.
     It ignores potential DNS invariants, e.g. that there is no surrounding zone. *)
 
@@ -104,7 +104,7 @@ val entries : Domain_name.t -> t ->
 (** [entries name t] returns either the SOA and all entries for the requested
     [name], or an error. *)
 
-val fold : Domain_name.t -> t -> (Domain_name.t -> Dns_map.v -> 'a -> 'a) -> 'a ->
+val fold : Domain_name.t -> t -> (Domain_name.t -> Dns_map.b -> 'a -> 'a) -> 'a ->
   ('a, [> `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
        | `NotAuthoritative
        | `NotFound of Domain_name.t * int32 * Dns_packet.soa ]) result

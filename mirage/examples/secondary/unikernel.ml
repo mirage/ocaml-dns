@@ -17,7 +17,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
         [] (Key_gen.keys ())
     in
     let t =
-      UDns_server.Secondary.create ~a:[ UDns_server.tsig_auth ]
+      UDns_server.Secondary.create ~a:[ UDns_server.Authentication.tsig_auth ]
         ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign
         ~rng:R.generate keys
     in

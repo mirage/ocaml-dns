@@ -32,8 +32,9 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) (RES
               trie)
         Dns_trie.empty bindings
     in
+    (* TODO need keys *)
     let t =
-      UDns_server.Primary.create ~a:[UDns_server.tsig_auth]
+      UDns_server.Primary.create ~a:[UDns_server.Authentication.tsig_auth]
         ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign
         ~rng:R.generate trie
     in

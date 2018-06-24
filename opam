@@ -17,7 +17,8 @@ depends: [
   "x509"
   "nocrypto"
   "lru"
-  "randomconv" "duration" "gmap" "domain-name"
+  "randomconv" "duration" "domain-name"
+  "gmap" {>= "0.2.0"}
   "cstruct" {>= "2.2.0"}
   "hex"
   "ipaddr"

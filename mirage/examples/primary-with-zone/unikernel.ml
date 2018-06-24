@@ -34,7 +34,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) (KV 
          Logs.err (fun m -> m "error %a during check()" Dns_trie.pp_err e) ;
          invalid_arg "check failed") ;
       let t =
-        UDns_server.Primary.create ~a:[UDns_server.tsig_auth]
+        UDns_server.Primary.create ~a:[UDns_server.Authentication.tsig_auth]
           ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign
           ~rng:R.generate trie
       in

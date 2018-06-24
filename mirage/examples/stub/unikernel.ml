@@ -13,21 +13,19 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
         (fun trie (k, v) -> Dns_trie.insert k v trie)
         Dns_trie.empty Dns_resolver_root.reserved_zones
     in
-    let key = Cstruct.of_string "/NzgCgIc4yKa7nZvWmODrHMbU+xpMeGiDLkZJGD/Evo=" in
-    let trie =
-      Dns_trie.insert (Domain_name.of_string_exn ~hostname:false "foo._key-management")
-        (Dns_map.V (Dns_map.Dnskey, [ { Dns_packet.flags = 0 ; key_algorithm = Dns_enum.SHA256 ; key } ]))
-        trie
-    in
+    let keys = [
+      Domain_name.of_string_exn ~hostname:false "foo._key-management",
+      { Dns_packet.flags = 0 ; key_algorithm = Dns_enum.SHA256 ; key = Cstruct.of_string "/NzgCgIc4yKa7nZvWmODrHMbU+xpMeGiDLkZJGD/Evo=" }
+    ] in
     let trie =
       let name = Domain_name.of_string_exn "resolver"
       and ip = Ipaddr.V4.of_string_exn "141.1.1.1"
       in
       let trie =
         Dns_trie.insert Domain_name.root
-          Dns_map.(V (Ns, (300l, Domain_name.Set.singleton name))) trie
+          Dns_map.(B (Ns, (300l, Domain_name.Set.singleton name))) trie
       in
-      Dns_trie.insert name Dns_map.(V (A, (300l, [ ip ]))) trie
+      Dns_trie.insert name Dns_map.(B (A, (300l, [ ip ]))) trie
     in
     (match Dns_trie.check trie with
      | Ok () -> ()
@@ -35,7 +33,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
        Logs.err (fun m -> m "check after update returned %a" Dns_trie.pp_err e)) ;
     let now = M.elapsed_ns mclock in
     let server =
-      UDns_server.Primary.create ~a:[UDns_server.tsig_auth]
+      UDns_server.Primary.create ~keys ~a:[UDns_server.Authentication.tsig_auth]
         ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign ~rng:R.generate
         trie
     in

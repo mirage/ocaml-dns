@@ -6,4 +6,4 @@ val ns_records : Dns_packet.rr list
 
 val a_records : (Domain_name.t * Dns_packet.rr) list
 
-val reserved_zones : (Domain_name.t * Dns_map.v) list
+val reserved_zones : (Domain_name.t * Dns_map.b) list
