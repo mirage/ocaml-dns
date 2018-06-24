@@ -1106,35 +1106,32 @@ module Secondary = struct
     guard (List.for_all (fun u -> in_zone zname (Dns_packet.rr_update_name u)) ups) Dns_enum.NotZone >>= fun () ->
     let keys, actions = Authentication.(handle_update (keys t.auth) ups) in
     let t = { t with auth = (keys, snd t.auth) } in
-    let data, zones, outs =
+    let zones, outs =
       (* this is asymmetric - for transfer key additions, we send SOA requests *)
-      let maybe_rm_zone keyname zones =
-        let zone = Authentication.zone keyname in
-        match Domain_name.Map.find zone zones with
-        | Some (_, _, _, kname) when Domain_name.equal keyname kname ->
-          Domain_name.Map.remove zone zones
-        | _ -> zones
-      in
-      List.fold_left (fun (trie, zones, outs) -> function
+      List.fold_left (fun (zones, outs) -> function
           | `Added_key keyname ->
             begin match Authentication.find_zone_ips keyname with
+              | None -> (zones, outs)
               | Some (zname, (pip, pport), _) ->
-                begin match query_soa t `Tcp now ts zname keyname with
-                  | None ->
-                    Log.err (fun m -> m "couldn't query soa for %a" Domain_name.pp zname) ;
-                    (trie, zones, outs)
-                  | Some (state, out) ->
-                    let zones = Domain_name.Map.add zname (state, pip, pport, keyname) zones in
-                    (trie, zones, (`Tcp, pip, pport, out) :: outs)
-                end
-              | None -> (trie, zones, outs)
+                match query_soa t `Tcp now ts zname keyname with
+                | None ->
+                  Log.err (fun m -> m "couldn't query soa for %a" Domain_name.pp zname) ;
+                  (zones, outs)
+                | Some (state, out) ->
+                  let zones = Domain_name.Map.add zname (state, pip, pport, keyname) zones in
+                  (zones, (`Tcp, pip, pport, out) :: outs)
             end
           | `Removed_key keyname ->
-            let zones = maybe_rm_zone keyname zones in
-            (trie, zones, outs))
-        (t.data, zones, []) actions
+            let zone = Authentication.zone keyname in
+            let zones' = match Domain_name.Map.find zone zones with
+              | Some (_, _, _, kname) when Domain_name.equal keyname kname ->
+                Domain_name.Map.remove zone zones
+              | _ -> zones
+            in
+            (zones', outs))
+        (zones, []) actions
     in
-    Ok (({ t with data }, zones), outs)
+    Ok ((t, zones), outs)
 
   let handle_frame (t, zones) now ts ip proto keyname header v =
     match v, header.Dns_packet.query with
