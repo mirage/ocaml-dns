@@ -25,14 +25,14 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
     in
     let open Dns_trie in
     let open Dns_map in
-    let t = insert domain (B (Soa, (ttl, soa))) Dns_trie.empty in
-    let t = insert domain (B (Ns, (ttl, s ns))) t in
-    let t = insert (m "router") (B (A, (ttl, [ ip "10.0.42.1" ]))) t in
-    let t = insert ns (B (A, (ttl, [ ip "10.0.42.2" ]))) t in
-    let t = insert (m "charrua") (B (A, (ttl, [ ip "10.0.42.3" ]))) t in
-    let t = insert (m "secondary") (B (A, (ttl, [ ip "10.0.42.4" ]))) t in
-    let t = insert (m "resolver") (B (A, (ttl, [ ip "10.0.42.5" ]))) t in
-    let t = insert (m "www") (B (Cname, (ttl, m "router"))) t in
+    let t = insert domain Soa (ttl, soa) Dns_trie.empty in
+    let t = insert domain Ns (ttl, s ns) t in
+    let t = insert (m "router") A (ttl, [ ip "10.0.42.1" ]) t in
+    let t = insert ns A (ttl, [ ip "10.0.42.2" ]) t in
+    let t = insert (m "charrua") A (ttl, [ ip "10.0.42.3" ]) t in
+    let t = insert (m "secondary") A (ttl, [ ip "10.0.42.4" ]) t in
+    let t = insert (m "resolver") A (ttl, [ ip "10.0.42.5" ]) t in
+    let t = insert (m "www") Cname (ttl, m "router") t in
     let ptr_zone = n "42.0.10.in-addr.arpa" in
     let ptr_soa = Dns_packet.({ nameserver = ns ;
                                 hostmaster = n "hostmaster.example" ;
@@ -40,13 +40,13 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
                                 expiry = 1048576l ; minimum = ttl })
     in
     let ptr_name = Domain_name.prepend_exn ptr_zone in
-    let t = insert ptr_zone (B (Soa, (ttl, ptr_soa))) t in
-    let t = insert ptr_zone (B (Ns, (ttl, s ns))) t in
-    let t = insert (ptr_name "1") (B (Ptr, (ttl, m "router"))) t in
-    let t = insert (ptr_name "2") (B (Ptr, (ttl, m "ns"))) t in
-    let t = insert (ptr_name "3") (B (Ptr, (ttl, m "charrua"))) t in
-    let t = insert (ptr_name "4") (B (Ptr, (ttl, m "secondary"))) t in
-    let t = insert (ptr_name "5") (B (Ptr, (ttl, m "resolver"))) t in
+    let t = insert ptr_zone Soa (ttl, ptr_soa) t in
+    let t = insert ptr_zone Ns (ttl, s ns) t in
+    let t = insert (ptr_name "1") Ptr (ttl, m "router") t in
+    let t = insert (ptr_name "2") Ptr (ttl, m "ns") t in
+    let t = insert (ptr_name "3") Ptr (ttl, m "charrua") t in
+    let t = insert (ptr_name "4") Ptr (ttl, m "secondary") t in
+    let t = insert (ptr_name "5") Ptr (ttl, m "resolver") t in
     t
 
   let start _rng pclock mclock _ s _ =

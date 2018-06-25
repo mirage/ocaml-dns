@@ -10,7 +10,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
   let start _r pclock mclock _ s _ =
     let trie =
       List.fold_left
-        (fun trie (k, v) -> Dns_trie.insert k v trie)
+        (fun trie (k, v) -> Dns_trie.insertb k v trie)
         Dns_trie.empty Dns_resolver_root.reserved_zones
     in
     let keys = [
@@ -23,9 +23,9 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
       in
       let trie =
         Dns_trie.insert Domain_name.root
-          Dns_map.(B (Ns, (300l, Domain_name.Set.singleton name))) trie
+          Dns_map.Ns (300l, Domain_name.Set.singleton name) trie
       in
-      Dns_trie.insert name Dns_map.(B (A, (300l, [ ip ]))) trie
+      Dns_trie.insert name Dns_map.A (300l, [ ip ]) trie
     in
     (match Dns_trie.check trie with
      | Ok () -> ()

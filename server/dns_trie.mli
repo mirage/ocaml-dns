@@ -35,9 +35,12 @@ val equal : t -> t -> bool
 val insert_map : Dns_map.t Domain_name.Map.t -> t -> t
 (** [insert_map m t] inserts all elements of the domain name map [m] into [t]. *)
 
-val insert : Domain_name.t -> Dns_map.b -> t -> t
-(** [insert k v t] insert [v] under [k] in [t].  The type is already included in
-    [v].  Existing entries are replaced. *)
+val insert : Domain_name.t -> 'a Dns_map.key -> 'a -> t -> t
+(** [insert n k v t] insert [k, v] under [n] in [t].  Existing entries are replaced. *)
+
+val insertb : Domain_name.t -> Dns_map.b -> t -> t
+(** [insertb k b t] insert [b] under [k] in [t].  The type is already included in
+    [b].  Existing entries are replaced. *)
 
 val remove : Domain_name.t -> Dns_enum.rr_typ -> t -> t
 (** [remove k ty t] removes [k, ty] from [t].  If [ty] is {!Dns_enum.ANY}, all
@@ -74,22 +77,22 @@ val pp_e : [< `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
            | `NotFound of Domain_name.t * int32 * Dns_packet.soa ] Fmt.t
 
 
-val lookup : Domain_name.t -> Dns_enum.rr_typ -> t ->
+val lookupb : Domain_name.t -> Dns_enum.rr_typ -> t ->
   (Dns_map.b * (Domain_name.t * int32 * Domain_name.Set.t),
    [> `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
    | `EmptyNonTerminal of Domain_name.t * int32 * Dns_packet.soa
    | `NotAuthoritative
    | `NotFound of Domain_name.t * int32 * Dns_packet.soa ]) result
-(** [lookup k ty t] finds [k, ty] in [t], which may lead to an error.  The
+(** [lookupb k ty t] finds [k, ty] in [t], which may lead to an error.  The
     authority information is returned as well. *)
 
-val lookup_direct : Domain_name.t -> 'a Dns_map.key -> t ->
+val lookup : Domain_name.t -> 'a Dns_map.key -> t ->
   ('a,
    [> `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
    | `EmptyNonTerminal of Domain_name.t * int32 * Dns_packet.soa
    | `NotAuthoritative
    | `NotFound of Domain_name.t * int32 * Dns_packet.soa ]) result
-(** [lookup_direct k ty t] finds [k, ty] in [t], which may lead to an error. *)
+(** [lookup k ty t] finds [k, ty] in [t], which may lead to an error. *)
 
 val lookup_ignore : Domain_name.t -> Dns_enum.rr_typ -> t ->
   (Dns_map.b, unit) result

@@ -118,8 +118,8 @@ module Authentication = struct
     let zone = zone name in
     let soa, keys =
       match
-        Dns_trie.lookup_direct name Dns_map.Dnskey trie,
-        Dns_trie.lookup_direct zone Dns_map.Soa trie
+        Dns_trie.lookup name Dns_map.Dnskey trie,
+        Dns_trie.lookup zone Dns_map.Soa trie
       with
       | Error _, Ok (ttl, soa) ->
         let soa' = { soa with Dns_packet.serial = Int32.succ soa.Dns_packet.serial } in
@@ -130,8 +130,8 @@ module Authentication = struct
         Log.err (fun m -> m "got unexpected Dnskey" ) ;
         assert false
     in
-    let trie' = Dns_trie.insert zone Dns_map.(B (Soa, soa)) trie in
-    Dns_trie.insert name Dns_map.(B (Dnskey, keys)) trie'
+    let trie' = Dns_trie.insert zone Dns_map.Soa soa trie in
+    Dns_trie.insert name Dns_map.Dnskey keys trie'
 
   let of_keys keys =
     List.fold_left (fun trie (name, key) -> add_key trie name key)
@@ -149,7 +149,7 @@ module Authentication = struct
       assert false
 
   let find_key t name =
-    match Dns_trie.lookup_direct name Dns_map.Dnskey (fst t) with
+    match Dns_trie.lookup name Dns_map.Dnskey (fst t) with
     | Ok [ key ] -> Some key
     | _ -> None
 
@@ -233,7 +233,7 @@ let find_glue trie typ name names =
     | _ -> empty, empty
   in
   let find_rr typ name =
-    match Dns_trie.lookup name typ trie with
+    match Dns_trie.lookupb name typ trie with
     | Ok (v, _) -> Dns_map.to_rr name v
     | _ -> []
   in
@@ -262,7 +262,7 @@ let lookup trie hdr q =
     in
     Ok (hdr, `Query { question = [ q ] ; answer = an ; authority ; additional })
   in
-  match Dns_trie.lookup q.q_name q.q_type trie with
+  match Dns_trie.lookupb q.q_name q.q_type trie with
   | Ok (v, (name, ttl, ns)) ->
     let an = Dns_map.to_rr q.q_name v
     and au = to_ns_rrs name ttl ns
@@ -390,25 +390,25 @@ let in_zone zone name = Domain_name.sub ~subdomain:name ~domain:zone
 let handle_rr_prereq trie zone acc = function
   | Dns_packet.Name_inuse name ->
     guard (in_zone zone name) Dns_enum.NotZone >>= fun () ->
-    begin match Dns_trie.lookup name Dns_enum.A trie with
+    begin match Dns_trie.lookupb name Dns_enum.A trie with
       | Ok _ | Error (`EmptyNonTerminal _) -> Ok acc
       | _ -> Error Dns_enum.NXDomain
     end
   | Dns_packet.Exists (name, typ) ->
     guard (in_zone zone name) Dns_enum.NotZone >>= fun () ->
-    begin match Dns_trie.lookup name typ trie with
+    begin match Dns_trie.lookupb name typ trie with
       | Ok _ -> Ok acc
       | _ -> Error Dns_enum.NXRRSet
     end
   | Dns_packet.Not_name_inuse name ->
     guard (in_zone zone name) Dns_enum.NotZone >>= fun () ->
-    begin match Dns_trie.lookup name Dns_enum.A trie with
+    begin match Dns_trie.lookupb name Dns_enum.A trie with
       | Error (`NotFound _) -> Ok acc
       | _ -> Error Dns_enum.YXDomain
     end
   | Dns_packet.Not_exists (name, typ) ->
     guard (in_zone zone name) Dns_enum.NotZone >>= fun () ->
-    begin match Dns_trie.lookup name typ trie with
+    begin match Dns_trie.lookupb name typ trie with
       | Error (`EmptyNonTerminal _ | `NotFound _) -> Ok acc
       | _ -> Error Dns_enum.YXRRSet
     end
@@ -422,7 +422,7 @@ let check_exists trie rrs =
       r >>= fun () ->
       Dns_map.fold (fun v r ->
           r >>= fun () ->
-          match Dns_trie.lookup name (Dns_map.to_rr_typ v) trie with
+          match Dns_trie.lookupb name (Dns_map.to_rr_typ v) trie with
           | Ok (v', _) when Dns_map.equal_b v v' -> Ok ()
           | _ -> Error Dns_enum.NXRRSet)
         map r)
@@ -452,7 +452,7 @@ let handle_rr_update trie = function
                       Dns_packet.pp_rdata rdata) ;
         trie
       | _ ->
-        begin match Dns_trie.lookup name typ trie with
+        begin match Dns_trie.lookupb name typ trie with
           | Ok (Dns_map.B (Dns_map.Cname, _), _) when Dns_enum.CNAME = typ ->
             (* we could be picky and require rdata.name == alias *)
             Dns_trie.remove name typ trie
@@ -463,7 +463,7 @@ let handle_rr_update trie = function
           | Ok (v, _) ->
             begin match Dns_map.remove_rdata v rdata with
               | None -> Dns_trie.remove name typ trie
-              | Some v -> Dns_trie.insert name v trie
+              | Some v -> Dns_trie.insertb name v trie
             end
           | Error e ->
             Log.warn (fun m -> m "error %a while looking up %a %a %a for removal"
@@ -484,7 +484,7 @@ let handle_rr_update trie = function
           Log.warn (fun m -> m "ignoring request to add %a" Dns_packet.pp_rr rr) ;
           trie
         | _ ->
-          match Dns_trie.lookup rr.Dns_packet.name typ trie with
+          match Dns_trie.lookupb rr.Dns_packet.name typ trie with
           | Ok (Dns_map.B (Dns_map.Cname, (_, alias)), _) ->
             Log.warn (fun m -> m "found a CNAME %a, won't add %a"
                           Domain_name.pp alias Dns_packet.pp_rr rr) ;
@@ -496,7 +496,7 @@ let handle_rr_update trie = function
                               Dns_packet.pp_rr rr Dns_map.pp_b v) ;
                 trie
               | Some v ->
-                Dns_trie.insert rr.Dns_packet.name v trie
+                Dns_trie.insertb rr.Dns_packet.name v trie
             end
           | Error _ ->
             (* here we allow arbitrary, even out-of-zone updates.  this is
@@ -507,7 +507,7 @@ let handle_rr_update trie = function
               | None ->
                 Log.warn (fun m -> m "couldn't convert rdata %a" Dns_packet.pp_rr rr) ;
                 trie
-              | Some v -> Dns_trie.insert rr.Dns_packet.name v trie
+              | Some v -> Dns_trie.insertb rr.Dns_packet.name v trie
             end
     end
 
@@ -515,13 +515,13 @@ let notify t now zone soa =
   (* we use both the NS records of the zone, and the IP addresses of secondary
      servers which have transfer keys for the zone *)
   let ips =
-    match Dns_trie.lookup zone Dns_enum.NS t.data with
-    | Ok (Dns_map.B (Dns_map.Ns, (_, ns)), _) ->
+    match Dns_trie.lookup zone Dns_map.Ns t.data with
+    | Ok (_, ns) ->
       let secondaries = Domain_name.Set.remove soa.Dns_packet.nameserver ns in
       (* TODO AAAA records *)
       Domain_name.Set.fold (fun ns acc ->
-          let ips = match Dns_trie.lookup ns Dns_enum.A t.data with
-            | Ok (Dns_map.B (Dns_map.A, (_, ips)), _) ->
+          let ips = match Dns_trie.lookup ns Dns_map.A t.data with
+            | Ok (_, ips) ->
               List.fold_left (fun acc ip -> IPM.add ip 53 acc) IPM.empty ips
             | _ ->
               Log.err (fun m -> m "lookup for A %a returned nothing as well"
@@ -574,12 +574,12 @@ let update_data trie zone u =
    | Error e ->
      Log.err (fun m -> m "check after update returned %a" Dns_trie.pp_err e) ;
      Error Dns_enum.FormErr) >>= fun () ->
-  match Dns_trie.lookup zone Dns_enum.SOA trie, Dns_trie.lookup zone Dns_enum.SOA trie' with
-  | Ok (Dns_map.B (Dns_map.Soa, (_, oldsoa)), _), Ok (Dns_map.B (Dns_map.Soa, (_, soa)), _) when oldsoa.Dns_packet.serial < soa.Dns_packet.serial ->
+  match Dns_trie.lookup zone Dns_map.Soa trie, Dns_trie.lookup zone Dns_map.Soa trie' with
+  | Ok (_, oldsoa), Ok (_, soa) when oldsoa.Dns_packet.serial < soa.Dns_packet.serial ->
     Ok (trie', Some soa)
-  | _, Ok (Dns_map.B (Dns_map.Soa, (ttl, soa)), _) ->
+  | _, Ok (ttl, soa) ->
     let soa = { soa with Dns_packet.serial = Int32.succ soa.Dns_packet.serial } in
-    let trie'' = Dns_trie.insert zone (Dns_map.B (Dns_map.Soa, (ttl, soa))) trie' in
+    let trie'' = Dns_trie.insert zone Dns_map.Soa (ttl, soa) trie' in
     Ok (trie'', Some soa)
   | _, _ -> Ok (trie', None)
 
@@ -884,7 +884,7 @@ module Secondary = struct
             ((t, Domain_name.Map.add zone (st, ip, port, name) zones), out)
           in
 
-          match Dns_trie.lookup_direct zone Dns_map.Soa t.data, st with
+          match Dns_trie.lookup zone Dns_map.Soa t.data, st with
           | Ok (_, soa), Transferred ts ->
             (* TODO: integer overflows (Int64.add) *)
             let r = Duration.of_sec (Int32.to_int soa.Dns_packet.refresh) in
@@ -1039,7 +1039,7 @@ module Secondary = struct
               Log.debug (fun m -> m "received SOA after %d retries" retry) ;
               (* request AXFR now in case of serial is higher! *)
               begin match
-                  Dns_trie.lookup zone Dns_enum.SOA t.data,
+                  Dns_trie.lookup zone Dns_map.Soa t.data,
                   List.find
                     (fun rr -> match rr.Dns_packet.rdata with Dns_packet.SOA _ -> true | _ -> false)
                     query.Dns_packet.answer
@@ -1048,7 +1048,7 @@ module Secondary = struct
                   Log.err (fun m -> m "didn't get a SOA answer for %a from %a"
                               Domain_name.pp q.Dns_packet.q_name Ipaddr.V4.pp_hum ip) ;
                   Error Dns_enum.FormErr
-                | Ok (Dns_map.B (Dns_map.Soa, (_, cached_soa)), _), fresh_soa ->
+                | Ok (_, cached_soa), fresh_soa ->
                   (* TODO: > with wraparound in mind *)
                   let fresh = match fresh_soa.Dns_packet.rdata with Dns_packet.SOA soa -> soa | _ -> assert false in
                   if fresh.Dns_packet.serial > cached_soa.Dns_packet.serial then
@@ -1077,10 +1077,6 @@ module Secondary = struct
                       let zones = Domain_name.Map.add zone (st, ip, port, name) zones in
                       Ok (t, zones, [ (`Tcp, ip, port, buf) ])
                   end
-                | Ok (v, _), _ ->
-                  Log.warn (fun m -> m "expected SOA for %a, but found %a"
-                               Domain_name.pp zone Dns_map.pp_b v) ;
-                  Ok (t, zones, [])
               end
             | _ ->
               Log.warn (fun m -> m "ignoring %a (%a) unmatched state"

@@ -102,11 +102,11 @@ let lookup_aux name t =
   in
   go 0 None t
 
-let lookup name ty t =
+let lookupb name ty t =
   lookup_aux name t >>= fun (zone, _sub, map) ->
   lookup_res name zone ty map
 
-let lookup_direct name key t =
+let lookup name key t =
   match lookup_aux name t with
   | Error e -> Error e
   | Ok (_zone, _sub, map) ->
@@ -207,10 +207,10 @@ type err = [ `Missing_soa of Domain_name.t
 (* TODO: check for no cname loops? and dangling cname!? *)
 let check trie =
   let has_address name =
-    match lookup name Dns_enum.A trie with
+    match lookup name Dns_map.A trie with
     | Ok _ -> true
     | Error (`Delegation _) -> true
-    | _ -> match lookup name Dns_enum.AAAA trie with
+    | _ -> match lookup name Dns_map.Aaaa trie with
       | Ok _ -> true
       | _ -> false
   in
@@ -318,12 +318,12 @@ let check trie =
   let (N (sub, map)) = trie in
   check_sub [] `None sub map
 
-let insert name v t =
+let insertb name b t =
   let k = Domain_name.to_array name in
   let l = Array.length k in
   let rec go idx (N (sub, map)) =
     if idx = l then
-      N (sub, Dns_map.addb v map)
+      N (sub, Dns_map.addb b map)
     else
       let lbl = Array.get k idx in
       let node = match M.find lbl sub with
@@ -335,9 +335,11 @@ let insert name v t =
   in
   go 0 t
 
+let insert name k v t = insertb name (Dns_map.B (k, v)) t
+
 let insert_map m t =
   Domain_name.Map.fold (fun name map trie ->
-      Dns_map.fold (fun v trie -> insert name v trie) map trie)
+      Dns_map.fold (fun v trie -> insertb name v trie) map trie)
     m t
 
 let remove_aux k t a =

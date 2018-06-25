@@ -10,7 +10,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
   let start _r pclock mclock _ s _ =
     let trie =
       List.fold_left
-        (fun trie (k, v) -> Dns_trie.insert k v trie)
+        (fun trie (k, v) -> Dns_trie.insertb k v trie)
         Dns_trie.empty Dns_resolver_root.reserved_zones
     in
     let keys = [
