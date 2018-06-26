@@ -38,6 +38,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
             Logs.err (fun m -> m "updated zone %a, but failed text %s" Domain_name.pp zone str) ;
             Lwt.return_unit
           | Ok str ->
+            (* store it in git *)
             Logs.info (fun m -> m "updated zone %a\n%s" Domain_name.pp zone str) ;
             let k = [ Domain_name.to_string zone ] in
             Store.find branch k >>= (function
@@ -46,22 +47,29 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
                   Lwt.return_unit
                 | _ ->
                   Store.set branch ~info:(info "zone transferred") k str) >|= fun () ->
+            (* try to load it again... just in case ;) *)
             match Zonefile.load [] str with
             | Error msg ->
-              Logs.err (fun m -> m "zonefile: %s" msg)
+              Logs.err (fun m -> m "error while loading zonefile: %s" msg)
             | Ok rrs ->
+              (* now insert it into a Dns_trie *)
               let trie = Dns_trie.insert_map (Dns_map.of_rrs rrs) Dns_trie.empty in
+              (* check that *)
               (match Dns_trie.check trie with
                | Ok () -> ()
                | Error e ->
                  Logs.err (fun m -> m "error %a during check()" Dns_trie.pp_err e)) ;
+              (* and generate a zonefile from the trie *)
               let s = UDns_server.Secondary.with_data t trie in
               match UDns_server.text zone (UDns_server.Secondary.server s) with
               | Error str ->
-                Logs.err (fun m -> m "failed to produce zone %a second time %s" Domain_name.pp zone str)
+                Logs.err (fun m -> m "failed to produce zone %a second time %s"
+                             Domain_name.pp zone str)
               | Ok str' ->
+                (* and complain loudly if not equal *)
+                let equal = String.equal str str' in
                 Logs.info (fun m -> m "generated zone (equal %b) %a:%s"
-                              (String.equal str str') Domain_name.pp zone str'))
+                              equal Domain_name.pp zone (if equal then "" else str')))
         zones
     in
     D.secondary ~on_update s pclock mclock t ;
