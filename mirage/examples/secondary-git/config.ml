@@ -21,6 +21,10 @@ let repo =
   let doc = Key.Arg.info ~doc:"git repository" ["repo"] in
   Key.(create "repo" Arg.(required string doc))
 
+let port =
+  let doc = Key.Arg.info ~doc:"listen port" ["port"] in
+  Key.(create "port" Arg.(opt int 53 doc))
+
 let dns_handler =
   let packages = [
     package "logs" ;
@@ -28,7 +32,7 @@ let dns_handler =
     package "nocrypto" ;
     package "irmin-unix" ;
   ]
-  and keys = Key.([ abstract keys ; abstract repo ])
+  and keys = Key.([ abstract keys ; abstract repo ; abstract port ])
   in
   foreign
     ~deps:[abstract nocrypto]

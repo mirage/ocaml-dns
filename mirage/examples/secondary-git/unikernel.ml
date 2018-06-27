@@ -72,6 +72,7 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
                               equal Domain_name.pp zone (if equal then "" else str')))
         zones
     in
-    D.secondary ~on_update s pclock mclock t ;
+    let port = Key_gen.port () in
+    D.secondary ~on_update ~port s pclock mclock t ;
     S.listen s
 end
