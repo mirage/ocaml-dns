@@ -5,7 +5,6 @@ sudo: required
 env:
   global:
     - PACKAGE="udns"
-    - PINS="domain-name:https://github.com/hannesm/domain-name.git"
     - POST_INSTALL_HOOK="./.travis-test-mirage.sh"
   matrix:
     - OCAML_VERSION=4.04
