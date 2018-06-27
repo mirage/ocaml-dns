@@ -37,4 +37,4 @@ let dns_handler =
     "Unikernel.Main" (random @-> pclock @-> mclock @-> time @-> stackv4 @-> job)
 
 let () =
-  register "secondary" [dns_handler $ default_random $ default_posix_clock $ default_monotonic_clock $ default_time $ net ]
+  register "secondary-git" [dns_handler $ default_random $ default_posix_clock $ default_monotonic_clock $ default_time $ net ]
