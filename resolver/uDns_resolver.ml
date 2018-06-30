@@ -258,7 +258,8 @@ let handle_primary t now ts proto sender header v opt tsig tsig_off buf =
         `No
   in
   match UDns_server.handle_tsig (UDns_server.Primary.server t) now header v tsig tsig_off buf with
-  | Error data -> `Reply (t, data)
+  | Error (Some data) -> `Reply (t, data)
+  | Error None -> `None
   | Ok None ->
     begin match handle_inner None with
       | `No -> `No
@@ -507,6 +508,7 @@ let handle t now ts query proto sender sport buf =
           { t with primary }, [ (proto, sender, sport, pkt) ], []
         | `Delegation v' ->
           handle_delegation t ts proto sender sport header v opt v'
+        | `None -> t, [], []
         | `No ->
           match resolve t ts proto sender sport header v opt with
           | Ok a -> a

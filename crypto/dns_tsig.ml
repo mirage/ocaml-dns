@@ -92,26 +92,26 @@ let verify ?mac now v header name ~key tsig tbs =
   | Ok x -> Ok x
   | Error e ->
     let header = { header with Dns_packet.query = not header.Dns_packet.query } in
-    let or_empty = function None -> Cstruct.create 0 | Some x -> x in
+    let or_err f err = match f err with None -> Some err | Some x -> Some x in
     match Dns_packet.error header v Dns_enum.NotAuth, e with
-    | None, _ -> Error (Cstruct.create 0)
+    | None, _ -> Error None
     | Some (err, max_size), `BadKey (name, tsig) ->
       let tsig = Dns_packet.with_error (Dns_packet.with_mac tsig (Cstruct.create 0)) Dns_enum.BadKey in
-      Error (or_empty (add_tsig ~max_size name tsig err))
+      Error (or_err (add_tsig ~max_size name tsig) err)
     | Some (err, max_size), `InvalidMac (name, tsig) ->
       let tsig = Dns_packet.with_error (Dns_packet.with_mac tsig (Cstruct.create 0)) Dns_enum.BadVersOrSig in
-      Error (or_empty (add_tsig ~max_size name tsig err))
+      Error (or_err (add_tsig ~max_size name tsig) err)
     | Some (err, max_size), `BadTruncation (name, tsig) ->
       let tsig = Dns_packet.with_error (Dns_packet.with_mac tsig (Cstruct.create 0)) Dns_enum.BadTrunc in
-      Error (or_empty (add_tsig ~max_size name tsig err))
+      Error (or_err (add_tsig ~max_size name tsig) err)
     | Some (err, max_size), `BadTimestamp (name, tsig, key) ->
       let tsig = Dns_packet.with_error tsig Dns_enum.BadTime in
       match Dns_packet.with_other tsig (Some now) with
-      | None -> Error err
+      | None -> Error (Some err)
       | Some tsig ->
         match sign ~max_size ~mac:tsig.Dns_packet.mac name tsig ~key err with
-        | None -> Error err
-        | Some (buf, _) -> Error buf
+        | None -> Error (Some err)
+        | Some (buf, _) -> Error (Some buf)
 
 let encode_and_sign ?(proto = `Udp) header v now key keyname =
   let b, _ = Dns_packet.encode proto header v in

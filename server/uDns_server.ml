@@ -739,7 +739,7 @@ module Primary = struct
         | Error rcode -> ((t, ns), err header v rcode, [])
       in
       match handle_tsig t now header v tsig tsig_off buf with
-      | Error data -> ((t, ns), Some data, [])
+      | Error data -> ((t, ns), data, [])
       | Ok None ->
         begin match handle_inner None with
           | t, None, out -> t, None, out
@@ -1192,7 +1192,7 @@ module Secondary = struct
       in
       let mac = find_mac zones header v in
       match handle_tsig ?mac t now header v tsig tsig_off buf with
-      | Error data -> ((t, zones), Some data, [])
+      | Error data -> ((t, zones), data, [])
       | Ok None ->
         begin match handle_inner None with
           | (t, None, out) -> (t, None, out)

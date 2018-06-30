@@ -282,7 +282,7 @@ val pp : t Fmt.t
 
 type tsig_verify = ?mac:Cstruct.t -> Ptime.t -> v -> header ->
   Domain_name.t -> key:dnskey option -> tsig -> Cstruct.t ->
-  (tsig * Cstruct.t * dnskey, Cstruct.t) result
+  (tsig * Cstruct.t * dnskey, Cstruct.t option) result
 
 type tsig_sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> tsig ->
   key:dnskey -> Cstruct.t -> (Cstruct.t * Cstruct.t) option

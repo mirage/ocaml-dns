@@ -38,7 +38,7 @@ val notify : t -> int64 -> Domain_name.t ->
 val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Dns_packet.header ->
   Dns_packet.v -> (Domain_name.t * Dns_packet.tsig) option -> int option -> Cstruct.t ->
   ((Domain_name.t * Dns_packet.tsig * Cstruct.t * Dns_packet.dnskey) option,
-   Cstruct.t) result
+   Cstruct.t option) result
 
 module Primary : sig
   type s
