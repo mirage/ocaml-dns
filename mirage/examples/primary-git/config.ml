@@ -21,7 +21,7 @@ let remote_k =
 let dns_handler =
   let packages = [
     package "logs" ;
-    package ~sublibs:["server" ; "crypto" ; "zonefile" ; "mirage" ] "udns" ;
+    package ~sublibs:[ "server" ; "zonefile" ; "mirage.server" ] "udns" ;
     package "nocrypto" ;
     package ~min:"1.0.0" "irmin";
     package "irmin-mirage";

@@ -5,7 +5,7 @@ open Lwt.Infix
 open Mirage_types_lwt
 
 module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = struct
-  module D = Dns_mirage.Make(R)(P)(M)(T)(S)
+  module D = Dns_mirage_server.Make(P)(M)(T)(S)
   module Store = Irmin_unix.Git.FS.KV(* (Irmin_unix.Git.G) *)(Irmin.Contents.String)
 
   let info = Irmin_unix.info ~author:"udns-git"

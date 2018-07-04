@@ -14,7 +14,7 @@ depends: [
   "topkg" {build}
   "ppx_cstruct" {build}
   "rresult" "astring" "fmt" "logs" "ptime" "cmdliner" "bos" "fpath"
-  "x509"
+  "x509" "tls"
   "nocrypto"
   "lru"
   "randomconv" "duration" "domain-name"
@@ -29,6 +29,10 @@ depends: [
   "mtime" {test}
   "hashcons" {test}
   "re" {test}
+]
+
+conflicts: [
+  "tcp" {< "3.4.2"}
 ]
 
 build: [

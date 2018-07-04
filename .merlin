@@ -11,6 +11,6 @@ PKG mtime mtime.clock.os
 PKG duration lru logs gmap domain-name
 PKG ptime nocrypto randomconv
 
-PKG lwt mirage-stack-lwt mirage-types-lwt
+PKG lwt mirage-stack-lwt mirage-types-lwt tls tls.mirage cohttp-mirage irmin-mirage
 
 PKG cmdliner ptime.clock.os bos x509 irmin-unix

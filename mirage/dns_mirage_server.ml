@@ -1,0 +1,184 @@
+(* (c) 2018 Hannes Mehnert, all rights reserved *)
+
+open Mirage_types_lwt
+
+open Lwt.Infix
+
+let src = Logs.Src.create "dns_mirage_server" ~doc:"effectful DNS server"
+module Log = (val Logs.src_log src : Logs.LOG)
+
+module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
+
+  module Dns = Dns_mirage.Make(S)
+
+  module U = S.UDPV4
+  module T = S.TCPV4
+
+  let primary stack pclock mclock ?(timer = 2) ?(port = 53) t =
+    let state = ref t in
+    let send_notify (ip, dport, data) = Dns.send_udp stack port ip dport data in
+    let udp_cb ~src ~dst:_ ~src_port buf =
+      Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
+      let now = Ptime.v (P.now_d_ps pclock) in
+      let elapsed = M.elapsed_ns mclock in
+      let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Udp src buf in
+      state := t ;
+      (match answer with
+       | None -> Log.warn (fun m -> m "empty answer") ; Lwt.return_unit
+       | Some answer -> Dns.send_udp stack port src src_port answer) >>= fun () ->
+      Lwt_list.iter_p send_notify notify
+    in
+    S.listen_udpv4 stack ~port udp_cb ;
+    Log.info (fun m -> m "DNS server listening on UDP port %d" port) ;
+    let tcp_cb flow =
+      let dst_ip, dst_port = T.dst flow in
+      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
+      let f = Dns.of_flow flow in
+      let rec loop () =
+        Dns.read_tcp f >>= function
+        | Error () -> Lwt.return_unit
+        | Ok data ->
+          let now = Ptime.v (P.now_d_ps pclock) in
+          let elapsed = M.elapsed_ns mclock in
+          let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Tcp dst_ip data in
+          state := t ;
+          Lwt_list.iter_p send_notify notify >>= fun () ->
+          match answer with
+          | None -> Log.warn (fun m -> m "empty answer") ; loop ()
+          | Some answer ->
+            Dns.send_tcp flow answer >>= function
+            | Ok () -> loop ()
+            | Error () -> Lwt.return_unit
+      in
+      loop ()
+    in
+    S.listen_tcpv4 stack ~port tcp_cb ;
+    Log.info (fun m -> m "DNS server listening on TCP port %d" port) ;
+    let rec time () =
+      let t, notifies = UDns_server.Primary.timer !state (M.elapsed_ns mclock) in
+      state := t ;
+      Lwt_list.iter_p send_notify notifies >>= fun () ->
+      TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
+      time ()
+    in
+    Lwt.async time
+
+  let secondary ?(on_update = fun _trie -> Lwt.return_unit)  stack pclock mclock ?(timer = 5) ?(port = 53) t =
+    let state = ref t in
+    let tcp_out = ref Dns.IM.empty in
+
+    let maybe_update_state t t' =
+      let trie server = UDns_server.((Secondary.server server).data) in
+      state := t ;
+      if Dns_trie.equal (trie t) (trie t') then
+        Lwt.return_unit
+      else
+        on_update t
+    in
+
+    let rec read_and_handle ip f =
+      Dns.read_tcp f >>= function
+      | Error () ->
+        Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
+        tcp_out := Dns.IM.remove ip !tcp_out ;
+        T.close (Dns.flow f)
+      | Ok data ->
+        let now = Ptime.v (P.now_d_ps pclock) in
+        let elapsed = M.elapsed_ns mclock in
+        let t, answer, out =
+          UDns_server.Secondary.handle !state now elapsed `Tcp ip data
+        in
+        maybe_update_state t !state >>= fun () ->
+        Lwt_list.iter_s request out >>= fun () ->
+        match answer with
+        | None -> read_and_handle ip f
+        | Some x ->
+          Dns.send_tcp (Dns.flow f) x >>= function
+          | Error () ->
+            Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
+            tcp_out := Dns.IM.remove ip !tcp_out ;
+            T.close (Dns.flow f)
+          | Ok () -> read_and_handle ip f
+    and request (proto, ip, port, data) =
+      match Dns.IM.find ip !tcp_out with
+      | None ->
+        begin
+          Logs.info (fun m -> m "creating connectiong to %a:%d" Ipaddr.V4.pp_hum ip port) ;
+          T.create_connection (S.tcpv4 stack) (ip, port) >>= function
+          | Error e ->
+            Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
+                        T.pp_error e Ipaddr.V4.pp_hum ip port) ;
+            Lwt.return_unit
+          | Ok flow ->
+            Dns.send_tcp flow data >>= function
+            | Error () -> T.close flow
+            | Ok () ->
+              tcp_out := Dns.IM.add ip flow !tcp_out ;
+              Lwt.async (fun () -> read_and_handle ip (Dns.of_flow flow)) ;
+              Lwt.return_unit
+        end
+      | Some flow ->
+        Dns.send_tcp flow data >>= function
+        | Ok () -> Lwt.return_unit
+        | Error () ->
+          Log.warn (fun m -> m "closing tcp flow to %a:%d, retrying request"
+                       Ipaddr.V4.pp_hum ip port) ;
+          tcp_out := Dns.IM.remove ip !tcp_out ;
+          T.close flow >>= fun () ->
+          request (proto, ip, port, data)
+    in
+
+    let udp_cb ~src ~dst:_ ~src_port buf =
+      Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
+      let now = Ptime.v (P.now_d_ps pclock) in
+      let elapsed = M.elapsed_ns mclock in
+      let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Udp src buf in
+      maybe_update_state t !state >>= fun () ->
+      List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
+      match answer with
+      | None -> Lwt.return_unit
+      | Some out -> Dns.send_udp stack port src src_port out
+    in
+    S.listen_udpv4 stack ~port udp_cb ;
+    Log.info (fun m -> m "secondary DNS listening on UDP port %d" port) ;
+
+    let tcp_cb flow =
+      let dst_ip, dst_port = T.dst flow in
+      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
+      let f = Dns.of_flow flow in
+      let rec loop () =
+        Dns.read_tcp f >>= function
+        | Error () -> Lwt.return_unit
+        | Ok data ->
+          let now = Ptime.v (P.now_d_ps pclock) in
+          let elapsed = M.elapsed_ns mclock in
+          let t, answer, out =
+            UDns_server.Secondary.handle !state now elapsed `Tcp dst_ip data
+          in
+          maybe_update_state t !state >>= fun () ->
+          List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
+          match answer with
+          | None ->
+            Log.warn (fun m -> m "no TCP output") ;
+            loop ()
+          | Some data ->
+            Dns.send_tcp flow data >>= function
+            | Ok () -> loop ()
+            | Error () -> Lwt.return_unit
+      in
+      loop ()
+    in
+    S.listen_tcpv4 stack ~port tcp_cb ;
+    Log.info (fun m -> m "secondary DNS listening on TCP port %d" port) ;
+
+    let rec time () =
+      let now = Ptime.v (P.now_d_ps pclock) in
+      let elapsed = M.elapsed_ns mclock in
+      let t, out = UDns_server.Secondary.timer !state now elapsed in
+      maybe_update_state t !state >>= fun () ->
+      List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
+      TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
+      time ()
+    in
+    Lwt.async time
+end

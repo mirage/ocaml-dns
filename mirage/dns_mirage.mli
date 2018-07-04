@@ -2,7 +2,12 @@
 
 open Mirage_types_lwt
 
-module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) : sig
+module Make (S : STACKV4) : sig
+
+  module IM : sig
+    include Map.S with type key = Ipaddr.V4.t
+    val find : Ipaddr.V4.t -> 'a t -> 'a option
+  end
 
   type f
 
@@ -14,13 +19,5 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) : si
 
   val send_tcp : S.TCPV4.flow -> Cstruct.t -> (unit, unit) result Lwt.t
 
-  val primary : S.t -> P.t -> M.t -> ?timer:int -> ?port:int -> UDns_server.Primary.s -> unit
-
-  val secondary :
-    ?on_update:(UDns_server.Secondary.s -> unit Lwt.t) ->
-    S.t -> P.t -> M.t -> ?timer:int -> ?port:int -> UDns_server.Secondary.s ->
-    unit
-
-  val resolver : S.t -> P.t -> M.t -> ?root:bool -> ?timer:int -> ?port:int -> UDns_resolver.t -> unit
-
+  val send_udp : S.t -> int -> Ipaddr.V4.t -> int -> Cstruct.t -> unit Lwt.t
 end

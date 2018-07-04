@@ -14,6 +14,10 @@ let dns_server =
   let doc = Key.Arg.info ~doc:"dns server IP" ["dns-server"] in
   Key.(create "dns-server" Arg.(required ipv4_address doc))
 
+let dns_port =
+  let doc = Key.Arg.info ~doc:"dns server port" ["dns-port"] in
+  Key.(create "dns-port" Arg.(opt int 53 doc))
+
 let hostname =
   let doc = Key.Arg.info ~doc:"hostname" ["hostname"] in
   Key.(create "hostname" Arg.(required string doc))
@@ -23,7 +27,7 @@ let key_seed =
   Key.(create "key-seed" Arg.(required string doc))
 
 let keys = Key.[
-    abstract port ; abstract dns_key ; abstract dns_server ;
+    abstract port ; abstract dns_key ; abstract dns_server ; abstract dns_port ;
     abstract hostname ; abstract key_seed
   ]
 
@@ -32,7 +36,7 @@ let packages = [
   package "duration" ;
   package "randomconv" ;
   package "logs" ;
-  package ~sublibs:[ "crypto" ; "mirage" ] "udns" ;
+  package ~sublibs:[ "mirage.certify" ] "udns" ;
   package ~sublibs:[ "mirage" ] "tls" ;
 ]
 

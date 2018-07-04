@@ -6,7 +6,7 @@ open Mirage_types_lwt
 
 module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = struct
 
-  module D = Dns_mirage.Make(R)(P)(M)(T)(S)
+  module D = Dns_mirage_server.Make(P)(M)(T)(S)
 
   let data =
     let n = Domain_name.of_string_exn

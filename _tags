@@ -21,6 +21,7 @@ true : package(rresult cstruct astring fmt ipaddr logs ptime hex gmap domain-nam
 "server" : include
 
 <mirage/*> : package(mirage-types-lwt lwt duration randomconv)
+<mirage/dns_mirage_certify.{ml,mli}> : package(tls)
 
 <test/*> : package(alcotest randomconv duration)
 <test/tsig.{ml,native,byte}> : package(nocrypto)

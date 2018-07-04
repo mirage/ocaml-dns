@@ -5,7 +5,7 @@ open Lwt.Infix
 open Mirage_types_lwt
 
 module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = struct
-  module D = Dns_mirage.Make(R)(P)(M)(T)(S)
+  module D = Dns_mirage_server.Make(P)(M)(T)(S)
 
   let start _rng pclock mclock _ s _ =
     let keys = List.fold_left (fun acc key ->
