@@ -1556,7 +1556,7 @@ let encode ?max_size ?edns protocol hdr v =
           | `Update u -> u.addition
         in
         encode_ad hdr ?edns offs buf off ad, false
-      with _ -> (* set truncated *)
+      with Invalid_argument _ -> (* set truncated *)
         (* if we failed to store data into buf, set truncation bit! *)
         Cstruct.set_uint8 buf 2 (0x02 lor (Cstruct.get_uint8 buf 2)) ;
         Cstruct.len buf, true
@@ -1586,13 +1586,21 @@ let error header v rcode =
     let errbuf = Cstruct.create max_reply_udp in
     let query = { question ; answer = [] ; authority = [] ; additional = [] } in
     encode_header errbuf header ;
-    let _, off = encode_query errbuf query in
-    let extended_rcode = (Dns_enum.rcode_to_int rcode) lsr 4 in
-    let off =
+    let encode query =
+      let _, off = encode_query errbuf query in
+      let extended_rcode = (Dns_enum.rcode_to_int rcode) lsr 4 in
       if extended_rcode > 0 then
         encode_ad header ~edns:(opt ()) Domain_name.Map.empty errbuf off []
       else
         off
+    in
+    let off = try encode query with
+      | Invalid_argument _ ->
+        (* the question section could be larger than 450 byte, a single question
+           can't (domain-name: 256 byte, type: 2 byte, class: 2 byte) *)
+        let question = match question with [] -> [] | q::_ -> [ q ] in
+        let query = { question ; answer = [] ; authority = [] ; additional = [] } in
+        encode query
     in
     Some (Cstruct.sub errbuf 0 off, max_reply_udp)
   else
