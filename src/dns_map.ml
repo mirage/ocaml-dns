@@ -79,7 +79,7 @@ module K = struct
 
 
   let text : type a. Domain_name.t -> a t -> a -> string = fun n t v ->
-    let name n = Domain_name.to_string n ^ "." in
+    let name n = Domain_name.to_string ~trailing:true n in
     let str_name = name n in
     let strs =
       match t, v with
