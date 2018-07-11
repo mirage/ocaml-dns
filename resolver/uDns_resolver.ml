@@ -149,16 +149,17 @@ let stats t =
                 pp_stats !s
                 Dns_resolver_cache.pp_stats (Dns_resolver_cache.stats ())
                 (Dns_resolver_cache.items t.cache) (Dns_resolver_cache.capacity t.cache)) ;
-  let names = QM.fold (fun (t, nam) _e acc ->
-      (Printf.sprintf "%s (%s)" (Domain_name.to_string nam) (Dns_enum.rr_typ_to_string t)):: acc)
-      t.transit []
-  in
-  Logs.info (fun m -> m "%d queries in transit %s" (QM.cardinal t.transit) (String.concat "; " names)) ;
-  let qs = QM.fold (fun (t, nam) e acc ->
-      (Printf.sprintf "[%d] %s (%s)" (List.length e) (Domain_name.to_string nam) (Dns_enum.rr_typ_to_string t)):: acc)
-      t.queried []
-  in
-  Logs.info (fun m -> m "%d queries %s" (QM.cardinal t.queried) (String.concat "; " qs))
+  let names = List.map (fun (t, n) -> (n, t)) (fst (List.split (QM.bindings t.transit))) in
+  Logs.info (fun m -> m "%d queries in transit %a" (QM.cardinal t.transit)
+                Fmt.(list ~sep:(unit "; ")
+                       (pair ~sep:(unit ", ") Domain_name.pp Dns_enum.pp_rr_typ))
+                       names) ;
+  let qs = List.map (fun ((t, n), v) -> (List.length v, (n, t))) (QM.bindings t.queried) in
+  Logs.info (fun m -> m "%d queries %a" (QM.cardinal t.queried)
+                Fmt.(list ~sep:(unit "; ")
+                       (pair ~sep:(unit ": ") int
+                          (pair ~sep:(unit ", ") Domain_name.pp Dns_enum.pp_rr_typ)))
+                qs)
 
 let handle_query t its out ?(retry = 0) proto edns from port ts q qid =
   if Int64.sub ts its > Int64.shift_left retry_interval 2 then begin
@@ -177,8 +178,8 @@ let handle_query t its out ?(retry = 0) proto edns from port ts q qid =
       (* TODO reply with error! *)
       `Nothing, t
     | `Query (nam, typ, ip) ->
-      Logs.debug (fun m -> m "have to query %a (%s) using ip %a"
-                     Domain_name.pp nam (Dns_enum.rr_typ_to_string typ) Ipaddr.V4.pp_hum ip) ;
+      Logs.debug (fun m -> m "have to query %a (%a) using ip %a"
+                     Domain_name.pp nam Dns_enum.pp_rr_typ typ Ipaddr.V4.pp_hum ip) ;
       maybe_query t ts retry out ip typ nam (proto, edns, from, port, q, qid)
     | `Answer (hdr, a) ->
       let max_out = if !s.max_out < out then out else !s.max_out in
@@ -316,8 +317,8 @@ let resolve t ts proto sender sport header v opt =
              error Dns_enum.FormErr) >>= fun () ->
         guard (List.mem q.Dns_packet.q_type supported)
           (fun () ->
-             Logs.err (fun m -> m "unsupported query type %s"
-                          (Dns_enum.rr_typ_to_string q.Dns_packet.q_type)) ;
+             Logs.err (fun m -> m "unsupported query type %a"
+                          Dns_enum.pp_rr_typ q.Dns_packet.q_type) ;
              error Dns_enum.NotImp) >>= fun () ->
         s := { !s with questions = succ !s.questions } ;
         (* ask the cache *)

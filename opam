@@ -12,7 +12,6 @@ depends: [
   "ocamlfind" {build}
   "ocamlbuild" {build}
   "topkg" {build}
-  "ppx_cstruct" {build}
   "rresult" "astring" "fmt" "logs" "ptime" "cmdliner" "bos" "fpath"
   "x509" "tls"
   "nocrypto"

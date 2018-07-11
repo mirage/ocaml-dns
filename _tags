@@ -5,7 +5,6 @@ true : package(rresult cstruct astring fmt ipaddr logs ptime hex gmap domain-nam
 <mirage/examples>: -traverse
 
 <src/*> : warn_error(+1..49)
-<src/dns_enum.{ml,mli}>: package(ppx_cstruct)
 "src" : include
 
 <crypto/*> : warn_error(+1..49)
