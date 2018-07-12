@@ -269,7 +269,9 @@ let find_ns t rng ts stash name =
           match resolve_ns t ts nsname with
           | `NeedA aname, t when Domain_name.sub ~subdomain:aname ~domain:name -> `NeedGlue name, t
           | `NeedCname cname, t -> `NeedA cname, t
-          | `HaveIPS ips, t -> begin match pick ips with
+          | `HaveIPS ips, t ->
+            (* TODO should use a non-empty list of ips here *)
+            begin match pick ips with
               | None -> `NeedA nsname, t
               | Some ip -> `HaveIP ip, t
             end
