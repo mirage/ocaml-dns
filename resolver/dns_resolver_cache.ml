@@ -227,9 +227,9 @@ let resolve_ns t ts name =
 
 let find_ns t rng ts stash name =
   let pick = function
-    | [] -> assert false
-    | [ x ] -> x
-    | xs -> List.nth xs (Randomconv.int ~bound:(List.length xs) rng)
+    | [] -> None
+    | [ x ] -> Some x
+    | xs -> Some (List.nth xs (Randomconv.int ~bound:(List.length xs) rng))
   in
   match cached t ts Dns_enum.NS name with
   | Error _ -> `NeedNS, t
@@ -256,20 +256,23 @@ let find_ns t rng ts stash name =
       | `Nothing -> `No, t
       | `Name ns ->
         let actual = Domain_name.Set.diff ns stash in
-        if Domain_name.Set.is_empty actual then begin
+        match pick (Domain_name.Set.elements actual) with
+        | None ->
           Logs.warn (fun m -> m "find_ns: couldn't take any name from %a (stash: %a), returning loop"
-                         Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements ns)
-                         Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements stash)) ;
+                        Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements ns)
+                        Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements stash)) ;
           `Loop, t
-        end else
-          let nsname = pick (Domain_name.Set.elements actual) in
+        | Some nsname ->
           (* tricky conditional:
-              foo.com NS ns1.foo.com ; ns1.foo.com CNAME ns1.bar.com (well, may not happen ;)
-              foo.com NS ns1.foo.com -> NeedGlue foo.com *)
+             foo.com NS ns1.foo.com ; ns1.foo.com CNAME ns1.bar.com (well, may not happen ;)
+             foo.com NS ns1.foo.com -> NeedGlue foo.com *)
           match resolve_ns t ts nsname with
           | `NeedA aname, t when Domain_name.sub ~subdomain:aname ~domain:name -> `NeedGlue name, t
           | `NeedCname cname, t -> `NeedA cname, t
-          | `HaveIPS ips, t -> `HaveIP (pick ips), t
+          | `HaveIPS ips, t -> begin match pick ips with
+              | None -> `NeedA nsname, t
+              | Some ip -> `HaveIP ip, t
+            end
           | `NeedA aname, t -> `NeedA aname, t
           | `No, t -> `No, t
           | `NoDom, t -> `NoDom, t

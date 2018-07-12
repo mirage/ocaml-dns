@@ -393,10 +393,11 @@ let decode_tsig names buf off =
 
 let encode_48bit_time buf ?(off = 0) ts =
   match ptime_span_to_int64 (Ptime.to_span ts) with
-  | None -> assert false
+  | None ->
+    Logs.warn (fun m -> m "couldn't convert (to_span %a) to int64" Ptime.pp ts)
   | Some secs ->
     if Int64.logand secs 0xffff_0000_0000_0000L > 0L then
-      assert false
+      Logs.warn (fun m -> m "secs %Lu > 48 bit" secs)
     else
       let a, b, c =
         let f s = Int64.(to_int (logand 0xffffL (shift_right secs s))) in
@@ -408,10 +409,11 @@ let encode_48bit_time buf ?(off = 0) ts =
 
 let encode_16bit_time buf ?(off = 0) ts =
   match ptime_span_to_int64 ts with
-  | None -> assert false
+  | None ->
+    Logs.warn (fun m -> m "couldn't convert span %a to int64" Ptime.Span.pp ts)
   | Some secs ->
     if Int64.logand secs 0xffff_ffff_ffff_0000L > 0L then
-      assert false
+      Logs.warn (fun m -> m "secs %Lu > 16 bit" secs)
     else
       let a = Int64.(to_int (logand 0xffffL secs)) in
       Cstruct.BE.set_uint16 buf off a

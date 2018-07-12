@@ -543,7 +543,7 @@ let max_retries = 5
 
 let err_retries t q_type q_name =
   let t, reqs = find_queries t (q_type, q_name) in
-  t, List.map (fun (_, _, proto, _, ip, port, q, qid) ->
+  t, List.fold_left (fun acc (_, _, proto, _, ip, port, q, qid) ->
       Logs.debug (fun m -> m "now erroring to %a" Dns_packet.pp_question q) ;
       let q = `Query { Dns_packet.question = [ q ] ; answer = [] ; authority = [] ; additional = [] } in
       let header =
@@ -551,9 +551,9 @@ let err_retries t q_type q_name =
         { h with Dns_packet.query = false }
       in
       match Dns_packet.error header q Dns_enum.ServFail with
-      | None -> assert false
-      | Some (pkt, _) -> (proto, ip, port, pkt))
-    reqs
+      | None -> acc
+      | Some (pkt, _) -> (proto, ip, port, pkt) :: acc)
+    [] reqs
 
 let try_other_timer t ts =
   let transit, rem =

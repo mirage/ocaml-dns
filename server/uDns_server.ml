@@ -116,19 +116,22 @@ module Authentication = struct
 
   let add_key trie name key =
     let zone = zone name in
-    let soa, keys =
-      match
-        Dns_trie.lookup name Dns_map.Dnskey trie,
-        Dns_trie.lookup zone Dns_map.Soa trie
-      with
-      | Error _, Ok (ttl, soa) ->
+    let soa =
+      match Dns_trie.lookup zone Dns_map.Soa trie with
+      | Ok (ttl, soa) ->
         let soa' = { soa with Dns_packet.serial = Int32.succ soa.Dns_packet.serial } in
-        (ttl, soa'), [ key ]
-      | Error _, Error _ ->
-        soa name, [ key ]
-      | Ok _, _ ->
-        Log.err (fun m -> m "got unexpected Dnskey" ) ;
-        assert false
+        (ttl, soa')
+      | Error _ ->
+        soa name
+    in
+    let keys = match Dns_trie.lookup name Dns_map.Dnskey trie with
+      | Error _ -> [ key ]
+      | Ok keys ->
+        Log.warn (fun m -> m "replacing unexpected Dnskey (name %a, have %a, got %a)"
+                     Domain_name.pp name
+                     Fmt.(list ~sep:(unit ",") Dns_packet.pp_dnskey) keys
+                     Dns_packet.pp_dnskey key ) ;
+        [ key ]
     in
     let trie' = Dns_trie.insert zone Dns_map.Soa soa trie in
     Dns_trie.insert name Dns_map.Dnskey keys trie'
@@ -144,9 +147,9 @@ module Authentication = struct
     | Ok (_soa, []) -> Dns_trie.remove_zone zone trie'
     | Ok _ -> trie'
     | Error e ->
-      Log.err (fun m -> m "expected a zone for dnskeys, got error %a"
+      Log.warn (fun m -> m "expected a zone for dnskeys, got error %a"
                   Dns_trie.pp_e e) ;
-      assert false
+      trie'
 
   let find_key t name =
     match Dns_trie.lookup name Dns_map.Dnskey (fst t) with
@@ -1038,37 +1041,42 @@ module Secondary = struct
             | Requested_soa (_, retry, id', _), Dns_enum.SOA when header.Dns_packet.id = id' ->
               Log.debug (fun m -> m "received SOA after %d retries" retry) ;
               (* request AXFR now in case of serial is higher! *)
-              begin match
-                  Dns_trie.lookup zone Dns_map.Soa t.data,
-                  List.find
-                    (fun rr -> match rr.Dns_packet.rdata with Dns_packet.SOA _ -> true | _ -> false)
-                    query.Dns_packet.answer
-                with
-                | exception Not_found ->
-                  Log.err (fun m -> m "didn't get a SOA answer for %a from %a"
-                              Domain_name.pp q.Dns_packet.q_name Ipaddr.V4.pp_hum ip) ;
-                  Error Dns_enum.FormErr
-                | Ok (_, cached_soa), fresh_soa ->
-                  (* TODO: > with wraparound in mind *)
-                  let fresh = match fresh_soa.Dns_packet.rdata with Dns_packet.SOA soa -> soa | _ -> assert false in
-                  if fresh.Dns_packet.serial > cached_soa.Dns_packet.serial then
-                    match axfr t `Tcp now ts zone name with
+              begin match Dns_trie.lookup zone Dns_map.Soa t.data with
+                | Ok (_, cached_soa) ->
+                  begin match
+                      List.fold_left
+                        (fun r rr ->
+                           match r, rr.Dns_packet.rdata with
+                           | Some x, _ -> Some x
+                           | None, Dns_packet.SOA soa -> Some soa
+                           | x, _ -> x)
+                        None query.Dns_packet.answer
+                    with
                     | None ->
-                      Log.warn (fun m -> m "trouble creating axfr for %a (using %a)"
-                                   Domain_name.pp zone Domain_name.pp name) ;
-                      (* TODO: reset state? *)
-                      Ok (t, zones, [])
-                    | Some (st, buf) ->
-                      Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone) ;
-                      let zones = Domain_name.Map.add zone (st, ip, port, name) zones in
-                      Ok (t, zones, [ (`Tcp, ip, port, buf) ])
-                  else begin
-                    Log.info (fun m -> m "received soa (%a) for %a is not newer than cached (%a), moving on"
-                                 Dns_packet.pp_soa fresh Domain_name.pp zone Dns_packet.pp_soa cached_soa) ;
-                    let zones = Domain_name.Map.add zone (Transferred ts, ip, port, name) zones in
-                    Ok (t, zones, [])
+                      Log.err (fun m -> m "didn't get a SOA answer for %a from %a"
+                                  Domain_name.pp q.Dns_packet.q_name Ipaddr.V4.pp_hum ip) ;
+                      Error Dns_enum.FormErr
+                    | Some fresh ->
+                      (* TODO: > with wraparound in mind *)
+                      if fresh.Dns_packet.serial > cached_soa.Dns_packet.serial then
+                        match axfr t `Tcp now ts zone name with
+                        | None ->
+                          Log.warn (fun m -> m "trouble creating axfr for %a (using %a)"
+                                       Domain_name.pp zone Domain_name.pp name) ;
+                          (* TODO: reset state? *)
+                          Ok (t, zones, [])
+                        | Some (st, buf) ->
+                          Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone) ;
+                          let zones = Domain_name.Map.add zone (st, ip, port, name) zones in
+                          Ok (t, zones, [ (`Tcp, ip, port, buf) ])
+                      else begin
+                        Log.info (fun m -> m "received soa (%a) for %a is not newer than cached (%a), moving on"
+                                     Dns_packet.pp_soa fresh Domain_name.pp zone Dns_packet.pp_soa cached_soa) ;
+                        let zones = Domain_name.Map.add zone (Transferred ts, ip, port, name) zones in
+                        Ok (t, zones, [])
+                      end
                   end
-                | Error _, _ ->
+                | Error _ ->
                   Log.info (fun m -> m "couldn't find soa, requesting AXFR") ;
                   begin match axfr t `Tcp now ts zone name with
                     | None -> Log.warn (fun m -> m "trouble building axfr") ; Ok (t, zones, [])
