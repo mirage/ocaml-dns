@@ -233,50 +233,40 @@ let handle_primary t now ts proto sender header v opt tsig tsig_off buf =
       `No
     else
       match UDns_server.Primary.handle_frame t ts sender proto name header v with
-      | Ok (t, answer, _) ->
-        begin match answer with
-          | None ->
-            Logs.err (fun m -> m "answer from authoritative is none, shouldn't happen") ;
-            assert false
-          | Some (header, v') ->
-            (* delegation if authoritative is not set! *)
-            if header.Dns_packet.authoritative then begin
-              s := { !s with authoritative = succ !s.authoritative } ;
-              let max_size, edns = match opt with
-                | None -> None, None
-                | Some edns -> Some edns.Dns_packet.payload_size, Some edns
-              in
-              Logs.debug (fun m -> m "authoritative reply %a %a" Dns_packet.pp_header header Dns_packet.pp_v v) ;
-              let out = Dns_packet.encode ?max_size ?edns proto header v' in
-              `Reply (t, out)
-            end else begin
-              s := { !s with delegation = succ !s.delegation } ;
-              `Delegation v'
-            end
-        end
+      | Ok (_, None, _) -> `None (* incoming notifications are never replied to *)
+      | Ok (t, Some (header, v'), _) ->
+          (* delegation if authoritative is not set! *)
+          if header.Dns_packet.authoritative then begin
+            s := { !s with authoritative = succ !s.authoritative } ;
+            let max_size, edns = match opt with
+              | None -> None, None
+              | Some edns -> Some edns.Dns_packet.payload_size, Some edns
+            in
+            Logs.debug (fun m -> m "authoritative reply %a %a" Dns_packet.pp_header header Dns_packet.pp_v v) ;
+            let out = Dns_packet.encode ?max_size ?edns proto header v' in
+            `Reply (t, out)
+          end else begin
+            s := { !s with delegation = succ !s.delegation } ;
+            `Delegation v'
+          end
       | Error rcode ->
         Logs.debug (fun m -> m "authoritative returned %a" Dns_enum.pp_rcode rcode) ;
         `No
   in
   match UDns_server.handle_tsig (UDns_server.Primary.server t) now header v tsig tsig_off buf with
-  | Error (Some data) -> `Reply (t, data)
+  | Error (Some data) -> `Reply (t, (data, 0))
   | Error None -> `None
-  | Ok None ->
-    begin match handle_inner None with
-      | `No -> `No
-      | `Delegation t -> `Delegation t
-      | `Reply (t, (buf, _)) -> `Reply (t, buf)
-    end
+  | Ok None -> handle_inner None
   | Ok (Some (name, tsig, mac, key)) ->
     match handle_inner (Some name) with
-    | `Delegation a -> `Delegation a
-    | `No -> `No
     | `Reply (t, (buf, max_size)) ->
-      match UDns_server.((Primary.server t).tsig_sign) ~max_size ~mac name tsig ~key buf with
-      | None ->
-        Logs.warn (fun m -> m "couldn't use %a to tsig sign, using unsigned reply" Domain_name.pp name) ;
-        `Reply (t, buf)
-      | Some (buf, _) -> `Reply (t, buf)
+      begin match UDns_server.((Primary.server t).tsig_sign) ~max_size ~mac name tsig ~key buf with
+        | None ->
+          Logs.warn (fun m -> m "couldn't use %a to tsig sign, using unsigned reply" Domain_name.pp name) ;
+          `Reply (t, (buf, max_size))
+        | Some (buf, _) -> `Reply (t, (buf, 0))
+      end
+    | x -> x
 
 let supported = [ Dns_enum.A ; Dns_enum.NS ; Dns_enum.CNAME ;
                   Dns_enum.SOA ; Dns_enum.PTR ; Dns_enum.MX ;
@@ -505,7 +495,7 @@ let handle t now ts query proto sender sport buf =
     | true, true ->
       begin
         match handle_primary t.primary now ts proto sender header v opt tsig tsig_off buf with
-        | `Reply (primary, pkt) ->
+        | `Reply (primary, (pkt, _)) ->
           { t with primary }, [ (proto, sender, sport, pkt) ], []
         | `Delegation v' ->
           handle_delegation t ts proto sender sport header v opt v'
