@@ -135,22 +135,34 @@ let noerror q hdr dns =
 
 let nxdomain q hdr dns =
   (* we can't do much if authoritiative is not set (some auth dns do so) *)
-  (* XXX: PICS or it didn't happen... which DNS doesn't set authoritative bit? *)
   (* There are cases where answer is non-empty, but contains a CNAME *)
-  (* described in RFC 2308 Sec 2.1 - we ignore all the CNAMEs *)
-  (* we're now looking for a SOA *)
+  (* RFC 2308 Sec 1 + 2.1 show that NXDomain is for the last QNAME! *)
+  (* -> need to potentially extract CNAME(s) *)
+  let cname_opt =
+    List.fold_left (fun r rr ->
+        match r, rr.rdata with
+        | None, CNAME _ when Domain_name.equal rr.name q.q_name -> Some rr
+        | a, _ -> a)
+      None dns.answer
+  in
   let soa =
-    match
-      List.filter
-        (fun x -> match x.rdata with SOA _ -> true | _ -> false)
-        dns.authority
-    with
-    | [ soa ] -> soa
-    | _ -> invalid_soa q.q_name
+    List.fold_left (fun r rr ->
+        match r, rr.rdata with
+        | None, SOA _ when Domain_name.sub ~subdomain:q.q_name ~domain:rr.name -> Some rr
+        | a, _ -> a)
+      None dns.authority
   in
   (* since NXDomain have CNAME semantics, we store them as CNAME *)
   let rank = if hdr.authoritative then AuthoritativeAnswer else NonAuthoritativeAnswer in
-  [ Dns_enum.CNAME, q.q_name, rank, NoDom soa ]
+  (* we conclude NXDomain, there are 3 cases we care about:
+     no soa in authority and no cname answer -> inject an invalid_soa (avoid loops)
+     a matching soa, no cname -> NoDom q_name
+     _, a matching cname -> NoErr q_name with cname
+ *)
+  match soa, cname_opt with
+  | None, None -> [ Dns_enum.CNAME, q.q_name, rank, NoDom (invalid_soa q.q_name) ]
+  | Some soa, None -> [ Dns_enum.CNAME, q.q_name, rank, NoDom soa ]
+  | _, Some rr -> [ Dns_enum.CNAME, q.q_name, rank, NoErr [ rr ] ]
 
 let scrub q hdr dns =
   match hdr.rcode with
