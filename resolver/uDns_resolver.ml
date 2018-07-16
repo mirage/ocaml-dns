@@ -196,10 +196,7 @@ let handle_query t its out ?(retry = 0) proto edns from port ts q qid =
                      Duration.pp time out
                      Dns_packet.pp_header hdr
                      Dns_packet.pp_v a) ;
-      let max_size, edns = match edns with
-        | None -> None, None
-        | Some x -> Some x.Dns_packet.payload_size, Some x
-      in
+      let max_size, edns = Dns_packet.reply_opt edns in
       let cs, _ = Dns_packet.encode ?max_size ?edns proto hdr a in
       `Answer cs, t
     | `Nothing -> `Nothing, t
@@ -238,10 +235,7 @@ let handle_primary t now ts proto sender header v opt tsig tsig_off buf =
           (* delegation if authoritative is not set! *)
           if header.Dns_packet.authoritative then begin
             s := { !s with authoritative = succ !s.authoritative } ;
-            let max_size, edns = match opt with
-              | None -> None, None
-              | Some edns -> Some edns.Dns_packet.payload_size, Some edns
-            in
+            let max_size, edns = Dns_packet.reply_opt opt in
             Logs.debug (fun m -> m "authoritative reply %a %a" Dns_packet.pp_header header Dns_packet.pp_v v) ;
             let out = Dns_packet.encode ?max_size ?edns proto header v' in
             `Reply (t, out)
@@ -436,10 +430,7 @@ let handle_delegation t ts proto sender sport header v opt v' =
               | `Query (cs, ip), t -> t, [], [ (`Udp, ip, cs) ]
             end
           | `Packet (header, pkt, cache) ->
-            let max_size, edns = match opt with
-              | None -> None, None
-              | Some edns -> Some edns.Dns_packet.payload_size, Some edns
-            in
+            let max_size, edns = Dns_packet.reply_opt opt in
             Logs.debug (fun m -> m "delegation reply from cache %a %a"
                            Dns_packet.pp_header header Dns_packet.pp_v pkt) ;
             let pkt, _ = Dns_packet.encode ?max_size ?edns proto header pkt in

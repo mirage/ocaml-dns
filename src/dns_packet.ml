@@ -655,6 +655,13 @@ type opt = {
 let opt ?(extended_rcode = 0) ?(version = 0) ?(dnssec_ok = false) ?(payload_size = 512) ?(extensions = []) () =
   { extended_rcode ; version ; dnssec_ok ; payload_size ; extensions }
 
+(* once we handle cookies, dnssec, or other extensions, need to adjust *)
+let reply_opt = function
+  | None -> None, None
+  | Some edns ->
+    let payload_size = edns.payload_size in
+    Some payload_size, Some (opt ~payload_size ())
+
 let compare_extension a b = match a, b with
   | Nsid a, Nsid b -> Cstruct.compare a b
   | Nsid _, _ -> 1 | _, Nsid _ -> -1

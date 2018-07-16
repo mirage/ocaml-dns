@@ -166,6 +166,8 @@ type opt = {
 val opt : ?extended_rcode:int -> ?version:int -> ?dnssec_ok:bool ->
   ?payload_size:int -> ?extensions:extension list -> unit -> opt
 
+val reply_opt : opt option -> int option * opt option
+
 val compare_extension : extension -> extension -> int
 
 val compare_opt : opt -> opt -> int

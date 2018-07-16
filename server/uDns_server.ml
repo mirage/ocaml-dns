@@ -731,11 +731,7 @@ module Primary = struct
       let handle_inner keyname =
         match handle_frame (t, ns) ts ip proto keyname header v with
         | Ok (t, Some (header, answer), out) ->
-          let max_size, edns =
-            match opt with
-            | None -> None, None
-            | Some edns -> Some edns.Dns_packet.payload_size, Some edns
-          in
+          let max_size, edns = Dns_packet.reply_opt opt in
           (* be aware, this may be truncated... here's where AXFR is assembled! *)
           (t, Some (Dns_packet.encode ?max_size ?edns proto header answer), out)
         | Ok (t, None, out) -> (t, None, out)
@@ -1190,10 +1186,7 @@ module Secondary = struct
       let handle_inner name =
         match handle_frame (t, zones) now ts ip proto name header v with
         | Ok (t, Some (header, answer), out) ->
-          let max_size, edns = match opt with
-            | None -> None, None
-            | Some e -> Some e.Dns_packet.payload_size, Some e
-          in
+          let max_size, edns = Dns_packet.reply_opt opt in
           (t, Some (Dns_packet.encode ?max_size ?edns proto header answer), out)
         | Ok (t, None, out) -> (t, None, out)
         | Error rcode -> ((t, zones), err header v rcode, [])
