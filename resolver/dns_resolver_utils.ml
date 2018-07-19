@@ -22,10 +22,19 @@ let invalid_soa name =
   } in
   { name ; ttl = 300l ; rdata = SOA soa }
 
-let noerror q hdr dns =
+let noerror bailiwick q hdr dns =
+  (* maybe should be passed explicitly (when we don't do qname minimisation) *)
+  let in_bailiwick name = Domain_name.sub ~domain:bailiwick ~subdomain:name in
   (* ANSWER *)
+  let typ_matches rr =
+    let rtyp = rdata_to_rr_typ rr.rdata in
+    match q.q_type, rtyp with
+    | Dns_enum.ANY, _ -> true
+    | _, Dns_enum.CNAME -> true
+    | t, t' -> t = t'
+  in
   let answers, anames =
-    match List.filter (fun rr -> Domain_name.equal rr.name q.q_name) dns.answer with
+    match List.filter (fun rr -> Domain_name.equal rr.name q.q_name && typ_matches rr) dns.answer with
     | [] ->
       (* NODATA (no answer, but SOA (or not) in authority) *)
       begin
@@ -54,6 +63,9 @@ let noerror q hdr dns =
       let rank = if hdr.authoritative then AuthoritativeAnswer else NonAuthoritativeAnswer in
       match List.partition (fun rr -> match rr.rdata with CNAME _ -> true | _ -> false) answer with
       | [], entries ->
+        (* TODO should we filter based on q.q_type? *)
+        (* TODO rr_names is problematic:
+           query a foo.com answer mx 10 foo.com bar.com additional bar.com a 1.2.3.4 *)
         (* XXX: if non-empty, we should require authority to be set? does it help? *)
         [ q.q_type, q.q_name, rank, NoErr entries ], rr_names entries
       | [ cname ], [] ->
@@ -71,21 +83,28 @@ let noerror q hdr dns =
   let ns, nsnames =
     (* authority points us to NS of q_name! *)
     (* we collect a list of NS records and the ns names *)
-    match
-      List.fold_left (fun acc rr ->
-          if Domain_name.equal q.q_name rr.name then
+    (* TODO need to be more careful, q: foo.com a: foo.com a 1.2.3.4 au: foo.com ns blablubb.com ad: blablubb.com A 1.2.3.4 *)
+    let nm, names =
+      List.fold_left (fun (acc, s) rr ->
+          if in_bailiwick rr.name then
+            let ns = match NM.find rr.name acc with
+              | None -> []
+              | Some ns -> ns
+            in
             match rr.rdata with
-            | NS _ -> rr :: acc
-            | _ -> acc
-          else acc) [] dns.authority
-    with
-    | [] -> [], N.empty
-    | ns ->
-      let rank = if hdr.authoritative then AuthoritativeAuthority else Additional in
-      [ Dns_enum.NS, q.q_name, rank, NoErr ns ], rr_names ns
+            | NS name -> NM.add rr.name (rr :: ns) acc, Domain_name.Set.add name s
+            | _ -> (acc, s)
+          else (acc, s)) (NM.empty, Domain_name.Set.empty) dns.authority
+    in
+    let rank = if hdr.authoritative then AuthoritativeAuthority else Additional in
+    NM.fold (fun name rrs acc ->
+        (Dns_enum.NS, name, rank, NoErr rrs) :: acc)
+      nm [], names
   in
 
   (* ADDITIONAL *)
+  (* maybe only these thingies which are subdomains of q_name? *)
+  (* preserve A/AAAA records only for NS lookups? *)
   (* now we have processed:
      - answer (filtered to where name = q_name)
      - authority with SOA and NS entries
@@ -94,6 +113,7 @@ let noerror q hdr dns =
      - only A and AAAA records are of interest for glue *)
   let glues =
     let names = N.union anames nsnames in
+    let names = N.filter in_bailiwick names in
     let aaaaa =
       List.fold_left (fun acc rr ->
           if N.mem rr.name names then
@@ -164,8 +184,48 @@ let nxdomain q hdr dns =
   | Some soa, None -> [ Dns_enum.CNAME, q.q_name, rank, NoDom soa ]
   | _, Some rr -> [ Dns_enum.CNAME, q.q_name, rank, NoErr [ rr ] ]
 
-let scrub q hdr dns =
-  match hdr.rcode with
-  | Dns_enum.NoError -> Ok (noerror q hdr dns)
-  | Dns_enum.NXDomain -> Ok (nxdomain q hdr dns)
-  | e -> Error e
+let noerror_stub q dns =
+  (* no glue, just answers - but get all the cnames *)
+  let typ = q.Dns_packet.q_type in
+  let find_entry_or_cname name = List.fold_left (fun acc rr ->
+      if Domain_name.equal rr.Dns_packet.name name then
+        let add =
+          typ = Dns_enum.ANY || typ = Dns_packet.rdata_to_rr_typ rr.Dns_packet.rdata
+        in
+        match acc, rr.rdata with
+        | None, Dns_packet.CNAME alias -> Some (`Cname (alias, rr))
+        | Some (`Entry rrs), _ when add -> Some (`Entry (rr :: rrs))
+        | None, _ when add -> Some (`Entry [rr])
+        | x, _ -> x
+      else
+        acc)
+      None dns.Dns_packet.answer
+  in
+  let find_soa name = List.fold_left (fun acc rr ->
+      if Domain_name.sub ~subdomain:name ~domain:rr.Dns_packet.name then
+        match acc, rr.Dns_packet.rdata with
+        | None, Dns_packet.SOA _ -> Some rr
+        | x, _ -> x
+      else
+        acc) None dns.Dns_packet.authority
+  in
+  let rec go acc name = match find_entry_or_cname name with
+    | None ->
+      let soa = match find_soa name with Some x -> x | None -> invalid_soa name in
+      (typ, name, NonAuthoritativeAnswer, NoData soa) :: acc
+    | Some (`Cname (alias, rr)) -> go ((Dns_enum.CNAME, name, NonAuthoritativeAnswer, NoErr [ rr ]) :: acc) alias
+    | Some (`Entry rrs) -> (typ, name, NonAuthoritativeAnswer, NoErr rrs) :: acc
+  in
+  go [] q.Dns_packet.q_name
+
+(* stub vs recursive: maybe sufficient to look into *)
+let scrub ?(mode = `Recursive) zone q hdr dns =
+  Logs.debug (fun m -> m "scrubbing (bailiwick %a) q %a rcode %a"
+                 Domain_name.pp zone Dns_packet.pp_question q
+                 Dns_enum.pp_rcode hdr.Dns_packet.rcode) ;
+  match mode, hdr.rcode with
+  | `Recursive, Dns_enum.NoError -> Ok (noerror zone q hdr dns)
+  | `Stub, Dns_enum.NoError -> Ok (noerror_stub q dns)
+  | _, Dns_enum.NXDomain -> Ok (nxdomain q hdr dns)
+  | `Stub, Dns_enum.ServFail -> Ok [ Dns_enum.CNAME, q.q_name, NonAuthoritativeAnswer, ServFail (invalid_soa q.q_name)  ]
+  | _, e -> Error e

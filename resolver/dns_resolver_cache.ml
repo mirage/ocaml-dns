@@ -153,43 +153,27 @@ let maybe_insert typ nam ts rank res t =
                   Domain_name.pp nam Dns_enum.pp_rr_typ typ) ;
     t
   | _ ->
-    let entry tm =
+    let add_entry tm t =
       let full = (ts, rank, smooth_ttl res) in
-      match typ, res with
-      | Dns_enum.CNAME, _ -> V.All full
-      | _, NoDom _ -> V.All full
-      | _, _ -> V.Entries (Dns_enum.RRMap.add typ full tm)
+      let v = match typ, res with
+        | Dns_enum.CNAME, _ -> V.All full
+        | _, NoDom _ -> V.All full
+        | _, _ -> V.Entries (Dns_enum.RRMap.add typ full tm)
+      in
+      s := { !s with insert = succ !s.insert } ;
+      LRU.add nam v t
+    in
+    let add_if_ranked_higher (ts', rank', res') tm t =
+      match update_res ts' ts res', compare_rank rank' rank with
+      | Some _, `Bigger -> t
+      | _ -> add_entry tm t
     in
     match LRU.find ~promote:false nam t with
-    | None -> LRU.add nam (entry Dns_enum.RRMap.empty) t
-    | Some (V.All (ts', rank', res'), t) ->
-      begin match update_res ts' ts res' with
-        | None ->
-          s := { !s with insert = succ !s.insert } ;
-          LRU.add nam (entry Dns_enum.RRMap.empty) t
-        | Some _ ->
-          match compare_rank rank' rank with
-          | `Bigger -> t
-          | `Equal | `Smaller ->
-            s := { !s with insert = succ !s.insert } ;
-            LRU.add nam (entry Dns_enum.RRMap.empty) t
-      end
-    | Some (V.Entries tm, t) ->
-      match Dns_enum.RRMap.find typ tm with
-      | exception Not_found ->
-        s := { !s with insert = succ !s.insert } ;
-        LRU.add nam (entry tm) t
-      | (ts', rank', res') ->
-        match update_res ts' ts res' with
-        | None ->
-          s := { !s with insert = succ !s.insert } ;
-          LRU.add nam (entry tm) t
-        | Some _ ->
-          match compare_rank rank' rank with
-          | `Bigger -> t
-          | `Equal | `Smaller ->
-            s := { !s with insert = succ !s.insert } ;
-            LRU.add nam (entry tm) t
+    | None -> add_entry Dns_enum.RRMap.empty t
+    | Some (V.All triple, t) -> add_if_ranked_higher triple Dns_enum.RRMap.empty t
+    | Some (V.Entries tm, t) -> match Dns_enum.RRMap.find typ tm with
+      | exception Not_found -> add_entry tm t
+      | triple -> add_if_ranked_higher triple tm t
 
 let resolve_ns t ts name =
   match cached t ts Dns_enum.A name with
@@ -281,15 +265,93 @@ let find_ns t rng ts stash name =
     end
   | Ok (_, t) -> `No, t
 
-let resolve t ~rng ts name typ =
-  (* the top-to-bottom approach, for TYP a.b.c, lookup:
-     NS, . -> A1
-     NS, c -> A2
-     NS, b.c -> A3
-     NS. a.b.c -> A4
-     TYP, a.b.c -> A5
 
-     where A{1-4} are all domain names, where we try to find A records
+let find_nearest_ns rng ts t name =
+  let pick = function
+    | [] -> None
+    | [ x ] -> Some x
+    | xs -> Some (List.nth xs (Randomconv.int ~bound:(List.length xs) rng))
+  in
+  let root =
+    match pick (snd (List.split Dns_resolver_root.root_servers)) with
+    | None -> invalid_arg "not possible"
+    | Some ip -> ip
+  in
+  let find_ns name = match cached t ts Dns_enum.NS name with
+    | Ok (NoErr rrs, _) ->
+      List.fold_left (fun acc rr ->
+          match rr.Dns_packet.rdata with
+          | Dns_packet.NS name -> name :: acc
+          | _ -> acc) [] rrs
+    | _ -> []
+  and find_a name = match cached t ts Dns_enum.A name with
+    | Ok (NoErr rrs, _) ->
+      List.fold_left (fun acc rr ->
+          match rr.Dns_packet.rdata with
+          | Dns_packet.A ip -> ip :: acc
+          | _ -> acc) [] rrs
+    | _ -> []
+  in
+  let rec go nam =
+    if Domain_name.equal nam Domain_name.root then
+      `HaveIP (Domain_name.root, root)
+    else match pick (find_ns nam) with
+      | None -> go (Domain_name.drop_labels_exn nam)
+      | Some ns -> match pick (find_a ns) with
+        | None -> `NeedA ns
+        | Some ip -> `HaveIP (nam, ip)
+  in
+  go name
+
+(* below fails for cafe-blaumond.de, somewhere stuck in an zone hop:
+    querying a.b.c.d.e.f, getting NS for d.e.f + A
+     still no entry for e.f -> retrying same question all the time
+  let rec go cur rest zone ip =
+    (* if we find a NS, and an A record, go down *)
+    (* if we find a NS, and no A record, needa *)
+    (* if we get error, finish with what we have *)
+    (* if we find nodom, nodata -> finish with what we have *)
+    (* servfail returns an error *)
+    Logs.debug (fun m -> m "nearest ns cur %a rest %a zone %a ip %a"
+                   Domain_name.pp cur
+                   Fmt.(list ~sep:(unit ".") string) rest
+                   Domain_name.pp zone
+                   Ipaddr.V4.pp_hum ip) ;
+    match pick find_ns cur with
+    | None -> `HaveIP (zone, ip)
+    | Some ns -> begin match pick find_a ns with
+      | None -> `NeedA ns
+      | Some ip -> match rest with
+        | [] -> `HaveIP (cur, ip)
+        | hd::tl -> go (Domain_name.prepend_Exn cur hd) tl cur ip
+        end
+  in
+  go Domain_name.root (List.rev (Domain_name.to_strings name)) Domain_name.root root
+*)
+
+let resolve t ~rng ts name typ =
+  (* the standard recursive algorithm *)
+  let rec go t typ name =
+    Logs.debug (fun m -> m "go %a" Domain_name.pp name) ;
+    match find_nearest_ns rng ts t name with
+    | `NeedA name -> go t Dns_enum.A name
+    | `HaveIP (zone, ip) -> Ok (zone, name, typ, ip, t)
+  in
+  go t typ name
+
+let _resolve t ~rng ts name typ =
+  (* TODO return the bailiwick (zone the NS is responsible for) as well *)
+  (* TODO this is the query name minimisation approach, reimplement the
+          original recursive algorithm as well *)
+  (* the top-to-bottom approach, for TYP a.b.c, lookup:
+     @root NS, . -> A1
+     @A1 NS, c -> A2
+     @A2 NS, b.c -> A3
+     @A3 NS. a.b.c -> NoData
+     @A3 TYP, a.b.c -> A4
+
+     where A{1-3} are all domain names, where we try to find A records (or hope
+     to get them as glue)
 
      now, we have the issue of glue records: NS c (A2) will return names x.c
      and y.c, but also address records for them (otherwise there's no way to
@@ -303,38 +365,40 @@ let resolve t ~rng ts name typ =
 
      it's a bit complicated, OTOH we're doing qname minimisation, but also may
      have to jump to other names (of NS or CNAME) - which is slightly intricate *)
+  (* TODO this is misplaced, this should be properly handled by find_ns! *)
   let root =
     let roots = snd (List.split Dns_resolver_root.root_servers) in
     List.nth roots (Randomconv.int ~bound:(List.length roots) rng)
   in
-  let rec go t stash typ cur rest ip =
-    Logs.debug (fun m -> m "resolve entry: stash %a typ %a cur %a rest %a ip %a"
+  let rec go t stash typ cur rest zone ip =
+    Logs.debug (fun m -> m "resolve entry: stash %a typ %a cur %a rest %a zone %a ip %a"
                    Fmt.(list ~sep:(unit ", ") Domain_name.pp) (N.elements stash)
                    Dns_enum.pp_rr_typ typ Domain_name.pp cur
                    Domain_name.pp (Domain_name.of_strings_exn ~hostname:false rest)
+                   Domain_name.pp zone
                    Ipaddr.V4.pp_hum ip) ;
     match find_ns t rng ts stash cur with
     | `NeedNS, t when Domain_name.equal cur Domain_name.root ->
       (* we don't have any root servers *)
-      Ok (cur, Dns_enum.NS, root, t)
+      Ok (Domain_name.root, Domain_name.root, Dns_enum.NS, root, t)
     | `HaveIP ip, t ->
       Logs.debug (fun m -> m "resolve: have ip %a" Ipaddr.V4.pp_hum ip) ;
       begin match rest with
-        | [] -> Ok (cur, typ, ip, t)
-        | hd::tl -> go t stash typ (Domain_name.prepend_exn cur hd) tl ip
+        | [] -> Ok (zone, cur, typ, ip, t)
+        | hd::tl -> go t stash typ (Domain_name.prepend_exn cur hd) tl zone ip
       end
     | `NeedNS, t ->
       Logs.debug (fun m -> m "resolve: needns") ;
-      Ok (cur, Dns_enum.NS, ip, t)
+      Ok (zone, cur, Dns_enum.NS, ip, t)
     | `Cname name, t ->
-      (* NS name -> CNAME foo, only use foo is rest is empty *)
+      (* NS name -> CNAME foo, only use foo if rest is empty *)
       Logs.debug (fun m -> m "resolve: cname %a" Domain_name.pp name) ;
       begin match rest with
         | [] ->
           let rest = List.rev (Domain_name.to_strings name) in
-          go t (N.add name stash) typ Domain_name.root rest root
+          go t (N.add name stash) typ Domain_name.root rest Domain_name.root root
         | hd::tl ->
-          go t stash typ (Domain_name.prepend_exn cur hd) tl ip
+          go t stash typ (Domain_name.prepend_exn cur hd) tl zone ip
       end
     | `NoDom, _ ->
       (* this is wrong for NS which NoDom for too much (even if its a ENT) *)
@@ -353,12 +417,12 @@ let resolve t ~rng ts name typ =
       (* this opens the door to amplification attacks :/ -- i.e. asking for
          a.b.c.d.e.f results in 6 requests (for f, e.f, d.e.f, c.d.e.f, b.c.d.e.f, a.b.c.d.e.f)  *)
       begin match rest with
-        | [] -> Ok (cur, typ, ip, t)
-        | hd::tl -> go t stash typ (Domain_name.prepend_exn cur hd) tl ip
+        | [] -> Ok (zone, cur, typ, ip, t)
+        | hd::tl -> go t stash typ (Domain_name.prepend_exn cur hd) tl zone ip
       end
     | `NeedGlue name, t ->
       Logs.debug (fun m -> m "resolve: needGlue %a" Domain_name.pp name) ;
-      Ok (name, Dns_enum.NS, ip, t)
+      Ok (zone, name, Dns_enum.NS, ip, t)
     | `Loop, _ -> Error "resolve: cycle detected in find_ns"
     | `NeedA name, t ->
       Logs.debug (fun m -> m "resolve: needA %a" Domain_name.pp name) ;
@@ -367,9 +431,9 @@ let resolve t ~rng ts name typ =
         Error "resolve: cycle detected during NeedA"
       end else
         let n = List.rev (Domain_name.to_strings name) in
-        go t (N.add name stash) Dns_enum.A Domain_name.root n root
+        go t (N.add name stash) Dns_enum.A Domain_name.root n Domain_name.root root
   in
-  go t (N.singleton name) typ Domain_name.root (List.rev (Domain_name.to_strings name)) root
+  go t (N.singleton name) typ Domain_name.root (List.rev (Domain_name.to_strings name)) Domain_name.root root
 
 let follow_cname t ts typ name answer =
   let rec follow t names acc curr =
@@ -404,7 +468,7 @@ let follow_cname t ts typ name answer =
         | Ok (NoData soa, t) ->
           Logs.debug (fun m -> m "follow_cname: nodata") ;
           `NoData ((acc, soa), t)
-        (* XXX: the last case here is not asymmetric... the acc is dropped
+        (* XXX: the last case here is not symmetric... the acc is dropped
            TODO: write tests and evalute what we need (what clients expect) *)
         | Ok (ServFail soa, t) ->
           Logs.debug (fun m -> m "follow_cname: servfail") ;
@@ -423,6 +487,8 @@ let additionals t ts rrs =
 
 let answer t ts q id =
   let packet t add rcode answer authority =
+    (* TODO why is this RA + RD in here? should not be for recursive algorithm
+         also, there should be authoritative... *)
     let header = { Dns_packet.id ; query = false ; operation = Dns_enum.Query ;
                    authoritative = false ; truncation = false ;
                    recursion_desired = true ; recursion_available = true ;
@@ -459,6 +525,7 @@ let handle_query t ~rng ts q qid =
   | `Query (name, t) ->
     let r =
       match q.Dns_packet.q_type with
+      (* similar for TLSA, which uses _443._tcp.<name> (not a service name!) *)
       | Dns_enum.SRV when Domain_name.is_service name ->
         Ok (Domain_name.drop_labels_exn ~amount:2 name, Dns_enum.NS)
       | Dns_enum.SRV ->
@@ -474,13 +541,15 @@ let handle_query t ~rng ts q qid =
       | Error e ->
         Logs.err (fun m -> m "resolve returned error %s" e) ;
         `Nothing, t
-      | Ok (name', typ, ip, t) ->
+      | Ok (zone, name', typ, ip, t) ->
         let name, typ =
           match Domain_name.equal name' qname, q.Dns_packet.q_type with
           | true, Dns_enum.SRV -> name, Dns_enum.SRV
           | _ -> name', typ
         in
-        Logs.debug (fun m -> m "resolve returned %a %a, %a" Domain_name.pp name
+        Logs.debug (fun m -> m "resolve returned zone %a name %a typ %a, ip %a"
+                       Domain_name.pp zone
+                       Domain_name.pp name
                        Dns_enum.pp_rr_typ typ
                        Ipaddr.V4.pp_hum ip) ;
-        `Query (name, typ, ip), t
+        `Query (zone, name, typ, ip), t

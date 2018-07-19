@@ -445,6 +445,10 @@ let str_err =
 
 let resolve_res = Alcotest.result resolve_ret str_err
 
+let resolve ~rng a b c d = match resolve ~rng a b c d with
+  | Error e -> Error e
+  | Ok (_, a, b, c, d) -> Ok (a, b, c, d)
+
 let resolve_empty () =
   Alcotest.check resolve_res "looking for NS in empty cache for root -> look for NS . @a_root"
     (Ok (Domain_name.root, Dns_enum.NS, List.hd root_servers, empty))
@@ -737,6 +741,8 @@ let header = { id = 0 ; query = false ; operation = Dns_enum.Query ;
                authentic_data = false ; checking_disabled = false ;
                rcode = Dns_enum.NoError }
 
+let scrub q hdr dns = Dns_resolver_utils.scrub q.q_name q hdr dns
+
 let scrub_empty () =
   let name = name "foo.com" in
   let q = { q_name = name; q_type = Dns_enum.A }
@@ -744,11 +750,11 @@ let scrub_empty () =
   in
   Alcotest.check res "empty frame results in empty scrub"
     (Ok [ Dns_enum.A, name, Additional, NoData (invalid_soa name) ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "empty authoritative frame results in empty scrub"
     (Ok [ Dns_enum.A, name, Additional, NoData (invalid_soa name) ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_a () =
   let q_name = name "foo.com" in
@@ -758,11 +764,11 @@ let scrub_a () =
   let dns = { tdns with answer } in
   Alcotest.check res "A record results in scrubbed A"
     (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoErr answer])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative A record results in scrubbed A"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoErr answer])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_a_a () =
   let q_name = name "foo.com" in
@@ -776,11 +782,11 @@ let scrub_a_a () =
   let dns = { tdns with answer } in
   Alcotest.check res "A records results in scrubbed A with same records"
     (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoErr answer ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative A records results in scrubbed A with same records"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoErr answer ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_cname () =
   let q_name = name "foo.com" in
@@ -792,11 +798,11 @@ let scrub_cname () =
   let dns = { tdns with answer } in
   Alcotest.check res "CNAME record results in scrubbed CNAME with same record"
     (Ok [ Dns_enum.CNAME, q_name, NonAuthoritativeAnswer, NoErr answer])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative CNAME record results in scrubbed CNAME with same record"
     (Ok [ Dns_enum.CNAME, q_name, AuthoritativeAnswer, NoErr answer])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_soa () =
   let q_name = name "foo.com" in
@@ -812,11 +818,11 @@ let scrub_soa () =
   let dns = { tdns with authority = [ soa ] } in
   Alcotest.check res "SOA record results in NoData SOA"
     (Ok [ Dns_enum.A, q_name, Additional, NoData soa ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative SOA record results in NoData SOA"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAuthority, NoData soa ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_bad_soa () =
   let q_name = name "foo.com" in
@@ -832,11 +838,11 @@ let scrub_bad_soa () =
   let dns = { tdns with authority = [ soa ] } in
   Alcotest.check res "bad SOA record results in NoData SOA"
     (Ok [ Dns_enum.A, q_name, Additional, NoData (invalid_soa q_name) ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative bad SOA record results in NoData SOA"
     (Ok [ Dns_enum.A, q_name, Additional, NoData (invalid_soa q_name) ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_soa_super () =
   let q_name = name "foo.com" in
@@ -852,11 +858,11 @@ let scrub_soa_super () =
   let dns = { tdns with authority = [ soa ] } in
   Alcotest.check res "SOA record results in NoData SOA"
     (Ok [ Dns_enum.A, q_name, Additional, NoData soa ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative SOA record results in NoData SOA"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAuthority, NoData soa ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_cname_a () =
   let q_name = name "foo.com" in
@@ -870,11 +876,11 @@ let scrub_cname_a () =
   let dns = { tdns with answer } in
   Alcotest.check res "CNAME and A record results in nodata"
     (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoData (invalid_soa q_name) ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative CNAME and A record results in nodata"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoData (invalid_soa q_name) ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_authority_ns () =
   let q_name = name "foo.com" in
@@ -886,11 +892,11 @@ let scrub_authority_ns () =
   let dns = { tdns with authority } in
   Alcotest.check res "NS in authority results in NoData foo.com and NoErr NS"
     (Ok [ Dns_enum.NS, q_name, Additional, NoErr authority ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS in authority results in NoData foo.com and NoErr NS"
     (Ok [ Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr authority ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_a_authority_ns () =
   let q_name = name "foo.com" in
@@ -904,12 +910,12 @@ let scrub_a_authority_ns () =
   Alcotest.check res "NS in authority, and A in answer results in NoErr foo.com and NoErr NS"
     (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, Additional, NoErr authority ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS in authority, and A in answer results in NoErr foo.com and NoErr NS"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr authority ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_a_authority_ns_add_a () =
   let q_name = name "foo.com" in
@@ -925,13 +931,13 @@ let scrub_a_authority_ns_add_a () =
     (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, Additional, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr additional ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS in authority, A in answer, glue in additional results in NoErr foo.com, NoErr NS, NoErr ns1.foo.com A"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr additional ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_a_authority_ns_bad_a () =
   let q_name = name "foo.com" in
@@ -946,12 +952,12 @@ let scrub_a_authority_ns_bad_a () =
   Alcotest.check res "NS in authority, A in answer, crap in additional results in NoErr foo.com and NoErr NS"
     (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, Additional, NoErr authority ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS in authority, A in answer, crap in additional results in NoErr foo.com and NoErr NS"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr authority ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_a_authority_ns_add_a_a () =
   let q_name = name "foo.com" in
@@ -968,13 +974,13 @@ let scrub_a_authority_ns_add_a_a () =
     (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, Additional, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr additional ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS in authority, A in answer, multiple A in additional results in NoErr foo.com, NoErr NS, NoErr As"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr additional ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_a_authority_ns_ns_add_a_a () =
   let q_name = name "foo.com" in
@@ -992,14 +998,14 @@ let scrub_a_authority_ns_ns_add_a_a () =
           Dns_enum.NS, q_name, Additional, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr [ a1 ] ;
           Dns_enum.A, name "ns2.foo.com", Additional, NoErr [ a2 ] ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS in authority, A in answer, multiple A in additional results in NoErr foo.com, NoErr NS, NoErr As"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr [ a1 ] ;
           Dns_enum.A, name "ns2.foo.com", Additional, NoErr [ a2 ] ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_a_authority_ns_bad_ns_add_a_a () =
   let q_name = name "foo.com" in
@@ -1018,13 +1024,13 @@ let scrub_a_authority_ns_bad_ns_add_a_a () =
     (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, Additional, NoErr [ au1 ] ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr [ a1 ] ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS in authority, A in answer, multiple A in additional results in NoErr foo.com, NoErr NS, NoErr As"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr [ au1 ] ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr [ a1 ] ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_authority_ns_add_a_bad () =
   let q_name = name "foo.com" in
@@ -1039,12 +1045,12 @@ let scrub_authority_ns_add_a_bad () =
   Alcotest.check res "NS in authority, A and NS in additional results in NoErr NS, NoErr As"
     (Ok [ Dns_enum.NS, q_name, Additional, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr [ a1 ] ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS in authority, A and NS in additional results in NoErr NS, NoErr As"
     (Ok [ Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr [ a1 ] ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_authority_ns_add_a_aaaa () =
   let q_name = name "foo.com" in
@@ -1060,13 +1066,13 @@ let scrub_authority_ns_add_a_aaaa () =
     (Ok [ Dns_enum.NS, q_name, Additional, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr [ a1 ] ;
           Dns_enum.AAAA, name "ns1.foo.com", Additional, NoErr [ a2 ]])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS in authority, A and AAAA in additional results in NoErr NS, NoErr A, NoErr AAAA"
     (Ok [ Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr authority ;
           Dns_enum.A, name "ns1.foo.com", Additional, NoErr [ a1 ] ;
           Dns_enum.AAAA, name "ns1.foo.com", Additional, NoErr [ a2 ]])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_a_authority_ns_a () =
   let q_name = name "foo.com" in
@@ -1080,12 +1086,12 @@ let scrub_a_authority_ns_a () =
   Alcotest.check res "NS and crap in authority, A in answer results in NoErr foo.com, NoErr NS"
     (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, Additional, NoErr [ a1 ] ])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative NS and crap in authority, A in answer results in NoErr foo.com, NoErr NS"
     (Ok [ Dns_enum.A, q_name, AuthoritativeAnswer, NoErr answer ;
           Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr [ a1 ] ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_bad_packets () =
   let q_name = name "foo.com" in
@@ -1097,11 +1103,11 @@ let scrub_bad_packets () =
   in
   Alcotest.check res "No results in scrubbed A with bad A"
     (Ok [ Dns_enum.A, q_name, Additional, NoData (invalid_soa q_name)])
-    (Dns_resolver_utils.scrub q header dns) ;
+    (scrub q header dns) ;
   let hdr = { header with authoritative = true } in
   Alcotest.check res "authoritative no results in scrubbed A with bad A"
     (Ok [ Dns_enum.A, q_name, Additional, NoData (invalid_soa q_name)])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (scrub q hdr dns)
 
 let scrub_rfc2308_2_1 () =
   let q_name = name "an.example" in
@@ -1131,34 +1137,205 @@ let scrub_rfc2308_2_1 () =
     let authority = soa :: ns in
     { base with answer = [ a ]; authority ; additional }
   in
+  (* considering what is valid in the response, it turns out only the cname is *)
   Alcotest.check res "Sec 2.1 type 1"
-    (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoDom soa ])
-    (Dns_resolver_utils.scrub q hdr dns) ;
+    (Ok [ Dns_enum.CNAME, q_name, NonAuthoritativeAnswer, NoErr [ a ] ])
+    (scrub q hdr dns) ;
   let dns =
     { base with answer = [ a ] ; authority = [ soa ] }
   in
   Alcotest.check res "Sec 2.1 type 2"
-    (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoDom soa ])
-    (Dns_resolver_utils.scrub q hdr dns) ;
+    (Ok [ Dns_enum.CNAME, q_name, NonAuthoritativeAnswer, NoErr [ a ] ])
+    (scrub q hdr dns) ;
   let dns =
     { base with answer = [ a ] }
   in
   Alcotest.check res "Sec 2.1 type 3"
-    (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoDom (invalid_soa q_name) ])
-    (Dns_resolver_utils.scrub q hdr dns) ;
+    (Ok [ Dns_enum.CNAME, q_name, NonAuthoritativeAnswer, NoErr [ a ] ])
+    (scrub q hdr dns) ;
   let dns =
     { base with answer = [ a ] ; authority = ns ; additional }
   in
   Alcotest.check res "Sec 2.1 type 4"
-    (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoDom (invalid_soa q_name) ])
-    (Dns_resolver_utils.scrub q hdr dns) ;
+    (Ok [ Dns_enum.CNAME, q_name, NonAuthoritativeAnswer, NoErr [ a ] ])
+    (scrub q hdr dns) ;
   let hdr = header in
   let dns =
     { base with answer = [ a ] ; authority = ns ; additional }
   in
   Alcotest.check res "Sec 2.1 type referral response"
-    (Ok [ Dns_enum.A, q_name, NonAuthoritativeAnswer, NoDom (invalid_soa q_name) ])
-    (Dns_resolver_utils.scrub q hdr dns)
+    (Ok [ Dns_enum.CNAME, q_name, NonAuthoritativeAnswer, NoErr [ a ] ])
+    (scrub q hdr dns)
+
+(* bailiwick thingies (may repeat above tests):
+   - q_name is foo, q_type is A!
+   - answer contains additional A records [ foo A 1.2.3.4 ; bar A 1.2.3.4 ]
+   - answer contains cname and A: [ foo cname bar ; bar A 1.2.3.4 ]
+   - authority contains [ foo CNAME bar ] [ bar NS boo ]
+   - answer cname and authority NS [ foo cname bar ] [ bar NS boo ]
+   - additional contains glue [ foo CNAME bar ] [] [ bar A 1.2.3.4 ]
+   - additional contains glue with au [ foo CNAME bar ] [ bar NS boo ] [ boo A 1.2.3.4 ]
+*)
+let bailiwick_a () =
+  let q_name = name "foo" in
+  let q = { q_name ; q_type = Dns_enum.A } in
+  let base_dns = { question = [ q ] ; answer = [] ; authority = [] ; additional = [] } in
+  let hdr = { header with authoritative = true } in
+  let a = { name = q_name ; ttl = 300l ; rdata = A (ip "1.2.3.4") } in
+  let answer = Dns_enum.A, q_name, AuthoritativeAnswer, NoErr [ a ] in
+  let add_a = { base_dns with answer = [ a ; { a with name = name "bar" } ] } in
+  Alcotest.check res "additional A records"
+    (Ok [ answer ])
+    (scrub q hdr add_a) ;
+  let cname = { name = name "foo" ; ttl = 300l ; rdata = CNAME (name "bar") } in
+  let cname_a = { base_dns with answer = [ cname ; { a with name = name "bar" } ] } in
+  Alcotest.check res "A and CNAME record"
+    (Ok [ Dns_enum.CNAME, q_name, AuthoritativeAnswer, NoErr [ cname ] ])
+    (scrub q hdr cname_a) ;
+  let ns = { name = name "bar" ; ttl = 300l ; rdata = NS (name "boo") } in
+  let cname_ns = { base_dns with answer = [ cname ; ns ] } in
+  Alcotest.check res "CNAME and NS record in answer"
+    (Ok [ Dns_enum.CNAME, q_name, AuthoritativeAnswer, NoErr [ cname ] ])
+    (scrub q hdr cname_ns) ;
+  let cname_auth = { base_dns with answer = [ cname ] ; authority = [ ns ] } in
+  Alcotest.check res "CNAME and NS record in authority"
+    (Ok [ Dns_enum.CNAME, q_name, AuthoritativeAnswer, NoErr [ cname ] ])
+    (scrub q hdr cname_auth) ;
+  let ns' = { ns with name = name "foobar" } in
+  let cname_ns_unrelated = { base_dns with answer = [ cname ; ns' ] } in
+  Alcotest.check res "CNAME and unrelated NS record in answer"
+    (Ok [ Dns_enum.CNAME, q_name, AuthoritativeAnswer, NoErr [ cname ] ])
+    (scrub q hdr cname_ns_unrelated) ;
+  let cname_auth_unrelated = { base_dns with answer = [ cname ] ; authority = [ ns' ] } in
+  Alcotest.check res "CNAME and unrelated NS record in authority"
+    (Ok [ Dns_enum.CNAME, q_name, AuthoritativeAnswer, NoErr [ cname ] ])
+    (scrub q hdr cname_auth_unrelated) ;
+  let glue = { name = name "bar" ; ttl = 300l ; rdata = A (ip "1.2.3.4") } in
+  let cname_glue = { base_dns with answer = [ cname ] ; additional = [ glue ] } in
+  Alcotest.check res "CNAME and glue record in additional"
+    (Ok [ Dns_enum.CNAME, q_name, AuthoritativeAnswer, NoErr [ cname ] ])
+    (scrub q hdr cname_glue) ;
+  let glue' = { glue with name = name "boo" } in
+  let cname_au_glue = { base_dns with answer = [ cname ] ; authority = [ ns ] ; additional = [ glue' ] } in
+  Alcotest.check res "CNAME and glue record in additional"
+    (Ok [ Dns_enum.CNAME, q_name, AuthoritativeAnswer, NoErr [ cname ] ])
+    (scrub q hdr cname_au_glue)
+
+(* similar, but with MX records:
+   - query is MX, "foo"
+   - answer = [ "foo" MX 10 "bar" ; "foo" A 1.2.3.4 ]
+   - answer = [ "foo" MX 10 "bar" ; "bar" MX 10 "bar" ]
+   - answer = [ "foo" MX 10 "bar" ; "bar" A 1.2.3.4 ]
+   - answer = [ "foo" MX 10 "bar" ], additional = [ "bar" A 1.2.3.4 ]
+   - answer = [ "foo" MX 10 "bar" ], authority = [ "foo" NS "foobar" ],
+       additional = [ "bar" A 1.2.3.4 ; "foobar" A 1.2.3.4 ] <- takes au
+   - answer = [ "foo" MX 10 "bar" ], authority = [ "bar" NS "foobar" ],
+       additional = [ "bar" A 1.2.3.4 ; "foobar" A 1.2.3.4 ] <- only answer
+*)
+let bailiwick_mx () =
+  let q_name = name "foo" in
+  let q = { q_name ; q_type = Dns_enum.MX } in
+  let base_dns = { question = [ q ] ; answer = [] ; authority = [] ; additional = [] } in
+  let hdr = { header with authoritative = true } in
+  let mx = { name = q_name ; ttl = 300l ; rdata = MX (10, name "bar") } in
+  let answer = Dns_enum.MX, q_name, AuthoritativeAnswer, NoErr [ mx ] in
+  let a = { name = q_name ; ttl = 300l ; rdata = A (ip "1.2.3.4") } in
+  let mx_a = { base_dns with answer = [ mx ; a ] } in
+  (* this fails atm - resulting in MX and A as answer *)
+  Alcotest.check res "additional A record"
+    (Ok [ answer ])
+    (scrub q hdr mx_a) ;
+  let mx_mx = { base_dns with answer = [ mx ; { mx with name = name "bar" } ] } in
+  Alcotest.check res "additional MX records"
+    (Ok [ answer ])
+    (scrub q hdr mx_mx) ;
+  let mx_amx = { base_dns with answer = [ mx ; { a with name = name "bar" } ] } in
+  Alcotest.check res "MX record and an A record"
+    (Ok [ answer ])
+    (scrub q hdr mx_amx) ;
+  let mx_add = { base_dns with answer = [ mx ] ; additional = [ { a with name = name "bar" } ] } in
+  (* this fails atm - resulting in MX and A in answer *)
+  Alcotest.check res "MX record and additional A record"
+    (Ok [ answer ])
+    (scrub q hdr mx_add) ;
+  let ns = { name = name "foo" ; ttl = 300l ; rdata = NS (name "foobar") } in
+  let mx_au_add = { base_dns with answer = [ mx ] ;
+                                  authority = [ ns ] ;
+                                  additional = [ { a with name = name "bar" } ; { a with name = name "foobar" } ] } in
+  let answer' = [
+    answer ;
+    Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr [ ns ] ]
+  in
+  (* this fails atm - resulting in MX, NS, A, A in answer *)
+  Alcotest.check res "MX record and authority and additional A record"
+    (Ok answer')
+    (scrub q hdr mx_au_add) ;
+  let mx_au_add' = { mx_au_add with authority = [ { ns with name = name "bar" } ] } in
+  (* this fails atm - reslting in MX and A in answer *)
+  Alcotest.check res "MX record and bad authority and additional A record"
+    (Ok [ answer ])
+     (scrub q hdr mx_au_add')
+
+(* similar, but with NS records:
+   - query is NS, "foo"
+   - answer = [ "foo" NS "bar" ; "foo" A 1.2.3.4 ]
+   - answer = [ "foo" NS "bar" ; "bar" NS "bar" ]
+   - answer = [ "foo" NS "bar" ; "bar" A 1.2.3.4 ]
+   - answer = [ "foo" NS "bar" ], additional = [ "foo" A 1.2.3.4 ]
+   - answer = [ "foo" NS "bar" ], additional = [ "bar" A 1.2.3.4 ]
+   - answer = [ "foo" NS "bar" ], authority = [ "foo" NS "foobar" ],
+       additional = [ "bar" A 1.2.3.4 ; "foobar" A 1.2.3.4 ] <- takes au
+   - answer = [ "foo" NS "bar" ], authority = [ "bar" NS "foobar" ],
+       additional = [ "bar" A 1.2.3.4 ; "foobar" A 1.2.3.4 ] <- only answer
+*)
+let bailiwick_ns () =
+  let q_name = name "foo" in
+  let q = { q_name ; q_type = Dns_enum.NS } in
+  let base_dns = { question = [ q ] ; answer = [] ; authority = [] ; additional = [] } in
+  let hdr = { header with authoritative = true } in
+  let ns = { name = q_name ; ttl = 300l ; rdata = NS (name "bar") } in
+  let answer = Dns_enum.NS, q_name, AuthoritativeAnswer, NoErr [ ns ] in
+  let a = { name = q_name ; ttl = 300l ; rdata = A (ip "1.2.3.4") } in
+  let ns_a = { base_dns with answer = [ ns ; a ] } in
+  (* fail atm - get NS and A *)
+  Alcotest.check res "additional A record"
+      (Ok [ answer ])
+      (scrub q hdr ns_a) ;
+  let ns_ns = { base_dns with answer = [ ns ; { ns with name = name "bar" } ] } in
+  Alcotest.check res "additional NS records"
+    (Ok [ answer ])
+    (scrub q hdr ns_ns) ;
+  let ns_ans = { base_dns with answer = [ ns ; { a with name = name "bar" } ] } in
+  Alcotest.check res "NS record and an A record"
+    (Ok [ answer ])
+    (scrub q hdr ns_ans) ;
+  let ns_add = { base_dns with answer = [ ns ] ; additional = [ a ] } in
+  (* should glue be respected? don't think it's worth it *)
+  Alcotest.check res "NS record and additional A record"
+    (Ok [ answer ])
+    (scrub q hdr ns_add) ;
+  let ns_add' = { base_dns with answer = [ ns ] ; additional = [ { a with name = name "bar" } ] } in
+  (* fail atm - get NS and A *)
+  Alcotest.check res "NS record and additional A record with NS name"
+    (Ok [ answer ])
+     (scrub q hdr ns_add') ;
+  let ns' = { name = name "foo" ; ttl = 300l ; rdata = NS (name "foobar") } in
+  let ns_au_add = { base_dns with answer = [ ns ] ;
+                                  authority = [ ns' ] ;
+                                  additional = [ { a with name = name "bar" } ; { a with name = name "foobar" } ] } in
+  let answer' = [
+    answer ;
+    Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr [ ns' ] ]
+  in
+  (* fail atm - get NS NS + A A *)
+  Alcotest.check res "NS record and authority and additional A record"
+    (Ok answer')
+    (scrub q hdr ns_au_add) ;
+  let ns_au_add' = { ns_au_add with authority = [ { ns with name = name "bar" } ] } in
+  (* fail atm - get NS + A *)
+  Alcotest.check res "NS record and bad authority and additional A record"
+    (Ok [ answer ])
+     (scrub q hdr ns_au_add')
 
 let scrub_tests = [
   "empty", `Quick, scrub_empty ;
@@ -1180,14 +1357,17 @@ let scrub_tests = [
   "scrub authority NS add A AAAA", `Quick, scrub_authority_ns_add_a_aaaa ;
   "scrub A authority NS A", `Quick, scrub_a_authority_ns_a ;
   "bad packets", `Quick, scrub_bad_packets ;
-  (*  "rfc2308 2.1", `Quick, scrub_rfc2308_2_1 ; *)
+  "rfc2308 2.1", `Quick, scrub_rfc2308_2_1 ;
+  "bailiwick a", `Quick, bailiwick_a ;
+  "bailiwick mx", `Quick, bailiwick_mx ;
+  "bailiwick ns", `Quick, bailiwick_ns ;
 ]
 
 let tests = [
   "follow_cname cycles", follow_cname_tests ;
   "resolve_ns", resolve_ns_tests ;
   "find_ns", find_ns_tests ;
-  "resolve", resolve_tests ;
+  (*  "resolve", resolve_tests ;*)
   "cache", cache_tests ;
   "scrub", scrub_tests ;
 ]

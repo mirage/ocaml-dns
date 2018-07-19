@@ -12,7 +12,9 @@ end
 
 module QM = Map.Make(K)
 
-type awaiting = int64 * int * Dns_packet.proto * Dns_packet.opt option * Ipaddr.V4.t * int * Dns_packet.question * int
+type awaiting =
+  int64 * int * Dns_packet.proto * Domain_name.t * Dns_packet.opt option
+                * Ipaddr.V4.t * int * Dns_packet.question * int
 
 open Rresult.R.Infix
 
@@ -59,9 +61,10 @@ type t = {
   cache : Dns_resolver_cache.t ;
   transit : awaiting QM.t ;
   queried : awaiting list QM.t ;
+  mode : [ `Stub | `Recursive ] ;
 }
 
-let create ?(size = 10000) now rng primary =
+let create ?(size = 10000) ?(mode = `Recursive) now rng primary =
   let cache = Dns_resolver_cache.empty size in
   let cache =
     List.fold_left (fun cache (name, rr) ->
@@ -75,21 +78,22 @@ let create ?(size = 10000) now rng primary =
       Dns_enum.NS Domain_name.root now Dns_resolver_entry.Additional
       (Dns_resolver_entry.NoErr Dns_resolver_root.ns_records) cache
   in
-  { rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty }
+  { rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty ; mode }
 
 let header id = { Dns_packet.id ; query = true ; operation = Dns_enum.Query ;
                   authoritative = false ; truncation = false ; recursion_desired = false ;
                   recursion_available = false ; authentic_data = false ;
                   checking_disabled = false ; rcode = Dns_enum.NoError }
 
-let build_query ?id ?(recursion_desired = false) t ts proto q retry edns ip =
+let build_query ?id ?(recursion_desired = false) t ts proto q retry zone edns ip =
   let id = match id with Some id -> id | None -> Randomconv.int16 t.rng in
   let header =
     let hdr = header id in
+    (* TODO not clear about this.. *)
     { hdr with Dns_packet.recursion_desired }
   in
   let query = `Query { Dns_packet.question = [q] ; answer = [] ; authority = [] ; additional = [] } in
-  let el = (ts, retry, proto, edns, ip, 53, q, id) in
+  let el = (ts, retry, proto, zone, edns, ip, 53, q, id) in
   let k = (q.Dns_packet.q_type, q.Dns_packet.q_name) in
   let transit =
     if QM.mem k t.transit then
@@ -98,9 +102,9 @@ let build_query ?id ?(recursion_desired = false) t ts proto q retry edns ip =
   in
   transit, header, query
 
-let maybe_query ?recursion_desired t ts retry out ip typ name (proto, edns, orig_s, orig_p, orig_q, orig_id) =
+let maybe_query ?recursion_desired t ts retry out ip typ name (proto, zone, edns, orig_s, orig_p, orig_q, orig_id) =
   let k = (typ, name) in
-  let await = (ts, succ out, proto, edns, orig_s, orig_p, orig_q, orig_id) in
+  let await = (ts, succ out, proto, zone, edns, orig_s, orig_p, orig_q, orig_id) in
   if QM.mem k t.queried then
     let t = { t with queried = QM.add k (await :: QM.find k t.queried) t.queried } in
     `Nothing, t
@@ -110,7 +114,7 @@ let maybe_query ?recursion_desired t ts retry out ip typ name (proto, edns, orig
     in
     let quest = { Dns_packet.q_type = typ ; q_name = name } in
     (* TODO: is `Udp good here? *)
-    let transit, hdr, packet = build_query ?recursion_desired t ts proto quest retry edns ip in
+    let transit, hdr, packet = build_query ?recursion_desired t ts proto quest retry zone edns ip in
     let t = { t with transit ; queried = QM.add k [await] t.queried } in
     Logs.debug (fun m -> m "maybe_query: query %a %a %a" Ipaddr.V4.pp_hum ip
                    Dns_packet.pp_header hdr Dns_packet.pp_v packet) ;
@@ -125,9 +129,9 @@ let was_in_transit t typ name id sender =
     Logs.warn (fun m -> m "key %a (%a) not present in set (likely retransmitted)"
                   Domain_name.pp name Dns_enum.pp_rr_typ typ) ;
     None, t
-  | (_ts, _retry, _proto, edns, o_sender, _o_port, _o_q, o_id) ->
+  | (_ts, _retry, _proto, zone, edns, o_sender, _o_port, _o_q, o_id) ->
     if Ipaddr.V4.compare sender o_sender = 0 && id = o_id then
-      Some edns, QM.remove key t
+      Some (zone, edns), QM.remove key t
     else
       (Logs.warn (fun m -> m "unsolicited reply for %a (%a) (id %d vs o_id %d, sender %a vs o_sender %a)"
                     Domain_name.pp name Dns_enum.pp_rr_typ typ
@@ -177,10 +181,11 @@ let handle_query t its out ?(retry = 0) proto edns from port ts q qid =
       s := { !s with drop_send = succ !s.drop_send } ;
       (* TODO reply with error! *)
       `Nothing, t
-    | `Query (nam, typ, ip) ->
-      Logs.debug (fun m -> m "have to query %a (%a) using ip %a"
+    | `Query (zone, nam, typ, ip) ->
+      Logs.debug (fun m -> m "have to query (zone %a) %a (%a) using ip %a"
+                     Domain_name.pp zone
                      Domain_name.pp nam Dns_enum.pp_rr_typ typ Ipaddr.V4.pp_hum ip) ;
-      maybe_query t ts retry out ip typ nam (proto, edns, from, port, q, qid)
+      maybe_query t ts retry out ip typ nam (proto, zone, edns, from, port, q, qid)
     | `Answer (hdr, a) ->
       let max_out = if !s.max_out < out then out else !s.max_out in
       let time = Int64.sub ts its in
@@ -201,12 +206,15 @@ let handle_query t its out ?(retry = 0) proto edns from port ts q qid =
       `Answer cs, t
     | `Nothing -> `Nothing, t
 
-let scrub_it t proto edns ts q header query =
-  match Dns_resolver_utils.scrub q header query, edns with
+let scrub_it mode t proto zone edns ts q header query =
+  match Dns_resolver_utils.scrub ~mode zone q header query, edns with
   | Ok xs, _ ->
     let cache =
       List.fold_left
-        (fun t (ty, n, r, e) -> Dns_resolver_cache.maybe_insert ty n ts r e t)
+        (fun t (ty, n, r, e) ->
+           Logs.debug (fun m -> m "maybe_insert %a %a %a"
+                            Dns_enum.pp_rr_typ ty Domain_name.pp n Dns_resolver_entry.pp_res e) ;
+           Dns_resolver_cache.maybe_insert ty n ts r e t)
         t xs
     in
     if header.Dns_packet.truncation && proto = `Udp then
@@ -271,7 +279,7 @@ let supported = [ Dns_enum.A ; Dns_enum.NS ; Dns_enum.CNAME ;
 let handle_awaiting_queries ?retry t ts q =
   let queried, values = find_queries t.queried (q.Dns_packet.q_type, q.Dns_packet.q_name) in
   let t = { t with queried } in
-  List.fold_left (fun (t, out_a, out_q) (old_ts, out, proto, edns, from, port, q, qid) ->
+  List.fold_left (fun (t, out_a, out_q) (old_ts, out, proto, _, edns, from, port, q, qid) ->
       Logs.debug (fun m -> m "now querying %a" Dns_packet.pp_question q) ;
       match handle_query ?retry t old_ts out proto edns from port ts q qid with
       | `Nothing, t -> t, out_a, out_q
@@ -295,10 +303,8 @@ let resolve t ts proto sender sport header v opt =
                   Fmt.(option ~none:(unit "none") Dns_packet.pp_question) q) ;
     begin match query.Dns_packet.question with
       | [ q ] ->
-        guard (header.Dns_packet.recursion_desired)
-          (fun () ->
-             Logs.err (fun m -> m "recursion not desired") ;
-             error Dns_enum.FormErr) >>= fun () ->
+        if not header.Dns_packet.recursion_desired then
+          Logs.warn (fun m -> m "recursion not desired") ;
         guard (List.mem q.Dns_packet.q_type supported)
           (fun () ->
              Logs.err (fun m -> m "unsupported query type %a"
@@ -342,13 +348,13 @@ let handle_reply t ts proto sender header v =
         let t = { t with transit } in
         let r = match r with
           | None -> (t, [], [])
-          | Some edns ->
+          | Some (zone, edns) ->
             s := { !s with responses = succ !s.responses } ;
             (* (b) now we scrub and either *)
-            match scrub_it t.cache proto edns ts q header query with
+            match scrub_it t.mode t.cache proto zone edns ts q header query with
             | `Query_without_edns ->
               s := { !s with retry_edns = succ !s.retry_edns } ;
-              let transit, header, packet = build_query t ts proto q 1 None sender in
+              let transit, header, packet = build_query t ts proto q 1 zone None sender in
               Logs.debug (fun m -> m "resolve: requery without edns %a %a %a"
                              Ipaddr.V4.pp_hum sender Dns_packet.pp_header header
                              Dns_packet.pp_v packet) ;
@@ -363,8 +369,15 @@ let handle_reply t ts proto sender header v =
                  but since tcp is first, that should trigger the TCP connection,
                  which is then reused... ok, we may send the same query twice
                  with different ids *)
-              let t, out_a, out_q = handle_awaiting_queries t ts q in
-              let transit, header, packet = build_query t ts `Tcp q 1 None sender in
+              (* TODO we may want to get rid of the handle_awaiting_queries
+                 entirely here!? *)
+              let (t, out_a, out_q), recursion_desired =
+                match t.mode with
+                | `Stub -> (t, [], []), true
+                | `Recursive -> handle_awaiting_queries t ts q, false
+              in
+              (* TODO why is edns none here?  is edns bad over tcp? *)
+              let transit, header, packet = build_query ~recursion_desired t ts `Tcp q 1 zone None sender in
               Logs.debug (fun m -> m "resolve: upgrade to tcp %a %a %a"
                              Ipaddr.V4.pp_hum sender
                              Dns_packet.pp_header header
@@ -422,7 +435,8 @@ let handle_delegation t ts proto sender sport header v opt v' =
             in
             Logs.debug (fun m -> m "found ip %a, maybe querying for %a (%a)"
                            Ipaddr.V4.pp_hum ip Dns_enum.pp_rr_typ q.Dns_packet.q_type Domain_name.pp name) ;
-            begin match maybe_query ~recursion_desired:true t ts 0 0 ip q.Dns_packet.q_type name (proto, opt, sender, sport, q, header.Dns_packet.id) with
+            (* TODO is Domain_name.root correct here? *)
+            begin match maybe_query ~recursion_desired:true t ts 0 0 ip q.Dns_packet.q_type name (proto, Domain_name.root, opt, sender, sport, q, header.Dns_packet.id) with
               | `Nothing, t ->
                 Logs.warn (fun m -> m "maybe_query for %a at %a returned nothing"
                               Domain_name.pp name Ipaddr.V4.pp_hum ip) ;
@@ -525,7 +539,7 @@ let query_root t rng now proto =
   in
   let packet = `Query { Dns_packet.question = [q] ; answer = [] ; authority = [] ; additional = [] } in
   let edns = Some (Dns_packet.opt ()) in
-  let el = (now, 0, proto, edns, ip, 53, q, id) in
+  let el = (now, 0, proto, Domain_name.root, edns, ip, 53, q, id) in
   let t = { t with transit = QM.add (q_type, q_name) el t.transit ; cache } in
   let cs, _ = Dns_packet.encode ?edns proto (header id) packet in
   t, (proto, ip, cs)
@@ -534,7 +548,7 @@ let max_retries = 5
 
 let err_retries t q_type q_name =
   let t, reqs = find_queries t (q_type, q_name) in
-  t, List.fold_left (fun acc (_, _, proto, _, ip, port, q, qid) ->
+  t, List.fold_left (fun acc (_, _, proto, _, _, ip, port, q, qid) ->
       Logs.debug (fun m -> m "now erroring to %a" Dns_packet.pp_question q) ;
       let q = `Query { Dns_packet.question = [ q ] ; answer = [] ; authority = [] ; additional = [] } in
       let header =
@@ -549,14 +563,14 @@ let err_retries t q_type q_name =
 let try_other_timer t ts =
   let transit, rem =
     QM.partition
-      (fun _ (c, _, _, _, _, _, _, _) -> Int64.sub ts c < retry_interval)
+      (fun _ (c, _, _, _, _, _, _, _, _) -> Int64.sub ts c < retry_interval)
       t.transit
   in
   let t = { t with transit } in
   if QM.cardinal transit > 0 || QM.cardinal rem > 0 then
     Logs.debug (fun m -> m "try_other timer wheel -- keeping %d, running over %d"
                    (QM.cardinal transit) (QM.cardinal rem)) ;
-  QM.fold (fun (q_type, q_name) (_, retry, _, _, qs, _, _, _) (t, out_a, out_q) ->
+  QM.fold (fun (q_type, q_name) (_, retry, _, _, _, qs, _, _, _) (t, out_a, out_q) ->
       let retry = succ retry in
       if retry < max_retries then begin
         s := { !s with retransmits = succ !s.retransmits } ;
@@ -575,7 +589,7 @@ let try_other_timer t ts =
 let _retry_timer t ts =
   if QM.cardinal t.transit > 0 then
     Logs.debug (fun m -> m "retry timer with %d entries" (QM.cardinal t.transit)) ;
-  List.fold_left (fun (t, out_a, out_q) ((q_type, q_name), (c, retry, proto, edns, qs, _port, _query, id)) ->
+  List.fold_left (fun (t, out_a, out_q) ((q_type, q_name), (c, retry, proto, zone, edns, qs, _port, _query, id)) ->
       if Int64.sub ts c < retry_interval then
         (Logs.debug (fun m -> m "ignoring retransmit %a (%a) for now %a"
                         Domain_name.pp q_name Dns_enum.pp_rr_typ q_type
@@ -588,7 +602,7 @@ let _retry_timer t ts =
           Logs.info (fun m -> m "retransmit %a %a (%d of %d) to %a"
                         Domain_name.pp q_name Dns_enum.pp_rr_typ q_type
                         retry max_retries Ipaddr.V4.pp_hum qs) ;
-          let transit, header, packet = build_query ~id t ts proto { Dns_packet.q_type ; q_name } retry edns qs in
+          let transit, header, packet = build_query ~id t ts proto { Dns_packet.q_type ; q_name } retry zone edns qs in
           let cs, _ = Dns_packet.encode ?edns proto header packet in
           { t with transit }, out_a, (`Udp, qs, cs) :: out_q
         end else begin
