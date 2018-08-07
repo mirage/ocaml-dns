@@ -1241,7 +1241,6 @@ let bailiwick_mx () =
   let answer = Dns_enum.MX, q_name, AuthoritativeAnswer, NoErr [ mx ] in
   let a = { name = q_name ; ttl = 300l ; rdata = A (ip "1.2.3.4") } in
   let mx_a = { base_dns with answer = [ mx ; a ] } in
-  (* this fails atm - resulting in MX and A as answer *)
   Alcotest.check res "additional A record"
     (Ok [ answer ])
     (scrub q hdr mx_a) ;
@@ -1254,7 +1253,6 @@ let bailiwick_mx () =
     (Ok [ answer ])
     (scrub q hdr mx_amx) ;
   let mx_add = { base_dns with answer = [ mx ] ; additional = [ { a with name = name "bar" } ] } in
-  (* this fails atm - resulting in MX and A in answer *)
   Alcotest.check res "MX record and additional A record"
     (Ok [ answer ])
     (scrub q hdr mx_add) ;
@@ -1266,12 +1264,10 @@ let bailiwick_mx () =
     answer ;
     Dns_enum.NS, q_name, AuthoritativeAuthority, NoErr [ ns ] ]
   in
-  (* this fails atm - resulting in MX, NS, A, A in answer *)
   Alcotest.check res "MX record and authority and additional A record"
     (Ok answer')
     (scrub q hdr mx_au_add) ;
   let mx_au_add' = { mx_au_add with authority = [ { ns with name = name "bar" } ] } in
-  (* this fails atm - reslting in MX and A in answer *)
   Alcotest.check res "MX record and bad authority and additional A record"
     (Ok [ answer ])
      (scrub q hdr mx_au_add')
