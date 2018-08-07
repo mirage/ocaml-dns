@@ -9,6 +9,11 @@ module Make (S : STACKV4) : sig
     val find : Ipaddr.V4.t -> 'a t -> 'a option
   end
 
+  module IPM : sig
+    include Map.S with type key = Ipaddr.V4.t * int
+    val find : Ipaddr.V4.t * int -> 'a t -> 'a option
+  end
+
   type f
 
   val of_flow : S.TCPV4.flow -> f

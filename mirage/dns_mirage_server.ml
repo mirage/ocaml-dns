@@ -16,12 +16,25 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
 
   let primary stack pclock mclock ?(timer = 2) ?(port = 53) t =
     let state = ref t in
-    let send_notify (ip, dport, data) = Dns.send_udp stack port ip dport data in
+    let tcp_out = ref Dns.IPM.empty in
+    let drop ip port =
+      tcp_out := Dns.IPM.remove (ip, port) !tcp_out ;
+      state := UDns_server.Primary.closed !state ip port
+    in
+    let send_notify (ip, dport, data) =
+      match Dns.IPM.find (ip, dport) !tcp_out with
+      | None -> Dns.send_udp stack port ip dport data
+      | Some f -> Dns.send_tcp f data >>= function
+        | Ok () -> Lwt.return_unit
+        | Error () ->
+          drop ip dport ;
+          Dns.send_udp stack port ip dport data
+    in
     let udp_cb ~src ~dst:_ ~src_port buf =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
-      let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Udp src buf in
+      let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Udp src src_port buf in
       state := t ;
       (match answer with
        | None -> Log.warn (fun m -> m "empty answer") ; Lwt.return_unit
@@ -34,13 +47,14 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
       let dst_ip, dst_port = T.dst flow in
       Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
       let f = Dns.of_flow flow in
+      tcp_out := Dns.IPM.add (dst_ip, dst_port) flow !tcp_out ;
       let rec loop () =
         Dns.read_tcp f >>= function
-        | Error () -> Lwt.return_unit
+        | Error () -> drop dst_ip dst_port ; Lwt.return_unit
         | Ok data ->
           let now = Ptime.v (P.now_d_ps pclock) in
           let elapsed = M.elapsed_ns mclock in
-          let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Tcp dst_ip data in
+          let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Tcp dst_ip dst_port data in
           state := t ;
           Lwt_list.iter_p send_notify notify >>= fun () ->
           match answer with
@@ -48,7 +62,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
           | Some answer ->
             Dns.send_tcp flow answer >>= function
             | Ok () -> loop ()
-            | Error () -> Lwt.return_unit
+            | Error () -> drop dst_ip dst_port ; Lwt.return_unit
       in
       loop ()
     in
@@ -63,7 +77,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
     in
     Lwt.async time
 
-  let secondary ?(on_update = fun _trie -> Lwt.return_unit)  stack pclock mclock ?(timer = 5) ?(port = 53) t =
+  let secondary ?(on_update = fun _trie -> Lwt.return_unit) stack pclock mclock ?(timer = 5) ?(port = 53) t =
     let state = ref t in
     let tcp_out = ref Dns.IM.empty in
 

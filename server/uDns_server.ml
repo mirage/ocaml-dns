@@ -47,10 +47,14 @@ module Authentication = struct
   let operation_name ?(zone = Domain_name.root) op =
     Domain_name.prepend_exn ~hostname:false zone (operation_to_string op)
 
+  let is_op op name =
+    let arr = Domain_name.to_array name in
+    Array.exists (String.equal (operation_to_string op)) arr
+
   let find_zone_ips name =
     (* the name of a key is primaryip.secondaryip._transfer.zone
        e.g. 192.168.42.2_1053.192.168.42.1._transfer.mirage
-    *)
+       alternative: <whatever>.primaryip._transfer.zone *)
     let arr = Domain_name.to_array name in
     try
       let rec go idx = if Array.get arr idx = "_transfer" then idx else go (succ idx) in
@@ -58,38 +62,44 @@ module Authentication = struct
       let zone = Domain_name.of_array (Array.sub arr 0 zone_idx) in
       let start = succ zone_idx in
       let ip_port start =
-        let subarr = Array.sub arr start 4 in
-        let content, port =
-          let last = Array.get subarr 0 in
-          match Astring.String.cut ~sep:"_" last with
-          | None -> last, 53
-          | Some (a, b) -> a, int_of_string b
-        in
-        Array.set subarr 0 content ;
-        let host = Domain_name.of_array subarr in
-        Ipaddr.V4.of_string (Domain_name.to_string host), port
+        try
+          let subarr = Array.sub arr start 4 in
+          let content, port =
+            let last = Array.get subarr 0 in
+            match Astring.String.cut ~sep:"_" last with
+            | None -> last, 53
+            | Some (a, b) -> a, int_of_string b
+          in
+          Array.set subarr 0 content ;
+          let host = Domain_name.of_array subarr in
+          Ipaddr.V4.of_string (Domain_name.to_string host), port
+        with Invalid_argument _ -> None, 53
       in
       match ip_port (start + 4), ip_port start with
-      | (None, _), _ | _, (None, _) -> None
+      | _, (None, _) -> None
+      | (None, _), (Some ip, po) -> Some (zone, (ip, po), None)
       | (Some primary, pport), (Some secondary, sport) ->
-        Some (zone, (primary, pport), (secondary, sport))
-    with
-      Invalid_argument _ -> None
+        Some (zone, (primary, pport), Some (secondary, sport))
+    with Invalid_argument _ -> None
 
   let find_ns s (trie, _) zone =
     let tx = operation_name ~zone `Transfer in
     let accumulate name _ acc =
-      match find_zone_ips name with
-      | None -> acc
-      | Some (_, prim, sec) ->
-        let (ip, port) = s (prim, sec) in
+      match find_zone_ips name, s with
+      | None, _ -> acc
+      | Some (_, prim, _), `P ->
+        let (ip, port) = prim in
         (name, ip, port) :: acc
+      | Some (_, _, Some sec), `S ->
+        let (ip, port) = sec in
+        (name, ip, port) :: acc
+      | Some (_, _, None), `S -> acc
     in
     Dns_trie.folde tx Dns_map.Dnskey trie accumulate []
 
-  let secondaries t zone = find_ns snd t zone
+  let secondaries t zone = find_ns `S t zone
 
-  let primaries t zone = find_ns fst t zone
+  let primaries t zone = find_ns `P t zone
 
   let all_operations =
     List.map operation_to_string [ `Key_management ; `Update ; `Transfer ]
@@ -514,9 +524,11 @@ let handle_rr_update trie = function
             end
     end
 
-let notify t now zone soa =
-  (* we use both the NS records of the zone, and the IP addresses of secondary
-     servers which have transfer keys for the zone *)
+let notify t l now zone soa =
+  (* we use
+     1. the NS records of the zone
+     2. the IP addresses of secondary servers which have transfer keys
+     3. the TCP connections requesting (signed) SOA in l *)
   let ips =
     match Dns_trie.lookup zone Dns_map.Ns t.data with
     | Ok (_, ns) ->
@@ -541,6 +553,11 @@ let notify t now zone soa =
     | Error e ->
       Logs.warn (fun m -> m "no secondaries keys found (err %a)" Dns_trie.pp_e e) ;
       ips
+  in
+  let ips =
+    List.fold_left (fun m (_, ip, port) -> IPM.add ip port m)
+      ips
+      (List.filter (fun (zone', _, _) -> Domain_name.equal zone zone') l)
   in
   Log.debug (fun m -> m "notifying %a %a" Domain_name.pp zone
                 Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ":") Ipaddr.V4.pp_hum int))
@@ -586,7 +603,7 @@ let update_data trie zone u =
     Ok (trie'', Some soa)
   | _, _ -> Ok (trie', None)
 
-let handle_update t ts proto key u =
+let handle_update t l ts proto key u =
   (* first of all, see whether we think we're authoritative for the zone *)
   let zone = Dns_packet.(u.zone.q_name) in
   guard (List.for_all (fun u -> in_zone zone (Dns_packet.rr_update_name u)) u.Dns_packet.update)
@@ -608,7 +625,7 @@ let handle_update t ts proto key u =
      let t = { t with data = data' } in
      let notifies = match soa with
        | None -> []
-       | Some soa -> notify t ts zone soa
+       | Some soa -> notify t l ts zone soa
      in
      Ok (t, notifies)
    end else
@@ -659,14 +676,17 @@ let handle_tsig ?mac t now header v tsig off buf =
 module Primary = struct
 
   (* TODO: there's likely a better data structure for outstanding notifications *)
+  (* the list of zone, ip, port, keyname is whom to notify *)
   type s =
-    t * (int64 * int * Ipaddr.V4.t * int * Dns_packet.header * Dns_packet.query) list
+    t *
+    (Domain_name.t * Ipaddr.V4.t * int) list *
+    (int64 * int * Ipaddr.V4.t * int * Dns_packet.header * Dns_packet.query) list
 
-  let server (t, _) = t
+  let server (t, _, _) = t
 
-  let data (t, _) = t.data
+  let data (t, _, _) = t.data
 
-  let with_data (t, n) data = { t with data }, n
+  let with_data (t, l, n) data = { t with data }, l, n
 
   let create ?(keys = []) ?(a = []) ~tsig_verify ~tsig_sign ~rng data =
     let keys = Authentication.of_keys keys in
@@ -674,7 +694,7 @@ module Primary = struct
     let notifications =
       let f name (_, soa) acc =
         Log.debug (fun m -> m "soa found for %a" Domain_name.pp name) ;
-        acc @ notify t 0L name soa
+        acc @ notify t [] 0L name soa
       in
       match Dns_trie.folde Domain_name.root Dns_map.Soa data f [] with
       | Ok ns -> ns
@@ -682,16 +702,30 @@ module Primary = struct
         Logs.warn (fun m -> m "error %a while collecting zones" Dns_trie.pp_e e) ;
         []
     in
-    (t, notifications)
+    (t, [], notifications)
 
-  let handle_frame (t, ns) ts ip proto key header v =
+  let tcp_soa_query proto q =
+    match proto, q.Dns_packet.question with
+    | `Tcp, [ query ] when query.Dns_packet.q_type = Dns_enum.SOA ->
+      Ok query.Dns_packet.q_name
+    | _ -> Error ()
+
+  let handle_frame (t, l, ns) ts ip port proto key header v =
     match v, header.Dns_packet.query with
     | `Query q, true ->
       handle_query t proto key header q >>= fun answer ->
-      Ok ((t, ns), Some answer, [])
+      let l' = match tcp_soa_query proto q, key with
+        | Ok zone, Some key when Authentication.is_op `Transfer key ->
+          let other (z, i, p) =
+            not (Domain_name.equal z zone && Ipaddr.V4.compare i ip = 0 && p = port)
+          in
+          (zone, ip, port) :: List.filter other l
+        | _ -> l
+      in
+      Ok ((t, l', ns), Some answer, [])
     | `Update u, true ->
       (* TODO: intentional? all other notifications apart from the new ones are dropped *)
-      handle_update t ts proto key u >>= fun (t', ns) ->
+      handle_update t l ts proto key u >>= fun (t', ns) ->
       let out =
         let edns = Dns_packet.opt () in
         List.map (fun (_, _, ip, port, hdr, q) ->
@@ -702,43 +736,43 @@ module Primary = struct
         s_header header,
         `Update { u with Dns_packet.prereq = [] ; update = [] ; addition = [] }
       in
-      Ok ((t', ns), Some answer, out)
+      Ok ((t', l, ns), Some answer, out)
     | `Notify _, false ->
       let notifications =
         List.filter (fun (_, _, ip', _, hdr', _) ->
             not (Ipaddr.V4.compare ip ip' = 0 && header.Dns_packet.id = hdr'.Dns_packet.id))
           ns
       in
-      Ok ((t, notifications), None, [])
+      Ok ((t, l, notifications), None, [])
     | _, false ->
       (* this happens when the other side is a tinydns and we're sending notify *)
       Log.err (fun m -> m "ignoring unsolicited answer, replying with FormErr") ;
       Error Dns_enum.FormErr
     | `Notify _, true ->
       Log.err (fun m -> m "ignoring unsolicited request") ;
-      Ok ((t, ns), None, [])
+      Ok ((t, l, ns), None, [])
 
-  let handle (t, ns) now ts proto ip buf =
+  let handle (t, l, ns) now ts proto ip port buf =
     match
       safe_decode buf >>= fun ((header, v, opt, tsig), tsig_off) ->
       guard (not header.Dns_packet.truncation) Dns_enum.FormErr >>= fun () ->
       Ok ((header, v, opt, tsig), tsig_off)
     with
-    | Error rcode -> (t, ns), raw_server_error buf rcode, []
+    | Error rcode -> (t, l, ns), raw_server_error buf rcode, []
     | Ok ((header, v, opt, tsig), tsig_off) ->
       Log.debug (fun m -> m "%a sent %a" Ipaddr.V4.pp_hum ip
                     Dns_packet.pp (header, v, opt, tsig)) ;
       let handle_inner keyname =
-        match handle_frame (t, ns) ts ip proto keyname header v with
+        match handle_frame (t, l, ns) ts ip port proto keyname header v with
         | Ok (t, Some (header, answer), out) ->
           let max_size, edns = Dns_packet.reply_opt opt in
           (* be aware, this may be truncated... here's where AXFR is assembled! *)
           (t, Some (Dns_packet.encode ?max_size ?edns proto header answer), out)
         | Ok (t, None, out) -> (t, None, out)
-        | Error rcode -> ((t, ns), err header v rcode, [])
+        | Error rcode -> ((t, l, ns), err header v rcode, [])
       in
       match handle_tsig t now header v tsig tsig_off buf with
-      | Error data -> ((t, ns), data, [])
+      | Error data -> ((t, l, ns), data, [])
       | Ok None ->
         begin match handle_inner None with
           | t, None, out -> t, None, out
@@ -754,9 +788,17 @@ module Primary = struct
             (a, None, out)
           | Some (buf, _) -> (a, Some buf, out)
 
+  let closed (t, l, ns) ip port =
+    let l' =
+      List.filter (fun (_, ip', port') ->
+          not (Ipaddr.V4.compare ip ip' = 0 && port = port'))
+        l
+    in
+    (t, l', ns)
+
   let retransmit = Array.map Duration.of_sec [| 5 ; 12 ; 25 ; 40 ; 60 |]
 
-  let timer (t, ns) now =
+  let timer (t, l, ns) now =
     let max = pred (Array.length retransmit) in
     let encode hdr q = fst @@ Dns_packet.encode `Udp hdr (`Query q) in
     let notifications, out =
@@ -774,7 +816,7 @@ module Primary = struct
             (ts, count, ip, port, hdr, q) :: ns, acc)
         ([], []) ns
     in
-    (t, notifications), out
+    (t, l, notifications), out
 end
 
 module Secondary = struct

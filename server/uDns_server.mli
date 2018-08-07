@@ -31,7 +31,7 @@ val handle_query : t -> Dns_packet.proto -> Domain_name.t option -> Dns_packet.h
   Dns_packet.query ->
   (Dns_packet.header * Dns_packet.v, Dns_enum.rcode) result
 
-val notify : t -> int64 -> Domain_name.t ->
+val notify : t -> (Domain_name.t * Ipaddr.V4.t * int) list -> int64 -> Domain_name.t ->
   Dns_packet.soa ->
   (int64 * int * Ipaddr.V4.t * int * Dns_packet.header * Dns_packet.query) list
 
@@ -56,13 +56,15 @@ module Primary : sig
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->
     Dns_trie.t -> s
 
-  val handle_frame : s -> int64 -> Ipaddr.V4.t -> Dns_packet.proto ->
+  val handle_frame : s -> int64 -> Ipaddr.V4.t -> int -> Dns_packet.proto ->
     Domain_name.t option -> Dns_packet.header -> Dns_packet.v ->
     (s * (Dns_packet.header * Dns_packet.v) option * (Ipaddr.V4.t * int * Cstruct.t) list,
      Dns_enum.rcode) result
 
-  val handle : s -> Ptime.t -> int64 -> Dns_packet.proto -> Ipaddr.V4.t -> Cstruct.t ->
+  val handle : s -> Ptime.t -> int64 -> Dns_packet.proto -> Ipaddr.V4.t -> int -> Cstruct.t ->
     s * Cstruct.t option * (Ipaddr.V4.t * int * Cstruct.t) list
+
+  val closed : s -> Ipaddr.V4.t -> int -> s
 
   val timer : s -> int64 -> s * (Ipaddr.V4.t * int * Cstruct.t) list
 end

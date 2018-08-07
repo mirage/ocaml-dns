@@ -231,13 +231,13 @@ let scrub_it mode t proto zone edns ts q header query =
 
 let guard p err = if p then Ok () else Error (err ())
 
-let handle_primary t now ts proto sender header v opt tsig tsig_off buf =
+let handle_primary t now ts proto sender sport header v opt tsig tsig_off buf =
   (* makes only sense to ask primary for query=true since we'll never issue questions from primary *)
   let handle_inner name =
     if not header.Dns_packet.query then
       `No
     else
-      match UDns_server.Primary.handle_frame t ts sender proto name header v with
+      match UDns_server.Primary.handle_frame t ts sender sport proto name header v with
       | Ok (_, None, _) -> `None (* incoming notifications are never replied to *)
       | Ok (t, Some (header, v'), _) ->
           (* delegation if authoritative is not set! *)
@@ -499,7 +499,7 @@ let handle t now ts query proto sender sport buf =
     match header.Dns_packet.query, query with
     | true, true ->
       begin
-        match handle_primary t.primary now ts proto sender header v opt tsig tsig_off buf with
+        match handle_primary t.primary now ts proto sender sport header v opt tsig tsig_off buf with
         | `Reply (primary, (pkt, _)) ->
           { t with primary }, [ (proto, sender, sport, pkt) ], []
         | `Delegation v' ->

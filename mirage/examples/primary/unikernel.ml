@@ -64,6 +64,8 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
       [
         Domain_name.of_string_exn ~hostname:false "10.0.42.2.10.0.42.4._transfer.mirage" ,
         key "G/7zDZr98BTzoi9N6HEUFOg7byKfH9rsPav5JMm9l8Y=" ;
+        Domain_name.of_string_exn ~hostname:false "barf.10.0.42.2._transfer.mirage" ,
+        key "sCgZ0SgEaFbpBxv+n74bognpLdR7gdutn8lO0/wpGJY=" ;
         Domain_name.of_string_exn ~hostname:false "key._transfer.mirage" ,
         key "/WcnjpqrErYrXi1dd4sv8dfwCwDFg0ZGm6N6Bq1VwMI=" ;
         Domain_name.of_string_exn ~hostname:false "one._update.mirage" ,

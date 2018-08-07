@@ -14,6 +14,16 @@ module Make (S : STACKV4) = struct
     let find k t = try Some (find k t) with Not_found -> None
   end
 
+  module IPM = struct
+    include Map.Make(struct
+        type t = Ipaddr.V4.t * int
+        let compare (ip, p) (ip', p') = match Ipaddr.V4.compare ip ip' with
+          | 0 -> compare p p'
+          | x -> x
+      end)
+    let find k t = try Some (find k t) with Not_found -> None
+  end
+
   module U = S.UDPV4
   module T = S.TCPV4
 
