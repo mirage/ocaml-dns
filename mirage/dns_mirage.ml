@@ -9,6 +9,8 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (S : STACKV4) = struct
 
+  module IS = Set.Make(Ipaddr.V4)
+
   module IM = struct
     include Map.Make(Ipaddr.V4)
     let find k t = try Some (find k t) with Not_found -> None

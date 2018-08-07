@@ -80,6 +80,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
   let secondary ?(on_update = fun _trie -> Lwt.return_unit) stack pclock mclock ?(timer = 5) ?(port = 53) t =
     let state = ref t in
     let tcp_out = ref Dns.IM.empty in
+    let in_flight = ref Dns.IS.empty in
 
     let maybe_update_state t t' =
       let trie server = UDns_server.((Secondary.server server).data) in
@@ -90,12 +91,21 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
         on_update t
     in
 
-    let rec read_and_handle ip f =
+    let rec close ip port =
+      (match Dns.IM.find ip !tcp_out with
+       | None -> Lwt.return_unit
+       | Some f -> T.close f) >>= fun () ->
+      tcp_out := Dns.IM.remove ip !tcp_out ;
+      let now = Ptime.v (P.now_d_ps pclock) in
+      let elapsed = M.elapsed_ns mclock in
+      let state', out = UDns_server.Secondary.closed !state now elapsed ip port in
+      state := state' ;
+      Lwt_list.iter_s request out
+    and read_and_handle ip port f =
       Dns.read_tcp f >>= function
       | Error () ->
         Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
-        tcp_out := Dns.IM.remove ip !tcp_out ;
-        T.close (Dns.flow f)
+        close ip port
       | Ok data ->
         let now = Ptime.v (P.now_d_ps pclock) in
         let elapsed = M.elapsed_ns mclock in
@@ -105,31 +115,40 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
         maybe_update_state t !state >>= fun () ->
         Lwt_list.iter_s request out >>= fun () ->
         match answer with
-        | None -> read_and_handle ip f
+        | None -> read_and_handle ip port f
         | Some x ->
           Dns.send_tcp (Dns.flow f) x >>= function
           | Error () ->
             Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
-            tcp_out := Dns.IM.remove ip !tcp_out ;
-            T.close (Dns.flow f)
-          | Ok () -> read_and_handle ip f
+            close ip port
+          | Ok () -> read_and_handle ip port f
     and request (proto, ip, port, data) =
       match Dns.IM.find ip !tcp_out with
       | None ->
         begin
-          Logs.info (fun m -> m "creating connectiong to %a:%d" Ipaddr.V4.pp_hum ip port) ;
-          T.create_connection (S.tcpv4 stack) (ip, port) >>= function
-          | Error e ->
-            Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
-                        T.pp_error e Ipaddr.V4.pp_hum ip port) ;
+          if Dns.IS.mem ip !in_flight then
             Lwt.return_unit
-          | Ok flow ->
-            Dns.send_tcp flow data >>= function
-            | Error () -> T.close flow
-            | Ok () ->
-              tcp_out := Dns.IM.add ip flow !tcp_out ;
-              Lwt.async (fun () -> read_and_handle ip (Dns.of_flow flow)) ;
+          else begin
+            Logs.info (fun m -> m "creating connection to %a:%d" Ipaddr.V4.pp_hum ip port) ;
+            in_flight := Dns.IS.add ip !in_flight ;
+            T.create_connection (S.tcpv4 stack) (ip, port) >>= function
+            | Error e ->
+              Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
+                          T.pp_error e Ipaddr.V4.pp_hum ip port) ;
+              in_flight := Dns.IS.remove ip !in_flight ;
+              Lwt.async (fun () ->
+                  TIME.sleep_ns (Duration.of_sec 5) >>= fun () ->
+                  close ip port) ;
               Lwt.return_unit
+            | Ok flow ->
+              Dns.send_tcp flow data >>= function
+              | Error () -> close ip port
+              | Ok () ->
+                tcp_out := Dns.IM.add ip flow !tcp_out ;
+                in_flight := Dns.IS.remove ip !in_flight ;
+                Lwt.async (fun () -> read_and_handle ip port (Dns.of_flow flow)) ;
+                Lwt.return_unit
+          end
         end
       | Some flow ->
         Dns.send_tcp flow data >>= function
@@ -137,8 +156,8 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
         | Error () ->
           Log.warn (fun m -> m "closing tcp flow to %a:%d, retrying request"
                        Ipaddr.V4.pp_hum ip port) ;
-          tcp_out := Dns.IM.remove ip !tcp_out ;
           T.close flow >>= fun () ->
+          tcp_out := Dns.IM.remove ip !tcp_out ;
           request (proto, ip, port, data)
     in
 

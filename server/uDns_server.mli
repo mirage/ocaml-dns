@@ -94,4 +94,7 @@ module Secondary : sig
 
   val timer : s -> Ptime.t -> int64 ->
     s * (Dns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list
+
+  val closed : s -> Ptime.t -> int64 -> Ipaddr.V4.t -> int ->
+    s * (Dns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list
 end

@@ -4,6 +4,8 @@ open Mirage_types_lwt
 
 module Make (S : STACKV4) : sig
 
+  module IS : Set.S with type elt = Ipaddr.V4.t
+
   module IM : sig
     include Map.S with type key = Ipaddr.V4.t
     val find : Ipaddr.V4.t -> 'a t -> 'a option

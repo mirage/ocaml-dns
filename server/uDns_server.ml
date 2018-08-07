@@ -1252,4 +1252,23 @@ module Secondary = struct
             | Some (buf, _) -> (a, Some buf, out)
           end
         | (a, None, out) -> (a, None, out)
+
+  let closed (t, zones) now ts ip' port' =
+    let xs =
+      Domain_name.Map.fold (fun zone (_, ip, port, keyname) acc ->
+          if Ipaddr.V4.compare ip ip' = 0 && port = port' then
+            match Authentication.find_zone_ips keyname with
+            | Some (_, _, None) ->
+              begin match query_soa t `Tcp now ts zone keyname with
+                | None -> acc
+                | Some (st, data) ->
+                  ((zone, (st, ip, port, keyname)), (`Tcp, ip, port, data)) :: acc
+              end
+            | _ -> acc
+          else acc)
+        zones []
+    in
+    let zones', out = List.split xs in
+    let zones'' = List.fold_left (fun z (zone, v) -> Domain_name.Map.add zone v z) zones zones' in
+    (t, zones''), out
 end
