@@ -5,7 +5,7 @@ open Mirage_types_lwt
 module Make (R : RANDOM) (P : PCLOCK) (T : TIME) (S : STACKV4) : sig
 
   val retrieve_certificate :
-    S.t -> P.t -> dns_key:string -> hostname:string -> key_seed:string ->
-    S.TCPV4.ipaddr -> int ->
-    Tls.Config.own_cert Lwt.t
+    S.t -> P.t -> dns_key:string -> hostname:Domain_name.t ->
+    ?additional_hostnames:Domain_name.t list -> key_seed:string -> S.TCPV4.ipaddr ->
+    int -> Tls.Config.own_cert Lwt.t
 end

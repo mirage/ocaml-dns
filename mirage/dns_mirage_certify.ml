@@ -139,14 +139,20 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
                        Dns_packet.pp_err e) ;
           Lwt.return None
 
-  let initialise_csr hostname seed =
+  let initialise_csr hostname additionals seed =
     let private_key =
       let seed = Cstruct.of_string seed in
       let g = Nocrypto.Rng.(create ~seed (module Generators.Fortuna)) in
       Nocrypto.Rsa.generate ~g 4096
     in
     let public_key = `RSA (Nocrypto.Rsa.pub_of_priv private_key) in
-    let csr = X509.CA.request [`CN hostname ] (`RSA private_key) in
+    let extensions = match additionals with
+      | [] -> []
+      | hostnames ->
+        let dns = List.map (fun name -> `DNS name) (hostname :: hostnames) in
+        [ `Extensions [ (false, `Subject_alt_name dns) ] ]
+    in
+    let csr = X509.CA.request [`CN hostname ] ~extensions (`RSA private_key) in
     (private_key, public_key, csr)
 
   let query_certificate_or_csr flow pclock pub hostname keyname zone dnskey csr =
@@ -173,7 +179,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         in
         wait_for_cert ()
 
-  let retrieve_certificate stack pclock ~dns_key ~hostname ~key_seed dns port =
+  let retrieve_certificate stack pclock ~dns_key ~hostname ?(additional_hostnames = []) ~key_seed dns port =
     let keyname, zone, dnskey =
       match Astring.String.cut ~sep:":" dns_key with
       | None -> invalid_arg "couldn't parse dnskey"
@@ -184,16 +190,22 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
           let zone = Domain_name.drop_labels_exn ~amount:2 name in
           (name, zone, dnskey)
     in
-    let hostname = Domain_name.prepend_exn zone hostname in
-
-    let priv, pub, csr = initialise_csr (Domain_name.to_string hostname) key_seed in
-    S.TCPV4.create_connection (S.tcpv4 stack) (dns, port) >>= function
-    | Error e ->
-      Log.err (fun m -> m "error %a while connecting to name server, shutting down" S.TCPV4.pp_error e) ;
-      Lwt.fail_with "couldn't connect to name server"
-    | Ok flow ->
-      let flow = Dns.of_flow flow in
-      query_certificate_or_csr flow pclock pub hostname keyname zone dnskey csr >>= fun certificate ->
-      S.TCPV4.close (Dns.flow flow) >|= fun () ->
-      `Single ([certificate ; letsencrypt_ca], priv)
+    let not_sub subdomain = not (Domain_name.sub ~subdomain ~domain:zone) in
+    if not_sub hostname || List.exists not_sub additional_hostnames then
+      Lwt.fail_with "hostname not a subdomain of zone provided by dns_key"
+    else
+      let host, more =
+        Domain_name.to_string hostname,
+        List.map Domain_name.to_string additional_hostnames
+      in
+      let priv, pub, csr = initialise_csr host more key_seed in
+      S.TCPV4.create_connection (S.tcpv4 stack) (dns, port) >>= function
+      | Error e ->
+        Log.err (fun m -> m "error %a while connecting to name server, shutting down" S.TCPV4.pp_error e) ;
+        Lwt.fail_with "couldn't connect to name server"
+      | Ok flow ->
+        let flow = Dns.of_flow flow in
+        query_certificate_or_csr flow pclock pub hostname keyname zone dnskey csr >>= fun certificate ->
+        S.TCPV4.close (Dns.flow flow) >|= fun () ->
+        `Single ([certificate ; letsencrypt_ca], priv)
 end
