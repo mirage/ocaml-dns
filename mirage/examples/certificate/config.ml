@@ -22,13 +22,17 @@ let hostname =
   let doc = Key.Arg.info ~doc:"hostname" ["hostname"] in
   Key.(create "hostname" Arg.(required string doc))
 
+let additional =
+  let doc = Key.Arg.info ~doc:"additional" ["additional"] in
+  Key.(create "additional" Arg.(opt string "" doc))
+
 let key_seed =
   let doc = Key.Arg.info ~doc:"certificate key seed" ["key-seed"] in
   Key.(create "key-seed" Arg.(required string doc))
 
 let keys = Key.[
     abstract port ; abstract dns_key ; abstract dns_server ; abstract dns_port ;
-    abstract hostname ; abstract key_seed
+    abstract hostname ; abstract additional ; abstract key_seed
   ]
 
 let packages = [

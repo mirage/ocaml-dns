@@ -45,8 +45,13 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S: Mirage_stack_l
       Lwt.return_unit
 
   let start _random pclock _mclock _ stack _ =
+    let hostname = Domain_name.of_string_exn (Key_gen.hostname ()) in
+    let additional_hostnames =
+      List.map Domain_name.of_string_exn
+        (Astring.String.cuts ~empty:false ~sep:"," (Key_gen.additional ()))
+    in
     D.retrieve_certificate stack pclock ~dns_key:(Key_gen.dns_key ())
-      ~hostname:(Key_gen.hostname ()) ~key_seed:(Key_gen.key_seed ())
+      ~hostname ~additional_hostnames ~key_seed:(Key_gen.key_seed ())
       (Key_gen.dns_server ()) (Key_gen.dns_port ()) >>= fun own_cert ->
     let config = Tls.Config.server ~certificates:own_cert () in
     S.listen_tcpv4 stack ~port:(Key_gen.port ()) (accept config handle) ;

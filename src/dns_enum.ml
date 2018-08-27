@@ -428,10 +428,10 @@ module RRMap = Map.Make(struct
 
 (* 8 bit *)
 type tlsa_cert_usage =
-  | CA_constraint [@id 0]
-  | Service_certificate_constraint [@id 1]
-  | Trust_anchor_assertion [@id 2]
-  | Domain_issued_certificate [@id 3]
+  | CA_constraint
+  | Service_certificate_constraint
+  | Trust_anchor_assertion
+  | Domain_issued_certificate
 
 let tlsa_cert_usage_to_int = function
   | CA_constraint -> 0
