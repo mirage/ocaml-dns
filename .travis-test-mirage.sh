@@ -14,22 +14,13 @@ mirage configure -t unix && make depend && mirage build && mirage clean
 cd ..
 
 for x in $UNIKERNELS; do
-    cd $x
-    echo "now working in $x, compiling for unix"
-    mirage configure -t unix && make depend && mirage build && mirage clean
-    cd ..
+    cd $x && echo "now working in $x, compiling for unix" && mirage configure -t unix && make depend && mirage build && mirage clean && cd ..
 done
 
 for x in $UNIKERNELS; do
-    cd $x
-    echo "now working in $x, compiling for ukvm"
-    mirage configure -t ukvm && make depend && mirage build && mirage clean
-    cd ..
+    cd $x && echo "now working in $x, compiling for ukvm" && mirage configure -t ukvm && make depend && mirage build && mirage clean && cd ..
 done
 
 for x in $UNIKERNELS; do
-    cd $x
-    echo "now working in $x, compiling for virtio"
-    mirage configure -t virtio && make depend && mirage build && mirage clean
-    cd ..
+    cd $x && echo "now working in $x, compiling for virtio" && mirage configure -t virtio && make depend && mirage build && mirage clean && cd ..
 done
