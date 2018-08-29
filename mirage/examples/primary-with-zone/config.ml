@@ -18,7 +18,7 @@ let disk = generic_kv_ro "data"
 let dns_handler =
   let packages = [
     package "logs" ;
-    package ~sublibs:[ "server" ; "zonefile" ; "mirage.server" ] "udns" ;
+    package ~sublibs:[ "server" ; "zonefile" ; "mirage.server" ; "crypto" ] "udns" ;
     package "nocrypto"
   ] in
   foreign

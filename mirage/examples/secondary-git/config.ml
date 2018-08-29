@@ -28,7 +28,7 @@ let port =
 let dns_handler =
   let packages = [
     package "logs" ;
-    package ~sublibs:[ "server" ; "mirage.server" ; "zonefile" ] "udns" ;
+    package ~sublibs:[ "server" ; "mirage.server" ; "zonefile" ; "crypto" ] "udns" ;
     package "nocrypto" ;
     package "irmin-unix" ;
   ]

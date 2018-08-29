@@ -53,7 +53,7 @@ package "resolver" (
 package "mirage" (
   version = "%%VERSION_NUM%%"
   description = "effectful MirageOS DNS layer"
-  requires = "udns udns.crypto mirage-types-lwt lwt duration randomconv"
+  requires = "udns mirage-types-lwt lwt duration"
   archive(byte) = "udns_mirage.cma"
   plugin(byte) = "udns_mirage.cma"
   archive(native) = "udns_mirage.cmxa"
@@ -85,7 +85,7 @@ package "mirage" (
   package "certify" (
     version = "%%VERSION_NUM%%"
     description = "MirageOS DNS certify"
-    requires = "udns udns.mirage tls.mirage"
+    requires = "udns udns.mirage udns.crypto tls.mirage"
     archive(byte) = "udns_mirage_certify.cma"
     plugin(byte) = "udns_mirage_certify.cma"
     archive(native) = "udns_mirage_certify.cmxa"

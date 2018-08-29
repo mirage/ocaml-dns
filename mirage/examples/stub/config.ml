@@ -16,7 +16,7 @@ let net =
 let dns_handler =
   let packages = [
     package "logs" ;
-    package ~sublibs:[ "server" ; "mirage.resolver" ] "udns" ;
+    package ~sublibs:[ "server" ; "mirage.resolver" ; "crypto" ] "udns" ;
     package "randomconv" ;
     package "lru" ;
     package "rresult" ;
