@@ -85,7 +85,7 @@ package "mirage" (
   package "certify" (
     version = "%%VERSION_NUM%%"
     description = "MirageOS DNS certify"
-    requires = "udns udns.mirage udns.crypto tls.mirage"
+    requires = "udns udns.mirage udns.crypto tls.mirage randomconv"
     archive(byte) = "udns_mirage_certify.cma"
     plugin(byte) = "udns_mirage_certify.cma"
     archive(native) = "udns_mirage_certify.cmxa"
