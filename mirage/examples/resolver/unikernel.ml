@@ -28,6 +28,6 @@ module Main (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (T : TIME) (S : STACKV4) = st
         trie
     in
     let p = UDns_resolver.create now R.generate server in
-    D.resolver ~root:true s pclock mclock p ;
+    D.resolver ~timer:1000 ~root:true s pclock mclock p ;
     S.listen s
 end
