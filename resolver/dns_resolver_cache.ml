@@ -298,7 +298,12 @@ let find_nearest_ns rng ts t name =
     else match pick (find_ns nam) with
       | None -> go (Domain_name.drop_labels_exn nam)
       | Some ns -> match pick (find_a ns) with
-        | None -> `NeedA ns
+        | None ->
+          if Domain_name.sub ~subdomain:ns ~domain:nam then
+            (* we actually need glue *)
+            go (Domain_name.drop_labels_exn nam)
+          else
+            `NeedA ns
         | Some ip -> `HaveIP (nam, ip)
   in
   go name
@@ -334,7 +339,7 @@ let resolve t ~rng ts name typ =
   let rec go t typ name =
     Logs.debug (fun m -> m "go %a" Domain_name.pp name) ;
     match find_nearest_ns rng ts t name with
-    | `NeedA name -> go t Dns_enum.A name
+    | `NeedA ns -> go t Dns_enum.A ns
     | `HaveIP (zone, ip) -> Ok (zone, name, typ, ip, t)
   in
   go t typ name
