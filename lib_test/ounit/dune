@@ -1,0 +1,9 @@
+(executable
+  (name       test)
+  (libraries  dns ounit pcap-format)
+  (preprocess (pps ppx_cstruct)))
+
+(alias
+  (name    runtest)
+  (deps    test.exe (glob_files *.pcap) (glob_files *.zone))
+  (action  (run ${<})))

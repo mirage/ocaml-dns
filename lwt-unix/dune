@@ -1,0 +1,11 @@
+(library
+  (name        dns_lwt_unix)
+  (public_name dns-lwt-unix)
+  (modules     :standard \ Dig_unix)
+  (libraries   dns-lwt mirage-profile ipaddr.unix lwt.unix)
+  (wrapped     false))
+
+(executable
+  (name      dig_unix)
+  (modules   Dig_unix)
+  (libraries cmdliner dns_lwt_unix))

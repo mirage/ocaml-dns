@@ -1,0 +1,9 @@
+(executables
+  (names     forward server)
+  (libraries dns-lwt-unix))
+
+(alias
+  (name    runtest)
+  (deps    forward.exe server.exe)
+; (action  (run ${<} -e -v))
+)

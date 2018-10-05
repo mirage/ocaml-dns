@@ -13,13 +13,13 @@ license: "ISC"
 tags: [ "org:mirage" "org:xapi-project" ]
 
 build: [
-  ["jbuilder" "subst" "-n" name] {pinned}
-  ["jbuilder" "build" "-p" name "-j" jobs]
+  ["dune" "subst" "-n" name] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
 ]
 
 depends: [
   "base-bytes"
-  "jbuilder"         {>= "1.0+beta9"}
+  "dune"             {build}
   "cstruct"          {>= "3.0.2"}
   "ppx_cstruct"      {build}
   "re"

@@ -11,12 +11,12 @@ authors: [
   "David Sheets" "Thomas Gazagnaire" "Luke Dunstan" "David Scott" ]
 
 build: [
-  ["jbuilder" "subst" "-n" name] {pinned}
-  ["jbuilder" "build" "-p" name "-j" jobs]
+  ["dune" "subst" "-n" name] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
 ]
 
 depends: [
-  "jbuilder" {>="1.0+beta9"}
+  "dune" {build}
   "dns-lwt"
   "base-unix"
   "cmdliner"
