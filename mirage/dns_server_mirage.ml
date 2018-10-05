@@ -14,9 +14,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *)
 
-open Lwt
+open Lwt.Infix
 open Dns_server
-open Result
+
+module Key = Mirage_kv.Key
 
 module type S = sig
   type t
@@ -40,18 +41,13 @@ module Make(K:Mirage_kv_lwt.RO)(S:Mirage_stack_lwt.V4) = struct
 
   let create s k = {s;k}
 
-  let fail_load message = fail (Failure ("Dns_server_mirage: "^message))
+  let fail_load fmt = Fmt.kstrf failwith ("Dns_server_mirage: " ^^ fmt)
 
   let eventual_process_of_zonefiles t filenames =
     Lwt_list.map_s (fun filename ->
-      K.size t.k filename
-      >>= function
-      | Error _ -> fail_load ("zonefile "^filename^" not found")
-      | Ok sz ->
-        K.read t.k filename 0L sz
-        >>= function
-        | Error _  -> fail_load ("error reading zonefile "^filename)
-        | Ok pages -> return (Cstruct.copyv pages)
+        K.get t.k Key.(v filename) >>= function
+        | Error _  -> fail_load "error reading zonefile %s" filename
+        | Ok pages -> Lwt.return pages
     ) filenames
     >|= process_of_zonebufs
 
@@ -62,7 +58,7 @@ module Make(K:Mirage_kv_lwt.RO)(S:Mirage_stack_lwt.V4) = struct
       let dst' = (Ipaddr.V4 src), src_port in
       process_query buf (Cstruct.len buf) src' dst' processor
       >>= function
-      | None -> return ()
+      | None -> Lwt.return ()
       | Some rba ->
         (* Do not attempt to retry if serving failed *)
         S.UDPV4.write ~src_port:port ~dst:src ~dst_port:src_port udp rba >|= fun _ -> ()
