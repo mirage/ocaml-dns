@@ -15,10 +15,8 @@
  *)
 
 open Lwt
-open Printf
 open Dns
 open Operators
-open Protocol
 open Dns_resolver
 open Result
 
@@ -87,7 +85,7 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       let timerfn () = Time.sleep_ns (Duration.of_sec 5) in
       let mvar = Lwt_mvar.create_empty () in
       let src_port = default_port in
-      let callback ~src ~dst ~src_port buf =
+      let callback ~src:_ ~dst:_ ~src_port buf =
         (* TODO: ignore responses that are not from the local link *)
         (* Ignore responses that are not from port 5353 *)
         if src_port = dst_port then
@@ -98,7 +96,7 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       let cleanfn () = return () in
       (* FIXME: can't coexist with server yet because both listen on port 5353 *)
       S.listen_udpv4 s ~port:src_port callback;
-      let rec txfn buf =
+      let txfn buf =
         S.UDPV4.write ~src_port ~dst ~dst_port udp buf >>= function
         | Error e ->
           Fmt.kstrf fail_with
@@ -181,8 +179,8 @@ module Chain(Local:S)(Next:S with type stack = Local.stack) = struct
 
   let rec starts_with labels prefix =
     match labels, prefix with
-    | (l, []) -> true
-    | ([], ph :: pt) -> false
+    | (_l, []) -> true
+    | ([], _ph :: _pt) -> false
     | (lh :: lt, ph :: pt) ->
       if lh = ph then
         starts_with lt pt

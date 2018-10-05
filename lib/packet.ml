@@ -16,6 +16,8 @@
 
 (* RFC1035, RFC1186 *)
 
+[@@@ ocaml.warning "-32-37"]
+
 open Printf
 open Operators
 
@@ -196,7 +198,7 @@ type rr_type =
    holds glue records.
 *)
 type type_bit_map = Cstruct.byte * Cstruct.byte * Cstruct.t
-let type_bit_map_to_string (tbm:type_bit_map) : string =
+let type_bit_map_to_string (_tbm:type_bit_map) : string =
   "TYPE_BIT_MAP"
 
 type type_bit_maps = type_bit_map list
@@ -295,7 +297,7 @@ let rdata_to_string = function
   | WKS (a, y, s) ->
     sprintf "WKS (%s, %d, %s)" (Ipaddr.V4.to_string a) (Cstruct.byte_to_int y) s
   | X25 s -> sprintf "X25 (%s)" s
-  | EDNS0 (len, rcode, do_bit, opts) ->
+  | EDNS0 (len, _rcode, do_bit, _opts) ->
       sprintf "EDNS0 (version:0, UDP: %d, flags: %s)"
         len (if (do_bit) then "do" else "")
   | RRSIG  (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign) ->
@@ -895,7 +897,7 @@ let parse_question names base buf =
   in
   { q_name; q_type; q_class; q_unicast; }, (base+sizeof_q, Cstruct.shift buf sizeof_q)
 
-let marshal_question ?(compress=true) (names, base, buf) q =
+let marshal_question ?(_compress=true) (names, base, buf) q =
   let names, base, buf = Name.marshal names base buf q.q_name in
   set_q_typ buf (q_type_to_int q.q_type);
   let q_unicast = (if q.q_unicast = Q_mDNS_Unicast then 1 else 0) in
@@ -939,7 +941,7 @@ let parse_rdata names base t cls ttl buf =
         let inc_ts = Cstruct.BE.get_uint32 buf 12 in
         let tag = Cstruct.BE.get_uint16 buf 16 in
         let buf = Cstruct.shift buf 18 in
-        let (name, (len, buf)) = Name.parse names (base+18) buf in
+        let (name, (_len, buf)) = Name.parse names (base+18) buf in
         let sign = Cstruct.to_string buf in
           RRSIG (typ, alg, lbl, orig_ttl, exp_ts, inc_ts, tag, name, sign)
 
@@ -954,7 +956,7 @@ let parse_rdata names base t cls ttl buf =
         let inc_ts = Cstruct.BE.get_uint32 buf 12 in
         let tag = Cstruct.BE.get_uint16 buf 16 in
         let buf = Cstruct.shift buf 18 in
-        let (name, (len, buf)) = Name.parse names (base+18) buf in
+        let (name, (_len, buf)) = Name.parse names (base+18) buf in
         let sign = Cstruct.to_string buf in
           SIG (alg, exp_ts, inc_ts, tag, name, sign)
 
@@ -992,7 +994,7 @@ let parse_rdata names base t cls ttl buf =
         let key = Cstruct.(shift buf 4 |> to_string) in
           DS(tag, alg, digest, key)
     | RR_NSEC ->
-        let (name, (base, buf)) = Name.parse names base buf in
+        let (name, (_base, buf)) = Name.parse names base buf in
         NSEC (name, [(char_of_int 0), (char_of_int 0), buf] )
 
     | RR_HINFO -> let cpu, buf = parse_charstr buf in
@@ -1056,7 +1058,7 @@ let parse_rdata names base t cls ttl buf =
           let rec aux strings buf =
             match Cstruct.len buf with
               | 0 -> List.rev strings
-              | len ->
+              | _len ->
                   let s, buf = parse_charstr buf in
                   aux (s :: strings) buf
           in
@@ -1220,9 +1222,9 @@ let parse_rdata names base t cls ttl buf =
         let s,slen = charstr x25 in
         Cstruct.blit_from_string s 0 rdbuf 0 slen;
         RR_X25, names, slen
-    | EDNS0 (len, rcode, do_bit, _) ->
+    | EDNS0 (_len, _rcode, _do_bit, _) ->
        RR_OPT, names, 0
-    | UNKNOWN (typ, data) ->
+    | UNKNOWN (_typ, data) ->
         Cstruct.blit_from_string data 0 rdbuf 0 (String.length data);
         RR_UNSPEC, names, (String.length data)
     | _ -> raise Not_implemented
@@ -1246,7 +1248,7 @@ let parse_rdata names base t cls ttl buf =
           ) else
             compare a_f b_f
     | MB a, MB b  | MD a, MD b | MF a, MF b | MG a, MG b
-    | MR a, MR b | NS a, NS b | PTR a, PTR b 
+    | MR a, MR b | NS a, NS b | PTR a, PTR b
     | CNAME a, CNAME b ->
         Name.dnssec_compare a b
     | TXT a, TXT b -> Name.dnssec_compare_str a b
@@ -1460,7 +1462,7 @@ let to_string d =
 
 let parse buf =
   let names = Hashtbl.create 32 in
-  let parsen f base n buf typ =
+  let parsen f base n buf _typ =
     let rec aux acc n base buf =
       match n with
         | 0 -> List.rev acc, (base,buf)

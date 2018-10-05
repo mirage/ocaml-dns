@@ -103,7 +103,7 @@ let filter_out_known rr known =
     in
     if lf <> [] then DR.MX lf else sentinel
 
-  | (DR.TXT ll, DP.TXT kl) ->
+  | (DR.TXT _ll, DP.TXT _kl) ->
     sentinel  (* TODO *)
 
   | (DR.RP l, DP.RP (kmbox, ktxt)) ->
@@ -189,7 +189,6 @@ let rec filter_known_list rr knownl =
 
 
 module Make (Transport : TRANSPORT) = struct
-  type timestamp = int
 
   type t = {
     db : Dns.Loader.db;
@@ -225,7 +224,7 @@ module Make (Transport : TRANSPORT) = struct
     t.probe <- Probe.add_name t.probe name
 
   (* This predicate controls the cache-flush bit *)
-  let is_confirmed_unique t owner rdata =
+  let is_confirmed_unique t owner _rdata =
     Probe.is_confirmed t.probe owner
 
   let rec probe_forever t action first first_wakener =
@@ -371,7 +370,7 @@ module Make (Transport : TRANSPORT) = struct
     (* DNSSEC disabled for testing *)
     DQ.answer_multiple ~dnssec:false ~mdns:true ~filter ~flush:(is_confirmed_unique t) query.DP.questions t.dnstrie
 
-  let process_query t src dst query =
+  let process_query t src _dst query =
     let get_delay legacy response =
       if legacy then
         (* No delay for legacy mode *)
@@ -386,7 +385,7 @@ module Make (Transport : TRANSPORT) = struct
     in
     (* rfc6762 s6.7_p2_c1 - legacy TTL must be <= 10 sec *)
     let limit_rrs_ttl ~limit rrs =
-      List.map DP.(fun rr -> { rr with DP.ttl = (min rr.DP.ttl limit) }) rrs
+      List.map (fun rr -> { rr with DP.ttl = (min rr.DP.ttl limit) }) rrs
     in
     let limit_answer_ttl ~limit answer =
       { answer with

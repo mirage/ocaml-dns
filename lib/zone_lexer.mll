@@ -17,9 +17,9 @@
  *  dnslexer.mll -- ocamllex lexer for DNS "Master zone file" format
  *
  *  DNS master zonefile format is defined in RFC 1035, section 5.
- *  Escapes and octets are clarified in RFC 4343 
+ *  Escapes and octets are clarified in RFC 4343
  *)
-   
+
 {
 
 open Loader
@@ -27,15 +27,15 @@ open Zone_parser
 open Lexing
 
 (* Remove magic escapes from a string *)
-let unescape s = 
-  let re_escape = Re_str.regexp "\\\\." in
-  let re_octet = Re_str.regexp "\\\\[0-9][0-9][0-9]" in
-  let rec copy_unescaped src dst slen soff doff = 
-    if soff >= slen then doff 
-    else if Re_str.string_match re_octet src soff then begin
+let unescape s =
+  let re_escape = Re.Str.regexp "\\\\." in
+  let re_octet = Re.Str.regexp "\\\\[0-9][0-9][0-9]" in
+  let rec copy_unescaped src dst slen soff doff =
+    if soff >= slen then doff
+    else if Re.Str.string_match re_octet src soff then begin
       Bytes.set dst doff (char_of_int (int_of_string (String.sub s (soff + 1) 3)));
       copy_unescaped src dst slen (soff + 4) (doff + 1)
-    end else if Re_str.string_match re_escape src soff then begin 
+    end else if Re.Str.string_match re_escape src soff then begin
       Bytes.set dst doff (String.get src (soff+1));
       copy_unescaped src dst slen (soff + 2) (doff + 1)
     end else begin
@@ -44,14 +44,14 @@ let unescape s =
     end
   in let slen = String.length s
   in let d = Bytes.create slen
-  in let dlen = copy_unescaped s d slen 0 0 
+  in let dlen = copy_unescaped s d slen 0 0
   in CHARSTRING (Bytes.sub_string d 0 dlen)
 
 
 (* Disambiguate keywords and generic character strings *)
-let kw_or_cs s = match (String.uppercase_ascii s) with 
+let kw_or_cs s = match (String.uppercase_ascii s) with
     "A" -> TYPE_A s
-  | "NS" -> TYPE_NS s 
+  | "NS" -> TYPE_NS s
   | "MD" -> TYPE_MD s
   | "MF" -> TYPE_MF s
   | "CNAME" -> TYPE_CNAME s
@@ -115,13 +115,13 @@ let kw_or_cs s = match (String.uppercase_ascii s) with
 
 
 (* Scan an accepted token for linebreaks *)
-let count_linebreaks s = 
+let count_linebreaks s =
   String.iter (function '\n' -> state.lineno <- state.lineno + 1 | _ -> ()) s
 
 
-} 
+}
 
-let eol = [' ''\t']* (';' [^'\n']*)? '\n' 
+let eol = [' ''\t']* (';' [^'\n']*)? '\n'
 let octet = '\\' ['0'-'9'] ['0'-'9'] ['0'-'9']
 let escape = '\\' _ (* Strictly \0 is not an escape, but be liberal *)
 let qstring = '"' ((([^'\\''"']|octet|escape)*) as contents) '"'
@@ -134,7 +134,7 @@ let typefoo = (['T''t']['Y''y']['P''p']['E''e'] number) as contents
 rule token = parse
   eol           { state.lineno <- state.lineno + 1;
 	          if state.paren > 0 then SPACE else EOL }
-| openpar       { state.paren <- state.paren + 1; 
+| openpar       { state.paren <- state.paren + 1;
 	          count_linebreaks (lexeme lexbuf); SPACE }
 | closepar      { if state.paren > 0 then state.paren <- state.paren - 1;
 	          count_linebreaks (lexeme lexbuf); SPACE }
@@ -151,4 +151,3 @@ rule token = parse
 | label         { count_linebreaks contents; kw_or_cs contents }
 | [' ''\t']+    { SPACE }
 | eof           { EOF }
-

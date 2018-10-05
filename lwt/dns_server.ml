@@ -69,7 +69,7 @@ let process_of_zonebufs zonebufs =
   let get_answer qname qtype _id =
     Dns.Query.answer ~dnssec:true qname qtype dnstrie
   in
-  fun ~src ~dst d ->
+  fun ~src:_ ~dst:_ d ->
     let open DP in
     (* TODO: FIXME so that 0 question queries don't crash the server *)
     let q = List.hd d.questions in

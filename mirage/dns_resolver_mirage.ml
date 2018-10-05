@@ -15,10 +15,7 @@
  *)
 
 open Lwt
-open Printf
 open Dns
-open Operators
-open Protocol
 open Dns_resolver
 open Result
 
@@ -65,21 +62,21 @@ module Static = struct
 
   let create s = s
 
-  let resolve client
-      s server dns_port
-      (q_class:DP.q_class) (q_type:DP.q_type)
-      (q_name:Name.t) =
+  let resolve _client
+      _s _server _dns_port
+      (_q_class:DP.q_class) (_q_type:DP.q_type)
+      (_q_name:Name.t) =
     fail (Failure "Dummy stack cannot call resolve")
 
   let gethostbyname
-      s ?(server = default_ns) ?(dns_port = default_port)
-      ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_A)
+      s ?server:_ ?dns_port:_
+      ?q_class:_ ?q_type:_
       name =
     return (Hashtbl.find_all s.names name)
 
   let gethostbyaddr
-      s ?(server = default_ns) ?(dns_port = default_port)
-      ?(q_class:DP.q_class = DP.Q_IN) ?(q_type:DP.q_type = DP.Q_PTR)
+      s ?server:_ ?dns_port:_
+      ?q_class:_ ?q_type:_
       addr =
    return (Hashtbl.find_all s.rev addr)
 end
@@ -107,10 +104,10 @@ module Make(Time:Mirage_time_lwt.S)(S:Mirage_stack_lwt.V4) = struct
       let mvar = Lwt_mvar.create_empty () in
       (* TODO: test that port is free. Needs more functions exposed in tcpip *)
       let src_port = (Random.int 64511) + 1024 in
-      let callback ~src ~dst ~src_port buf = Lwt_mvar.put mvar buf in
+      let callback ~src:_ ~dst:_ ~src_port:_ buf = Lwt_mvar.put mvar buf in
       let cleanfn () = return () in
       S.listen_udpv4 s ~port:src_port callback;
-      let rec txfn buf =
+      let txfn buf =
         S.UDPV4.write ~src_port ~dst ~dst_port udp buf >>= function
         | Error e ->
           Fmt.kstrf fail_with

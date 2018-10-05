@@ -61,8 +61,8 @@ let response_of_answer ?(mdns=false) query answer =
     })
 
 let answer_of_response ?(preserve_aa=false) ({
-  Packet.detail={ Packet.rcode; aa };
-  answers; authorities; additionals;
+  Packet.detail={ Packet.rcode; aa; _ };
+  answers; authorities; additionals; _
 }) = { rcode; aa = if preserve_aa then aa else false;
        answer=answers;
        authority=authorities;
@@ -88,9 +88,9 @@ let create ?(dnssec=false) ~id q_class q_type q_name =
     answers=[]; authorities=[]; additionals;
   }
 
-let null_filter owner rrset = rrset
+let null_filter _owner rrset = rrset
 
-let flush_false owner rdata = false
+let flush_false _owner _rdata = false
 
 let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=flush_false) questions trie =
 
@@ -115,7 +115,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
   let log_rrset owner rrtype =
     addqueue :=
       List.filter
-      (fun (n, q, t) -> rrtype != t || owner != n.owner.H.node)
+      (fun (n, _q, t) -> rrtype != t || owner != n.owner.H.node)
       !addqueue;
     rrlog := (owner, rrtype) :: !rrlog
   in
@@ -334,7 +334,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
         | (_, RRSIG rrsigl) when dnssec ->
           Some ({ set with rdata =
               RRSIG (List.filter
-                       (fun {rrsig_type} ->
+                       (fun {rrsig_type; _} ->
                          Packet.q_type_matches_rr_type qtype rrsig_type)
                        rrsigl)
                 })
@@ -367,7 +367,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
 
   (* Get the SOA RRSet for a negative response *)
   let add_negative_soa_rrset =
-    if mdns then fun node -> ()
+    if mdns then fun _node -> ()
     else fun node ->
     (* Don't need to check if it's already there *)
     let a = get_rrsets Packet.Q_SOA node.rrsets false in
@@ -387,7 +387,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
   let rec add_answer_rrsets owner ?(lc = 5) rrsets qtype =
     let add_answer_rrset s =
       match s with
-        | { rdata = CNAME (d::_) } ->
+        | { rdata = CNAME (d::_); _ } ->
             (* Only follow the first CNAME in a set *)
           if not (lc < 1 || qtype = Packet.Q_CNAME ) then begin
               add_answer_rrsets d.owner.H.node ~lc:(lc - 1) d.rrsets qtype
@@ -405,7 +405,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
   let main_lookup qname qtype trie =
     let key = Name.to_key qname in
     match lookup key trie ~mdns with
-      | `Found (sec, node, zonehead) -> (* Name has RRs, and we own it. *)
+      | `Found (_sec, node, zonehead) -> (* Name has RRs, and we own it. *)
         add_answer_rrsets node.owner.H.node node.rrsets qtype;
         add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
         Packet.NoError
@@ -414,12 +414,12 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
         add_negative_soa_rrset zonehead;
         Packet.NoError
 
-      | `NoErrorNSEC (zonehead, nsec) ->
+      | `NoErrorNSEC (zonehead, _nsec) ->
         add_negative_soa_rrset zonehead;
         (* add_opt_rrset nsec `NSEC `Authority; *)
         Packet.NoError
 
-      | `Delegated (sec, cutpoint) ->   (* Name is delegated. *)
+      | `Delegated (_sec, cutpoint) ->   (* Name is delegated. *)
         add_req_rrset cutpoint Packet.Q_NS Packet.RR_NS `Authority;
         aa_flag := false;
         (* DNSSEC child zone keys *)
@@ -430,7 +430,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
         add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
         Packet.NoError
 
-      | `WildcardNSEC (source, zonehead, nsec) ->
+      | `WildcardNSEC (source, zonehead, _nsec) ->
         add_answer_rrsets qname source.rrsets qtype;
         add_opt_rrset zonehead Packet.Q_NS Packet.RR_NS `Authority;
         (* add_opt_rrset nsec `NSEC `Authority; *)
@@ -440,7 +440,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
         add_negative_soa_rrset zonehead;
         Packet.NXDomain
 
-      | `NXDomainNSEC (zonehead, nsec1, nsec2) ->
+      | `NXDomainNSEC (zonehead, _nsec1, _nsec2) ->
         add_negative_soa_rrset zonehead;
         (* add_opt_rrset nsec1 `NSEC `Authority; *)
         (* add_opt_rrset nsec2 `NSEC `Authority; *)
@@ -495,8 +495,7 @@ let answer_multiple ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=
     answer = []; authority = []; additional=[];
   }
 
-let answer ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?(flush=flush_false) qname qtype trie =
+let answer ?(dnssec=false) ?(mdns=false) ?(filter=null_filter) ?flush:_ qname qtype trie =
   answer_multiple ~dnssec ~mdns ~filter
     [{Packet.q_name=qname; Packet.q_type=qtype; Packet.q_class=Packet.Q_IN; Packet.q_unicast=Packet.Q_Normal}]
     trie
-
