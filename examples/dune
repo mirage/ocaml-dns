@@ -5,5 +5,5 @@
 (alias
   (name    runtest)
   (deps    forward.exe server.exe)
-; (action  (run ${<} -e -v))
+; (action  (run ./forward.exe -e -v))
 )

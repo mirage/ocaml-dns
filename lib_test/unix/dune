@@ -5,5 +5,5 @@
 (alias
   (name   runtest)
   (deps   time_server.exe)
-;  (action (run ${<} --help))
+;  (action (run %{deps} --help))
 )
