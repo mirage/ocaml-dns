@@ -11,7 +11,7 @@ authors: [
   "David Sheets" "Thomas Gazagnaire" "Luke Dunstan" "David Scott" ]
 
 build: [
-  ["dune" "subst" "-n" name] {pinned}
+  ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs]
 ]
 
