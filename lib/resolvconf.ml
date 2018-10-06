@@ -20,21 +20,21 @@
  * standard resolver. Note the file format is so simple we don't bother with
  * a full-blown yacc-style parser.
  *)
- 
-(* File format described in 
+
+(* File format described in
  * http://mirbsd.bsdadvocacy.org/cman/man5/resolv.conf.htm
  * It doesn't mention case - we assume case-insensitive
  * The standard resolver supports overrides through environment vars. Not implemented.
  *)
- 
+
 (* Ignore everything on a line after a '#' or ';' *)
 let strip_comments =
-  let re = Re_str.regexp "[#;].*" in
-  fun x -> Re_str.global_replace re "" x
+  let re = Re.Str.regexp "[#;].*" in
+  fun x -> Re.Str.global_replace re "" x
 
 (* Remove any whitespace prefix and suffix from a line *)
-let ltrim = Re_str.(replace_first (regexp "^[\t ]+") "")
-let rtrim = Re_str.(replace_first (regexp "[\t ]+$") "")
+let ltrim = Re.Str.(replace_first (regexp "^[\t ]+") "")
+let rtrim = Re.Str.(replace_first (regexp "[\t ]+$") "")
 let trim x = ltrim (rtrim x)
 
 let map_line x =
@@ -59,7 +59,7 @@ end
 module OptionsValue = struct
   type t = Debug | Edns0 | Inet6 | Insecure1 | Insecure2 | Ndots of int
   exception Unknown of string
-  let of_string x = 
+  let of_string x =
     let x = String.lowercase_ascii x in
     if String.length x >= 6 && (String.sub x 0 6 = "ndots:") then begin
       try
@@ -84,18 +84,18 @@ module KeywordValue = struct
   | Domain of string
   | Lookup of LookupValue.t list
   | Search of string list
-  | Sortlist of string list 
+  | Sortlist of string list
   | Options of OptionsValue.t list
   exception Unknown of string
-  let split = Re_str.split (Re_str.regexp "[\t ]+")
-   
+  let split = Re.Str.split (Re.Str.regexp "[\t ]+")
+
   let ns_of_string ns =
-    let open Re_str in
+    let open Re.Str in
     match string_match (regexp "\\[\\(.+\\)\\]:\\([0-9]+\\)") ns 0 with
     |false -> Nameserver (Ipaddr.of_string_exn ns, None)
     |true ->
       let server = Ipaddr.of_string_exn (matched_group 1 ns) in
-      let port = 
+      let port =
         try Some (int_of_string (matched_group 2 ns))
         with _ -> None
       in
@@ -106,7 +106,7 @@ module KeywordValue = struct
     |ns, None -> Ipaddr.to_string ns
     |ns, Some p -> Printf.sprintf "[%s]:%d" (Ipaddr.to_string ns) p
 
-  let of_string x = 
+  let of_string x =
     match split (String.lowercase_ascii x) with
     | [ "nameserver"; ns ] -> ns_of_string ns
     | [ "domain"; domain ] -> Domain domain
@@ -117,7 +117,7 @@ module KeywordValue = struct
     | "options"::lst       -> Options (List.map OptionsValue.of_string lst)
     | _ -> raise (Unknown x)
 
-  let to_string = 
+  let to_string =
     let sc = String.concat " " in function
     | Nameserver (n,p) -> sc [ "nameserver"; (string_of_ns (n,p)) ]
     | Port p        -> sc [ "port" ; (string_of_int p) ]
@@ -138,7 +138,7 @@ let choose_port config =
     function
     | KeywordValue.Port x -> x
     | _ -> port) 53 config
- 
+
 let all_servers config =
   let default_port = choose_port config in
   List.rev (List.fold_left (fun a ->
@@ -146,7 +146,7 @@ let all_servers config =
    | KeywordValue.Nameserver (ns,Some p) -> (ns,p) :: a
    | KeywordValue.Nameserver (ns,None) -> (ns,default_port) :: a
    | _ -> a) [] config)
- 
+
 (* Choose a DNS server to query. Might do some round-robin thingy later *)
 let choose_server config =
   match (all_servers config) with
@@ -154,7 +154,7 @@ let choose_server config =
   | (ns, port)::_ -> Some (ns, port)
 
 (* Return a list of domain suffixes to search *)
-let search_domains config = 
+let search_domains config =
   let relevant_entries =
     List.fold_left (fun a -> function
       | KeywordValue.Domain x -> [x] :: a

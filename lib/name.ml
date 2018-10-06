@@ -51,7 +51,7 @@ let to_string = String.concat "."
 (* TODO: this looks wrong for the trailing dot case/we should ensure
    we handle the trailing dot case consistently *)
 let of_string (s:string) : t =
-  Re_str.split (Re_str.regexp "\\.") (String.lowercase_ascii s)
+  Re.Str.split (Re.Str.regexp "\\.") (String.lowercase_ascii s)
 let string_to_domain_name = of_string
 
 let of_ipaddr ip = of_string_list (Ipaddr.to_domain_name ip)

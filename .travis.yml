@@ -10,7 +10,7 @@ env:
    - PACKAGE="dns"
    - DEPOPTS="mirage-dns dns-async dns-lwt dns-lwt-unix"
  matrix:
-   - DISTRO=debian-stable OCAML_VERSION=4.03.0
-   - DISTRO=debian-testing OCAML_VERSION=4.04.1
-   - DISTRO=ubuntu-16.04 OCAML_VERSION=4.03.0
-   - DISTRO=alpine-3.5 OCAML_VERSION=4.04.1
+   - DISTRO=debian-stable OCAML_VERSION=4.03
+   - DISTRO=debian-testing OCAML_VERSION=4.04
+   - DISTRO=ubuntu-16.04 OCAML_VERSION=4.03
+   - DISTRO=alpine OCAML_VERSION=4.04

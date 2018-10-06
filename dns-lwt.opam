@@ -12,12 +12,12 @@ authors: [
 license: "ISC"
 
 build: [
-  ["jbuilder" "subst" "-n" name] {pinned}
-  ["jbuilder" "build" "-p" name "-j" jobs]
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
 ]
 
 depends: [
-  "jbuilder" {>="1.0+beta9"}
+  "dune" {build}
   "mirage-profile" {>="0.8.0"}
   "lwt" {>="3.0.0"}
   "dns"

@@ -1,6 +1,0 @@
-(library
- ((name        mirage_dns) 
-  (public_name mirage-dns)
-  (libraries   (dns-lwt duration mirage-time-lwt mirage-stack-lwt mirage-kv-lwt))
-  (wrapped false)
-))
