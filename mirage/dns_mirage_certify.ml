@@ -11,8 +11,7 @@ module Make (R : RANDOM) (P : PCLOCK) (TIME : TIME) (S : STACKV4) = struct
 
   module Dns = Dns_mirage.Make(S)
 
-  let letsencrypt_ca =
-    let staging = {|-----BEGIN CERTIFICATE-----
+  let staging = {|-----BEGIN CERTIFICATE-----
 MIIEqzCCApOgAwIBAgIRAIvhKg5ZRO08VGQx8JdhT+UwDQYJKoZIhvcNAQELBQAw
 GjEYMBYGA1UEAwwPRmFrZSBMRSBSb290IFgxMB4XDTE2MDUyMzIyMDc1OVoXDTM2
 MDUyMzIyMDc1OVowIjEgMB4GA1UEAwwXRmFrZSBMRSBJbnRlcm1lZGlhdGUgWDEw
@@ -39,9 +38,8 @@ SVuvdDM5zGv2f9ltNWUiYZHJ1mmO97jSY/6YfdOUH66iRtQtDkHBRdkNBsMbD+Em
 WzYlTWeUVsO40xJqhgUQRER9YLOLxJ0O6C8i0xFxAMKOtSdodMB3RIwt7RFQ0uyt
 n5Z5MqkYhlMI3J1tPRTp1nEt9fyGspBOO05gi148Qasp+3N+svqKomoQglNoAxU=
 -----END CERTIFICATE-----|}
-    in
 
-    let production = {|-----BEGIN CERTIFICATE-----
+  let production = {|-----BEGIN CERTIFICATE-----
 MIIEkjCCA3qgAwIBAgIQCgFBQgAAAVOFc2oLheynCDANBgkqhkiG9w0BAQsFADA/
 MSQwIgYDVQQKExtEaWdpdGFsIFNpZ25hdHVyZSBUcnVzdCBDby4xFzAVBgNVBAMT
 DkRTVCBSb290IENBIFgzMB4XDTE2MDMxNzE2NDA0NloXDTIxMDMxNzE2NDA0Nlow
@@ -68,9 +66,6 @@ X4Po1QYz+3dszkDqMp4fklxBwXRsW10KXzPMTZ+sOPAveyxindmjkW8lGy+QsRlG
 PfZ+G6Z6h7mjem0Y+iWlkYcV4PIWL1iwBi8saCbGS5jN2p8M+X+Q7UNKEkROb3N6
 KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
 -----END CERTIFICATE-----|}
-    in
-
-    X509.Encoding.Pem.Certificate.of_pem_cstruct1 (Cstruct.of_string staging)
 
   let dns_header () =
     let id = Randomconv.int16 R.generate in
@@ -208,7 +203,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         in
         wait_for_cert ()
 
-  let retrieve_certificate stack pclock ~dns_key ~hostname ?(additional_hostnames = []) ~key_seed dns port =
+  let retrieve_certificate ?(ca = `Production) stack pclock ~dns_key ~hostname ?(additional_hostnames = []) ~key_seed dns port =
     let keyname, zone, dnskey =
       match Astring.String.cut ~sep:":" dns_key with
       | None -> invalid_arg "couldn't parse dnskey"
@@ -236,5 +231,12 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         let flow = Dns.of_flow flow in
         query_certificate_or_csr flow pclock pub hostname keyname zone dnskey csr >>= fun certificate ->
         S.TCPV4.close (Dns.flow flow) >|= fun () ->
-        `Single ([certificate ; letsencrypt_ca], priv)
+        let ca = match ca with
+          | `Production -> production
+          | `Staging -> staging
+        in
+        let ca =
+          X509.Encoding.Pem.Certificate.of_pem_cstruct1 (Cstruct.of_string ca)
+        in
+        `Single ([certificate ; ca], priv)
 end
