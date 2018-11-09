@@ -30,3 +30,4 @@ true : package(rresult cstruct astring fmt ipaddr logs ptime hex gmap domain-nam
 <test/bench.{ml,native,byte}> : package(mtime.clock.os mtime re re.str hashcons)
 
 <app/ocertify.{ml,native,byte}> : package(cmdliner bos fpath x509 nocrypto nocrypto.unix ptime ptime.clock.os logs.fmt fmt.cli logs.cli fmt.tty)
+<app/oupdate.{ml,native,byte}> : package(cmdliner nocrypto ptime ptime.clock.os logs.fmt fmt.cli logs.cli fmt.tty ipaddr.unix)

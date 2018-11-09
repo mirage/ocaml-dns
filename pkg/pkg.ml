@@ -29,6 +29,7 @@ let () =
     Pkg.mllib "mirage/udns_mirage_resolver.mllib" ;
     Pkg.mllib "mirage/udns_mirage_certify.mllib" ;
     Pkg.bin "app/ocertify" ;
+    Pkg.bin "app/oupdate" ;
     Pkg.test "test/tests" ;
     Pkg.test "test/tsig" ;
     Pkg.test "test/resolver" ;
