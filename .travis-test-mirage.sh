@@ -18,7 +18,7 @@ for x in $UNIKERNELS; do
 done
 
 for x in $UNIKERNELS; do
-    cd $x && echo "now working in $x, compiling for ukvm" && mirage configure -t ukvm && make depend && mirage build && mirage clean && cd ..
+    cd $x && echo "now working in $x, compiling for hvt" && mirage configure -t hvt && make depend && mirage build && mirage clean && cd ..
 done
 
 for x in $UNIKERNELS; do

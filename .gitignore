@@ -3,13 +3,14 @@ udns.install
 .mirage.config
 Makefile
 Makefile.ukvm
-_build-ukvm/
-*.ukvm
+_build-solo5/
+*.hvt
 key_gen.ml
 main.ml
 mirage-unikernel-*.opam
 myocamlbuild.ml
-ukvm-bin
+solo5-hvt
+secondary_git
 
 *pcap
 *out
@@ -18,3 +19,6 @@ ukvm-bin
 *native
 coverage/
 static*ml
+
+*req
+*pem
