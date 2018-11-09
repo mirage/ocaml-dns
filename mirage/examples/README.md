@@ -41,8 +41,8 @@ succeeded).
 
 An example setup how they play together could be:
 ```
-# ./ukvm-bin --net=tap0 -- primary/primary.ukvm -l \*:debug
-# ./ukvm-bin --net=tap1 -- secondary/secondary.ukvm -l \*:debug --keys 10.0.42.2.10.0.42.4._transfer.mirage:SHA256:E0A7MFr4kfcGIRngRVBcBdFPg43XIb2qbGswcn66q4Q=
+# ./solo5-hvt --net=tap0 -- primary/primary.hvt -l \*:debug
+# ./solo5-hvt --net=tap1 -- secondary/secondary.hvt -l \*:debug --keys 10.0.42.2.10.0.42.4._transfer.mirage:SHA256:E0A7MFr4kfcGIRngRVBcBdFPg43XIb2qbGswcn66q4Q=
 ```
 
 ## Caching resolvers

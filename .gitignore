@@ -2,8 +2,8 @@ _build/
 udns.install
 .mirage.config
 Makefile
-Makefile.ukvm
-_build-solo5/
+Makefile.solo5-hvt
+_build-solo5-hvt/
 *.hvt
 key_gen.ml
 main.ml
