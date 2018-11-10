@@ -27,42 +27,7 @@ let dns_header () =
     let b = Nocrypto.Rng.generate 2 in
     Cstruct.BE.get_uint16 b 0
   in
-  { Dns_packet.id ; query = true ; operation = Dns_enum.Query ;
-    authoritative = false ; truncation = false ; recursion_desired = false ;
-    recursion_available = false ; authentic_data = false ; checking_disabled = false ;
-    rcode = Dns_enum.NoError }
-
-(* TODO EINTR, SIGPIPE *)
-let send_tcp sock buf =
-  let size = Cstruct.len buf in
-  let size_cs =
-    let b = Cstruct.create 2 in
-    Cstruct.BE.set_uint16 b 0 size ;
-    b
-  in
-  let data = Cstruct.(to_bytes (append size_cs buf)) in
-  let whole = size + 2 in
-  let rec out off =
-    if off = whole then ()
-    else
-      let bytes = Unix.send sock data off (whole - off) [] in
-      out (bytes + off)
-  in
-  out 0
-
-let recv_tcp sock =
-  let rec read_exactly buf len off =
-    if off = len then ()
-    else
-      let n = Unix.recv sock buf off (len - off) [] in
-      read_exactly buf len (off + n)
-  in
-  let buf = Bytes.create 2 in
-  read_exactly buf 2 0 ;
-  let len = Cstruct.BE.get_uint16 (Cstruct.of_bytes buf) 0 in
-  let buf' = Bytes.create len in
-  read_exactly buf' len 0 ;
-  Cstruct.of_bytes buf'
+  Udns_cli.dns_header id
 
 let query_certificate sock public_key fqdn =
   let good_tlsa tlsa =
@@ -87,8 +52,8 @@ let query_certificate sock public_key fqdn =
   in
   let query = { Dns_packet.question = [ question ] ; answer = [] ; authority = [] ; additional = [] } in
   let buf, _ = Dns_packet.encode `Tcp header (`Query query) in
-  send_tcp sock buf ;
-  let data = recv_tcp sock in
+  Udns_cli.send_tcp sock buf ;
+  let data = Udns_cli.recv_tcp sock in
   match Dns_packet.decode data with
   | Ok ((_, `Query q, _, _), _) ->
     (* collect TLSA pems *)
@@ -134,32 +99,17 @@ let nsupdate_csr sock now hostname keyname zone dnskey csr =
   in
   match
     Dns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname >>= fun (data, mac) ->
-    send_tcp sock data ;
-    let data = recv_tcp sock in
+    Udns_cli.send_tcp sock data ;
+    let data = Udns_cli.recv_tcp sock in
     Dns_tsig.decode_and_verify now dnskey keyname ~mac data
   with
   | Error x -> Error (`Msg x)
   | Ok _ -> Ok ()
 
-let jump dns_key dns_server hostname csr key seed bits cert force _ =
+let jump server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert force =
   Nocrypto_entropy_unix.initialize () ;
-  let keyname, zone, dnskey =
-    match Astring.String.cut ~sep:":" dns_key with
-    | None -> invalid_arg "couldn't parse dnskey"
-    | Some (name, key) ->
-      match Domain_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
-      | Error _, _ | _, None -> invalid_arg "failed to parse dnskey"
-      | Ok name, Some dnskey ->
-        let zone = (* drop first two labels of dnskey *)
-          Domain_name.drop_labels_exn ~amount:2 name
-        in
-        (name, zone, dnskey)
-  in
-  let fqdn = Domain_name.prepend_exn zone hostname
-  and ip = Unix.inet_addr_of_string dns_server
-  in
   let fn suffix = function
-    | None -> Fpath.(v hostname + suffix)
+    | None -> Fpath.(v (Domain_name.to_string hostname) + suffix)
     | Some x -> Fpath.v x
   in
   let csr_filename = fn "req" csr
@@ -173,7 +123,7 @@ let jump dns_key dns_server hostname csr key seed bits cert force _ =
        | _ -> Error (`Msg "while parsing certificate signing request"))
     | false ->
       find_or_generate_key key_filename bits seed >>= fun key ->
-      let req = X509.CA.request [ `CN (Domain_name.to_string fqdn) ] key in
+      let req = X509.CA.request [ `CN (Domain_name.to_string hostname) ] key in
       let pem = X509.Encoding.Pem.Certificate_signing_request.to_pem_cstruct1 req in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
       Ok req) >>= fun req ->
@@ -196,38 +146,23 @@ let jump dns_key dns_server hostname csr key seed bits cert force _ =
       | _ -> Ok ()) >>= fun () ->
   (* strategy: unless force is provided, we can request DNS, and if a
      certificate is present, compare its public key with csr public key *)
-  let connect_tcp ip =
-    let sa = Unix.ADDR_INET (ip, 53) in
-    let sock = Unix.(socket PF_INET SOCK_STREAM 0) in
-    Unix.(setsockopt sock SO_REUSEADDR true) ;
-    try
-      Unix.connect sock sa ;
-      Ok sock
-    with
-    | Unix.Unix_error (e, f, _) ->
-      let err =
-        Printf.sprintf "error %s in function %s while connecting to %s\n"
-          (Unix.error_message e) f (Unix.string_of_inet_addr ip)
-      in
-      Error (`Msg err)
-  in
   let write_certificate cert =
     let cert = X509.Encoding.Pem.Certificate.to_pem_cstruct1 cert in
     Bos.OS.File.delete cert_filename >>= fun () ->
     Bos.OS.File.write cert_filename (Cstruct.to_string cert)
   in
-  connect_tcp ip >>= fun sock ->
+  let sock = Udns_cli.connect_tcp server_ip port in
   match
-    if not force then query_certificate sock public_key fqdn else None
+    if not force then query_certificate sock public_key hostname else None
   with
   | Some x -> write_certificate x
   | None ->
-    nsupdate_csr sock now fqdn keyname zone dnskey req >>= fun () ->
+    nsupdate_csr sock now hostname keyname zone dnskey req >>= fun () ->
     let rec request retries =
       if retries = 0 then
         Error (`Msg "failed to request certificate")
       else
-        match query_certificate sock public_key fqdn with
+        match query_certificate sock public_key hostname with
         | None ->
           Unix.sleep 1 ;
           request (pred retries)
@@ -235,37 +170,30 @@ let jump dns_key dns_server hostname csr key seed bits cert force _ =
     in
     request 10
 
-let jump_res dns_key dns_server hostname csr key seed bits cert force setup_log =
+let jump_res _ dns_server port dns_key hostname csr key seed bits cert force =
   match
-    jump dns_key dns_server hostname csr key seed bits cert force setup_log
+    jump dns_server port dns_key hostname csr key seed bits cert force
   with
   | Ok () -> `Ok ()
   | Error (`Msg m) -> `Error (false, m)
 
-let setup_log style_renderer level =
-  Fmt_tty.setup_std_outputs ?style_renderer ();
-  Logs.set_level level;
-  Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
-
 open Cmdliner
-
-let setup_log =
-  Term.(const setup_log
-        $ Fmt_cli.style_renderer ()
-        $ Logs_cli.level ())
-
-
-let dns_key =
-  let doc = "nsupdate key (name:type:value)" in
-  Arg.(required & pos 0 (some string) None & info [] ~doc)
 
 let dns_server =
   let doc = "DNS server IP" in
-  Arg.(required & pos 1 (some string) None & info [] ~doc)
+  Arg.(required & pos 0 (some Udns_cli.ip_c) None & info [] ~doc ~docv:"IP")
+
+let port =
+  let doc = "Port to connect to" in
+  Arg.(value & opt int 53 & info [ "port" ] ~doc)
+
+let dns_key =
+  let doc = "nsupdate key (name[:alg]:value, where name is YYY._update.zone)" in
+  Arg.(required & pos 1 (some Udns_cli.namekey_c) None & info [] ~doc ~docv:"KEY")
 
 let hostname =
-  let doc = "Hostname to issue a certificate for" in
-  Arg.(required & pos 2 (some string) None & info [] ~doc)
+  let doc = "Hostname (FQDN) to issue a certificate for" in
+  Arg.(required & pos 2 (some Udns_cli.name_c) None & info [] ~doc ~docv:"HOSTNAME")
 
 let csr =
   let doc = "certificate signing request filename (defaults to hostname.req)" in
@@ -294,7 +222,7 @@ let force =
 let ocertify =
   let doc = "ocertify requests a signed certificate" in
   let man = [ `S "BUGS"; `P "Submit bugs to me";] in
-  Term.(ret (const jump_res $ dns_key $ dns_server $ hostname $ csr $ key $ seed $ bits $ cert $ force $ setup_log)),
+  Term.(ret (const jump_res $ Udns_cli.setup_log $ dns_server $ port $ dns_key $ hostname $ csr $ key $ seed $ bits $ cert $ force)),
   Term.info "ocertify" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () = match Term.eval ocertify with `Ok () -> exit 0 | _ -> exit 1
