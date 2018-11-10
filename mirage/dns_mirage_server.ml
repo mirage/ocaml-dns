@@ -11,7 +11,6 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
 
   module Dns = Dns_mirage.Make(S)
 
-  module U = S.UDPV4
   module T = S.TCPV4
 
   let primary stack pclock mclock ?(timer = 2) ?(port = 53) t =

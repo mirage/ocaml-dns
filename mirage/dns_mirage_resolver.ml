@@ -11,7 +11,6 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
 
   module Dns = Dns_mirage.Make(S)
 
-  module U = S.UDPV4
   module T = S.TCPV4
 
   module FM = Map.Make(struct

@@ -16,7 +16,7 @@ let invalid_soa = Dns_resolver_utils.invalid_soa
 let root_servers = snd (List.split Dns_resolver_root.root_servers)
 let a_root = List.hd root_servers
 
-let rng i = Cstruct.create 1
+let rng i = Cstruct.create i
 
 let rr_equal a b =
   Domain_name.equal a.name b.name &&
