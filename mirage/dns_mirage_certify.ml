@@ -165,9 +165,14 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
 
   let initialise_csr hostname additionals seed =
     let private_key =
-      let seed = Cstruct.of_string seed in
-      let g = Nocrypto.Rng.(create ~seed (module Generators.Fortuna)) in
-      Nocrypto.Rsa.generate ~g 4096
+      let g =
+        match seed with
+        | None -> None
+        | Some seed ->
+          let seed = Cstruct.of_string seed in
+          Some (Nocrypto.Rng.(create ~seed (module Generators.Fortuna)))
+      in
+      Nocrypto.Rsa.generate ?g 4096
     in
     let public_key = `RSA (Nocrypto.Rsa.pub_of_priv private_key) in
     let extensions = match additionals with
@@ -203,7 +208,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         in
         wait_for_cert ()
 
-  let retrieve_certificate ?(ca = `Production) stack pclock ~dns_key ~hostname ?(additional_hostnames = []) ~key_seed dns port =
+  let retrieve_certificate ?(ca = `Production) stack pclock ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
     let keyname, zone, dnskey =
       match Astring.String.cut ~sep:":" dns_key with
       | None -> invalid_arg "couldn't parse dnskey"
