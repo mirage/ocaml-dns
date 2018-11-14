@@ -1,17 +1,17 @@
-opam-version: "1.2"
+opam-version: "2.0"
 maintainer: "Hannes Mehnert <hannes@mehnert.org>"
 authors: ["Hannes Mehnert <hannes@mehnert.org>"]
 homepage: "https://github.com/roburio/udns"
 doc: "https://roburio.github.io/udns/doc"
-dev-repo: "https://github.com/roburio/udns.git"
+dev-repo: "git+https://github.com/roburio/udns.git"
 bug-reports: "https://github.com/roburio/udns/issues"
 license: "BSD2"
-available: [ ocaml-version >= "4.04.0"]
 
 depends: [
   "ocamlfind" {build}
   "ocamlbuild" {build}
   "topkg" {build}
+  "ocaml" {>= "4.04.0"}
   "rresult" "astring" "fmt" "logs" "ptime" "cmdliner" "bos" "fpath"
   "x509" "tls"
   "nocrypto"
@@ -24,11 +24,11 @@ depends: [
   "ipaddr"
   "lwt"
   "mirage-types-lwt"
-  "alcotest" {test}
-#  "afl-persistent" {test}
-  "mtime" {test}
-  "hashcons" {test}
-  "re" {test}
+  "alcotest" {with-test}
+#  "afl-persistent" {with-test}
+  "mtime" {with-test}
+  "hashcons" {with-test}
+  "re" {with-test}
 ]
 
 conflicts: [
@@ -37,10 +37,28 @@ conflicts: [
 
 build: [
   [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false" ]
+  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ] {with-test}
+  [ "ocaml" "pkg/pkg.ml" "test" ] {with-test}
 ]
 
-build-test: [
-  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ]
-  [ "ocaml" "pkg/pkg.ml" "test" ]
-]
+synopsis: "An opinionated Domain Name System (DNS) library"
+description: """
+µDNS supports most of the domain name system used in the wild.  It adheres to
+strict conventions.  Failing early and hard.  It is mostly implemented in the
+pure fragment of OCaml (no mutation, isolated IO, no exceptions).
 
+It all started out as an experiment to run a recursive resolver, but after
+initial prototypes it turned out that every configurable recursive resolver
+needs a fully-fledged authoritative nameserver as well (for overriding various
+zones such as `.localhost` and reverse lookups of RFC 1918 IP ranges).
+
+Legacy resource record types are not dealt with, and there is no plan to support
+`ISDN`, `MAILA`, `MAILB`, `WKS`, `MB`, `NULL`, `HINFO`, ... .  `AXFR` is only
+handled via TCP connections.  The only resource class supported is `IN` (the
+Internet).  In a similar vein, wildcard records are _not_ supported, and it is
+unlikely they'll ever be in this library.  Truncated hmac in `TSIG` are not
+supported (always the full length of the hash algorithm is used).
+
+Please read [the blog article](https://hannes.nqsb.io/Posts/DNS) for a more
+detailed overview.
+"""
