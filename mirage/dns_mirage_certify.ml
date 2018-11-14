@@ -174,6 +174,8 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       in
       Nocrypto.Rsa.generate ?g 4096
     in
+    Log.info (fun m -> m "using private key %s"
+                 (Cstruct.to_string (X509.Encoding.Pem.Private_key.to_pem_cstruct1 (`RSA private_key)))) ;
     let public_key = `RSA (Nocrypto.Rsa.pub_of_priv private_key) in
     let extensions = match additionals with
       | [] -> []

@@ -837,18 +837,38 @@ module Secondary = struct
 
   let zones (_, zones) = fst (List.split (Domain_name.Map.bindings zones))
 
-  let create ?(a = []) ~tsig_verify ~tsig_sign ~rng keys =
+  let create ?(a = []) ?primary ~tsig_verify ~tsig_sign ~rng keylist =
     (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
-    let keys = Authentication.of_keys keys in
+    let keys = Authentication.of_keys keylist in
     let zones =
       let f name _ zones =
         Log.debug (fun m -> m "soa found for %a" Domain_name.pp name) ;
         match Authentication.primaries (keys, []) name with
+        | Ok [] -> begin match primary with
+            | None ->
+              Log.warn (fun m -> m "no nameserver found for %a" Domain_name.pp name) ;
+              zones
+            | Some ip ->
+              List.fold_left (fun zones (keyname, _) ->
+                  if
+                    Authentication.is_op `Transfer keyname &&
+                    Domain_name.sub ~domain:name ~subdomain:keyname
+                  then begin
+                    Log.app (fun m -> m "adding zone %a with key %a and ip %a"
+                                Domain_name.pp name Domain_name.pp keyname
+                                Ipaddr.V4.pp_hum ip) ;
+                    let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, 53, keyname in
+                    Domain_name.Map.add name v zones
+                  end else begin
+                    Log.warn (fun m -> m "no transfer key found for %a" Domain_name.pp name) ;
+                    zones
+                  end) zones keylist
+          end
         | Ok primaries ->
           List.fold_left (fun zones (keyname, ip, port) ->
               Log.app (fun m -> m "adding transfer key %a for zone %a"
                            Domain_name.pp keyname Domain_name.pp name) ;
-              let v = (Requested_soa (0L, 0, 0, Cstruct.empty), ip, port, keyname) in
+              let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, port, keyname in
               Domain_name.Map.add name v zones)
             zones primaries
         | Error e ->
@@ -858,7 +878,7 @@ module Secondary = struct
       match Dns_trie.folde Domain_name.root Dns_map.Soa keys f Domain_name.Map.empty with
       | Ok zones -> zones
       | Error e ->
-        Logs.warn (fun m -> m "error %a while collecting zones" Dns_trie.pp_e e) ;
+        Log.warn (fun m -> m "error %a while collecting zones" Dns_trie.pp_e e) ;
         Domain_name.Map.empty
     in
     (create Dns_trie.empty (keys, a) rng tsig_verify tsig_sign, zones)

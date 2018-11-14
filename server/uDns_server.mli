@@ -80,7 +80,7 @@ module Secondary : sig
 
   val zones : s -> Domain_name.t list
 
-  val create : ?a:Authentication.a list -> tsig_verify:Dns_packet.tsig_verify ->
+  val create : ?a:Authentication.a list -> ?primary:Ipaddr.V4.t -> tsig_verify:Dns_packet.tsig_verify ->
     tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) ->
     (Domain_name.t * Dns_packet.dnskey) list -> s
 
