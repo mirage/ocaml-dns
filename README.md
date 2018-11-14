@@ -25,6 +25,9 @@ supported (always the full length of the hash algorithm is used).
 Please read [the blog article](https://hannes.nqsb.io/Posts/DNS) for a more
 detailed overview.
 
+The µDNS library itself is published under the 2 clause BSD license. The example
+MirageOS unikernels are public domain.
+
 ## Supported RFCs
 
 * [RFC 1034](https://tools.ietf.org/html/rfc1034) Domain Names - Concepts and Facilities

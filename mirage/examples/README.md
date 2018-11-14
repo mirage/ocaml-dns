@@ -1,5 +1,7 @@
 # Unikernel examples
 
+Please note these examples are put under the public domain.
+
 ## Installation
 
 You first need to have µDNS installed (`opam pin add udns https://github.com/roburio/udns`).

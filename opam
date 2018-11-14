@@ -5,7 +5,7 @@ homepage: "https://github.com/roburio/udns"
 doc: "https://roburio.github.io/udns/doc"
 dev-repo: "https://github.com/roburio/udns.git"
 bug-reports: "https://github.com/roburio/udns/issues"
-license: "AGPL"
+license: "BSD2"
 available: [ ocaml-version >= "4.04.0"]
 
 depends: [
