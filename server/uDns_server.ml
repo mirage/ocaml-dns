@@ -846,7 +846,7 @@ module Secondary = struct
         match Authentication.primaries (keys, []) name with
         | Ok primaries ->
           List.fold_left (fun zones (keyname, ip, port) ->
-              Log.info (fun m -> m "adding transfer key %a for zone %a"
+              Log.app (fun m -> m "adding transfer key %a for zone %a"
                            Domain_name.pp keyname Domain_name.pp name) ;
               let v = (Requested_soa (0L, 0, 0, Cstruct.empty), ip, port, keyname) in
               Domain_name.Map.add name v zones)
