@@ -25,8 +25,7 @@ supported (always the full length of the hash algorithm is used).
 Please read [the blog article](https://hannes.nqsb.io/Posts/DNS) for a more
 detailed overview.
 
-The µDNS library itself is published under the 2 clause BSD license. The example
-MirageOS unikernels are public domain.
+The µDNS library is published under the 2 clause BSD license.
 
 ## Supported RFCs
 
@@ -81,8 +80,8 @@ computer.
 µDNS is not released yet, but you can install it and its dependencies via opam:
 `opam pin add udns https://github.com/roburio/udns.git`
 
-Now the µDNS library is installed, and you can try out the examples.  Read the
-[README](mirage/examples/) in the `mirage/examples` subdirectory.
+Now the µDNS library is installed, and you can try out the examples.  Find some
+examples at the [unikernel repository](https://github.com/roburio/unikernels).
 
 ## Documentation
 

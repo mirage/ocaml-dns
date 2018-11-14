@@ -5,7 +5,6 @@ sudo: required
 env:
   global:
     - PACKAGE="udns"
-    - POST_INSTALL_HOOK="./.travis-test-mirage.sh"
   matrix:
     - OCAML_VERSION=4.04
     - OCAML_VERSION=4.05

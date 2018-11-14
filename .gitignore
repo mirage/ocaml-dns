@@ -1,24 +1,10 @@
 _build/
 udns.install
-.mirage.config
-Makefile
-Makefile.solo5-hvt
-_build-solo5-hvt/
-*.hvt
-key_gen.ml
-main.ml
-mirage-unikernel-*.opam
-myocamlbuild.ml
-solo5-hvt
-secondary_git
 
 *pcap
 *out
+coverage/
+*req
 *key
 *private
-*native
-coverage/
-static*ml
-
-*req
 *pem
