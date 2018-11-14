@@ -165,17 +165,21 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
 
   let initialise_csr hostname additionals seed =
     let private_key =
-      let g =
+      let g, print =
         match seed with
-        | None -> None
+        | None -> (None, true)
         | Some seed ->
           let seed = Cstruct.of_string seed in
-          Some (Nocrypto.Rng.(create ~seed (module Generators.Fortuna)))
+          Some (Nocrypto.Rng.(create ~seed (module Generators.Fortuna))), false
       in
-      Nocrypto.Rsa.generate ?g 4096
+      let key = Nocrypto.Rsa.generate ?g 4096 in
+      (if print then
+         let pem = X509.Encoding.Pem.Private_key.to_pem_cstruct1 (`RSA key) in
+         Log.info (fun m -> m "using private key@.%s" (Cstruct.to_string pem))
+       else
+         ()) ;
+      key
     in
-    Log.info (fun m -> m "using private key %s"
-                 (Cstruct.to_string (X509.Encoding.Pem.Private_key.to_pem_cstruct1 (`RSA private_key)))) ;
     let public_key = `RSA (Nocrypto.Rsa.pub_of_priv private_key) in
     let extensions = match additionals with
       | [] -> []
@@ -210,7 +214,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         in
         wait_for_cert ()
 
-  let retrieve_certificate ?(ca = `Production) stack pclock ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
+  let retrieve_certificate ?(ca = `Staging) stack pclock ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
     let keyname, zone, dnskey =
       match Astring.String.cut ~sep:":" dns_key with
       | None -> invalid_arg "couldn't parse dnskey"
