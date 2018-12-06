@@ -2,3 +2,4 @@ Dns_enum
 Dns_name
 Dns_packet
 Dns_map
+Dns_trie
