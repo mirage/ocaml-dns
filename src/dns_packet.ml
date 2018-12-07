@@ -754,7 +754,7 @@ type tlsa = {
 
 (*BISECT-IGNORE-BEGIN*)
 let pp_tlsa ppf tlsa =
-  Fmt.pf ppf "TLSA %a %a %a %a"
+  Fmt.pf ppf "TLSA @[<v>%a %a %a@ %a@]"
     Dns_enum.pp_tlsa_cert_usage tlsa.tlsa_cert_usage
     Dns_enum.pp_tlsa_selector tlsa.tlsa_selector
     Dns_enum.pp_tlsa_matching_type tlsa.tlsa_matching_type

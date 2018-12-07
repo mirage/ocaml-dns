@@ -46,7 +46,8 @@ type _ k =
   | Caa : (int32 * CaaSet.t) k
   | Tlsa : (int32 * TlsaSet.t) k
   | Sshfp : (int32 * SshfpSet.t) k
-  (** The type of map keys. *)
+  (** The type of resource record sets - keys and their values. The int32 is the
+     time-to-live TTL of the resource record set.  *)
 
 include Gmap.S with type 'a key = 'a k
 
