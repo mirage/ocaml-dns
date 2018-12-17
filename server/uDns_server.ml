@@ -560,7 +560,7 @@ let notify t l now zone soa =
       (List.filter (fun (zone', _, _) -> Domain_name.equal zone zone') l)
   in
   Log.debug (fun m -> m "notifying %a %a" Domain_name.pp zone
-                Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ":") Ipaddr.V4.pp_hum int))
+                Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ":") Ipaddr.V4.pp int))
                 (IPM.bindings ips)) ;
   let notify =
     let question = [ { Dns_packet.q_name = zone ; q_type = Dns_enum.SOA } ] in
@@ -760,7 +760,7 @@ module Primary = struct
     with
     | Error rcode -> (t, l, ns), raw_server_error buf rcode, []
     | Ok ((header, v, opt, tsig), tsig_off) ->
-      Log.debug (fun m -> m "%a sent %a" Ipaddr.V4.pp_hum ip
+      Log.debug (fun m -> m "%a sent %a" Ipaddr.V4.pp ip
                     Dns_packet.pp (header, v, opt, tsig)) ;
       let handle_inner keyname =
         match handle_frame (t, l, ns) ts ip port proto keyname header v with
@@ -806,7 +806,7 @@ module Primary = struct
           if Int64.add ts retransmit.(count) < now then
             (if count = max then begin
                 Log.warn (fun m -> m "retransmitting to %a:%d the last time %a %a"
-                             Ipaddr.V4.pp_hum ip port Dns_packet.pp_header hdr
+                             Ipaddr.V4.pp ip port Dns_packet.pp_header hdr
                              Dns_packet.pp_query q) ;
                 ns
               end else
@@ -856,7 +856,7 @@ module Secondary = struct
                   then begin
                     Log.app (fun m -> m "adding zone %a with key %a and ip %a"
                                 Domain_name.pp name Domain_name.pp keyname
-                                Ipaddr.V4.pp_hum ip) ;
+                                Ipaddr.V4.pp ip) ;
                     let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, 53, keyname in
                     Domain_name.Map.add name v zones
                   end else begin
@@ -1018,7 +1018,7 @@ module Secondary = struct
             | Some (_, ip', _, _) ->
               Log.warn (fun m -> m "ignoring notify for %a from %a (%a is primary)"
                            Domain_name.pp q.Dns_packet.q_name
-                           Ipaddr.V4.pp_hum ip Ipaddr.V4.pp_hum ip') ;
+                           Ipaddr.V4.pp ip Ipaddr.V4.pp ip') ;
               Error Dns_enum.Refused
           end
         | t ->
@@ -1112,7 +1112,7 @@ module Secondary = struct
                     with
                     | None ->
                       Log.err (fun m -> m "didn't get a SOA answer for %a from %a"
-                                  Domain_name.pp q.Dns_packet.q_name Ipaddr.V4.pp_hum ip) ;
+                                  Domain_name.pp q.Dns_packet.q_name Ipaddr.V4.pp ip) ;
                       Error Dns_enum.FormErr
                     | Some fresh ->
                       (* TODO: > with wraparound in mind *)

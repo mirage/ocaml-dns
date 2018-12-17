@@ -892,8 +892,8 @@ let pp_rdata ppf = function
   | PTR n -> Fmt.pf ppf "PTR %a" Domain_name.pp n
   | SOA s -> pp_soa ppf s
   | TXT ds -> Fmt.pf ppf "TXT %a" (Fmt.list ~sep:(Fmt.unit ";@ ") Fmt.string) ds
-  | A ip -> Fmt.pf ppf "A %a" Ipaddr.V4.pp_hum ip
-  | AAAA ip -> Fmt.pf ppf "AAAA %a" Ipaddr.V6.pp_hum ip
+  | A ip -> Fmt.pf ppf "A %a" Ipaddr.V4.pp ip
+  | AAAA ip -> Fmt.pf ppf "AAAA %a" Ipaddr.V6.pp ip
   | SRV srv -> pp_srv ppf srv
   | TSIG ts -> pp_tsig ppf ts
   | DNSKEY tk -> pp_dnskey ppf tk

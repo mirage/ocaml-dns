@@ -64,7 +64,7 @@ let ip_c : Ipaddr.V4.t Arg.converter =
       with
         Not_found -> `Error "failed to parse IP address"
   in
-  parse, Ipaddr.V4.pp_hum
+  parse, Ipaddr.V4.pp
 
 let namekey_c =
   let parse s =

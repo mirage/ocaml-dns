@@ -116,7 +116,7 @@ let maybe_query ?recursion_desired t ts retry out ip typ name (proto, zone, edns
     (* TODO: is `Udp good here? *)
     let transit, hdr, packet = build_query ?recursion_desired t ts proto quest retry zone edns ip in
     let t = { t with transit ; queried = QM.add k [await] t.queried } in
-    Logs.debug (fun m -> m "maybe_query: query %a %a %a" Ipaddr.V4.pp_hum ip
+    Logs.debug (fun m -> m "maybe_query: query %a %a %a" Ipaddr.V4.pp ip
                    Dns_packet.pp_header hdr Dns_packet.pp_v packet) ;
     let packet, _ = Dns_packet.encode ?edns proto hdr packet in
     `Query (packet, ip), t
@@ -135,7 +135,7 @@ let was_in_transit t typ name id sender =
     else
       (Logs.warn (fun m -> m "unsolicited reply for %a (%a) (id %d vs o_id %d, sender %a vs o_sender %a)"
                     Domain_name.pp name Dns_enum.pp_rr_typ typ
-                    id o_id Ipaddr.V4.pp_hum sender Ipaddr.V4.pp_hum o_sender) ;
+                    id o_id Ipaddr.V4.pp sender Ipaddr.V4.pp o_sender) ;
        None, t)
 
 let find_queries t k =
@@ -168,7 +168,7 @@ let stats t =
 let handle_query t its out ?(retry = 0) proto edns from port ts q qid =
   if Int64.sub ts its > Int64.shift_left retry_interval 2 then begin
     Logs.warn (fun m -> m "dropping q %a from %a:%d (timed out)"
-                  Dns_packet.pp_question q Ipaddr.V4.pp_hum from port) ;
+                  Dns_packet.pp_question q Ipaddr.V4.pp from port) ;
     s := { !s with drop_timeout = succ !s.drop_timeout } ;
     `Nothing, t
   end else
@@ -177,14 +177,14 @@ let handle_query t its out ?(retry = 0) proto edns from port ts q qid =
     match r with
     | `Query _ when out >= 30 ->
       Logs.warn (fun m -> m "dropping q %a from %a:%d (already sent 30 packets)"
-                    Dns_packet.pp_question q Ipaddr.V4.pp_hum from port) ;
+                    Dns_packet.pp_question q Ipaddr.V4.pp from port) ;
       s := { !s with drop_send = succ !s.drop_send } ;
       (* TODO reply with error! *)
       `Nothing, t
     | `Query (zone, nam, typ, ip) ->
       Logs.debug (fun m -> m "have to query (zone %a) %a (%a) using ip %a"
                      Domain_name.pp zone
-                     Domain_name.pp nam Dns_enum.pp_rr_typ typ Ipaddr.V4.pp_hum ip) ;
+                     Domain_name.pp nam Dns_enum.pp_rr_typ typ Ipaddr.V4.pp ip) ;
       maybe_query t ts retry out ip typ nam (proto, zone, edns, from, port, q, qid)
     | `Answer (hdr, a) ->
       let max_out = if !s.max_out < out then out else !s.max_out in
@@ -356,7 +356,7 @@ let handle_reply t ts proto sender header v =
               s := { !s with retry_edns = succ !s.retry_edns } ;
               let transit, header, packet = build_query t ts proto q 1 zone None sender in
               Logs.debug (fun m -> m "resolve: requery without edns %a %a %a"
-                             Ipaddr.V4.pp_hum sender Dns_packet.pp_header header
+                             Ipaddr.V4.pp sender Dns_packet.pp_header header
                              Dns_packet.pp_v packet) ;
               let cs, _ = Dns_packet.encode `Udp header packet in
               ({ t with transit }, [], [ `Udp, sender, cs ])
@@ -379,7 +379,7 @@ let handle_reply t ts proto sender header v =
               (* TODO why is edns none here?  is edns bad over tcp? *)
               let transit, header, packet = build_query ~recursion_desired t ts `Tcp q 1 zone None sender in
               Logs.debug (fun m -> m "resolve: upgrade to tcp %a %a %a"
-                             Ipaddr.V4.pp_hum sender
+                             Ipaddr.V4.pp sender
                              Dns_packet.pp_header header
                              Dns_packet.pp_v packet) ;
               let cs, _ = Dns_packet.encode `Tcp header packet in
@@ -434,12 +434,12 @@ let handle_delegation t ts proto sender sport header v opt v' =
                 List.nth ips (Randomconv.int ~bound:(List.length ips) t.rng)
             in
             Logs.debug (fun m -> m "found ip %a, maybe querying for %a (%a)"
-                           Ipaddr.V4.pp_hum ip Dns_enum.pp_rr_typ q.Dns_packet.q_type Domain_name.pp name) ;
+                           Ipaddr.V4.pp ip Dns_enum.pp_rr_typ q.Dns_packet.q_type Domain_name.pp name) ;
             (* TODO is Domain_name.root correct here? *)
             begin match maybe_query ~recursion_desired:true t ts 0 0 ip q.Dns_packet.q_type name (proto, Domain_name.root, opt, sender, sport, q, header.Dns_packet.id) with
               | `Nothing, t ->
                 Logs.warn (fun m -> m "maybe_query for %a at %a returned nothing"
-                              Domain_name.pp name Ipaddr.V4.pp_hum ip) ;
+                              Domain_name.pp name Ipaddr.V4.pp ip) ;
                 t, [], []
               | `Query (cs, ip), t -> t, [], [ (`Udp, ip, cs) ]
             end
@@ -481,19 +481,19 @@ let handle t now ts query proto sender sport buf =
   match Dns_packet.decode buf with
   | Error (`Bad_edns_version v) ->
     Logs.err (fun m -> m "bad edns version (from %a:%d) %u for@.%a"
-                 Ipaddr.V4.pp_hum sender sport
+                 Ipaddr.V4.pp sender sport
                  v Cstruct.hexdump_pp buf) ;
     s := { !s with errors = succ !s.errors } ;
     t, handle_error ~error:Dns_enum.BadVersOrSig proto sender sport buf, []
   | Error e ->
     Logs.err (fun m -> m "parse error (from %a:%d) %a for@.%a"
-                 Ipaddr.V4.pp_hum sender sport
+                 Ipaddr.V4.pp sender sport
                  Dns_packet.pp_err e Cstruct.hexdump_pp buf) ;
     s := { !s with errors = succ !s.errors } ;
     t, handle_error proto sender sport buf, []
   | Ok ((header, v, opt, tsig), tsig_off) ->
     Logs.info (fun m -> m "reacting to (from %a:%d) %a: %a"
-                  Ipaddr.V4.pp_hum sender sport
+                  Ipaddr.V4.pp sender sport
                   Dns_packet.pp_header header
                   Dns_packet.pp_v v) ;
     match header.Dns_packet.query, query with
@@ -580,7 +580,7 @@ let try_other_timer t ts =
       end else begin
         Logs.info (fun m -> m "retry limit exceeded for %a (%a) at %a!"
                       Domain_name.pp q_name Dns_enum.pp_rr_typ q_type
-                      Ipaddr.V4.pp_hum qs) ;
+                      Ipaddr.V4.pp qs) ;
         let queried, out_as = err_retries t.queried q_type q_name in
         ({ t with queried }, out_as @ out_a, out_q)
       end)
@@ -601,14 +601,14 @@ let _retry_timer t ts =
           s := { !s with retransmits = succ !s.retransmits } ;
           Logs.info (fun m -> m "retransmit %a %a (%d of %d) to %a"
                         Domain_name.pp q_name Dns_enum.pp_rr_typ q_type
-                        retry max_retries Ipaddr.V4.pp_hum qs) ;
+                        retry max_retries Ipaddr.V4.pp qs) ;
           let transit, header, packet = build_query ~id t ts proto { Dns_packet.q_type ; q_name } retry zone edns qs in
           let cs, _ = Dns_packet.encode ?edns proto header packet in
           { t with transit }, out_a, (`Udp, qs, cs) :: out_q
         end else begin
           Logs.info (fun m -> m "retry limit exceeded for %a (%a) at %a!"
                         Domain_name.pp q_name Dns_enum.pp_rr_typ q_type
-                        Ipaddr.V4.pp_hum qs) ;
+                        Ipaddr.V4.pp qs) ;
           (* answer all outstanding requestors! *)
           let transit = QM.remove (q_type, q_name) t.transit in
           let t = { t with transit } in

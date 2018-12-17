@@ -47,11 +47,11 @@ module Make (S : STACKV4) = struct
     else
       T.read f.flow >>= function
       | Ok `Eof ->
-        Log.warn (fun m -> m "end of file on flow %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
+        Log.warn (fun m -> m "end of file on flow %a:%d" Ipaddr.V4.pp dst_ip dst_port) ;
         T.close f.flow >>= fun () ->
         Lwt.return (Error ())
       | Error e ->
-        Log.err (fun m -> m "error %a reading flow %a:%d" T.pp_error e Ipaddr.V4.pp_hum dst_ip dst_port) ;
+        Log.err (fun m -> m "error %a reading flow %a:%d" T.pp_error e Ipaddr.V4.pp dst_ip dst_port) ;
         T.close f.flow >>= fun () ->
         Lwt.return (Error ())
       | Ok (`Data b) ->
@@ -60,21 +60,21 @@ module Make (S : STACKV4) = struct
 
   let send_udp stack src_port dst dst_port data =
     Log.info (fun m -> m "udp: sending %d bytes from %d to %a:%d"
-                 (Cstruct.len data) src_port Ipaddr.V4.pp_hum dst dst_port) ;
+                 (Cstruct.len data) src_port Ipaddr.V4.pp dst dst_port) ;
     U.write ~src_port ~dst ~dst_port (S.udpv4 stack) data >|= function
     | Error e -> Log.warn (fun m -> m "udp: failure %a while sending from %d to %a:%d"
-                              U.pp_error e src_port Ipaddr.V4.pp_hum dst dst_port)
+                              U.pp_error e src_port Ipaddr.V4.pp dst dst_port)
     | Ok () -> ()
 
   let send_tcp flow answer =
     let dst_ip, dst_port = T.dst flow in
-    Log.info (fun m -> m "tcp: sending %d bytes to %a:%d" (Cstruct.len answer) Ipaddr.V4.pp_hum dst_ip dst_port) ;
+    Log.info (fun m -> m "tcp: sending %d bytes to %a:%d" (Cstruct.len answer) Ipaddr.V4.pp dst_ip dst_port) ;
     let len = Cstruct.create 2 in
     Cstruct.BE.set_uint16 len 0 (Cstruct.len answer) ;
     T.write flow (Cstruct.append len answer) >>= function
     | Ok () -> Lwt.return (Ok ())
     | Error e ->
-      Log.err (fun m -> m "tcp: error %a while writing to %a:%d" T.pp_write_error e Ipaddr.V4.pp_hum dst_ip dst_port) ;
+      Log.err (fun m -> m "tcp: error %a while writing to %a:%d" T.pp_write_error e Ipaddr.V4.pp dst_ip dst_port) ;
       T.close flow >|= fun () ->
       Error ()
 

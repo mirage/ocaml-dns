@@ -19,9 +19,10 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
   Random.self_init () ;
   let now = Ptime_clock.now () in
   Logs.app (fun m -> m "updating to %a:%d zone %a A 600 %a %a"
-               Ipaddr.V4.pp_hum serverip port
+               Ipaddr.V4.pp serverip port
                Domain_name.pp zone
-               Domain_name.pp hostname Ipaddr.V4.pp_hum ip_address) ;
+               Domain_name.pp hostname
+               Ipaddr.V4.pp ip_address) ;
   Logs.debug (fun m -> m "using key %a: %a" Domain_name.pp keyname Dns_packet.pp_dnskey dnskey) ;
   match update zone hostname ip_address keyname dnskey now with
   | Error msg -> `Error (false, msg)

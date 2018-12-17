@@ -33,18 +33,18 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       | Error e ->
         (* do i need to report this back into the resolver? what are their options then? *)
         Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
-                    T.pp_error e Ipaddr.V4.pp_hum dst port) ;
+                    T.pp_error e Ipaddr.V4.pp dst port) ;
         Error ()
       | Ok flow ->
         Log.debug (fun m -> m "established new outgoing TCP connection to %a:%d"
-                      Ipaddr.V4.pp_hum dst port);
+                      Ipaddr.V4.pp dst port);
         tcp_out := Dns.IM.add dst flow !tcp_out ;
         Lwt.async (fun () ->
             let f = Dns.of_flow flow in
             let rec loop () =
               Dns.read_tcp f >>= function
               | Error () ->
-                Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum dst) ;
+                Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp dst) ;
                 tcp_out := Dns.IM.remove dst !tcp_out ;
                 Lwt.return_unit
               | Ok data ->
@@ -94,7 +94,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
       | `Tcp -> match try Some (FM.find (dst, dst_port) !tcp_in) with Not_found -> None with
         | None ->
           Log.err (fun m -> m "wanted to answer %a:%d via TCP, but couldn't find a flow"
-                       Ipaddr.V4.pp_hum dst dst_port) ;
+                       Ipaddr.V4.pp dst dst_port) ;
           Lwt.return_unit
         | Some flow -> Dns.send_tcp flow data >|= function
           | Ok () -> ()
@@ -115,7 +115,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
 
     let tcp_cb query flow =
       let dst_ip, dst_port = T.dst flow in
-      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
+      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp dst_ip dst_port) ;
       tcp_in := FM.add (dst_ip, dst_port) flow !tcp_in ;
       let f = Dns.of_flow flow in
       let rec loop () =

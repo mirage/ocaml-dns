@@ -381,13 +381,13 @@ let _resolve t ~rng ts name typ =
                    Dns_enum.pp_rr_typ typ Domain_name.pp cur
                    Domain_name.pp (Domain_name.of_strings_exn ~hostname:false rest)
                    Domain_name.pp zone
-                   Ipaddr.V4.pp_hum ip) ;
+                   Ipaddr.V4.pp ip) ;
     match find_ns t rng ts stash cur with
     | `NeedNS, t when Domain_name.equal cur Domain_name.root ->
       (* we don't have any root servers *)
       Ok (Domain_name.root, Domain_name.root, Dns_enum.NS, root, t)
     | `HaveIP ip, t ->
-      Logs.debug (fun m -> m "resolve: have ip %a" Ipaddr.V4.pp_hum ip) ;
+      Logs.debug (fun m -> m "resolve: have ip %a" Ipaddr.V4.pp ip) ;
       begin match rest with
         | [] -> Ok (zone, cur, typ, ip, t)
         | hd::tl -> go t stash typ (Domain_name.prepend_exn cur hd) tl zone ip
@@ -556,5 +556,5 @@ let handle_query t ~rng ts q qid =
                        Domain_name.pp zone
                        Domain_name.pp name
                        Dns_enum.pp_rr_typ typ
-                       Ipaddr.V4.pp_hum ip) ;
+                       Ipaddr.V4.pp ip) ;
         `Query (zone, name, typ, ip), t

@@ -57,10 +57,10 @@ module K = struct
         Fmt.(list ~sep:(unit ";@,") (list ~sep:(unit " ") string)) txts
     | A, (ttl, a) ->
       Fmt.pf ppf "a ttl %lu %a" ttl
-        Fmt.(list ~sep:(unit ";@,") Ipaddr.V4.pp_hum) a
+        Fmt.(list ~sep:(unit ";@,") Ipaddr.V4.pp) a
     | Aaaa, (ttl, aaaa) ->
       Fmt.pf ppf "a ttl %lu %a" ttl
-        Fmt.(list ~sep:(unit ";@,") Ipaddr.V6.pp_hum) aaaa
+        Fmt.(list ~sep:(unit ";@,") Ipaddr.V6.pp) aaaa
     | Srv, (ttl, srvs) ->
       Fmt.pf ppf "srv ttl %lu %a" ttl
         Fmt.(list ~sep:(unit ";@,") Dns_packet.pp_srv) srvs

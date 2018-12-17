@@ -89,7 +89,7 @@ let resolve_ns_ret =
     let pp ppf = function
       | `NeedA nam, _ -> Fmt.pf ppf "need A of %a" Domain_name.pp nam
       | `NeedCname nam, _ -> Fmt.pf ppf "need cname of %a" Domain_name.pp nam
-      | `HaveIPS ips, _ -> Fmt.pf ppf "have IPs %a" Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp_hum) ips
+      | `HaveIPS ips, _ -> Fmt.pf ppf "have IPs %a" Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp) ips
       | `No, _ -> Fmt.string ppf "no"
       | `NoDom, _ -> Fmt.string ppf "nodom"
     let equal a b = match a, b with
@@ -228,7 +228,7 @@ let find_ns_ret =
     let pp ppf = function
       | `NeedA name, _ -> Fmt.pf ppf "need A of %a" Domain_name.pp name
       | `NeedGlue name, _ -> Fmt.pf ppf "need glue for %a" Domain_name.pp name
-      | `HaveIP ip, _ -> Fmt.pf ppf "have IP %a" Ipaddr.V4.pp_hum ip
+      | `HaveIP ip, _ -> Fmt.pf ppf "have IP %a" Ipaddr.V4.pp ip
       | `NeedNS, _ -> Fmt.string ppf "need NS"
       | `Cname nam, _ -> Fmt.pf ppf "cname %a" Domain_name.pp nam
       | `No, _ -> Fmt.string ppf "no"
@@ -429,7 +429,7 @@ let resolve_ret =
     let pp ppf (name, typ, ip, _) =
       Fmt.pf ppf "requesting %a for %a (asking %a)"
         Dns_enum.pp_rr_typ typ Domain_name.pp name
-        Ipaddr.V4.pp_hum ip
+        Ipaddr.V4.pp ip
     let equal (n, t, i, _) (n', t', i', _) =
       Domain_name.equal n n' && t = t' && Ipaddr.V4.compare i i' = 0
   end in
