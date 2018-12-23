@@ -302,9 +302,33 @@ module Packet = struct
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
-  let q_equal a b =
+  let question_equal a b =
     Domain_name.compare a.q_name b.q_name = 0 &&
     compare a.q_type b.q_type = 0
+
+  let prereq_equal a b = match a, b with
+    | Exists (name, typ), Exists (name', typ') ->
+      Domain_name.equal name name' && typ = typ'
+    | Exists_data (name, rd), Exists_data (name', rd') ->
+      Domain_name.equal name name' && compare_rdata rd rd' = 0
+    | Not_exists (name, typ), Not_exists (name', typ') ->
+      Domain_name.equal name name' && typ = typ'
+    | Name_inuse name, Name_inuse name' ->
+      Domain_name.equal name name'
+    | Not_name_inuse name, Not_name_inuse name' ->
+      Domain_name.equal name name'
+    | _ -> false
+
+  let update_equal a b = match a, b with
+    | Remove (name, typ), Remove (name', typ') ->
+      Domain_name.equal name name' && typ = typ'
+    | Remove_all name, Remove_all name' ->
+      Domain_name.equal name name'
+    | Remove_single (name, rd), Remove_single (name', rd') ->
+      Domain_name.equal name name' && compare_rdata rd rd' = 0
+    | Add rr, Add rr' ->
+      rr_equal rr rr'
+    | _ -> false
 
   let header_equal a b =
     a.id = b.id &&
@@ -322,18 +346,33 @@ module Packet = struct
 
   let q_ok =
     let module M = struct
-      type t = Dns_packet.header * Dns_packet.query
-      let pp = Fmt.(pair Dns_packet.pp_header Dns_packet.pp_query)
+      type t = Dns_packet.header * Dns_packet.v
+      let pp = Fmt.(pair Dns_packet.pp_header Dns_packet.pp_v)
       let equal (ah, a) (bh, b) =
+        let q_equal a b =
+          List.length a.question = List.length b.question &&
+          List.for_all (fun a -> List.exists (question_equal a) b.question) a.question &&
+          List.length a.answer = List.length b.answer &&
+          List.for_all (fun a -> List.exists (rr_equal a) b.answer) a.answer &&
+          List.length a.authority = List.length b.authority &&
+          List.for_all (fun a -> List.exists (rr_equal a) b.authority) a.authority &&
+          List.length a.additional = List.length b.additional &&
+          List.for_all (fun a -> List.exists (rr_equal a) b.additional) a.additional
+        and u_equal a b =
+          question_equal a.zone b.zone &&
+          List.length a.prereq = List.length b.prereq &&
+          List.for_all (fun a -> List.exists (prereq_equal a) b.prereq) a.prereq &&
+          List.length a.update = List.length b.update &&
+          List.for_all (fun a -> List.exists (update_equal a) b.update) a.update &&
+          List.length a.addition = List.length b.addition &&
+          List.for_all (fun a -> List.exists (rr_equal a) b.addition) a.addition
+        in
         header_equal ah bh &&
-        List.length a.question = List.length b.question &&
-        List.for_all (fun a -> List.exists (q_equal a) b.question) a.question &&
-        List.length a.answer = List.length b.answer &&
-        List.for_all (fun a -> List.exists (rr_equal a) b.answer) a.answer &&
-        List.length a.authority = List.length b.authority &&
-        List.for_all (fun a -> List.exists (rr_equal a) b.authority) a.authority &&
-        List.length a.additional = List.length b.additional &&
-        List.for_all (fun a -> List.exists (rr_equal a) b.additional) a.additional
+        match a, b with
+        | `Query a, `Query b -> q_equal a b
+        | `Notify a, `Notify b -> q_equal a b
+        | `Update a, `Update b -> u_equal a b
+        | _ -> false
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
@@ -408,8 +447,7 @@ module Packet = struct
   let decode cs =
     match decode cs with
     | Error e -> Error e
-    | Ok ((header, `Query query, _, _), _) -> Ok (header, query)
-    | Ok _ -> Error (`BadOpcode 10)
+    | Ok ((header, v, _, _), _) -> Ok (header, v)
 
   let bad_query () =
     let cs = of_hex "0000 0000 0100 0000 0000 0000 0000 0100 02" in
@@ -462,7 +500,7 @@ module Packet = struct
     }
     in
     Alcotest.(check (result q_ok p_err) "regression 0 decodes"
-                (Ok (header, {
+                (Ok (header, `Query {
                      question = [{
                          q_name = n_of_s "6.16.150.138.in-addr.arpa" ;
                          q_type = Dns_enum.PTR
@@ -488,7 +526,7 @@ module Packet = struct
         rcode = Dns_enum.NoError }
     in
     Alcotest.(check (result q_ok p_err) "regression 1 decodes"
-                (Ok (header, {
+                (Ok (header, `Query {
                      question = [{
                          q_name = n_of_s "keys.riseup.net" ;
                          q_type = Dns_enum.AAAA
@@ -519,7 +557,7 @@ module Packet = struct
       expiry = 0x00015180l ; minimum = 0x0000012cl
     } in
     Alcotest.(check (result q_ok p_err) "regression 2 decodes"
-                (Ok (header, {
+                (Ok (header, `Query {
                      question = [{
                          q_name = n_of_s "news.bbc.net.uk" ;
                          q_type = Dns_enum.NS
@@ -556,7 +594,7 @@ module Packet = struct
       [ { name = Domain_name.root ; ttl = 0l ; rdata = OPTS opt } ]
     in
     Alcotest.(check (result q_ok p_err) "regression 4 decodes"
-                (Ok (header, {
+                (Ok (header, `Query {
                      question ; authority = [] ; answer ; additional}))
                 (decode data))
 
@@ -593,7 +631,7 @@ module Packet = struct
       [ { name = Domain_name.root ; ttl = 0l ; rdata = OPTS opt } ]
     in
     Alcotest.(check (result q_ok p_err) "regression 4 decodes"
-                (Ok (header, {
+                (Ok (header, `Query {
                      question ; authority ;
                      answer = [] ; additional}))
                 (decode data))
@@ -615,7 +653,7 @@ module Packet = struct
       [ { q_name = Domain_name.of_string_exn "ns4.bbc.net.uk" ; q_type = Dns_enum.NS } ]
     in
     Alcotest.(check (result q_ok p_err) "regression 5 decodes"
-                (Ok (header, {
+                (Ok (header, `Query {
                      question ; authority = [] ;
                      answer = [] ; additional = [] }))
                 (decode data))
@@ -843,9 +881,47 @@ module Packet = struct
     | Error _ -> Alcotest.fail "should be decodable"
     | Ok (h, q) ->
       let h = { h with query = false } in
-      match error h (`Query q) Dns_enum.NXDomain with
-      | Some (cs, _) -> ()
+      match error h q Dns_enum.NXDomain with
+      | Some (_, _) -> ()
       | None -> Alcotest.fail "expected an answer"
+
+  let regression7 () =
+    (* encoding a remove_single in an update frame lead to wrong rdlength (off by 2) *)
+    let header, update =
+      let header =
+        let rcode = Dns_enum.NoError in
+        { query = true ; id = 0xAE00 ; operation = Dns_enum.Update ;
+          authoritative = false ; truncation = false ; recursion_desired = false ;
+          recursion_available = false ; authentic_data = false ;
+          checking_disabled = false ; rcode }
+      and update = Remove_single (n_of_s "www.example.com", A Ipaddr.V4.localhost)
+      and zone = { q_name = n_of_s "example.com" ; q_type = Dns_enum.SOA }
+      in
+      header, { zone ; prereq = [] ; update = [ update ] ; addition = [] }
+    in
+    (* encode followed by decode should lead to same data *)
+    Alcotest.(check (result q_ok p_err) "regression 7 decode encode works"
+                (Ok (header, `Update update))
+                (decode @@ fst @@ encode `Udp header (`Update update)))
+
+  let regression8 () =
+    (* encoding a exists_data in an update frame lead to wrong rdlength (off by 2) *)
+    let header, update =
+      let header =
+        let rcode = Dns_enum.NoError in
+        { query = true ; id = 0xAE00 ; operation = Dns_enum.Update ;
+          authoritative = false ; truncation = false ; recursion_desired = false ;
+          recursion_available = false ; authentic_data = false ;
+          checking_disabled = false ; rcode }
+      and prereq = Exists_data (n_of_s "www.example.com", A Ipaddr.V4.localhost)
+      and zone = { q_name = n_of_s "example.com" ; q_type = Dns_enum.SOA }
+      in
+      header, { zone ; prereq = [ prereq ] ; update = [] ; addition = [] }
+    in
+    (* encode followed by decode should lead to same data *)
+    Alcotest.(check (result q_ok p_err) "regression 8 decode encode works"
+                (Ok (header, `Update update))
+                (decode @@ fst @@ encode `Udp header (`Update update)))
 
   let code_tests = [
     "basic header", `Quick, basic_header ;
@@ -857,6 +933,8 @@ module Packet = struct
     (* "regression4", `Quick, regression4 ; *)
     "regression5", `Quick, regression5 ;
     "regression6", `Quick, regression6 ;
+    "regression7", `Quick, regression7 ;
+    "regression8", `Quick, regression8 ;
   ]
 end
 
