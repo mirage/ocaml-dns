@@ -1273,10 +1273,10 @@ let encode_rr_prereq offs buf off = function
     let offs, off =
       encode_ntc offs buf off (name, typ, Dns_enum.(clas_to_int IN))
     in
-    let offs, off' = encode_rdata offs buf (off + 6) rdata in
-    let rdlenpos = off + 4 in
-    Cstruct.BE.set_uint16 buf rdlenpos (off' - rdlenpos) ;
-    (offs, off')
+    let rdata_off = off + 6 in
+    let offs, rdata_end = encode_rdata offs buf rdata_off rdata in
+    Cstruct.BE.set_uint16 buf (rdata_off - 2) (rdata_end - rdata_off) ;
+    (offs, rdata_end)
   | Not_exists (name, typ) ->
     let offs, off =
       encode_ntc offs buf off (name, typ, Dns_enum.(clas_to_int NONE))
@@ -1361,14 +1361,14 @@ let encode_rr_update offs buf off = function
     (* ttl + rdlen, both 0 *)
     (offs, off + 6)
   | Remove_single (name, rdata) ->
-    let typ = rdata_to_rr_typ rdata in
     let offs, off =
+      let typ = rdata_to_rr_typ rdata in
       encode_ntc offs buf off (name, typ, Dns_enum.(clas_to_int NONE))
     in
-    let offs, off' = encode_rdata offs buf (off + 6) rdata in
-    let rdlenpos = off + 4 in
-    Cstruct.BE.set_uint16 buf rdlenpos (off' - rdlenpos) ;
-    (offs, off')
+    let rdata_off = off + 6 in
+    let offs, rdata_end = encode_rdata offs buf rdata_off rdata in
+    Cstruct.BE.set_uint16 buf (rdata_off - 2) (rdata_end - rdata_off) ;
+    (offs, rdata_end)
   | Add rr -> encode_rr offs buf off rr
 
 type update = {
