@@ -30,7 +30,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
           Dns.send_udp stack port ip dport data
     in
     let udp_cb ~src ~dst:_ ~src_port buf =
-      Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
+      Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp src src_port) ;
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
       let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Udp src src_port buf in
@@ -44,7 +44,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
     Log.info (fun m -> m "DNS server listening on UDP port %d" port) ;
     let tcp_cb flow =
       let dst_ip, dst_port = T.dst flow in
-      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
+      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp dst_ip dst_port) ;
       let f = Dns.of_flow flow in
       tcp_out := Dns.IPM.add (dst_ip, dst_port) flow !tcp_out ;
       let rec loop () =
@@ -103,7 +103,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
     and read_and_handle ip port f =
       Dns.read_tcp f >>= function
       | Error () ->
-        Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
+        Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
         close ip port
       | Ok data ->
         let now = Ptime.v (P.now_d_ps pclock) in
@@ -118,7 +118,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
         | Some x ->
           Dns.send_tcp (Dns.flow f) x >>= function
           | Error () ->
-            Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp_hum ip) ;
+            Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
             close ip port
           | Ok () -> read_and_handle ip port f
     and request (proto, ip, port, data) =
@@ -128,12 +128,12 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
           if Dns.IS.mem ip !in_flight then
             Lwt.return_unit
           else begin
-            Logs.info (fun m -> m "creating connection to %a:%d" Ipaddr.V4.pp_hum ip port) ;
+            Logs.info (fun m -> m "creating connection to %a:%d" Ipaddr.V4.pp ip port) ;
             in_flight := Dns.IS.add ip !in_flight ;
             T.create_connection (S.tcpv4 stack) (ip, port) >>= function
             | Error e ->
               Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
-                          T.pp_error e Ipaddr.V4.pp_hum ip port) ;
+                          T.pp_error e Ipaddr.V4.pp ip port) ;
               in_flight := Dns.IS.remove ip !in_flight ;
               Lwt.async (fun () ->
                   TIME.sleep_ns (Duration.of_sec 5) >>= fun () ->
@@ -154,14 +154,14 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
         | Ok () -> Lwt.return_unit
         | Error () ->
           Log.warn (fun m -> m "closing tcp flow to %a:%d, retrying request"
-                       Ipaddr.V4.pp_hum ip port) ;
+                       Ipaddr.V4.pp ip port) ;
           T.close flow >>= fun () ->
           tcp_out := Dns.IM.remove ip !tcp_out ;
           request (proto, ip, port, data)
     in
 
     let udp_cb ~src ~dst:_ ~src_port buf =
-      Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp_hum src src_port) ;
+      Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp src src_port) ;
       let now = Ptime.v (P.now_d_ps pclock) in
       let elapsed = M.elapsed_ns mclock in
       let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Udp src buf in
@@ -176,7 +176,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
 
     let tcp_cb flow =
       let dst_ip, dst_port = T.dst flow in
-      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp_hum dst_ip dst_port) ;
+      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp dst_ip dst_port) ;
       let f = Dns.of_flow flow in
       let rec loop () =
         Dns.read_tcp f >>= function
