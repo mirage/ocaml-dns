@@ -69,9 +69,10 @@ module Trie = struct
                 (Ok (Dns_map.B (Dns_map.Soa, (4l, soa)),
                      (Domain_name.root, 6l, sn (n_of_s "a"))))
                 (lookupb Domain_name.root Dns_enum.SOA t)) ;
-    let t = insert (n_of_s "foo.com") Dns_map.A (23l, [ ip "1.4.5.2" ]) t in
+    let a_record = (23l, Dns_map.Ipv4Set.singleton (ip "1.4.5.2")) in
+    let t = insert (n_of_s "foo.com") Dns_map.A a_record t in
     Alcotest.(check (result l_ok e) "lookup for A foo.com is A"
-                (Ok (Dns_map.B (Dns_map.A, (23l, [ ip "1.4.5.2" ])),
+                (Ok (Dns_map.B (Dns_map.A, a_record),
                      (Domain_name.root, 6l, sn (n_of_s "a"))))
                 (lookupb (n_of_s "foo.com") Dns_enum.A t)) ;
     Alcotest.(check (result l_ok e) "lookup for SOA com is ENT"
@@ -119,14 +120,15 @@ module Trie = struct
                 "lookup for MX bar.foo.com (after insert) is NoDomain"
                 (Error (`NotFound (n_of_s "foo.com", 4l, soa)))
                 (lookupb (n_of_s "bar.foo.com") Dns_enum.MX t)) ;
-    let t = insert (n_of_s "foo.com") Dns_map.A (12l, [ ip "1.2.3.4" ]) t in
+    let a_record = (12l, Dns_map.Ipv4Set.singleton (ip "1.2.3.4")) in
+    let t = insert (n_of_s "foo.com") Dns_map.A a_record t in
     Alcotest.(check (result l_ok e)
                 "lookup for AAAA foo.com (after insert) is NoData"
                 (Error (`EmptyNonTerminal (n_of_s "foo.com", 4l, soa)))
                 (lookupb (n_of_s "foo.com") Dns_enum.AAAA t)) ;
     Alcotest.(check (result l_ok e)
                 "lookup for A foo.com (after insert) is Found"
-                (Ok (Dns_map.B (Dns_map.A, (12l, [ ip "1.2.3.4" ])),
+                (Ok (Dns_map.B (Dns_map.A, a_record),
                      (n_of_s "foo.com", 10l, sn (n_of_s "ns1.foo.com"))))
                 (lookupb (n_of_s "foo.com") Dns_enum.A t)) ;
     Alcotest.(check (result l_ok e)

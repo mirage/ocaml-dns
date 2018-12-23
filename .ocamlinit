@@ -1,6 +1,6 @@
 #utop_prompt_dummy
 #use "topfind"
-#require "cstruct, astring, ipaddr, logs, rresult, fmt, logs.fmt, ptime, duration, randomconv, lru"
+#require "cstruct, astring, ipaddr, logs, rresult, fmt, logs.fmt, ptime, duration, randomconv, lru, domain-name, hex, gmap"
 #directory "_build/src"
 #load "udns.cma"
 #directory "_build/server"

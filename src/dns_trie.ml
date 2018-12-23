@@ -248,18 +248,17 @@ let check trie =
         | Dns_map.B (Dns_map.Mx, (ttl, mxs)) ->
           if ttl < 0l then
             Error (`Bad_ttl (name, v))
-          else begin match mxs with
-            | [] -> Error (`Empty (name, Dns_enum.MX))
-            | mxs ->
-              let domain = match state' with `None -> name | `Soa zone -> zone in
-              List.fold_left (fun r (_, name) ->
-                  r >>= fun () ->
-                  if Domain_name.sub ~subdomain:name ~domain then
-                    guard (has_address name) (`Missing_address name)
-                  else
-                    Ok ())
-                (Ok ()) mxs
-          end
+          else if Dns_map.MxSet.is_empty mxs then
+            Error (`Empty (name, Dns_enum.MX))
+          else
+            let domain = match state' with `None -> name | `Soa zone -> zone in
+            Dns_map.MxSet.fold (fun (_, name) r ->
+                r >>= fun () ->
+                if Domain_name.sub ~subdomain:name ~domain then
+                  guard (has_address name) (`Missing_address name)
+                else
+                  Ok ())
+              mxs (Ok ())
         | Dns_map.B (Dns_map.Ptr, (ttl, name)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v)) else Ok ()
         | Dns_map.B (Dns_map.Soa, (ttl, soa)) ->
@@ -274,42 +273,47 @@ let check trie =
           end
         | Dns_map.B (Dns_map.Txt, (ttl, txts)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else begin match txts with
-            | [] -> Error (`Empty (name, Dns_enum.TXT))
-            | xs ->
-              if List.for_all (fun txt -> List.length txt > 0 && List.for_all (fun x -> String.length x > 0) txt) xs then
-                Ok ()
-              else Error (`Empty (name, Dns_enum.TXT)) end
+          else if Dns_map.TxtSet.is_empty txts then
+            Error (`Empty (name, Dns_enum.TXT))
+          else if
+            Dns_map.TxtSet.exists (function
+                | [] -> true
+                | xs -> List.exists (fun s -> String.length s = 0) xs)
+              txts
+          then
+            Error (`Empty (name, Dns_enum.TXT))
+          else
+            Ok ()
         | Dns_map.B (Dns_map.A, (ttl, a)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else begin match a with
-            | [] -> Error (`Empty (name, Dns_enum.A))
-            | _ -> Ok () end
+          else if Dns_map.Ipv4Set.is_empty a then
+            Error (`Empty (name, Dns_enum.A))
+          else Ok ()
         | Dns_map.B (Dns_map.Aaaa, (ttl, aaaa)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else begin match aaaa with
-            | [] -> Error (`Empty (name, Dns_enum.AAAA))
-            | _ -> Ok () end
+          else if Dns_map.Ipv6Set.is_empty aaaa then
+            Error (`Empty (name, Dns_enum.AAAA))
+          else Ok ()
         | Dns_map.B (Dns_map.Srv, (ttl, srvs)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else begin match srvs with
-            | [] -> Error (`Empty (name, Dns_enum.SRV))
-            | _ -> Ok () end
+          else if Dns_map.SrvSet.is_empty srvs then
+            Error (`Empty (name, Dns_enum.SRV))
+          else Ok ()
         | Dns_map.B (Dns_map.Caa, (ttl, caas)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else begin match caas with
-            | [] -> Error (`Empty (name, Dns_enum.CAA))
-            | _ -> Ok () end
+          else if Dns_map.CaaSet.is_empty caas then
+            Error (`Empty (name, Dns_enum.CAA))
+          else Ok ()
         | Dns_map.B (Dns_map.Tlsa, (ttl, tlsas)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else begin match tlsas with
-            | [] -> Error (`Empty (name, Dns_enum.TLSA))
-            | _ -> Ok () end
+          else if Dns_map.TlsaSet.is_empty tlsas then
+            Error (`Empty (name, Dns_enum.TLSA))
+          else Ok ()
         | Dns_map.B (Dns_map.Sshfp, (ttl, sshfps)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else begin match sshfps with
-            | [] -> Error (`Empty (name, Dns_enum.SSHFP))
-            | _ -> Ok () end)
+          else if Dns_map.SshfpSet.is_empty sshfps then
+            Error (`Empty (name, Dns_enum.SSHFP))
+          else Ok ())
       map (Ok ()) >>= fun () ->
     M.fold (fun lbl (N (sub, map)) r ->
         r >>= fun () ->

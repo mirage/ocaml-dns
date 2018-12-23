@@ -135,13 +135,14 @@ module Authentication = struct
         soa name
     in
     let keys = match Dns_trie.lookup name Dns_map.Dnskey trie with
-      | Error _ -> [ key ]
+      | Error _ -> Dns_map.DnskeySet.singleton key
       | Ok keys ->
         Log.warn (fun m -> m "replacing unexpected Dnskey (name %a, have %a, got %a)"
                      Domain_name.pp name
-                     Fmt.(list ~sep:(unit ",") Dns_packet.pp_dnskey) keys
+                     Fmt.(list ~sep:(unit ",") Dns_packet.pp_dnskey)
+                     (Dns_map.DnskeySet.elements keys)
                      Dns_packet.pp_dnskey key ) ;
-        [ key ]
+        Dns_map.DnskeySet.singleton key
     in
     let trie' = Dns_trie.insert zone Dns_map.Soa soa trie in
     Dns_trie.insert name Dns_map.Dnskey keys trie'
@@ -163,8 +164,19 @@ module Authentication = struct
 
   let find_key t name =
     match Dns_trie.lookup name Dns_map.Dnskey (fst t) with
-    | Ok [ key ] -> Some key
-    | _ -> None
+    | Ok keys ->
+      if Dns_map.DnskeySet.cardinal keys = 1 then
+        Some (Dns_map.DnskeySet.choose keys)
+      else begin
+        Log.warn (fun m -> m "found multiple (%d) keys for %a"
+                     (Dns_map.DnskeySet.cardinal keys)
+                     Domain_name.pp name) ;
+        None
+      end
+    | Error e ->
+      Log.warn (fun m -> m "error %a while looking up key %a" Dns_trie.pp_e e
+                   Domain_name.pp name) ;
+      None
 
   let handle_update keys us =
     List.fold_left (fun (keys, actions) -> function
@@ -474,9 +486,14 @@ let handle_rr_update trie = function
                           Dns_enum.pp_rr_typ typ Domain_name.pp name Dns_packet.pp_rdata rdata) ;
             trie
           | Ok (v, _) ->
+            Log.info (fun m -> m "removing single entry");
             begin match Dns_map.remove_rdata v rdata with
-              | None -> Dns_trie.remove name typ trie
-              | Some v -> Dns_trie.insertb name v trie
+              | None ->
+                Log.info (fun m -> m "removed single entry, none leftover");
+                Dns_trie.remove name typ trie
+              | Some v ->
+                Log.info (fun m -> m "removed single entry, leftover: %a" Dns_map.pp_b v);
+                Dns_trie.insertb name v trie
             end
           | Error e ->
             Log.warn (fun m -> m "error %a while looking up %a %a %a for removal"
@@ -537,7 +554,7 @@ let notify t l now zone soa =
       Domain_name.Set.fold (fun ns acc ->
           let ips = match Dns_trie.lookup ns Dns_map.A t.data with
             | Ok (_, ips) ->
-              List.fold_left (fun acc ip -> IPM.add ip 53 acc) IPM.empty ips
+              Dns_map.Ipv4Set.fold (fun ip acc -> IPM.add ip 53 acc) ips IPM.empty
             | _ ->
               Log.err (fun m -> m "lookup for A %a returned nothing as well"
                           Domain_name.pp ns) ;

@@ -1,20 +1,38 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
+module MxSet : Set.S with type elt = int * Domain_name.t
+
+module TxtSet : Set.S with type elt = string list
+
+module Ipv4Set : Set.S with type elt = Ipaddr.V4.t
+
+module Ipv6Set : Set.S with type elt = Ipaddr.V6.t
+
+module SrvSet : Set.S with type elt = Dns_packet.srv
+
+module DnskeySet : Set.S with type elt = Dns_packet.dnskey
+
+module CaaSet : Set.S with type elt = Dns_packet.caa
+
+module TlsaSet : Set.S with type elt = Dns_packet.tlsa
+
+module SshfpSet : Set.S with type elt = Dns_packet.sshfp
+
 type _ k =
   | Any : (Dns_packet.rr list * Domain_name.Set.t) k
   | Cname : (int32 * Domain_name.t) k
-  | Mx : (int32 * (int * Domain_name.t) list) k
+  | Mx : (int32 * MxSet.t) k
   | Ns : (int32 * Domain_name.Set.t) k
   | Ptr : (int32 * Domain_name.t) k
   | Soa : (int32 * Dns_packet.soa) k
-  | Txt : (int32 * string list list) k
-  | A : (int32 * Ipaddr.V4.t list) k
-  | Aaaa : (int32 * Ipaddr.V6.t list) k
-  | Srv : (int32 * Dns_packet.srv list) k
-  | Dnskey : Dns_packet.dnskey list k
-  | Caa : (int32 * Dns_packet.caa list) k
-  | Tlsa : (int32 * Dns_packet.tlsa list) k
-  | Sshfp : (int32 * Dns_packet.sshfp list) k
+  | Txt : (int32 * TxtSet.t) k
+  | A : (int32 * Ipv4Set.t) k
+  | Aaaa : (int32 * Ipv6Set.t) k
+  | Srv : (int32 * SrvSet.t) k
+  | Dnskey : DnskeySet.t k
+  | Caa : (int32 * CaaSet.t) k
+  | Tlsa : (int32 * TlsaSet.t) k
+  | Sshfp : (int32 * SshfpSet.t) k
 
 include Gmap.S with type 'a key = 'a k
 
