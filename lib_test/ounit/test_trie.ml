@@ -1,7 +1,5 @@
-
+[@@@warning "-27"]
 open OUnit2
-open Printf
-
 module H = Hashcons
 open Dns
 open Trie

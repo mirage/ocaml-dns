@@ -3,7 +3,7 @@ open Lwt
 open Dns
 
 (* check db first, then fall back to resolver on error *)
-let process db resolver ~src ~dst packet =
+let process db resolver ~src:_ ~dst:_ packet =
       let open Packet in
       match packet.questions with
       | [] -> return None; (* no questions in packet *)

@@ -1,7 +1,6 @@
 
 (* A minimal DNS server *)
 open Lwt
-open Dns
 
 (* Note: a server with lots of records should use the Trie structure instead. *)
 let addresses = [
@@ -11,7 +10,7 @@ let addresses = [
 
 let nxdomain = Dns.Query.({ rcode = Dns.Packet.NXDomain; aa = true; answer = []; authority = []; additional = [] })
 
-let lookup ~src ~dst packet =
+let lookup ~src:_ ~dst:_ packet =
   let open Dns.Packet in
   match packet.questions with
   | [ { q_class = Q_IN; q_type = Q_A; q_name; _ } ] ->

@@ -27,6 +27,6 @@ let command =
     +> flag "-port" (optional_with_default 53 int) ~doc:"int port of the DNS resolver"
     +> anon ("url" %: string)
   in
-  Command.async ~summary:"DNS Resolver" spec main
+  Command.async_spec ~summary:"DNS Resolver" spec main
 
 let () = Command.run command

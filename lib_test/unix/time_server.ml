@@ -15,7 +15,6 @@
  *)
 
 open Lwt
-open Printf
 
 let time_rsrc_record () =
   Dns.Packet.(
@@ -28,10 +27,10 @@ let time_rsrc_record () =
     { name; cls; flush; ttl; rdata }
   )
 
-let dnsfn ~src ~dst query =
+let dnsfn ~src:_ ~dst:_ query =
   let open Dns.Packet in
       match query.questions with
-        | q::_ -> (* Just take the first question *)
+        | _q::_ -> (* Just take the first question *)
             return (Some
               Dns.Query.({
                 rcode=NoError; aa=true;
