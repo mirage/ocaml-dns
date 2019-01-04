@@ -72,7 +72,9 @@ module Authentication = struct
           in
           Array.set subarr 0 content ;
           let host = Domain_name.of_array subarr in
-          Ipaddr.V4.of_string (Domain_name.to_string host), port
+          (match Ipaddr.V4.of_string (Domain_name.to_string host) with
+           | Error _ -> None
+           | Ok ip -> Some ip), port
         with Invalid_argument _ -> None, 53
       in
       match ip_port (start + 4), ip_port start with

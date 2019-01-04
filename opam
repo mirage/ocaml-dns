@@ -21,7 +21,7 @@ depends: [
   "gmap" {>= "0.2.0"}
   "cstruct" {>= "2.2.0"}
   "hex"
-  "ipaddr" {>= "2.9.0"}
+  "ipaddr" {>= "3.0.0"}
   "lwt"
   "mirage-types-lwt"
   "alcotest" {with-test}
