@@ -12,5 +12,6 @@ env:
  matrix:
    - DISTRO=debian-stable OCAML_VERSION=4.03
    - DISTRO=debian-testing OCAML_VERSION=4.04
-   - DISTRO=ubuntu-16.04 OCAML_VERSION=4.03
-   - DISTRO=alpine OCAML_VERSION=4.04
+   - DISTRO=ubuntu-lts OCAML_VERSION=4.05
+   - DISTRO=alpine OCAML_VERSION=4.06
+   - DISTRO=fedora OCAML_VERSION=4.07

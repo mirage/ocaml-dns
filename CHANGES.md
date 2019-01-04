@@ -1,3 +1,9 @@
+v1.1.0 2019-01-04
+-----------------
+
+* Port build from jbuilder to Dune (#155 #152 #153 by @paurkedal @samoht)
+* Update opam metadata to the 2.0 format.
+
 v1.0.1 2017-11-06
 -----------------
 
