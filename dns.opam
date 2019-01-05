@@ -34,7 +34,7 @@ depends: [
   "dune" {build}
   "cstruct" {>= "3.0.2"}
   "ppx_cstruct"
-  "re"
+  "re" {>="1.7.2"}
   "ipaddr" {>= "2.6.0"}
   "uri" {>= "1.7.0"}
   "base64" {>= "2.0.0"}

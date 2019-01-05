@@ -1,6 +1,11 @@
-v1.1.0 2019-01-04
+v1.1.0 2019-01-05
 -----------------
 
+* Improve parsing robustness with:
+  - invalid pointers in packets
+  - taking total packet size limitations into account
+  - handling unknown opcodes gracefully without an exception
+  Work done by @Willy-Tan in #154.
 * Port build from jbuilder to Dune (#155 #152 #153 by @paurkedal @samoht)
 * Update opam metadata to the 2.0 format.
 
