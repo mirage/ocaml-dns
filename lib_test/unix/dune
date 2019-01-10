@@ -5,5 +5,6 @@
 (alias
   (name   runtest)
   (deps   time_server.exe)
+  (package dns-lwt-unix)
 ;  (action (run %{deps} --help))
 )
