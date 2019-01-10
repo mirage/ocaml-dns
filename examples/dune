@@ -4,6 +4,7 @@
 
 (alias
   (name    runtest)
+  (package dns-lwt-unix)
   (deps    forward.exe server.exe)
 ; (action  (run ./forward.exe -e -v))
 )

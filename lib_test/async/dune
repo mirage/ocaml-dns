@@ -5,4 +5,5 @@
 (alias
   (name    runtest)
   (deps    test_async_dns_resolver_unix.exe)
+  (package dns-async)
   (action  (run %{deps} -host 8.8.8.8 recoil.org)))
