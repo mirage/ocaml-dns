@@ -1,7 +1,5 @@
-
+[@@@warning "-27"]
 open OUnit2
-open Printf
-
 open Dns
 open Packet
 module Q = Query

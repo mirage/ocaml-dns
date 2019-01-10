@@ -1,32 +1,48 @@
-opam-version: "1.2"
-maintainer:   "anil@recoil.org"
-homepage:     "https://github.com/mirage/ocaml-dns"
-dev-repo:     "https://github.com/mirage/ocaml-dns.git"
-bug-reports:  "https://github.com/mirage/ocaml-dns/issues"
-doc:          "https://mirage.github.io/ocaml-dns/"
+opam-version: "2.0"
+maintainer: "anil@recoil.org"
 authors: [
-  "Anil Madhavapeddy" "Tim Deegan" "Richard Mortier"
-  "Haris Rotsos" "David Sheets" "Thomas Gazagnaire"
-  "Luke Dunstan" "David Scott"
+  "Anil Madhavapeddy"
+  "Tim Deegan"
+  "Richard Mortier"
+  "Haris Rotsos"
+  "David Sheets"
+  "Thomas Gazagnaire"
+  "Luke Dunstan"
+  "David Scott"
 ]
 license: "ISC"
-tags: [ "org:mirage" "org:xapi-project" ]
+synopsis: "DNS client and server implementation in pure OCaml"
+description: """
+This is a pure OCaml implementation of the DNS protocol.  It is intended to be
+a reasonably high-performance implementation, but clarity is preferred rather
+than low-level performance hacks.
 
+There are several concrete implementations using this package that you probably
+want to use for practical purposes:
+
+- dns-lwt for the Lwt concurrency library
+- dns-lwt-unix using the Lwt_unix bindings
+- dns-async using the Jane Street Async library
+- mirage-dns for the MirageOS unikernel framework
+"""
+tags: ["org:mirage" "org:xapi-project"]
+homepage: "https://github.com/mirage/ocaml-dns"
+doc: "https://mirage.github.io/ocaml-dns/"
+bug-reports: "https://github.com/mirage/ocaml-dns/issues"
+depends: [
+  "ocaml" {>= "4.03.0"}
+  "dune" {build}
+  "cstruct" {>= "3.0.2"}
+  "ppx_cstruct"
+  "re" {>="1.7.2"}
+  "ipaddr" {>= "2.6.0"}
+  "uri" {>= "1.7.0"}
+  "base64" {>= "2.0.0"}
+  "hashcons"
+  "result"
+]
 build: [
   ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs]
 ]
-
-depends: [
-  "base-bytes"
-  "dune"             {build}
-  "cstruct"          {>= "3.0.2"}
-  "ppx_cstruct"      {build}
-  "re"
-  "ipaddr"           {>= "2.6.0"}
-  "uri"              {>= "1.7.0"}
-  "base64"           {>= "2.0.0"}
-  "hashcons"
-  "result"
-]
-available: [ocaml-version >= "4.03.0"]
+dev-repo: "git+https://github.com/mirage/ocaml-dns.git"

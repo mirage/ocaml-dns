@@ -1,4 +1,4 @@
-
+[@@@warning "-27"]
 open OUnit2
 
 let cstruct_of ints =
