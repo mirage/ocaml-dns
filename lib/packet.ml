@@ -260,7 +260,7 @@ let rdata_to_string = function
   | DNSKEY (flags, alg, key)
     -> (sprintf "DNSKEY (%d, %s, %s)"
           flags (dnssec_alg_to_string alg)
-          (B64.encode key)
+          (Base64.encode_exn key)
     )
   | HINFO (cpu, os) -> sprintf "HINFO (%s, %s)" cpu os
   | ISDN (a, sa)
@@ -292,7 +292,7 @@ let rdata_to_string = function
   | SRV (x, y, z, n)
     -> sprintf "SRV (%d,%d,%d, %s)" x y z (Name.to_string n)
   | TXT sl -> sprintf "TXT (%s)" (String.concat "" sl)
-  | UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (B64.encode bs)
+  | UNKNOWN (x, bs) -> sprintf "UNKNOWN (%d) '%s'" x (Base64.encode_exn bs)
   (* | UNSPEC bs -> sprintf "UNSPEC (%s)" bs*)
   | WKS (a, y, s) ->
     sprintf "WKS (%s, %d, %s)" (Ipaddr.V4.to_string a) (Cstruct.byte_to_int y) s
@@ -304,11 +304,11 @@ let rdata_to_string = function
       sprintf "RRSIG (%s %s %d %ld %ld %ld %d %s %s)"
         (rr_type_to_string typ)
         (dnssec_alg_to_string alg) (int_of_char lbl) orig_ttl exp_ts inc_ts
-        tag (Name.to_string name) (B64.encode sign)
+        tag (Name.to_string name) (Base64.encode_exn sign)
   | SIG  (alg, exp_ts, inc_ts, tag, name, sign) ->
       sprintf "SIG (UNUSED %s 0 0 %ld %ld %d %s %s)"
         (dnssec_alg_to_string alg) exp_ts inc_ts
-        tag (Name.to_string name) (B64.encode sign)
+        tag (Name.to_string name) (Base64.encode_exn sign)
    | DS (keytag, alg, digest_t, digest)
     -> (sprintf "DS (%d,%s,%s, '%s')" keytag
           (dnssec_alg_to_string alg) (digest_alg_to_string digest_t)
