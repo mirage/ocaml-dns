@@ -40,9 +40,12 @@ depends: [
   "base64" {>= "3.0.0"}
   "hashcons"
   "result"
+  "pcap-format" {with-test}
+  "ounit" {with-test}
 ]
 build: [
   ["dune" "subst"] {pinned}
   ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
 dev-repo: "git+https://github.com/mirage/ocaml-dns.git"
