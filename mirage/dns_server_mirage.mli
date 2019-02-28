@@ -25,10 +25,10 @@ module type S = sig
 
   (** Generate a {! Dns.Packet.t process} from a {! list} of filenames
    corresponding to zone files. *)
-  val eventual_process_of_zonefiles : t-> string list -> Dns.Packet.t process Lwt.t
+  val eventual_process_of_zonefiles : t -> string list -> Dns.Packet.t process Lwt.t
 
   val serve_with_processor: t -> port:int -> processor:(module PROCESSOR) -> unit Lwt.t
- 
+
   val serve_with_zonefile : t -> port:int -> zonefile:string -> unit Lwt.t
 
   val serve_with_zonefiles : t -> port:int -> zonefiles:string list -> unit Lwt.t

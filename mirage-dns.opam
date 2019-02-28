@@ -18,12 +18,12 @@ This is an implementation of a DNS server and client resolver
 for the [MirageOS unikernel framework](https://mirage.io).
 """
 depends: [
-  "ocaml" {>= "4.03.0"}
+  "ocaml" {>= "4.05.0"}
   "dune" {build}
   "dns-lwt"
   "duration"
-  "mirage-stack-lwt"
-  "mirage-kv-lwt"
+  "mirage-stack-lwt" {>= "1.3.0"}
+  "mirage-kv-lwt" {>= "2.0.0"}
   "mirage-time-lwt"
   "mirage-profile" {>= "0.8.0"}
 ]
