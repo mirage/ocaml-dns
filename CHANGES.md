@@ -1,10 +1,12 @@
-v1.1.1 2019-01-25
------------------
+### v1.1.2 (2019-02-28)
+
+* Mirage: adapt to mirage-kv 2.0.0 interface (#156 by @samoht)
+
+### v1.1.1 (2019-01-25)
 
 * Support Base64.3.0.0 interface (@avsm)
 
-v1.1.0 2019-01-05
------------------
+### v1.1.0 (2019-01-05)
 
 * Improve parsing robustness with:
   - invalid pointers in packets
@@ -14,15 +16,13 @@ v1.1.0 2019-01-05
 * Port build from jbuilder to Dune (#155 #152 #153 by @paurkedal @samoht)
 * Update opam metadata to the 2.0 format.
 
-v1.0.1 2017-11-06
------------------
+### v1.0.1 (2017-11-06)
 
 * dns-lwt-unix: add missing dependency on cmdliner (#145 by @avsm)
 * async: close reader and writer properly (#147 by @1yefuwang1)
 * fix build with OCaml 4.06 (and -safe-string) (#148 by @djs55)
 
-v1.0.0 2017-06-23
------------------
+### v1.0.0 (2017-06-23)
 
 Rearrange the `opam` packages to eliminate optional dependencies,
 and have explicit and separate packages for the Lwt, Async and
@@ -45,20 +45,17 @@ with specifying a myriad of optional dependencies in OPAM.
 
 - Depend on Lwt 3.0.0 interfaces, including the blocking bind.
 
-v0.20.2 2017-06-01
-------------------
+### v0.20.2 (2017-06-01)
 
 * Depend explicitly on `Ipaddr_unix` and `Uri_services` modules.
 * Add a basic server example which has a static lookup table and
   does not use the Trie structure.  It is in [examples/server.ml].
 
-v0.20.1 2017-05-16
-------------------
+### v0.20.1 (2017-05-16)
 
 * Port to lwt >= 3.0 (#136, @djs55)
 
-v0.20.0 2017-03-23
-------------------
+### v0.20.0 (2017-03-23)
 
 * Remove the `Dns.Buf` module that formerly wrapped Cstruct, now that the
   latter is a mature library.
@@ -70,43 +67,37 @@ v0.20.0 2017-03-23
 
 All these changes were part of #132 by @hannesm.
 
-v0.19.1 2017-02-15
-------------------
+### v0.19.1 (2017-02-15)
 
 * Use topkg instead of oasis (#126
-* Do not reverse the order of resource records in the parser (#109
+* Do not reverse the order of resource records in the parser (#109 by @djs55)
 * Restrict to OCaml 4.03.0+.
-* Fix bug parsing pointers to pointers to DNS name labels (#129
+* Fix bug parsing pointers to pointers to DNS name labels (#129 by @yeungda-rea)
 
-v0.19.0 2017-01-20
-------------------
+### v0.19.0 (2017-01-20)
 
 * Port to MirageOS 3 module types.
 * Remove runtime dependency on PPX from META file
 * Bugfixes and improvements for async backend compilation (#100 by @vbmithr).
 
-v0.18.1 2016-04-17
-------------------
+### v0.18.1 (2016-04-17)
 
 * Clear AA bit on requests, as some servers will drop these otherwise
 
-v0.18.0 2016-03-12
-------------------
+### v0.18.0 (2016-03-12)
 
 * Remove dependency on camlp4, switch to ppx
 
-v0.17.0 2016-03-11
-------------------
+### v0.17.0 (2016-03-11)
 
 * This library now depends on the `hashcons` package rather than
   containing a fork of it. Now that there is no LGPL (+ linking exception
   code left, clarify that the license is ISC. Previously the `opam`
-  file claimed a mixture of licenses (#86 via @djs55).
+  file claimed a mixture of licenses (#86 via @djs55)).
 * Add multi-distro Travis testing support.
 * Library now depends on OCaml 4.02+
 
-v0.16.0 2015-10-21
-------------------
+### v0.16.0 (2015-10-21)
 
 * Change source port randomization to avoid overflow in the port range
   (#83 from @yomimono).
@@ -122,27 +113,23 @@ Improve mDNS support (#82 from Luke Dunstan):
 * Fixed mDNS legacy responses to use TTL <= 10 sec
 * Fixed mDNS responses to use RD=0.
 
-v0.15.3 2015-07-30
-------------------
+### v0.15.3 (2015-07-30)
 
 * Fix regression in 0.15.2 which prevented `Dns_server_unix.listen` from
   answering more than one query (#80 from Magnus Skjegstad)
 
-v0.15.2 2015-07-04
-------------------
+### v0.15.2 (2015-07-04)
 
 * Fix incorrect mirage dependency on tcpip
 * Improve clarity and formatting of Lwt use
 * Remove camlp4 dependency
 * Now requires lwt >2.4.7
 
-v0.15.1 2015-07-02
-------------------
+### v0.15.1 (2015-07-02)
 
 * Fix critical DNS resolver timeout bug causing unexpected exceptions
 
-v0.15.0 2015-05-14
-------------------
+### v0.15.0 (2015-05-14)
 
 * Name.domain_name has been renamed to Name.t and is now abstract
 * Name.domain_name_to_string has been renamed to Name.to_string
@@ -159,8 +146,7 @@ v0.15.0 2015-05-14
 * Named service lookups are now supported in zone files
 * Dig string serializations are now in Dns.Dig (#61 from Heidi Howard
 
-v0.14.1 2015-03-29
-------------------
+### v0.14.1 (2015-03-29)
 
 * Reduce namespace pollution in `name.ml` to avoid breaking with Cstruct 1.6.0+.
 * Add a `Dns_server.compose` function to make it easier to build
@@ -170,16 +156,14 @@ v0.14.1 2015-03-29
 * Split out the experimental Async_resolver into a `Async_kernel` and
   Unix libraries. This introduces the `dns.async-unix` library.
 
-v0.14.0 2015-01-29
-------------------
+### v0.14.0 (2015-01-29)
 
 * Renamed `Packet.QM` to `Packet.Q_Normal` and `QU` to `Q_mDNS_Unicast` for
   clarity and added more detailed doc comments. Added constructor function
   `Packet.make_question` for convenience. (#41
 * Support `io-page` 1.3.0+ interface. (#40
 
-v0.13.0 2015-01-26
-------------------
+### v0.13.0 (2015-01-26)
 
 * Add support for multicast DNS (RFC6762) in the trie. (#35 from Luke Dunstan
 * mDNS doesn't use SOA nor delegation (RFC 6762 section 12), so some minor changes
@@ -212,8 +196,7 @@ v0.13.0 2015-01-26
 Unit tests were added for some of the changes above, including a test-only
 dependency on `pcap-format`.
 
-v0.12.0 2014-12-24
-------------------
+### v0.12.0 (2014-12-24)
 
 * Parse and marshal the mDNS unicast-response bit (#29).
 * Add OUnit tests for `Dns.Packet.parse` using `pcap` files.
@@ -222,16 +205,14 @@ v0.12.0 2014-12-24
 * Switch to `Base64` v2, which uses `B64` as the toplevel module name
   to avoid linking conflicts with other community libraries.
 
-v0.11.0 2014-11-02
-------------------
+### v0.11.0 (2014-11-02)
 
 * Do not depend in Io_page; instead `Dns.Buf.create` now accepts an
   optional `alloc` parameter to use a custom allocator such as `Io_page`.
 * Add Async DNS resolver modules from @marklrh (#22).
 * Add a Dns_resolver_mirage.Static for a static DNS interface.
 
-v0.10.0 2014-08-20
-------------------
+### v0.10.0 (2014-08-20)
 
 * Add `Dns_resolver_mirage` module for making stub resolution requests
   using the Mirage module types.
@@ -247,28 +228,24 @@ v0.10.0 2014-08-20
 * Add a local `opam` file for easier pinning.
 * Add an `examples/` directory with a DNS forwarder sample (#21).
 
-v0.9.1 2014-07-29
-------------------
+### v0.9.1 (2014-07-29)
 
 * Fix file descriptor leak in resolver (#15, #16) by expanding `commfn`
   with a cleanup function.
 
-v0.9.0 2014-06-16
-------------------
+### v0.9.0 (2014-06-16)
 
 * Ensure that all `Dns.Buf.t` buffers are page-aligned, via `Io_page`.
 * Remove a Unix dependency that snuck into the `Dns_resolver` portable
   core, by adding a timeout argument to the `commfn` type.
 * Improve ocamldoc in `Dns_resolver_unix`.
 
-v0.8.1 2014-04-19
-------------------
+### v0.8.1 (2014-04-19)
 
 * Add `process_of_zonebufs` to handle multiple zone files.
 * Adapt `Dns_server_unix` to expose multiple zonebuf functions.
 
-v0.8.0 2014-02-21
-------------------
+### v0.8.0 (2014-02-21)
 
 * Use `Ipaddr.V6` to restore IPv6/AAAA RR support.
 * `process_query` now takes an output buffer so it doesn't have to
@@ -281,8 +258,7 @@ v0.8.0 2014-02-21
   have shifted into `Dns_resolver_unix` or `Dns_server_unix`, with
   the module types for `PROCESSOR` and `CLIENT` unchanged.
 
-v0.7.0 2013-08-26
-------------------
+### v0.7.0 (2013-08-26)
 
 * Add path argument to `Resolv_conf in Dns_resolver.config.
 * `Dns_resolver.t` is now a record type rather than a first-class module.
@@ -310,41 +286,35 @@ v0.7.0 2013-08-26
 * Fix reversed multiple TXT parse bug
 * Move DNSSEC implementation to <//github.com/dsheets/ocaml-dnssec>
 
-v0.6.2 2013-02-13
-------------------
+### v0.6.2 (2013-02-13)
 
 * Fix Lwt compilation after switch to `Dns.Names.Map` instead of `Hashtbl`.
 * Fix Lwt Makefile detection (`Lwt.unix` instead of `Lwt.ssl`
 
-v0.6.1 2013-02-12
-------------------
+### v0.6.1 (2013-02-12)
 
 * Improve performance of packet marshalling.
 * Add a Mirage `Dns_server` subpackage.
 
-v0.6.0 2012-12-31
-------------------
+### v0.6.0 (2012-12-31)
 
 * (Very) experimental DNSSEC support.
 * Use cstruct-0.6.0 API.
 * Improve robustness of `Dns_resolver`.
 * Add EDNS0 support for larger packet sizes.
 
-v0.5.2 2012-11-28
-------------------
+### v0.5.2 (2012-11-28)
 
 * Fix the server interface to be fully asynchronous.
 * Correct `q_type`/`q_class` arguments being ignored in the Lwt
   Dns_resolver (from Pierre Chambart).
 
-v0.5.1 2012-10-05
-------------------
+### v0.5.1 (2012-10-05)
 
 * Remain compatible with OCaml-3.12.1 with the more verbose
   first-class module syntax.
 
-v0.5.0 2012-09-29
-------------------
+### v0.5.0 (2012-09-29)
 
 * Add mldig as a full(ish)-featured dig clone, with similar
   output format.
@@ -353,7 +323,6 @@ v0.5.0 2012-09-29
 * Move the Lwt bits (resolver, server, cmdline client) into
   a separate directory, to follow the Cohttp convention.
 
-v0.4.0 2012-09-18
-------------------
+### v0.4.0 (2012-09-18)
 
 * Initial public release.
