@@ -17,7 +17,7 @@
     same.
 *)
 
-(** {1 Abstract trie type} *)
+(** {2 Abstract trie type} *)
 
 type t
 (** The type of the trie. *)
@@ -30,7 +30,7 @@ val empty : t
 
 val equal : t -> t -> bool
 
-(** {1 Operations to modify the trie} *)
+(** {2 Operations to modify the trie} *)
 
 val insert_map : Dns_map.t Domain_name.Map.t -> t -> t
 (** [insert_map m t] inserts all elements of the domain name map [m] into [t]. *)
@@ -52,7 +52,7 @@ val remove_zone : Domain_name.t -> t -> t
     (entries with [Soa] records).  This removes as well any delegations. *)
 
 
-(** {1 Checking invariants} *)
+(** {2 Checking invariants} *)
 
 type err = [ `Missing_soa of Domain_name.t
            | `Cname_other of Domain_name.t
@@ -69,7 +69,7 @@ val check : t -> (unit, err) result
 (** [check t] checks all invariants. *)
 
 
-(** {1 Lookup} *)
+(** {2 Lookup} *)
 
 val pp_e : [< `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
            | `EmptyNonTerminal of Domain_name.t * int32 * Dns_packet.soa

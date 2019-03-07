@@ -1,13 +1,11 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-open Mirage_types_lwt
-
 open Lwt.Infix
 
 let src = Logs.Src.create "dns_mirage_resolver" ~doc:"effectful DNS certify"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : RANDOM) (P : PCLOCK) (TIME : TIME) (S : STACKV4) = struct
+module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (TIME : Mirage_time_lwt.S) (S : Mirage_stack_lwt.V4) = struct
 
   module Dns = Dns_mirage.Make(S)
 
@@ -74,7 +72,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       recursion_available = false ; authentic_data = false ; checking_disabled = false ;
       rcode = Dns_enum.NoError }
 
-  let nsupdate_csr flow pclock hostname keyname zone dnskey csr =
+  let nsupdate_csr flow hostname keyname zone dnskey csr =
     let tlsa =
       { Dns_packet.tlsa_cert_usage = Dns_enum.Domain_issued_certificate ;
         tlsa_selector = Dns_enum.Tlsa_selector_private ;
@@ -94,7 +92,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       let hdr = dns_header () in
       { hdr with Dns_packet.operation = Dns_enum.Update }
     in
-    let now = Ptime.v (P.now_d_ps pclock) in
+    let now = Ptime.v (P.now_d_ps ()) in
     match Dns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname with
     | Error msg -> Lwt.return_error msg
     | Ok (data, mac) ->
@@ -190,14 +188,14 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
     let csr = X509.CA.request [`CN hostname ] ~extensions (`RSA private_key) in
     (private_key, public_key, csr)
 
-  let query_certificate_or_csr flow pclock pub hostname keyname zone dnskey csr =
+  let query_certificate_or_csr flow pub hostname keyname zone dnskey csr =
     query_certificate flow pub hostname >>= function
     | Some certificate ->
       Log.info (fun m -> m "found certificate in DNS") ;
       Lwt.return certificate
     | None ->
       Log.info (fun m -> m "no certificate in DNS, need to transmit the CSR") ;
-      nsupdate_csr flow pclock hostname keyname zone dnskey csr >>= function
+      nsupdate_csr flow hostname keyname zone dnskey csr >>= function
       | Error msg ->
         Log.err (fun m -> m "failed to nsupdate TLSA %s" msg) ;
         Lwt.fail_with "nsupdate issue"
@@ -214,7 +212,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         in
         wait_for_cert ()
 
-  let retrieve_certificate ?(ca = `Staging) stack pclock ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
+  let retrieve_certificate ?(ca = `Staging) stack ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
     let keyname, zone, dnskey =
       match Astring.String.cut ~sep:":" dns_key with
       | None -> invalid_arg "couldn't parse dnskey"
@@ -240,7 +238,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         Lwt.fail_with "couldn't connect to name server"
       | Ok flow ->
         let flow = Dns.of_flow flow in
-        query_certificate_or_csr flow pclock pub hostname keyname zone dnskey csr >>= fun certificate ->
+        query_certificate_or_csr flow pub hostname keyname zone dnskey csr >>= fun certificate ->
         S.TCPV4.close (Dns.flow flow) >|= fun () ->
         let ca = match ca with
           | `Production -> production

@@ -1,9 +1,0 @@
-#utop_prompt_dummy
-#use "topfind"
-#require "cstruct, astring, ipaddr, logs, rresult, fmt, logs.fmt, ptime, duration, randomconv, lru, domain-name, hex, gmap"
-#directory "_build/src"
-#load "udns.cma"
-#directory "_build/server"
-#load "udns_server.cma"
-#directory "_build/resolver"
-#load "udns_resolver.cma"

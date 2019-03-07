@@ -16,5 +16,5 @@
  *
  *)
 
-(** Load a domain's zone from a string. *)
 val load : string list -> string -> (Dns_packet.rr list, string) result
+(** Load a domain's zone from a string. *)

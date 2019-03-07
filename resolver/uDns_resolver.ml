@@ -522,7 +522,7 @@ let handle t now ts query proto sender sport buf =
       Logs.err (fun m -> m "ignoring unsolicited packet (query allowed? %b)" query);
       t, [], []
 
-let query_root t rng now proto =
+let query_root t now proto =
   let q_name = Domain_name.root
   and q_type = Dns_enum.NS
   in
@@ -531,7 +531,7 @@ let query_root t rng now proto =
     | `HaveIP ip, cache -> ip, cache
     | _ ->
       let roots = snd (List.split Dns_resolver_root.root_servers) in
-      (List.nth roots (Randomconv.int ~bound:(List.length roots) rng),
+      (List.nth roots (Randomconv.int ~bound:(List.length roots) t.rng),
        t.cache)
   in
   let q = { Dns_packet.q_name ; q_type }

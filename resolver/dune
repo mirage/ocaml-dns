@@ -1,0 +1,6 @@
+(library
+ (name udns_resolver)
+ (synopsis "A tiny Domain Name system (DNS) library, resolver part")
+ (public_name udns-resolver)
+ (wrapped false)
+ (libraries udns udns-server lru duration randomconv))

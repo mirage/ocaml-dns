@@ -1,0 +1,29 @@
+opam-version: "2.0"
+maintainer: "Hannes Mehnert <hannes@mehnert.org>"
+authors: ["Hannes Mehnert <hannes@mehnert.org>"]
+homepage: "https://github.com/roburio/udns"
+doc: "https://roburio.github.io/udns/doc"
+dev-repo: "git+https://github.com/roburio/udns.git"
+bug-reports: "https://github.com/roburio/udns/issues"
+license: "BSD2"
+
+depends: [
+  "dune" {build & >= "1.2.0"}
+  "ocaml" {>= "4.04.0"}
+  "udns"
+  "randomconv"
+  "duration"
+  "alcotest" {with-test}
+]
+
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+
+synopsis: "DNS server, primary and secondary"
+description: """
+Primary and secondary DNS server implemented in value-passing style. Needs an
+effectful layer to be useful.
+"""

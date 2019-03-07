@@ -1,0 +1,21 @@
+(library
+ (name udns_cli)
+ (synopsis "A Domain Name system (DNS) library, unix applications")
+ (public_name udns-cli)
+ (wrapped false)
+ (modules udns_cli)
+ (libraries udns cmdliner ptime.clock.os logs.fmt fmt.cli logs.cli fmt.tty ipaddr.unix))
+
+(executable
+  (name ocertify)
+  (public_name ocertify)
+  (package udns-cli)
+  (modules ocertify)
+  (libraries udns udns-tsig udns-cli bos fpath x509 nocrypto nocrypto.unix))
+
+(executable
+  (name oupdate)
+  (public_name oupdate)
+  (package udns-cli)
+  (modules oupdate)
+  (libraries udns udns-tsig udns-cli ptime nocrypto nocrypto.unix))

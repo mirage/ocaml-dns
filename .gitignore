@@ -1,5 +1,6 @@
 _build/
-udns.install
+*.install
+.merlin
 
 *pcap
 *out

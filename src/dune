@@ -1,0 +1,6 @@
+(library
+ (name udns)
+ (synopsis "A tiny Domain Name system (DNS) library")
+ (public_name udns)
+ (wrapped false)
+ (libraries rresult cstruct astring fmt ipaddr logs ptime gmap domain-name))

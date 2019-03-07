@@ -1,13 +1,11 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Mirage_types_lwt
-
 open Lwt.Infix
 
 let src = Logs.Src.create "dns_mirage" ~doc:"effectful DNS layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (S : STACKV4) = struct
+module Make (S : Mirage_stack_lwt.V4) = struct
 
   module IS = Set.Make(Ipaddr.V4)
 

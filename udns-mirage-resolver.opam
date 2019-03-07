@@ -8,37 +8,25 @@ bug-reports: "https://github.com/roburio/udns/issues"
 license: "BSD2"
 
 depends: [
-  "ocamlfind" {build}
-  "ocamlbuild" {build}
-  "topkg" {build}
+  "dune" {build & >= "1.2.0"}
   "ocaml" {>= "4.04.0"}
-  "rresult" "astring" "fmt" "logs" "ptime" "cmdliner" "bos" "fpath"
-  "x509" "tls"
-  "nocrypto"
-  "lru"
-  "randomconv" "duration"
-  "domain-name" {>= "0.1.1"}
-  "gmap" {>= "0.2.0"}
-  "cstruct" {>= "2.2.0"}
-  "hex"
-  "ipaddr" {>= "3.0.0"}
+  "udns"
+  "udns-mirage"
+  "udns-server"
+  "udns-resolver"
+  "mirage-time-lwt"
+  "mirage-clock-lwt"
+  "mirage-random"
   "lwt"
-  "mirage-types-lwt"
-  "alcotest" {with-test}
-#  "afl-persistent" {with-test}
-  "mtime" {with-test}
-  "hashcons" {with-test}
-  "re" {with-test}
-]
-
-conflicts: [
-  "tcp" {< "3.4.2"}
+  "randomconv"
+  "duration"
+  "mirage-stack-lwt"
 ]
 
 build: [
-  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false" ]
-  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ] {with-test}
-  [ "ocaml" "pkg/pkg.ml" "test" ] {with-test}
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
 
 synopsis: "An opinionated Domain Name System (DNS) library"
@@ -46,11 +34,6 @@ description: """
 µDNS supports most of the domain name system used in the wild.  It adheres to
 strict conventions.  Failing early and hard.  It is mostly implemented in the
 pure fragment of OCaml (no mutation, isolated IO, no exceptions).
-
-It all started out as an experiment to run a recursive resolver, but after
-initial prototypes it turned out that every configurable recursive resolver
-needs a fully-fledged authoritative nameserver as well (for overriding various
-zones such as `.localhost` and reverse lookups of RFC 1918 IP ranges).
 
 Legacy resource record types are not dealt with, and there is no plan to support
 `ISDN`, `MAILA`, `MAILB`, `WKS`, `MB`, `NULL`, `HINFO`, ... .  `AXFR` is only

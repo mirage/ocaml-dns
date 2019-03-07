@@ -1,13 +1,11 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-open Mirage_types_lwt
-
 open Lwt.Infix
 
 let src = Logs.Src.create "dns_mirage_resolver" ~doc:"effectful DNS resolver"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
+module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : Mirage_time_lwt.S) (S : Mirage_stack_lwt.V4) = struct
 
   module Dns = Dns_mirage.Make(S)
 
@@ -21,7 +19,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
         | x -> x
     end)
 
-  let resolver stack pclock mclock ?(root = false) ?(timer = 500) ?(port = 53) t =
+  let resolver stack ?(root = false) ?(timer = 500) ?(port = 53) t =
     (* according to RFC5452 4.5, we can chose source port between 1024-49152 *)
     let sport () = 1024 + Randomconv.int ~bound:48128 R.generate in
     let state = ref t in
@@ -48,8 +46,8 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
                 tcp_out := Dns.IM.remove dst !tcp_out ;
                 Lwt.return_unit
               | Ok data ->
-                let now = Ptime.v (P.now_d_ps pclock) in
-                let ts = M.elapsed_ns mclock in
+                let now = Ptime.v (P.now_d_ps ()) in
+                let ts = M.elapsed_ns () in
                 let new_state, answers, queries =
                   UDns_resolver.handle !state now ts false `Tcp dst port data
                 in
@@ -100,8 +98,8 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
           | Ok () -> ()
           | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in
     and udp_cb req ~src ~dst:_ ~src_port buf =
-      let now = Ptime.v (P.now_d_ps pclock)
-      and ts = M.elapsed_ns mclock
+      let now = Ptime.v (P.now_d_ps ())
+      and ts = M.elapsed_ns ()
       in
       let new_state, answers, queries =
         UDns_resolver.handle !state now ts req `Udp src src_port buf
@@ -124,8 +122,8 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
           tcp_in := FM.remove (dst_ip, dst_port) !tcp_in ;
           Lwt.return_unit
         | Ok data ->
-          let now = Ptime.v (P.now_d_ps pclock) in
-          let ts = M.elapsed_ns mclock in
+          let now = Ptime.v (P.now_d_ps ()) in
+          let ts = M.elapsed_ns () in
           let new_state, answers, queries =
             UDns_resolver.handle !state now ts query `Tcp dst_ip dst_port data
           in
@@ -148,7 +146,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
 
     let rec time () =
       let new_state, answers, queries =
-        UDns_resolver.timer !state (M.elapsed_ns mclock)
+        UDns_resolver.timer !state (M.elapsed_ns ())
       in
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
@@ -160,7 +158,7 @@ module Make (R : RANDOM) (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) =
 
     if root then
       let rec root () =
-        let new_state, q = UDns_resolver.query_root !state R.generate (M.elapsed_ns mclock) `Tcp in
+        let new_state, q = UDns_resolver.query_root !state (M.elapsed_ns ()) `Tcp in
         state := new_state ;
         handle_query q >>= fun () ->
         TIME.sleep_ns (Duration.of_day 6) >>= fun () ->

@@ -1,19 +1,17 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-open Mirage_types_lwt
-
 open Lwt.Infix
 
 let src = Logs.Src.create "dns_mirage_server" ~doc:"effectful DNS server"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
+module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : Mirage_time_lwt.S) (S : Mirage_stack_lwt.V4) = struct
 
   module Dns = Dns_mirage.Make(S)
 
   module T = S.TCPV4
 
-  let primary stack pclock mclock ?(timer = 2) ?(port = 53) t =
+  let primary stack ?(timer = 2) ?(port = 53) t =
     let state = ref t in
     let tcp_out = ref Dns.IPM.empty in
     let drop ip port =
@@ -31,8 +29,8 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
     in
     let udp_cb ~src ~dst:_ ~src_port buf =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp src src_port) ;
-      let now = Ptime.v (P.now_d_ps pclock) in
-      let elapsed = M.elapsed_ns mclock in
+      let now = Ptime.v (P.now_d_ps ()) in
+      let elapsed = M.elapsed_ns () in
       let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Udp src src_port buf in
       state := t ;
       (match answer with
@@ -51,8 +49,8 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
         Dns.read_tcp f >>= function
         | Error () -> drop dst_ip dst_port ; Lwt.return_unit
         | Ok data ->
-          let now = Ptime.v (P.now_d_ps pclock) in
-          let elapsed = M.elapsed_ns mclock in
+          let now = Ptime.v (P.now_d_ps ()) in
+          let elapsed = M.elapsed_ns () in
           let t, answer, notify = UDns_server.Primary.handle !state now elapsed `Tcp dst_ip dst_port data in
           state := t ;
           Lwt_list.iter_p send_notify notify >>= fun () ->
@@ -68,7 +66,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
     S.listen_tcpv4 stack ~port tcp_cb ;
     Log.info (fun m -> m "DNS server listening on TCP port %d" port) ;
     let rec time () =
-      let t, notifies = UDns_server.Primary.timer !state (M.elapsed_ns mclock) in
+      let t, notifies = UDns_server.Primary.timer !state (M.elapsed_ns ()) in
       state := t ;
       Lwt_list.iter_p send_notify notifies >>= fun () ->
       TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
@@ -76,7 +74,7 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
     in
     Lwt.async time
 
-  let secondary ?(on_update = fun _trie -> Lwt.return_unit) stack pclock mclock ?(timer = 5) ?(port = 53) t =
+  let secondary ?(on_update = fun _trie -> Lwt.return_unit) stack ?(timer = 5) ?(port = 53) t =
     let state = ref t in
     let tcp_out = ref Dns.IM.empty in
     let in_flight = ref Dns.IS.empty in
@@ -95,8 +93,8 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
        | None -> Lwt.return_unit
        | Some f -> T.close f) >>= fun () ->
       tcp_out := Dns.IM.remove ip !tcp_out ;
-      let now = Ptime.v (P.now_d_ps pclock) in
-      let elapsed = M.elapsed_ns mclock in
+      let now = Ptime.v (P.now_d_ps ()) in
+      let elapsed = M.elapsed_ns () in
       let state', out = UDns_server.Secondary.closed !state now elapsed ip port in
       state := state' ;
       Lwt_list.iter_s request out
@@ -106,8 +104,8 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
         Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
         close ip port
       | Ok data ->
-        let now = Ptime.v (P.now_d_ps pclock) in
-        let elapsed = M.elapsed_ns mclock in
+        let now = Ptime.v (P.now_d_ps ()) in
+        let elapsed = M.elapsed_ns () in
         let t, answer, out =
           UDns_server.Secondary.handle !state now elapsed `Tcp ip data
         in
@@ -162,8 +160,8 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
 
     let udp_cb ~src ~dst:_ ~src_port buf =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp src src_port) ;
-      let now = Ptime.v (P.now_d_ps pclock) in
-      let elapsed = M.elapsed_ns mclock in
+      let now = Ptime.v (P.now_d_ps ()) in
+      let elapsed = M.elapsed_ns () in
       let t, answer, out = UDns_server.Secondary.handle !state now elapsed `Udp src buf in
       maybe_update_state t !state >>= fun () ->
       List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
@@ -182,8 +180,8 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
         Dns.read_tcp f >>= function
         | Error () -> Lwt.return_unit
         | Ok data ->
-          let now = Ptime.v (P.now_d_ps pclock) in
-          let elapsed = M.elapsed_ns mclock in
+          let now = Ptime.v (P.now_d_ps ()) in
+          let elapsed = M.elapsed_ns () in
           let t, answer, out =
             UDns_server.Secondary.handle !state now elapsed `Tcp dst_ip data
           in
@@ -204,8 +202,8 @@ module Make (P : PCLOCK) (M : MCLOCK) (TIME : TIME) (S : STACKV4) = struct
     Log.info (fun m -> m "secondary DNS listening on TCP port %d" port) ;
 
     let rec time () =
-      let now = Ptime.v (P.now_d_ps pclock) in
-      let elapsed = M.elapsed_ns mclock in
+      let now = Ptime.v (P.now_d_ps ()) in
+      let elapsed = M.elapsed_ns () in
       let t, out = UDns_server.Secondary.timer !state now elapsed in
       maybe_update_state t !state >>= fun () ->
       List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
