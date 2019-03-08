@@ -6,7 +6,7 @@ services:
 sudo: false
 env:
   global:
-    - PINS="udns.dev:. udns-client.dev:. udns-client-lwt.dev:. udns-client-mirage.dev:. udns-client-unix.dev:. udns-resolver.dev:. udns-server.dev:. udns-tsig.dev:. udns-zonefile.dev:. udns-cli.dev:. udns-mirage.dev:. udns-mirage-resolver.dev:. udns-mirage-server.dev:. udns-mirage-certify.dev:."
+    - PINS="udns.dev:. udns-client.dev:. udns-client-lwt.dev:. udns-mirage-client.dev:. udns-client-unix.dev:. udns-resolver.dev:. udns-server.dev:. udns-tsig.dev:. udns-zonefile.dev:. udns-cli.dev:. udns-mirage.dev:. udns-mirage-resolver.dev:. udns-mirage-server.dev:. udns-mirage-certify.dev:."
   matrix:
     - DISTRO=alpine OCAML_VERSION=4.04 PACKAGE="udns"
     - DISTRO=alpine OCAML_VERSION=4.04 PACKAGE="udns-zonefile"
@@ -21,5 +21,6 @@ env:
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns-mirage-certify"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns-cli"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns-client-unix"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns-mirage-client"
 notifications:
   email: false

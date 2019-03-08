@@ -17,9 +17,7 @@ depends: [
   "ocaml" {>= "4.04.2" }
   "domain-name" {>= "0.1.2"}
   "ipaddr" {>= "3.0.0"}
-  "mirage-time-lwt"
   "mirage-stack-lwt"
-  "mirage-kv-lwt" {>= "2.0.0"}
   "udns-client"
 ]
 synopsis: "DNS client library for MirageOS"
