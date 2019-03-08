@@ -32,7 +32,6 @@ module type S = sig
   val implementation : implementation
   (** A handle for an {implementation} instance.*)
 
-
   val default_ns : ns_addr
   (** This is documented in the {!Make} functor. TODO *)
 
@@ -54,11 +53,6 @@ end
 
 module Make : functor (U : S) ->
 sig
-
-  type io_addr = U.io_addr
-  type flow = U.flow
-  type ('ok,'err) io = ('ok,'err) U.io
-
 
   val default_ns : U.ns_addr
   (** The address of a nameserver that is supposed to work with

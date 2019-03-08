@@ -19,10 +19,6 @@ end
 
 module Make = functor (Uflow:S) ->
 struct
-  type io_addr = Uflow.io_addr
-  type ('a,'b) io = ('a,'b) Uflow.io
-  type flow = Uflow.flow
-
   let default_ns = Uflow.default_ns
 
   let getaddrinfo (type requested) ((proto,_) as ns_addr)
