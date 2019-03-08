@@ -26,16 +26,15 @@ module type S = sig
       just use the opaque [io_addr].
       TODO*)
 
-  type implementation
-  (** An implementation with which to connect, e.g. {IPv4.tcpv4}*)
-
-  val implementation : implementation
-  (** A handle for an {implementation} instance.*)
+  type stack
+  (** A stack with which to connect, e.g. {IPv4.tcpv4}*)
 
   val default_ns : ns_addr
-  (** This is documented in the {!Make} functor. TODO *)
+  (** The address of a nameserver that is supposed to work with
+      the underlying flow, can be used if the user does not want to
+      bother with configuring their own.*)
 
-  val connect : implementation -> ns_addr -> (flow,'err) io
+  val connect : stack -> ns_addr -> (flow,'err) io
   (** [connect addr] is a new connection ([flow]) to [addr], or an error. *)
 
   val send : flow -> Cstruct.t -> (unit,'err) io
@@ -59,7 +58,7 @@ sig
       the underlying flow, can be used if the user does not want to
       bother with configuring their own.*)
 
-  val getaddrinfo : U.ns_addr -> 'response Dns_map.k ->
+  val getaddrinfo : U.stack -> ?nameserver:U.ns_addr -> 'response Dns_map.k ->
     Domain_name.t -> ('response, 'err) U.io
   (** [getaddrinfo nameserver query_type name] is the [query_type]-dependent
       response from [nameserver] regarding [name], or an [Error _] message.
@@ -67,9 +66,9 @@ sig
       result types.
   *)
 
-  val gethostbyname : U.ns_addr -> Domain_name.t ->
+  val gethostbyname : U.stack -> ?nameserver:U.ns_addr -> Domain_name.t ->
     (Ipaddr.V4.t, 'err) U.io
-    (** [gethostbyname nameserver name] is the IPv4 address of [name]
+    (** [gethostbyname ~nameserver name] is the IPv4 address of [name]
         resolved via the [nameserver] specified.
         If the query fails, or if the [name] does not have any IPv4 addresses,
         an [Error _] message is returned.

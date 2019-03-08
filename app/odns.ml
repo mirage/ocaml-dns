@@ -27,7 +27,7 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Dns_packet.tlsa)) =
         | n -> loop ((String.sub hex n 56)::acc) (n+56)
       in loop [] 0)
 
-let do_a ((_,(ns_ip,_)) as ns) domains _ =
+let do_a ((_,(ns_ip,_)) as nameserver) domains _ =
   Logs.info (fun m -> m "querying NS %s for A records of %a"
                 (Unix.string_of_inet_addr ns_ip)
                 Fmt.(list ~sep:(unit", ") Domain_name.pp) domains);
@@ -35,7 +35,7 @@ let do_a ((_,(ns_ip,_)) as ns) domains _ =
     Lwt_list.iter_p (fun domain ->
         let open Lwt in
         Logs.debug (fun m -> m "looking up %a" Domain_name.pp domain);
-        Udns_client_lwt.(getaddrinfo ns Dns_map.A domain)
+        Udns_client_lwt.(getaddrinfo () ~nameserver Dns_map.A domain)
         >|= function
         | Ok (_ttl, addrs) when Dns_map.Ipv4Set.is_empty addrs ->
           (* handle empty response? *)
@@ -53,12 +53,12 @@ let do_a ((_,(ns_ip,_)) as ns) domains _ =
   match Lwt_main.run job with
   | () -> Ok () (* TODO handle errors *)
 
-let do_tlsa ((_,(ns_ip,_)) as ns) domains _ =
+let do_tlsa ((_,(ns_ip,_)) as nameserver) domains _ =
   Logs.info (fun m -> m "NS: %s" @@ Unix.string_of_inet_addr ns_ip);
   let job =
     Lwt_list.iter_p (fun domain ->
         let open Lwt in
-        Udns_client_lwt.getaddrinfo ns Dns_map.Tlsa domain
+        Udns_client_lwt.getaddrinfo () ~nameserver Dns_map.Tlsa domain
         >>= function
         | Ok (ttl, tlsa_resp) ->
           Dns_map.TlsaSet.iter (fun tlsa ->

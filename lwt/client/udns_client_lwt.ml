@@ -7,18 +7,16 @@ module Uflow : Udns_client_flow.S
   with type flow = Lwt_unix.file_descr
  and type io_addr = Lwt_unix.inet_addr * int
  and type (+'a,+'b) io = ('a,'b) Lwt_result.t
- and type implementation = unit
+ and type stack = unit
 = struct
   type io_addr = Lwt_unix.inet_addr * int
   type flow = Lwt_unix.file_descr
   type ns_addr = [`TCP | `UDP] * io_addr
   type (+'a,+'b) io = ('a,'b) Lwt_result.t
     constraint 'b = [> `Msg of string]
-  type implementation = unit
+  type stack = unit
 
   let default_ns = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)
-
-  let implementation = ()
 
   let send socket tx =
     let open Lwt in
@@ -42,7 +40,7 @@ module Uflow : Udns_client_flow.S
   let map = Lwt_result.bind
   let resolve = Lwt_result.bind_result
 
-  let connect (():implementation) (proto, (server,port)) =
+  let connect () (proto, (server,port)) =
     let open Lwt in
     begin match proto with
       | `UDP ->

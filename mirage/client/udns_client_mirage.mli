@@ -1,13 +1,14 @@
-module type S = sig
-  type t
-  type stack
+module Make (S : Mirage_stack_lwt.V4) : sig
 
-  val create : stack -> t
+  type t
+
+  val connect : S.t -> t
 
   val getaddrinfo : Domain_name.t -> unit Lwt.t
 
 end
 
+(*
 type udns_ty
 
 val config : udns_ty Mirage.impl
@@ -18,3 +19,4 @@ module Make :
   functor (IPv4:Mirage_stack_lwt.V4) ->
     S
 
+*)

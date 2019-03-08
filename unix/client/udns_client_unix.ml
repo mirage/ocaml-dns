@@ -6,18 +6,16 @@
 module Uflow : Udns_client_flow.S
   with type flow = Unix.file_descr
    and type io_addr = string * int
-   and type implementation = unit
+   and type stack = unit
    and type (+'a,+'b) io = ('a,[> `Msg of string]as 'b) result
 = struct
   type io_addr = string * int
   type ns_addr = [`TCP | `UDP] * io_addr
-  type implementation = unit
+  type stack = unit
   type flow = Unix.file_descr
   type (+'a,+'b) io = ('a,'b) result constraint 'b = [> `Msg of string]
 
   let default_ns : ns_addr = `TCP, ("91.239.100.100", 53)
-
-  let implementation = ()
 
   let map = Rresult.R.((>>=))
   let resolve = (Rresult.R.(>>=))
