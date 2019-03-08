@@ -35,17 +35,18 @@ module Uflow : Udns_client_flow.S
     Unix.connect socket addr ;
     Ok socket
 
-  let send_string (socket:flow) (tx:string) =
-    let res = Unix.send_substring socket tx 0 (String.length tx) [] in
-    if res <> String.length tx
+  let send (socket:flow) (tx:Cstruct.t) =
+    let str = Cstruct.to_string tx in
+    let res = Unix.send_substring socket str 0 (String.length str) [] in
+    if res <> String.length str
     then Error (`Msg ("Broken write to upstream NS" ^ (string_of_int res)))
     else Ok ()
 
-  let recv_string (socket:flow) =
+  let recv (socket:flow) =
     let buffer = Bytes.make 2048 '\000' in
     let x = Unix.recv socket buffer 0 (Bytes.length buffer) [] in
     if x > 0 && x <= Bytes.length buffer then
-      Ok (Bytes.sub_string buffer 0 x)
+      Ok (Cstruct.of_bytes buffer ~len:x)
     else
       Error (`Msg "Reading from NS socket failed")
 end

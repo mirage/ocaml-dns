@@ -39,11 +39,11 @@ module type S = sig
   val connect : implementation -> ns_addr -> (flow,'err) io
   (** [connect addr] is a new connection ([flow]) to [addr], or an error. *)
 
-  val send_string : flow -> string -> (unit,'err) io
-  (** [send_string flow string] sends [string] to the [flow] upstream.*)
+  val send : flow -> Cstruct.t -> (unit,'err) io
+  (** [send flow buffer] sends [buffer] to the [flow] upstream.*)
 
-  val recv_string : flow -> (string, 'err) io
-  (** [recv_string flow] tries to read a string from the [flow] downstream.*)
+  val recv : flow -> (Cstruct.t, 'err) io
+  (** [recv flow] tries to read a [buffer] from the [flow] downstream.*)
 
   val resolve : ('ok,'err) io -> ('ok -> ('next,'err) result) -> ('next,'err) io
   (** a.k.a. [>|=] *)

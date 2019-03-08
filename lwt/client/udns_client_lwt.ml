@@ -20,16 +20,16 @@ module Uflow : Udns_client_flow.S
 
   let implementation = ()
 
-  let send_string socket tx =
+  let send socket tx =
     let open Lwt in
-    Lwt_unix.send socket (Bytes.of_string tx) 0
-      (String.length tx) [] >>= fun res ->
-    if res <> String.length tx then
+    Lwt_unix.send socket (Cstruct.to_bytes tx) 0
+      (Cstruct.len tx) [] >>= fun res ->
+    if res <> Cstruct.len tx then
       Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
     else
       Lwt_result.return ()
 
-  let recv_string socket =
+  let recv socket =
     let open Lwt in
     let recv_buffer = Bytes.make 2048 '\000' in
     Lwt_unix.recv socket recv_buffer 0 (Bytes.length recv_buffer) []
@@ -37,7 +37,7 @@ module Uflow : Udns_client_flow.S
     let open Lwt_result in
     (if read_len > 0 then Lwt_result.return ()
      else Lwt_result.fail (`Msg "Empty response")) >|= fun () ->
-    (Bytes.sub_string recv_buffer 0 read_len)
+    (Cstruct.of_bytes ~len:read_len recv_buffer)
 
   let map = Lwt_result.bind
   let resolve = Lwt_result.bind_result
