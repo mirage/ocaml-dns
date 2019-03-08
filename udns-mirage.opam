@@ -1,5 +1,5 @@
 opam-version: "2.0"
-maintainer: "Hannes Mehnert <hannes@mehnert.org>"
+maintainer: "team AT robur dot io"
 authors: ["Hannes Mehnert <hannes@mehnert.org>"]
 homepage: "https://github.com/roburio/udns"
 doc: "https://roburio.github.io/udns/doc"

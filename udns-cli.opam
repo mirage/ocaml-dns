@@ -1,5 +1,5 @@
 opam-version: "2.0"
-maintainer: "Hannes Mehnert <hannes@mehnert.org>"
+maintainer: "team AT robur dot io"
 authors: ["Hannes Mehnert <hannes@mehnert.org>"]
 homepage: "https://github.com/roburio/udns"
 doc: "https://roburio.github.io/udns/doc"
@@ -12,6 +12,8 @@ depends: [
   "ocaml" {>= "4.04.0"}
   "udns"
   "udns-tsig"
+  "udns-client-lwt"
+  "rresult"
   "randomconv"
   "duration"
   "bos"
@@ -19,6 +21,7 @@ depends: [
   "fpath"
   "x509"
   "nocrypto"
+  "hex"
   "ipaddr" {>= "3.0.0"}
   "alcotest" {with-test}
 ]

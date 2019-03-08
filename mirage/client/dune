@@ -1,0 +1,8 @@
+(library
+  (name        udns_client_mirage)
+  (public_name udns-client-mirage)
+  (libraries   domain-name ipaddr mirage mirage-kv-lwt mirage-stack-lwt
+               mirage-time-lwt mirage-flow-lwt udns-client)
+  (flags      (:standard -safe-string))
+  (wrapped     false)
+)

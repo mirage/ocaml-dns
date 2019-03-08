@@ -19,3 +19,10 @@
   (package udns-cli)
   (modules oupdate)
   (libraries udns udns-tsig udns-cli ptime nocrypto nocrypto.unix))
+
+(executable
+  (name         odns)
+  (public_name  odns)
+  (modules      odns)
+  (package      udns-cli)
+  (libraries    udns udns-client-lwt udns-cli cmdliner lwt.unix hex rresult))

@@ -1,0 +1,7 @@
+(library
+  (flags      (:standard -safe-string))
+  (name        udns_client_lwt)
+  (modules     udns_client_lwt)
+  (public_name udns-client-lwt)
+  (libraries   lwt lwt.unix udns udns-client)
+  (wrapped     false))
