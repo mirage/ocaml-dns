@@ -139,11 +139,11 @@ let pp_header ppf hdr =
     (if hdr.authentic_data then ["authentic data"] else []) @
     (if hdr.checking_disabled then ["checking disabled"] else [])
   in
-  Fmt.pf ppf "%04X %s operation %a rcode %a flags: %a"
+  Fmt.pf ppf "%04X (%s) operation '%a' rcode '@[%a@]' flags: '@[%a@]'"
     hdr.id (if hdr.query then "query" else "response")
     Dns_enum.pp_opcode hdr.operation
     Dns_enum.pp_rcode hdr.rcode
-    (Fmt.list ~sep:(Fmt.unit ",@ ") Fmt.string) flags
+    (Fmt.list ~sep:(Fmt.unit ", ") Fmt.string) flags
 (*BISECT-IGNORE-END*)
 
 
@@ -157,14 +157,12 @@ let decode_ntc names buf off =
   in
   match Dns_enum.int_to_rr_typ typ with
   | None -> Error (`BadRRTyp typ)
-  | Some Dns_enum.TLSA when Domain_name.is_service name ->
-    Ok ((name, Dns_enum.TLSA, cls), names, off + 4)
-  | Some Dns_enum.SRV when Domain_name.is_service name ->
-    Ok ((name, Dns_enum.SRV, cls), names, off + 4)
-  | Some Dns_enum.SRV ->
+  | Some Dns_enum.(TLSA | SRV as t) when Domain_name.is_service name ->
+    Ok ((name, t, cls), names, off + 4)
+  | Some Dns_enum.(TLSA | SRV) -> (* MUST be service names: *)
     Error (`BadContent (Domain_name.to_string name))
-  | Some (Dns_enum.DNSKEY | Dns_enum.TSIG | Dns_enum.TXT as t) ->
-    Ok ((name, t, cls),names, off + 4)
+  | Some Dns_enum.(DNSKEY | TSIG | TXT | CNAME as t) ->
+    Ok ((name, t, cls), names, off + 4)
   | Some t when Domain_name.is_hostname name ->
     Ok ((name, t, cls), names, off + 4)
   | Some _ -> Error (`BadContent (Domain_name.to_string name))

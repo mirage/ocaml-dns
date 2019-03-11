@@ -56,20 +56,42 @@ let parse_response (type requested)
     when hdr_id = state.header.id
       && resp.question = [state.question]
     ->
-    ( let rr_map = Dns_map.of_rrs resp.answer in
-      Domain_name.Map.find_opt state.question.q_name rr_map
-      |> R.of_option ~none:(fun () ->
-          R.error_msgf "Can't find relevant map in response: %a in [%a]"
-            Domain_name.pp state.question.q_name
-            Dns_packet.pp_rrs resp.answer)
-    ) >>= fun relevant_map ->
-    begin match Dns_map.find state.key relevant_map with
-      | Some response -> Ok response
-      | None -> Error (`Msg "Invalid DNS response")
-    end
+    let rr_map = Dns_map.of_rrs resp.answer in
+    let rec follow_cname counter q_name =
+      if counter <= 0 then Error (`Msg "CNAME recursion too deep")
+      else
+        Domain_name.Map.find_opt q_name rr_map
+        |> R.of_option ~none:(fun () ->
+            R.error_msgf "Can't find relevant map in response:@ \
+                          %a in [%a]"
+              Domain_name.pp q_name
+              Dns_packet.pp_rrs resp.answer
+          ) >>= fun relevant_map ->
+      begin match (state.key : requested Dns_map.k) with
+        | (Dns_map.Any : requested Dns_map.k) ->
+          Ok (((resp.answer:Dns_packet.rr list) ,
+               (((Dns_map.of_rrs resp.answer
+                  |> Domain_name.Map.bindings
+                  |> List.map fst
+                  |> Domain_name.Set.of_list)
+                ) : Domain_name.Set.t)):requested)
+        | _ ->
+          begin match Dns_map.find state.key relevant_map with
+            | Some response -> Ok response
+            | None ->
+              begin match Dns_map.find Cname relevant_map with
+                | None -> Error (`Msg "Invalid DNS response")
+                | Some (_ttl, redirected_host) ->
+                  follow_cname (pred counter) redirected_host
+              end
+          end
+      end
+    in
+    follow_cname 20 state.question.q_name
   | Ok ((h, `Query q, opt, dsig), optint) ->
     R.error_msgf
-      "hdr:%a (id: %d = %d) (q=q: %B)query:%a  opt:%a dsig:%B optint:%a@,"
+      "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a  opt:%a dsig:%B\
+       optint:%a@,@]"
       Dns_packet.pp_header h
       h.id state.header.id
       (q.question = [state.question])

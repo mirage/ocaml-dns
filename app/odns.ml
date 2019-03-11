@@ -53,26 +53,72 @@ let do_a ((_,(ns_ip,_)) as nameserver) domains _ =
   match Lwt_main.run job with
   | () -> Ok () (* TODO handle errors *)
 
-let do_tlsa ((_,(ns_ip,_)) as nameserver) domains _ =
+let for_all_domains ((_,(ns_ip,_)) as nameserver) ~domains typ f =
+  (* [for_all_domains] is a utility function that lets us avoid duplicating
+     this block of code in all the subcommands.
+     We leave {!do_a} simple to provide a more readable example. *)
   Logs.info (fun m -> m "NS: %s" @@ Unix.string_of_inet_addr ns_ip);
-  let job =
-    Lwt_list.iter_p (fun domain ->
-        let open Lwt in
-        Udns_client_lwt.getaddrinfo () ~nameserver Dns_map.Tlsa domain
-        >>= function
-        | Ok (ttl, tlsa_resp) ->
-          Dns_map.TlsaSet.iter (fun tlsa ->
-              Logs.app (fun m -> m "%a" pp_zone_tlsa (domain,ttl,tlsa))
-            ) tlsa_resp ;
-          Lwt.return_unit
-        | Error (`Msg msg) ->
-          Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
-                       Domain_name.pp domain msg) ;
-          Lwt.return_unit
-      ) domains
-  in
-  match Lwt_main.run job with
+  let open Lwt in
+  match Lwt_main.run
+          (Lwt_list.iter_p
+             (fun domain ->
+                Udns_client_lwt.getaddrinfo () ~nameserver typ domain
+                >|= f domain)
+             domains) with
   | () -> Ok () (* TODO catch failed jobs *)
+
+let do_tlsa nameserver domains _ =
+  for_all_domains nameserver ~domains Dns_map.Tlsa
+    (fun domain -> function
+       | Ok (ttl, tlsa_resp) ->
+         Dns_map.TlsaSet.iter (fun tlsa ->
+             Logs.app (fun m -> m "%a" pp_zone_tlsa (domain,ttl,tlsa))
+           ) tlsa_resp
+       | Error (`Msg msg) ->
+         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
+                      Domain_name.pp domain msg))
+
+
+let do_txt nameserver domains _ =
+  for_all_domains nameserver ~domains Dns_map.Txt
+    (fun domain -> function
+       | Ok (ttl, txtset) ->
+         Dns_map.TxtSet.iter (fun txtrr ->
+             Logs.app (fun m -> m "%ld: @[<v>%a@]" ttl
+                          Fmt.(list ~sep:(unit "\n") string) txtrr)
+           ) txtset
+       | Error (`Msg msg) ->
+         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
+                      Domain_name.pp domain msg))
+
+
+let do_any nameserver domains _ =
+  for_all_domains nameserver ~domains Dns_map.Any
+    (fun domain -> function
+       | Ok (rr_list, _domain_names) ->
+         List.iter (fun rr -> Logs.app (fun m -> m "%a" Dns_packet.pp_rr rr))
+           rr_list
+       | Error (`Msg msg) ->
+         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
+                      Domain_name.pp domain msg))
+
+
+let do_dkim nameserver (selector:string) domains _ =
+  let domains = List.map (fun original_domain ->
+      Domain_name.prepend_exn ~hostname:false
+        (Domain_name.prepend_exn ~hostname:false
+           (original_domain) "_domainkey") selector
+    ) domains in
+  for_all_domains nameserver ~domains Dns_map.Txt
+    (fun domain -> function
+       | Ok (_ttl, txtset) ->
+         Dns_map.TxtSet.iter (fun txt ->
+             Logs.app (fun m -> m "%a" Fmt.(list ~sep:(unit"")string)txt)
+           ) txtset
+       | Error (`Msg msg) ->
+         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
+                      Domain_name.pp domain msg))
+
 
 open Cmdliner
 
@@ -113,9 +159,15 @@ let arg_domains : Domain_name.t list Term.t =
   Arg.(non_empty & pos_all parse_domain []
        & info [] ~docv:"DOMAIN(s)" ~doc)
 
+let arg_selector : string Term.t =
+  let doc = "DKIM selector string" in
+  Arg.(required & opt (some string) None
+       & info ["selector"] ~docv:"SELECTOR" ~doc)
+
 let cmd_a : unit Term.t * Term.info =
   let doc = "Query a NS for A records" in
   let man = [
+    `P {| Output mimics that of $(b,dig A )$(i,DOMAIN)|}
   ] in
   Term.(term_result (const do_a $ arg_ns $ arg_domains $ setup_log)),
   Term.info "a" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
@@ -126,16 +178,62 @@ let cmd_tlsa : unit Term.t * Term.info =
     `S Manpage.s_arguments ;
     `S Manpage.s_description ;
     `P {|Note that you must specify which $(b,service name)
-you want to retrieve the key(s) of.
-To retrieve the $(b,HTTPS) cert of $(i,www.example.com), you would query the NS: $(mname) $(tname) $(b,_443._tcp.)$(i,www.example.com)|} ;
-    `P {|Brief list of other handy service name prefixes:
-$(b,_5222._tcp) (XMPP); $(b,_853._tcp) (DNS-over-TLS); $(b,_25._tcp) (SMTP with STARTTLS); $(b,_465._tcp)(SMTP);
- $(b,_993._tcp) (IMAP)
-|} ;
+          you want to retrieve the key(s) of.
+         To retrieve the $(b,HTTPS) cert of $(i,www.example.com),
+          you would query the NS:
+          $(mname) $(tname) $(b,_443._tcp.)$(i,www.example.com)
+       |} ;
+    `P {|Brief list of other handy service name prefixes:|};
+    `P {| $(b,_5222._tcp) (XMPP); |} ;
+    `P {| $(b,_853._tcp) (DNS-over-TLS); |} ;
+    `P {| $(b,_25._tcp) (SMTP with STARTTLS); |} ;
+    `P {| $(b,_465._tcp)(SMTP); |} ;
+    `P {| $(b,_993._tcp) (IMAP) |} ;
     `S Manpage.s_options ;
   ] in
   Term.(term_result (const do_tlsa $ arg_ns $ arg_domains $ setup_log)),
   Term.info "tlsa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+
+let cmd_txt : unit Term.t * Term.info =
+  let doc = "Query a NS for TXT records" in
+  let man = [
+    `S Manpage.s_arguments ;
+    `S Manpage.s_description ;
+    `P {| Output format is currently: $(i,{TTL}: {text escaped in OCaml format})
+          It would be nice to mirror `dig` output here.|} ;
+    `S Manpage.s_options ;
+  ] in
+  Term.(term_result (const do_txt $ arg_ns $ arg_domains $ setup_log)),
+  Term.info "txt" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+
+let cmd_any : unit Term.t * Term.info =
+  let doc = "Query a NS for ANY records" in
+  let man = [
+    `S Manpage.s_arguments ;
+    `S Manpage.s_description ;
+    `P {| The output will be fairly similar to $(b,dig ANY )$(i,example.com)|} ;
+    `S Manpage.s_options ;
+  ] in
+  Term.(term_result (const do_any $ arg_ns $ arg_domains $ setup_log)),
+  Term.info "any" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+
+let cmd_dkim : unit Term.t * Term.info =
+  let doc = "Query a NS for DKIM (RFC 6376) records for a given selector" in
+  let man = [
+    `S Manpage.s_arguments ;
+    `S Manpage.s_description ;
+    `S {| Looks up DKIM (DomainKeys Identified Mail) Signatures in
+           accordance with RFC 6376.
+          Basically it's a recursive TXT lookup on
+           $(i,SELECTOR)._domainkeys.$(i,DOMAIN).
+          Each key is printed on its own concatenated line.
+       |} ;
+    `S Manpage.s_options ;
+  ] in
+  Term.(term_result (const do_dkim $ arg_ns $ arg_selector
+                     $ arg_domains $ setup_log)),
+  Term.info "dkim" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+
 
 let cmd_help : 'a Term.t * Term.info =
   let doc = "OCaml uDns alternative to `dig`" in
@@ -149,7 +247,7 @@ run them while passing the help flag: $(tname) $(i,SUBCOMMAND) $(b,--help)
   Term.info "odns" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmds =
-  [ cmd_a ; cmd_tlsa ]
+  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ]
 
 let () =
   Term.(exit @@ eval_choice cmd_help cmds)
