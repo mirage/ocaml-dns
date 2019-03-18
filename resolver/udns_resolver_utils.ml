@@ -1,8 +1,6 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Dns_packet
-
-open Dns_resolver_entry
+open Udns_resolver_entry
 
 open Rresult.R.Infix
 
@@ -16,25 +14,25 @@ let invalid_soa name =
     | Error _ -> name
   in
   let soa = {
-    nameserver = p "ns" ; hostmaster = p "hostmaster" ;
+    Udns_packet.nameserver = p "ns" ; hostmaster = p "hostmaster" ;
     serial = 1l ; refresh = 16384l ; retry = 2048l ;
     expiry = 1048576l ; minimum = 300l
   } in
-  { name ; ttl = 300l ; rdata = SOA soa }
+  { Udns_packet.name ; ttl = 300l ; rdata = SOA soa }
 
 let noerror bailiwick q hdr dns =
   (* maybe should be passed explicitly (when we don't do qname minimisation) *)
   let in_bailiwick name = Domain_name.sub ~domain:bailiwick ~subdomain:name in
   (* ANSWER *)
   let typ_matches rr =
-    let rtyp = rdata_to_rr_typ rr.rdata in
-    match q.q_type, rtyp with
-    | Dns_enum.ANY, _ -> true
-    | _, Dns_enum.CNAME -> true
+    let rtyp = Udns_packet.rdata_to_rr_typ rr.Udns_packet.rdata in
+    match q.Udns_packet.q_type, rtyp with
+    | Udns_enum.ANY, _ -> true
+    | _, Udns_enum.CNAME -> true
     | t, t' -> t = t'
   in
   let answers, anames =
-    match List.filter (fun rr -> Domain_name.equal rr.name q.q_name && typ_matches rr) dns.answer with
+    match List.filter (fun rr -> Domain_name.equal rr.Udns_packet.name q.q_name && typ_matches rr) dns.Udns_packet.answer with
     | [] ->
       (* NODATA (no answer, but SOA (or not) in authority) *)
       begin
@@ -45,37 +43,37 @@ let noerror bailiwick q hdr dns =
            asking for AAAA www.soup.io, get empty answer + SOA in authority
            asking for AAAA coffee.soup.io, get empty answer + authority *)
         (* XXX don't think the Dns_name.sub check is worth it - could be equal *)
-        let rank = if hdr.authoritative then AuthoritativeAuthority else Additional in
+        let rank = if hdr.Udns_packet.authoritative then AuthoritativeAuthority else Additional in
         match
           List.partition
-            (fun rr -> Domain_name.sub ~subdomain:q.q_name ~domain:rr.name &&
+            (fun rr -> Domain_name.sub ~subdomain:q.q_name ~domain:rr.Udns_packet.name &&
                        match rr.rdata with SOA _ -> true | _ -> false)
             dns.authority
         with
         | [ soa ], _ -> [ q.q_type, q.q_name, rank, NoData soa ]
         | [], [] when not hdr.truncation ->
           Logs.warn (fun m -> m "noerror answer, but nothing in authority whose sub is %a (%a) in %a, invalid_soa!"
-                        Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type Dns_packet.pp_rrs dns.authority) ;
+                        Domain_name.pp q.q_name Udns_enum.pp_rr_typ q.q_type Udns_packet.pp_rrs dns.authority) ;
           [ q.q_type, q.q_name, Additional, NoData (invalid_soa q.q_name) ]
         | _, _ -> [] (* general case when we get an answer from root server *)
       end, N.empty
     | answer ->
       let rank = if hdr.authoritative then AuthoritativeAnswer else NonAuthoritativeAnswer in
-      match List.partition (fun rr -> match rr.rdata with CNAME _ -> true | _ -> false) answer with
+      match List.partition (fun rr -> match rr.Udns_packet.rdata with Udns_packet.CNAME _ -> true | _ -> false) answer with
       | [], entries ->
         (* TODO should we filter based on q.q_type? *)
         (* TODO rr_names is problematic:
            query a foo.com answer mx 10 foo.com bar.com additional bar.com a 1.2.3.4 *)
         (* XXX: if non-empty, we should require authority to be set? does it help? *)
-        [ q.q_type, q.q_name, rank, NoErr entries ], rr_names entries
+        [ q.q_type, q.q_name, rank, NoErr entries ], Udns_packet.rr_names entries
       | [ cname ], [] ->
         (* explicitly register as CNAME so it'll be found *)
-        [ Dns_enum.CNAME, q.q_name, rank, NoErr [ cname ] ], N.empty
+        [ Udns_enum.CNAME, q.q_name, rank, NoErr [ cname ] ], N.empty
       | _, _ ->
         (* case multiple cnames or cname and sth else *)
         (* fail hard already here!? -- there's either multiple cname or cname and others *)
         Logs.warn (fun m -> m "noerror answer with right name, but not either one or no cname in %a, invalid soa for %a (%a)"
-                      Dns_packet.pp_rrs answer Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
+                      Udns_packet.pp_rrs answer Domain_name.pp q.q_name Udns_enum.pp_rr_typ q.q_type) ;
         [ q.q_type, q.q_name, rank, NoData (invalid_soa q.q_name) ], N.empty
   in
 
@@ -86,19 +84,19 @@ let noerror bailiwick q hdr dns =
     (* TODO need to be more careful, q: foo.com a: foo.com a 1.2.3.4 au: foo.com ns blablubb.com ad: blablubb.com A 1.2.3.4 *)
     let nm, names =
       List.fold_left (fun (acc, s) rr ->
-          if in_bailiwick rr.name then
-            let ns = match NM.find rr.name acc with
+          if in_bailiwick rr.Udns_packet.name then
+            let ns = match NM.find rr.Udns_packet.name acc with
               | None -> []
               | Some ns -> ns
             in
-            match rr.rdata with
-            | NS name -> NM.add rr.name (rr :: ns) acc, Domain_name.Set.add name s
+            match rr.Udns_packet.rdata with
+            | Udns_packet.NS name -> NM.add rr.Udns_packet.name (rr :: ns) acc, Domain_name.Set.add name s
             | _ -> (acc, s)
           else (acc, s)) (NM.empty, Domain_name.Set.empty) dns.authority
     in
     let rank = if hdr.authoritative then AuthoritativeAuthority else Additional in
     NM.fold (fun name rrs acc ->
-        (Dns_enum.NS, name, rank, NoErr rrs) :: acc)
+        (Udns_enum.NS, name, rank, NoErr rrs) :: acc)
       nm [], names
   in
 
@@ -116,7 +114,7 @@ let noerror bailiwick q hdr dns =
     let names = N.filter in_bailiwick names in
     let aaaaa =
       List.fold_left (fun acc rr ->
-          if N.mem rr.name names then
+          if N.mem rr.Udns_packet.name names then
             let a, aaaa = match NM.find rr.name acc with
               | None -> [], []
               | Some x -> x
@@ -134,7 +132,7 @@ let noerror bailiwick q hdr dns =
              | [] -> []
              | rr -> [ t, nam, Additional, NoErr rr ]
            in
-           f Dns_enum.A a @ f Dns_enum.AAAA aaaa)
+           f Udns_enum.A a @ f Udns_enum.AAAA aaaa)
           (NM.bindings aaaaa))
   in
   (* This is defined in RFC2181, Sec9 -- answer is unique if authority or
@@ -144,12 +142,12 @@ let noerror bailiwick q hdr dns =
   | [], [] when not answer_complete && hdr.truncation ->
     (* special handling for truncated replies.. better not add anything *)
     Logs.warn (fun m -> m "truncated reply for %a (%a), ignoring completely"
-                  Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
+                  Domain_name.pp q.q_name Udns_enum.pp_rr_typ q.q_type) ;
     []
   | [], [] ->
     (* not sure if this can happen, maybe discard everything? *)
     Logs.warn (fun m -> m "reply without answers or ns invalid so for %a (%a)"
-                  Domain_name.pp q.q_name Dns_enum.pp_rr_typ q.q_type) ;
+                  Domain_name.pp q.q_name Udns_enum.pp_rr_typ q.q_type) ;
     [ q.q_type, q.q_name, Additional, NoData (invalid_soa q.q_name) ]
   | _, _ -> answers @ ns @ glues
 
@@ -160,72 +158,72 @@ let nxdomain q hdr dns =
   (* -> need to potentially extract CNAME(s) *)
   let cname_opt =
     List.fold_left (fun r rr ->
-        match r, rr.rdata with
-        | None, CNAME _ when Domain_name.equal rr.name q.q_name -> Some rr
+        match r, rr.Udns_packet.rdata with
+        | None, Udns_packet.CNAME _ when Domain_name.equal rr.Udns_packet.name q.Udns_packet.q_name -> Some rr
         | a, _ -> a)
-      None dns.answer
+      None dns.Udns_packet.answer
   in
   let soa =
     List.fold_left (fun r rr ->
-        match r, rr.rdata with
-        | None, SOA _ when Domain_name.sub ~subdomain:q.q_name ~domain:rr.name -> Some rr
+        match r, rr.Udns_packet.rdata with
+        | None, Udns_packet.SOA _ when Domain_name.sub ~subdomain:q.Udns_packet.q_name ~domain:rr.Udns_packet.name -> Some rr
         | a, _ -> a)
       None dns.authority
   in
   (* since NXDomain have CNAME semantics, we store them as CNAME *)
-  let rank = if hdr.authoritative then AuthoritativeAnswer else NonAuthoritativeAnswer in
+  let rank = if hdr.Udns_packet.authoritative then AuthoritativeAnswer else NonAuthoritativeAnswer in
   (* we conclude NXDomain, there are 3 cases we care about:
      no soa in authority and no cname answer -> inject an invalid_soa (avoid loops)
      a matching soa, no cname -> NoDom q_name
      _, a matching cname -> NoErr q_name with cname
  *)
   match soa, cname_opt with
-  | None, None -> [ Dns_enum.CNAME, q.q_name, rank, NoDom (invalid_soa q.q_name) ]
-  | Some soa, None -> [ Dns_enum.CNAME, q.q_name, rank, NoDom soa ]
-  | _, Some rr -> [ Dns_enum.CNAME, q.q_name, rank, NoErr [ rr ] ]
+  | None, None -> [ Udns_enum.CNAME, q.q_name, rank, NoDom (invalid_soa q.q_name) ]
+  | Some soa, None -> [ Udns_enum.CNAME, q.q_name, rank, NoDom soa ]
+  | _, Some rr -> [ Udns_enum.CNAME, q.q_name, rank, NoErr [ rr ] ]
 
 let noerror_stub q dns =
   (* no glue, just answers - but get all the cnames *)
-  let typ = q.Dns_packet.q_type in
+  let typ = q.Udns_packet.q_type in
   let find_entry_or_cname name = List.fold_left (fun acc rr ->
-      if Domain_name.equal rr.Dns_packet.name name then
+      if Domain_name.equal rr.Udns_packet.name name then
         let add =
-          typ = Dns_enum.ANY || typ = Dns_packet.rdata_to_rr_typ rr.Dns_packet.rdata
+          typ = Udns_enum.ANY || typ = Udns_packet.rdata_to_rr_typ rr.Udns_packet.rdata
         in
         match acc, rr.rdata with
-        | None, Dns_packet.CNAME alias -> Some (`Cname (alias, rr))
+        | None, Udns_packet.CNAME alias -> Some (`Cname (alias, rr))
         | Some (`Entry rrs), _ when add -> Some (`Entry (rr :: rrs))
         | None, _ when add -> Some (`Entry [rr])
         | x, _ -> x
       else
         acc)
-      None dns.Dns_packet.answer
+      None dns.Udns_packet.answer
   in
   let find_soa name = List.fold_left (fun acc rr ->
-      if Domain_name.sub ~subdomain:name ~domain:rr.Dns_packet.name then
-        match acc, rr.Dns_packet.rdata with
-        | None, Dns_packet.SOA _ -> Some rr
+      if Domain_name.sub ~subdomain:name ~domain:rr.Udns_packet.name then
+        match acc, rr.Udns_packet.rdata with
+        | None, Udns_packet.SOA _ -> Some rr
         | x, _ -> x
       else
-        acc) None dns.Dns_packet.authority
+        acc) None dns.Udns_packet.authority
   in
   let rec go acc name = match find_entry_or_cname name with
     | None ->
       let soa = match find_soa name with Some x -> x | None -> invalid_soa name in
       (typ, name, NonAuthoritativeAnswer, NoData soa) :: acc
-    | Some (`Cname (alias, rr)) -> go ((Dns_enum.CNAME, name, NonAuthoritativeAnswer, NoErr [ rr ]) :: acc) alias
+    | Some (`Cname (alias, rr)) -> go ((Udns_enum.CNAME, name, NonAuthoritativeAnswer, NoErr [ rr ]) :: acc) alias
     | Some (`Entry rrs) -> (typ, name, NonAuthoritativeAnswer, NoErr rrs) :: acc
   in
-  go [] q.Dns_packet.q_name
+  go [] q.Udns_packet.q_name
 
 (* stub vs recursive: maybe sufficient to look into *)
 let scrub ?(mode = `Recursive) zone q hdr dns =
   Logs.debug (fun m -> m "scrubbing (bailiwick %a) q %a rcode %a"
-                 Domain_name.pp zone Dns_packet.pp_question q
-                 Dns_enum.pp_rcode hdr.Dns_packet.rcode) ;
+                 Domain_name.pp zone Udns_packet.pp_question q
+                 Udns_enum.pp_rcode hdr.Udns_packet.rcode) ;
   match mode, hdr.rcode with
-  | `Recursive, Dns_enum.NoError -> Ok (noerror zone q hdr dns)
-  | `Stub, Dns_enum.NoError -> Ok (noerror_stub q dns)
-  | _, Dns_enum.NXDomain -> Ok (nxdomain q hdr dns)
-  | `Stub, Dns_enum.ServFail -> Ok [ Dns_enum.CNAME, q.q_name, NonAuthoritativeAnswer, ServFail (invalid_soa q.q_name)  ]
+  | `Recursive, Udns_enum.NoError -> Ok (noerror zone q hdr dns)
+  | `Stub, Udns_enum.NoError -> Ok (noerror_stub q dns)
+  | _, Udns_enum.NXDomain -> Ok (nxdomain q hdr dns)
+  | `Stub, Udns_enum.ServFail -> Ok [ Udns_enum.CNAME, q.q_name, NonAuthoritativeAnswer, ServFail (invalid_soa q.q_name)  ]
   | _, e -> Error e

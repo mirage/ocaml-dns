@@ -7,7 +7,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (TIME : Mirage_time_lwt.S) (S : Mirage_stack_lwt.V4) = struct
 
-  module Dns = Dns_mirage.Make(S)
+  module Dns = Udns_mirage.Make(S)
 
   let staging = {|-----BEGIN CERTIFICATE-----
 MIIEqzCCApOgAwIBAgIRAIvhKg5ZRO08VGQx8JdhT+UwDQYJKoZIhvcNAQELBQAw
@@ -67,33 +67,33 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
 
   let dns_header () =
     let id = Randomconv.int16 R.generate in
-    { Dns_packet.id ; query = true ; operation = Dns_enum.Query ;
+    { Udns_packet.id ; query = true ; operation = Udns_enum.Query ;
       authoritative = false ; truncation = false ; recursion_desired = false ;
       recursion_available = false ; authentic_data = false ; checking_disabled = false ;
-      rcode = Dns_enum.NoError }
+      rcode = Udns_enum.NoError }
 
   let nsupdate_csr flow hostname keyname zone dnskey csr =
     let tlsa =
-      { Dns_packet.tlsa_cert_usage = Dns_enum.Domain_issued_certificate ;
-        tlsa_selector = Dns_enum.Tlsa_selector_private ;
-        tlsa_matching_type = Dns_enum.Tlsa_no_hash ;
+      { Udns_packet.tlsa_cert_usage = Udns_enum.Domain_issued_certificate ;
+        tlsa_selector = Udns_enum.Tlsa_selector_private ;
+        tlsa_matching_type = Udns_enum.Tlsa_no_hash ;
         tlsa_data = X509.Encoding.cs_of_signing_request csr ;
       }
     in
     let nsupdate =
-      let zone = { Dns_packet.q_name = zone ; q_type = Dns_enum.SOA }
+      let zone = { Udns_packet.q_name = zone ; q_type = Udns_enum.SOA }
       and update = [
-        Dns_packet.Remove (hostname, Dns_enum.TLSA) ;
-        Dns_packet.Add ({ Dns_packet.name = hostname ; ttl = 600l ; rdata = Dns_packet.TLSA tlsa })
+        Udns_packet.Remove (hostname, Udns_enum.TLSA) ;
+        Udns_packet.Add ({ Udns_packet.name = hostname ; ttl = 600l ; rdata = Udns_packet.TLSA tlsa })
       ]
       in
-      { Dns_packet.zone ; prereq = [] ; update ; addition = [] }
+      { Udns_packet.zone ; prereq = [] ; update ; addition = [] }
     and header =
       let hdr = dns_header () in
-      { hdr with Dns_packet.operation = Dns_enum.Update }
+      { hdr with Udns_packet.operation = Udns_enum.Update }
     in
     let now = Ptime.v (P.now_d_ps ()) in
-    match Dns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname with
+    match Udns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname with
     | Error msg -> Lwt.return_error msg
     | Ok (data, mac) ->
       Dns.send_tcp (Dns.flow flow) data >>= function
@@ -101,18 +101,18 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       | Ok () -> Dns.read_tcp flow >>= function
         | Error () -> Lwt.return_error "tcp recv err"
         | Ok data ->
-          match Dns_tsig.decode_and_verify now dnskey keyname ~mac data with
+          match Udns_tsig.decode_and_verify now dnskey keyname ~mac data with
           | Error e -> Lwt.return_error ("nsupdate reply " ^ e)
           | Ok _ -> Lwt.return_ok ()
 
   let query_certificate flow public_key q_name =
     let good_tlsa tlsa =
       if
-        tlsa.Dns_packet.tlsa_cert_usage = Dns_enum.Domain_issued_certificate
-        && tlsa.Dns_packet.tlsa_selector = Dns_enum.Tlsa_full_certificate
-        && tlsa.Dns_packet.tlsa_matching_type = Dns_enum.Tlsa_no_hash
+        tlsa.Udns_packet.tlsa_cert_usage = Udns_enum.Domain_issued_certificate
+        && tlsa.Udns_packet.tlsa_selector = Udns_enum.Tlsa_full_certificate
+        && tlsa.Udns_packet.tlsa_matching_type = Udns_enum.Tlsa_no_hash
       then
-        match X509.Encoding.parse tlsa.Dns_packet.tlsa_data with
+        match X509.Encoding.parse tlsa.Udns_packet.tlsa_data with
         | Some cert ->
           let keys_equal a b =
             Cstruct.equal (X509.key_id a) (X509.key_id b)
@@ -126,39 +126,39 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         None
     in
     let header = dns_header ()
-    and question = { Dns_packet.q_name ; q_type = Dns_enum.TLSA }
+    and question = { Udns_packet.q_name ; q_type = Udns_enum.TLSA }
     in
-    let query = { Dns_packet.question = [ question ] ; answer = [] ; authority = [] ; additional = [] } in
-    let buf, _ = Dns_packet.encode `Tcp header (`Query query) in
+    let query = { Udns_packet.question = [ question ] ; answer = [] ; authority = [] ; additional = [] } in
+    let buf, _ = Udns_packet.encode `Tcp header (`Query query) in
     Dns.send_tcp (Dns.flow flow) buf >>= function
     | Error () -> Lwt.fail_with "couldn't send tcp"
     | Ok () ->
       Dns.read_tcp flow >>= function
       | Error () -> Lwt.fail_with "couldn't read tcp"
       | Ok data ->
-        match Dns_packet.decode data with
+        match Udns_packet.decode data with
         | Ok ((header', `Query q, _, _), _)
-          when not header'.Dns_packet.query
-            && header'.Dns_packet.id = header.Dns_packet.id ->
+          when not header'.Udns_packet.query
+            && header'.Udns_packet.id = header.Udns_packet.id ->
           (* collect TLSA pems *)
           let tlsa =
-            List.fold_left (fun acc rr -> match rr.Dns_packet.rdata with
-                | Dns_packet.TLSA tlsa ->
+            List.fold_left (fun acc rr -> match rr.Udns_packet.rdata with
+                | Udns_packet.TLSA tlsa ->
                   begin match good_tlsa tlsa with
                     | None -> acc
                     | Some cert -> Some cert
                   end
                 | _ -> acc)
-              None q.Dns_packet.answer
+              None q.Udns_packet.answer
           in
           Lwt.return tlsa
         | Ok ((_, v, _, _), _) ->
           Log.err (fun m -> m "expected a response, but got %a"
-                       Dns_packet.pp_v v) ;
+                       Udns_packet.pp_v v) ;
           Lwt.return None
         | Error e ->
           Log.err (fun m -> m "error %a while decoding answer"
-                       Dns_packet.pp_err e) ;
+                       Udns_packet.pp_err e) ;
           Lwt.return None
 
   let initialise_csr hostname additionals seed =
@@ -217,7 +217,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       match Astring.String.cut ~sep:":" dns_key with
       | None -> invalid_arg "couldn't parse dnskey"
       | Some (name, key) ->
-        match Domain_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
+        match Domain_name.of_string ~hostname:false name, Udns_packet.dnskey_of_string key with
         | Error _, _ | _, None -> invalid_arg "failed to parse dnskey"
         | Ok name, Some dnskey ->
           let zone = Domain_name.drop_labels_exn ~amount:2 name in

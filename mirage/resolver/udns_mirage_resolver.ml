@@ -7,7 +7,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : Mirage_time_lwt.S) (S : Mirage_stack_lwt.V4) = struct
 
-  module Dns = Dns_mirage.Make(S)
+  module Dns = Udns_mirage.Make(S)
 
   module T = S.TCPV4
 
@@ -49,7 +49,7 @@ module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_cloc
                 let now = Ptime.v (P.now_d_ps ()) in
                 let ts = M.elapsed_ns () in
                 let new_state, answers, queries =
-                  UDns_resolver.handle !state now ts false `Tcp dst port data
+                  Udns_resolver.handle !state now ts false `Tcp dst port data
                 in
                 state := new_state ;
                 Lwt_list.iter_p handle_answer answers >>= fun () ->
@@ -102,7 +102,7 @@ module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_cloc
       and ts = M.elapsed_ns ()
       in
       let new_state, answers, queries =
-        UDns_resolver.handle !state now ts req `Udp src src_port buf
+        Udns_resolver.handle !state now ts req `Udp src src_port buf
       in
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
@@ -125,7 +125,7 @@ module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_cloc
           let now = Ptime.v (P.now_d_ps ()) in
           let ts = M.elapsed_ns () in
           let new_state, answers, queries =
-            UDns_resolver.handle !state now ts query `Tcp dst_ip dst_port data
+            Udns_resolver.handle !state now ts query `Tcp dst_ip dst_port data
           in
           state := new_state ;
           Lwt_list.iter_p handle_answer answers >>= fun () ->
@@ -138,7 +138,7 @@ module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_cloc
     Log.info (fun m -> m "DNS resolver listening on TCP port %d" port) ;
 
     let rec stats_reporter () =
-      UDns_resolver.stats !state ;
+      Udns_resolver.stats !state ;
       TIME.sleep_ns (Duration.of_min 5) >>= fun () ->
       stats_reporter ()
     in
@@ -146,7 +146,7 @@ module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_cloc
 
     let rec time () =
       let new_state, answers, queries =
-        UDns_resolver.timer !state (M.elapsed_ns ())
+        Udns_resolver.timer !state (M.elapsed_ns ())
       in
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
@@ -158,7 +158,7 @@ module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_cloc
 
     if root then
       let rec root () =
-        let new_state, q = UDns_resolver.query_root !state (M.elapsed_ns ()) `Tcp in
+        let new_state, q = Udns_resolver.query_root !state (M.elapsed_ns ()) `Tcp in
         state := new_state ;
         handle_query q >>= fun () ->
         TIME.sleep_ns (Duration.of_day 6) >>= fun () ->

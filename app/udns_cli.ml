@@ -1,10 +1,10 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
 let dns_header id =
-  { Dns_packet.id ; query = true ; operation = Dns_enum.Query ;
+  { Udns_packet.id ; query = true ; operation = Udns_enum.Query ;
     authoritative = false ; truncation = false ; recursion_desired = false ;
     recursion_available = false ; authentic_data = false ; checking_disabled = false ;
-    rcode = Dns_enum.NoError }
+    rcode = Udns_enum.NoError }
 
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
@@ -70,14 +70,14 @@ let namekey_c =
   let parse s =
     match Astring.String.cut ~sep:":" s with
     | None -> `Error "invalid key"
-    | Some (name, key) -> match Domain_name.of_string ~hostname:false name, Dns_packet.dnskey_of_string key with
+    | Some (name, key) -> match Domain_name.of_string ~hostname:false name, Udns_packet.dnskey_of_string key with
       | Error _, _ | _, None -> `Error "failed to parse key"
       | Ok name, Some dnskey -> match Domain_name.drop_labels ~amount:2 name with
         | Error _ -> `Error "failed to parse key (couldn't find zone)"
         | Ok zone -> `Ok (name, zone, dnskey)
   in
   parse, fun ppf (name, zone, key) -> Fmt.pf ppf "key name %a zone %a dnskey %a"
-      Domain_name.pp name Domain_name.pp zone Dns_packet.pp_dnskey key
+      Domain_name.pp name Domain_name.pp zone Udns_packet.pp_dnskey key
 
 let name_c =
   (fun s -> match Domain_name.of_string s with

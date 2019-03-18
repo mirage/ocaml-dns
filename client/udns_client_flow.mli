@@ -58,7 +58,7 @@ sig
       the underlying flow, can be used if the user does not want to
       bother with configuring their own.*)
 
-  val getaddrinfo : U.stack -> ?nameserver:U.ns_addr -> 'response Dns_map.k ->
+  val getaddrinfo : U.stack -> ?nameserver:U.ns_addr -> 'response Udns_map.k ->
     Domain_name.t -> ('response, 'err) U.io
   (** [getaddrinfo nameserver query_type name] is the [query_type]-dependent
       response from [nameserver] regarding [name], or an [Error _] message.

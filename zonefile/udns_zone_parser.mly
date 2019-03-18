@@ -19,7 +19,7 @@
 
 %{
 
-open Zone_state
+open Udns_zone_state
 
 let parse_error s =
   raise (Zone_parse_problem s)
@@ -82,7 +82,7 @@ let parse_ipv6 s =
 %token <string> CLASS_HS
 
 %start zfile
-%type <Dns_packet.rr list> zfile  /* This list is in reverse order! */
+%type <Udns_packet.rr list> zfile  /* This list is in reverse order! */
 
 %%
 
@@ -103,11 +103,11 @@ origin: SORIGIN s domain { state.origin <- $3 }
 ttl: STTL s int32 { state.ttl <- $3 }
 
 rrline:
-   owner s int32 s rrclass s rr { { Dns_packet.name = $1 ; ttl = $3 ; rdata = $7 } }
- | owner s rrclass s int32 s rr { { Dns_packet.name = $1 ; ttl = $5 ; rdata = $7 } }
- | owner s rrclass s rr { { Dns_packet.name = $1 ; ttl = state.ttl ; rdata = $5 } }
- | owner s int32 s rr { { Dns_packet.name = $1 ; ttl = $3 ; rdata = $5 } }
- | owner s rr { { Dns_packet.name = $1 ; ttl = state.ttl ; rdata = $3 } }
+   owner s int32 s rrclass s rr { { Udns_packet.name = $1 ; ttl = $3 ; rdata = $7 } }
+ | owner s rrclass s int32 s rr { { Udns_packet.name = $1 ; ttl = $5 ; rdata = $7 } }
+ | owner s rrclass s rr { { Udns_packet.name = $1 ; ttl = state.ttl ; rdata = $5 } }
+ | owner s int32 s rr { { Udns_packet.name = $1 ; ttl = $3 ; rdata = $5 } }
+ | owner s rr { { Udns_packet.name = $1 ; ttl = state.ttl ; rdata = $3 } }
 
 rrclass:
    CLASS_IN {}
@@ -117,50 +117,50 @@ rrclass:
 
 rr:
      /* RFC 1035 */
- | TYPE_A s ipv4 { Dns_packet.A $3 }
- | TYPE_NS s domain { Dns_packet.NS $3 }
- | TYPE_CNAME s domain { Dns_packet.CNAME $3 }
+ | TYPE_A s ipv4 { Udns_packet.A $3 }
+ | TYPE_NS s domain { Udns_packet.NS $3 }
+ | TYPE_CNAME s domain { Udns_packet.CNAME $3 }
  | TYPE_SOA s domain s domain s int32 s int32 s int32 s int32 s int32
-     { Dns_packet.SOA { Dns_packet.nameserver = $3 ; hostmaster = $5 ;
+     { Udns_packet.SOA { Udns_packet.nameserver = $3 ; hostmaster = $5 ;
                         serial = $7 ; refresh = $9 ; retry = $11 ; expiry = $13 ;
                         minimum = $15 } }
- | TYPE_PTR s domain { Dns_packet.PTR $3 }
- | TYPE_MX s int16 s domain { Dns_packet.MX ($3, $5) }
- | TYPE_TXT s charstrings { Dns_packet.TXT $3 }
+ | TYPE_PTR s domain { Udns_packet.PTR $3 }
+ | TYPE_MX s int16 s domain { Udns_packet.MX ($3, $5) }
+ | TYPE_TXT s charstrings { Udns_packet.TXT $3 }
      /* RFC 2782 */
  | TYPE_SRV s int16 s int16 s int16 s domain
-     { Dns_packet.SRV { Dns_packet.priority = $3 ; weight = $5 ; port = $7 ; target = $9 } }
+     { Udns_packet.SRV { Udns_packet.priority = $3 ; weight = $5 ; port = $7 ; target = $9 } }
      /* RFC 3596 */
  | TYPE_TLSA s int8 s int8 s int8 s hex
      { match
-         Dns_enum.int_to_tlsa_cert_usage $3,
-         Dns_enum.int_to_tlsa_selector $5,
-         Dns_enum.int_to_tlsa_matching_type $7
+         Udns_enum.int_to_tlsa_cert_usage $3,
+         Udns_enum.int_to_tlsa_selector $5,
+         Udns_enum.int_to_tlsa_matching_type $7
        with
        | Some tlsa_cert_usage, Some tlsa_selector, Some tlsa_matching_type ->
-          Dns_packet.TLSA { Dns_packet.tlsa_cert_usage ; tlsa_selector ; tlsa_matching_type ; tlsa_data = $9 }
+          Udns_packet.TLSA { Udns_packet.tlsa_cert_usage ; tlsa_selector ; tlsa_matching_type ; tlsa_data = $9 }
        | _ -> raise Parsing.Parse_error
      }
  | TYPE_SSHFP s int8 s int8 s hex
      { match
-         Dns_enum.int_to_sshfp_algorithm $3,
-         Dns_enum.int_to_sshfp_type $5
+         Udns_enum.int_to_sshfp_algorithm $3,
+         Udns_enum.int_to_sshfp_type $5
        with
        | Some sshfp_algorithm, Some sshfp_type ->
-          Dns_packet.SSHFP { Dns_packet.sshfp_algorithm ; sshfp_type ; sshfp_fingerprint = $7 }
+          Udns_packet.SSHFP { Udns_packet.sshfp_algorithm ; sshfp_type ; sshfp_fingerprint = $7 }
        | _ -> raise Parsing.Parse_error
      }
- | TYPE_AAAA s ipv6 { Dns_packet.AAAA $3 }
+ | TYPE_AAAA s ipv6 { Udns_packet.AAAA $3 }
  | TYPE_DNSKEY s int16 s int16 s int16 s charstring
      { if not ($5 = 3) then
            parse_error ("DNSKEY protocol is not 3, but " ^ string_of_int $5) ;
-       match Dns_enum.int_to_dnskey $7 with
+       match Udns_enum.int_to_dnskey $7 with
        | None -> parse_error ("DNSKEY algorithm not supported " ^ string_of_int $7)
-       | Some x -> Dns_packet.DNSKEY { Dns_packet.flags = $3 ; key_algorithm = x ; key = Cstruct.of_string $9 }
+       | Some x -> Udns_packet.DNSKEY { Udns_packet.flags = $3 ; key_algorithm = x ; key = Cstruct.of_string $9 }
      }
  | TYPE_CAA s int16 s charstring s charstrings
      { let critical = if $3 = 0x80 then true else false in
-       Dns_packet.CAA { Dns_packet.critical ; tag = $5 ; value = $7 } }
+       Udns_packet.CAA { Udns_packet.critical ; tag = $5 ; value = $7 } }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
 
 single_hex: charstring

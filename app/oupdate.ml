@@ -2,18 +2,18 @@
 
 let update zone hostname ip_address keyname dnskey now =
   let nsupdate =
-    let zone = { Dns_packet.q_name = zone ; q_type = Dns_enum.SOA }
+    let zone = { Udns_packet.q_name = zone ; q_type = Udns_enum.SOA }
     and update = [
-      Dns_packet.Remove (hostname, Dns_enum.A) ;
-      Dns_packet.Add ({ Dns_packet.name = hostname ; ttl = 60l ; rdata = Dns_packet.A ip_address })
+      Udns_packet.Remove (hostname, Udns_enum.A) ;
+      Udns_packet.Add ({ Udns_packet.name = hostname ; ttl = 60l ; rdata = Udns_packet.A ip_address })
     ]
     in
-    { Dns_packet.zone ; prereq = [] ; update ; addition = [] }
+    { Udns_packet.zone ; prereq = [] ; update ; addition = [] }
   and header =
     let hdr = Udns_cli.dns_header (Random.int 0xFFFF) in
-    { hdr with Dns_packet.operation = Dns_enum.Update }
+    { hdr with Udns_packet.operation = Udns_enum.Update }
   in
-  Dns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname
+  Udns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname
 
 let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
   Random.self_init () ;
@@ -23,7 +23,7 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
                Domain_name.pp zone
                Domain_name.pp hostname
                Ipaddr.V4.pp ip_address) ;
-  Logs.debug (fun m -> m "using key %a: %a" Domain_name.pp keyname Dns_packet.pp_dnskey dnskey) ;
+  Logs.debug (fun m -> m "using key %a: %a" Domain_name.pp keyname Udns_packet.pp_dnskey dnskey) ;
   match update zone hostname ip_address keyname dnskey now with
   | Error msg -> `Error (false, msg)
   | Ok (data, mac) ->
@@ -32,7 +32,7 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
     let socket = Udns_cli.connect_tcp serverip port in
     Udns_cli.send_tcp socket data ;
     let read_data = Udns_cli.recv_tcp socket in
-    match Dns_tsig.decode_and_verify now dnskey keyname ~mac read_data with
+    match Udns_tsig.decode_and_verify now dnskey keyname ~mac read_data with
     | Error e -> `Error (false, "nsupdate replied with error " ^ e)
     | Ok _ ->
       Logs.app (fun m -> m "successfull update!") ;

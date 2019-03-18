@@ -16,5 +16,5 @@
  *
  *)
 
-val load : string list -> string -> (Dns_packet.rr list, string) result
+val load : string list -> string -> (Udns_packet.rr list, string) result
 (** Load a domain's zone from a string. *)

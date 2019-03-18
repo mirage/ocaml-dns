@@ -7,10 +7,10 @@
     of {!Udns_client_flow}.
 *)
 
-type 'key query_state constraint 'key = 'a Dns_map.k
+type 'key query_state constraint 'key = 'a Udns_map.k
 (** [query_state] is parameterized over the query type, so the type of
     the representation of the answer depends on what the name server
-    was asked to provide. See {!Dns_map.k} for a list of response types.
+    was asked to provide. See {!Udns_map.k} for a list of response types.
     The first element (the [int32]) in most of the tuples is the
     Time-To-Live (TTL) field returned from the server, which you can use to
     calculate when you should request fresh information in case you are writing
@@ -18,9 +18,9 @@ type 'key query_state constraint 'key = 'a Dns_map.k
 *)
 
 val make_query :
-  Dns_packet.proto -> Domain_name.t ->
-  'query_type Dns_map.k->
-  Cstruct.t * 'query_type Dns_map.k query_state
+  Udns_packet.proto -> Domain_name.t ->
+  'query_type Udns_map.k->
+  Cstruct.t * 'query_type Udns_map.k query_state
 (** [make_query protocol name query_type] is [query, query_state]
     where [query] is the serialized DNS query to send to the name server,
     and [query_state] is the information required to validate the response.
@@ -31,7 +31,7 @@ val make_query :
     labels prefixed with underscores.
 *)
 
-val parse_response : 'query_type Dns_map.k query_state -> Cstruct.t ->
+val parse_response : 'query_type Udns_map.k query_state -> Cstruct.t ->
   ('query_type, [`Msg of string | `Partial]) result
 (** [parse_response query_state response] is the information contained in
     [response] parsed using [query_state] when the query was successful, or

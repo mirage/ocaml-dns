@@ -18,7 +18,7 @@
  *
  *)
 
-open Zone_state
+open Udns_zone_state
 
 (** Can raise {! ZoneParseError } *)
 let load origin buf =
@@ -29,7 +29,7 @@ let load origin buf =
     state.origin <- Domain_name.of_strings_exn origin;
     state.ttl <- Int32.of_int 3600;
     state.owner <- state.origin;
-    Ok (Zone_parser.zfile Zone_lexer.token lexbuf)
+    Ok (Udns_zone_parser.zfile Udns_zone_lexer.token lexbuf)
   with
     | Parsing.Parse_error -> Error (Printf.sprintf "zone parse error at line %d" state.lineno)
     | Zone_parse_problem s -> Error (Printf.sprintf "zone parse problem at line %d: %s" state.lineno s)

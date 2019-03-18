@@ -23,8 +23,8 @@
 
 {
 
-open Zone_state
-open Zone_parser
+open Udns_zone_state
+open Udns_zone_parser
 open Lexing
 
 (* Disambiguate keywords and generic character strings *)

@@ -32,11 +32,11 @@ let dns_header () =
 let query_certificate sock public_key fqdn =
   let good_tlsa tlsa =
     if
-      tlsa.Dns_packet.tlsa_cert_usage = Dns_enum.Domain_issued_certificate
-      && tlsa.Dns_packet.tlsa_selector = Dns_enum.Tlsa_full_certificate
-      && tlsa.Dns_packet.tlsa_matching_type = Dns_enum.Tlsa_no_hash
+      tlsa.Udns_packet.tlsa_cert_usage = Udns_enum.Domain_issued_certificate
+      && tlsa.Udns_packet.tlsa_selector = Udns_enum.Tlsa_full_certificate
+      && tlsa.Udns_packet.tlsa_matching_type = Udns_enum.Tlsa_no_hash
     then
-      match X509.Encoding.parse tlsa.Dns_packet.tlsa_data with
+      match X509.Encoding.parse tlsa.Udns_packet.tlsa_data with
       | Some cert ->
         let keys_equal a b = Cstruct.equal (X509.key_id a) (X509.key_id b) in
         if keys_equal (X509.public_key cert) public_key then
@@ -48,60 +48,60 @@ let query_certificate sock public_key fqdn =
       None
   in
   let header = dns_header ()
-  and question = { Dns_packet.q_name = fqdn ; q_type = Dns_enum.TLSA }
+  and question = { Udns_packet.q_name = fqdn ; q_type = Udns_enum.TLSA }
   in
-  let query = { Dns_packet.question = [ question ] ; answer = [] ; authority = [] ; additional = [] } in
-  let buf, _ = Dns_packet.encode `Tcp header (`Query query) in
+  let query = { Udns_packet.question = [ question ] ; answer = [] ; authority = [] ; additional = [] } in
+  let buf, _ = Udns_packet.encode `Tcp header (`Query query) in
   Udns_cli.send_tcp sock buf ;
   let data = Udns_cli.recv_tcp sock in
-  match Dns_packet.decode data with
+  match Udns_packet.decode data with
   | Ok ((_, `Query q, _, _), _) ->
     (* collect TLSA pems *)
     let tlsa =
-      List.fold_left (fun acc rr -> match rr.Dns_packet.rdata with
-          | Dns_packet.TLSA tlsa ->
+      List.fold_left (fun acc rr -> match rr.Udns_packet.rdata with
+          | Udns_packet.TLSA tlsa ->
             begin match good_tlsa tlsa with
               | None -> acc
               | Some cert -> Some cert
             end
           | _ -> acc)
-        None q.Dns_packet.answer
+        None q.Udns_packet.answer
     in
     tlsa
   | Ok ((_, v, _, _), _) ->
     Logs.err (fun m -> m "expected a response, but got %a"
-                 Dns_packet.pp_v v) ;
+                 Udns_packet.pp_v v) ;
     None
   | Error e ->
     Logs.err (fun m -> m "error %a while decoding answer"
-                 Dns_packet.pp_err e) ;
+                 Udns_packet.pp_err e) ;
     None
 
 let nsupdate_csr sock now hostname keyname zone dnskey csr =
   let tlsa =
-    { Dns_packet.tlsa_cert_usage = Dns_enum.Domain_issued_certificate ;
-      tlsa_selector = Dns_enum.Tlsa_selector_private ;
-      tlsa_matching_type = Dns_enum.Tlsa_no_hash ;
+    { Udns_packet.tlsa_cert_usage = Udns_enum.Domain_issued_certificate ;
+      tlsa_selector = Udns_enum.Tlsa_selector_private ;
+      tlsa_matching_type = Udns_enum.Tlsa_no_hash ;
       tlsa_data = X509.Encoding.cs_of_signing_request csr ;
     }
   in
   let nsupdate =
-    let zone = { Dns_packet.q_name = zone ; q_type = Dns_enum.SOA }
+    let zone = { Udns_packet.q_name = zone ; q_type = Udns_enum.SOA }
     and update = [
-      Dns_packet.Remove (hostname, Dns_enum.TLSA) ;
-      Dns_packet.Add ({ Dns_packet.name = hostname ; ttl = 600l ; rdata = Dns_packet.TLSA tlsa })
+      Udns_packet.Remove (hostname, Udns_enum.TLSA) ;
+      Udns_packet.Add ({ Udns_packet.name = hostname ; ttl = 600l ; rdata = Udns_packet.TLSA tlsa })
     ]
     in
-    { Dns_packet.zone ; prereq = [] ; update ; addition = [] }
+    { Udns_packet.zone ; prereq = [] ; update ; addition = [] }
   and header =
     let hdr = dns_header () in
-    { hdr with Dns_packet.operation = Dns_enum.Update }
+    { hdr with Udns_packet.operation = Udns_enum.Update }
   in
   match
-    Dns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname >>= fun (data, mac) ->
+    Udns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname >>= fun (data, mac) ->
     Udns_cli.send_tcp sock data ;
     let data = Udns_cli.recv_tcp sock in
-    Dns_tsig.decode_and_verify now dnskey keyname ~mac data
+    Udns_tsig.decode_and_verify now dnskey keyname ~mac data
   with
   | Error x -> Error (`Msg x)
   | Ok _ -> Ok ()

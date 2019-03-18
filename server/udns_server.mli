@@ -4,7 +4,7 @@
 
 (** Authentication, stored in a Dns_trie with privileges to operations embedded in the name. *)
 module Authentication : sig
-  type a = Dns_trie.t -> Dns_packet.proto -> Domain_name.t option -> string -> Domain_name.t -> bool
+  type a = Udns_trie.t -> Udns_packet.proto -> Domain_name.t option -> string -> Domain_name.t -> bool
 
   val tsig_auth : a
 
@@ -15,30 +15,30 @@ module Authentication : sig
   ]
   (** The type of operations. *)
 
-  type t = Dns_trie.t * a list
+  type t = Udns_trie.t * a list
   (** The type for an authenticator: a trie with the keys, and a list of what is
      valid. *)
 end
 
 type t = private {
-  data : Dns_trie.t ;
+  data : Udns_trie.t ;
   auth : Authentication.t ;
   rng : int -> Cstruct.t ;
-  tsig_verify : Dns_packet.tsig_verify ;
-  tsig_sign : Dns_packet.tsig_sign ;
+  tsig_verify : Udns_packet.tsig_verify ;
+  tsig_sign : Udns_packet.tsig_sign ;
 }
 (** The state of a DNS server. *)
 
-val create : Dns_trie.t -> Authentication.t -> (int -> Cstruct.t) ->
-  Dns_packet.tsig_verify -> Dns_packet.tsig_sign -> t
+val create : Udns_trie.t -> Authentication.t -> (int -> Cstruct.t) ->
+  Udns_packet.tsig_verify -> Udns_packet.tsig_sign -> t
 (** [create trie auth rng verify sign] creates a state record. *)
 
 val text : Domain_name.t -> t -> (string, string) result
 (** [text name t] results in a string representation (zonefile) of the server. *)
 
-val handle_query : t -> Dns_packet.proto -> Domain_name.t option -> Dns_packet.header ->
-  Dns_packet.query ->
-  (Dns_packet.header * Dns_packet.v, Dns_enum.rcode) result
+val handle_query : t -> Udns_packet.proto -> Domain_name.t option -> Udns_packet.header ->
+  Udns_packet.query ->
+  (Udns_packet.header * Udns_packet.v, Udns_enum.rcode) result
 (** [handle_query t proto key_name header query] handles the DNS query,
    respecting the current state: a whitelist of record types are looked up: A |
    NS | CNAME | SOA | PTR | MX | TXT | AAAA | SRV | ANY | CAA | SSHFP | TLSA |
@@ -46,17 +46,17 @@ val handle_query : t -> Dns_packet.proto -> Domain_name.t option -> Dns_packet.h
     for signing, instead of the data trie the key trie is used for lookups. *)
 
 val notify : t -> (Domain_name.t * Ipaddr.V4.t * int) list -> int64 ->
-   Domain_name.t -> Dns_packet.soa -> (int64 * int * Ipaddr.V4.t * int *
-   Dns_packet.header * Dns_packet.query) list
+   Domain_name.t -> Udns_packet.soa -> (int64 * int * Ipaddr.V4.t * int *
+   Udns_packet.header * Udns_packet.query) list
 (** [notify t active_conns now zone soa] creates notifications for [zone]:
     all secondaries with glue in the server state for [zone],
     all matching [active_conns] of the [zone], and all secondaries where a key
     is in the server state with IP addresses in their names. *)
 
-val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Dns_packet.header ->
-   Dns_packet.v -> (Domain_name.t * Dns_packet.tsig) option -> int option ->
-   Cstruct.t -> ((Domain_name.t * Dns_packet.tsig * Cstruct.t *
-   Dns_packet.dnskey) option, Cstruct.t option) result
+val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Udns_packet.header ->
+   Udns_packet.v -> (Domain_name.t * Udns_packet.tsig) option -> int option ->
+   Cstruct.t -> ((Domain_name.t * Udns_packet.tsig * Cstruct.t *
+   Udns_packet.dnskey) option, Cstruct.t option) result
 (** [handle_tsig ~mac t now hdr v tsig offset buffer] verifies the tsig
     signature if present, returning the keyname, tsig, mac, and used key. *)
 
@@ -65,27 +65,27 @@ module Primary : sig type s
   val server : s -> t
   (** [server s] is the server of the primary. *)
 
-  val data : s -> Dns_trie.t
+  val data : s -> Udns_trie.t
   (** [data s] is the data store of [s]. *)
 
-  val with_data : s -> Dns_trie.t -> s
+  val with_data : s -> Udns_trie.t -> s
   (** [with_data s trie] replaces the current data with [trie] in [s]. *)
 
   (* TODO: could make the Dns_trie.t optional, and have an optional key *)
-  val create : ?keys:(Domain_name.t * Dns_packet.dnskey) list ->
-   ?a:Authentication.a list -> tsig_verify:Dns_packet.tsig_verify ->
-    tsig_sign:Dns_packet.tsig_sign -> rng:(int -> Cstruct.t) -> Dns_trie.t -> s
+  val create : ?keys:(Domain_name.t * Udns_packet.dnskey) list ->
+   ?a:Authentication.a list -> tsig_verify:Udns_packet.tsig_verify ->
+    tsig_sign:Udns_packet.tsig_sign -> rng:(int -> Cstruct.t) -> Udns_trie.t -> s
   (** [create ~keys ~a ~tsig_verify ~tsig_sign ~rng data] creates a primary server. *)
 
-  val handle_frame : s -> int64 -> Ipaddr.V4.t -> int -> Dns_packet.proto ->
-    Domain_name.t option -> Dns_packet.header -> Dns_packet.v ->
-    (s * (Dns_packet.header * Dns_packet.v) option * (Ipaddr.V4.t * int * Cstruct.t) list,
-     Dns_enum.rcode) result
+  val handle_frame : s -> int64 -> Ipaddr.V4.t -> int -> Udns_packet.proto ->
+    Domain_name.t option -> Udns_packet.header -> Udns_packet.v ->
+    (s * (Udns_packet.header * Udns_packet.v) option * (Ipaddr.V4.t * int * Cstruct.t) list,
+     Udns_enum.rcode) result
   (** [handle_frame s now src src_port proto key hdr v] handles the given
      [frame], returning new state, an answer, and potentially notify packets to
      secondary name servers. *)
 
-  val handle : s -> Ptime.t -> int64 -> Dns_packet.proto -> Ipaddr.V4.t -> int
+  val handle : s -> Ptime.t -> int64 -> Udns_packet.proto -> Ipaddr.V4.t -> int
     -> Cstruct.t -> s * Cstruct.t option * (Ipaddr.V4.t * int * Cstruct.t) list
   (** [handle s now ts proto src src_port buffer] decodes the [buffer],
      processes the DNS frame using {!handle_frame}, and encodes the reply. *)
@@ -104,37 +104,37 @@ module Secondary : sig type s
   val server : s -> t
   (** [server s] is the server of the secondary. *)
 
-  val data : s -> Dns_trie.t
+  val data : s -> Udns_trie.t
   (** [data s] is the zone data of [s]. *)
 
-  val with_data : s -> Dns_trie.t -> s
+  val with_data : s -> Udns_trie.t -> s
   (** [with_data s trie] is [s] with its data replaced by [trie]. *)
 
   val zones : s -> Domain_name.t list
   (** [zones s] is a set of domain names of the zones defined in [s]. *)
 
   val create : ?a:Authentication.a list -> ?primary:Ipaddr.V4.t ->
-   tsig_verify:Dns_packet.tsig_verify -> tsig_sign:Dns_packet.tsig_sign ->
-    rng:(int -> Cstruct.t) -> (Domain_name.t * Dns_packet.dnskey) list -> s
+   tsig_verify:Udns_packet.tsig_verify -> tsig_sign:Udns_packet.tsig_sign ->
+    rng:(int -> Cstruct.t) -> (Domain_name.t * Udns_packet.dnskey) list -> s
   (** [create ~a ~primary ~tsig_verify ~tsig_sign ~rng keys] creates a secondary
      DNS server state. *)
 
-  val handle_frame : s -> Ptime.t -> int64 -> Ipaddr.V4.t -> Dns_packet.proto ->
-    Domain_name.t option -> Dns_packet.header -> Dns_packet.v ->
-    (s * (Dns_packet.header * Dns_packet.v) option * (Dns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list,
-     Dns_enum.rcode) result
+  val handle_frame : s -> Ptime.t -> int64 -> Ipaddr.V4.t -> Udns_packet.proto ->
+    Domain_name.t option -> Udns_packet.header -> Udns_packet.v ->
+    (s * (Udns_packet.header * Udns_packet.v) option * (Udns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list,
+     Udns_enum.rcode) result
   (** [handle_frame s now ts ip proto key hdr v] handles the incoming frame. *)
 
-  val handle : s -> Ptime.t -> int64 -> Dns_packet.proto -> Ipaddr.V4.t -> Cstruct.t ->
-    s * Cstruct.t option * (Dns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list
+  val handle : s -> Ptime.t -> int64 -> Udns_packet.proto -> Ipaddr.V4.t -> Cstruct.t ->
+    s * Cstruct.t option * (Udns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list
   (** [handle s now ts proto src buf] decodes [buf], {!handle_frame}, and encodes the results. *)
 
   val timer : s -> Ptime.t -> int64 ->
-    s * (Dns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list
+    s * (Udns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list
   (** [timer s now ts] may request SOA or retransmit AXFR. *)
 
   val closed : s -> Ptime.t -> int64 -> Ipaddr.V4.t -> int ->
-    s * (Dns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list
+    s * (Udns_packet.proto * Ipaddr.V4.t * int * Cstruct.t) list
     (** [closed s now ts ip port] marks [ip, port] as closed. *)
 
 end

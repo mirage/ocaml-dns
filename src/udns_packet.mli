@@ -4,13 +4,13 @@ type proto = [ `Tcp | `Udp ]
 (** The type of support protocols (influence maximum packet size, encoding,
    etc.). *)
 
-val pp_err : [< Dns_name.err | `BadTTL of int32
-             | `BadRRTyp of int | `DisallowedRRTyp of Dns_enum.rr_typ
-             | `BadClass of int | `DisallowedClass of Dns_enum.clas | `UnsupportedClass of Dns_enum.clas
-             | `BadOpcode of int | `UnsupportedOpcode of Dns_enum.opcode | `BadRcode of int | `BadCaaTag | `LeftOver
+val pp_err : [< Udns_name.err | `BadTTL of int32
+             | `BadRRTyp of int | `DisallowedRRTyp of Udns_enum.rr_typ
+             | `BadClass of int | `DisallowedClass of Udns_enum.clas | `UnsupportedClass of Udns_enum.clas
+             | `BadOpcode of int | `UnsupportedOpcode of Udns_enum.opcode | `BadRcode of int | `BadCaaTag | `LeftOver
              | `NonZeroTTL of int32
              | `NonZeroRdlen of int | `InvalidZoneCount of int
-             | `InvalidZoneRR of Dns_enum.rr_typ
+             | `InvalidZoneRR of Udns_enum.rr_typ
              | `InvalidTimestamp of int64 | `InvalidAlgorithm of Domain_name.t
              | `BadProto of int | `BadAlgorithm of int
              | `BadOpt | `BadKeepalive
@@ -26,14 +26,14 @@ val pp_err : [< Dns_name.err | `BadTTL of int32
 type header = {
   id : int ;
   query : bool ;
-  operation : Dns_enum.opcode ;
+  operation : Udns_enum.opcode ;
   authoritative : bool ;
   truncation : bool ;
   recursion_desired : bool ;
   recursion_available : bool ;
   authentic_data : bool ;
   checking_disabled : bool ;
-  rcode : Dns_enum.rcode ;
+  rcode : Udns_enum.rcode ;
 }
 (** The header of a DNS packet: it's identifer, query or response, operation,
    flags, and return code. *)
@@ -52,15 +52,15 @@ val decode_header : Cstruct.t ->
 
 type question = {
   q_name : Domain_name.t ;
-  q_type : Dns_enum.rr_typ ;
+  q_type : Udns_enum.rr_typ ;
 }
 (** The type of DNS questions: a domain-name and a resource record type. The
    class is always IN. *)
 
-val decode_question : (Domain_name.t * int) Dns_name.IntMap.t ->
+val decode_question : (Domain_name.t * int) Udns_name.IntMap.t ->
   Cstruct.t ->
   int ->
-  (question * (Domain_name.t * int) Dns_name.IntMap.t * int,
+  (question * (Domain_name.t * int) Udns_name.IntMap.t * int,
    [> `BadClass of Cstruct.uint16
    | `BadContent of string
    | `BadOffset of int
@@ -68,7 +68,7 @@ val decode_question : (Domain_name.t * int) Dns_name.IntMap.t ->
    | `BadTag of int
    | `Partial
    | `TooLong
-   | `UnsupportedClass of Dns_enum.clas ])
+   | `UnsupportedClass of Udns_enum.clas ])
     result
 (** [decode_question names buffer offset] decodes a question at [offset] from
    [buffer], applying label decompression. The new offset and offset to names
@@ -112,7 +112,7 @@ type tsig = private {
   fudge : Ptime.Span.t ;
   mac : Cstruct.t ;
   original_id : int ; (* again 16 bit *)
-  error : Dns_enum.rcode ;
+  error : Udns_enum.rcode ;
   other : Ptime.t option ;
 }
 (** The type of TSIG signatures. *)
@@ -122,7 +122,7 @@ val valid_time : Ptime.t -> tsig -> bool
     [now - fudge < timstamp && timestamp < now + fudge] *)
 
 val tsig : algorithm:tsig_algo -> signed:Ptime.t -> ?fudge:Ptime.Span.t ->
-  ?mac:Cstruct.t -> ?original_id:int -> ?error:Dns_enum.rcode ->
+  ?mac:Cstruct.t -> ?original_id:int -> ?error:Udns_enum.rcode ->
   ?other:Ptime.t -> unit -> tsig option
 (** [tsig ~algorithm ~signed ~fudge ~mac ~original_id ~error ~other ()]
     constructs a tsig if timestamp and fudge fit into their ranges. *)
@@ -130,7 +130,7 @@ val tsig : algorithm:tsig_algo -> signed:Ptime.t -> ?fudge:Ptime.Span.t ->
 val with_mac : tsig -> Cstruct.t -> tsig
 (** [with_mac tsig mac] replaces the [mac] field of [tsig] with the provided one. *)
 
-val with_error : tsig -> Dns_enum.rcode -> tsig
+val with_error : tsig -> Udns_enum.rcode -> tsig
 (** [with_error tsig error] replaces the [error] field of [tsig] with the provided one. *)
 
 val with_signed : tsig -> Ptime.t -> tsig option
@@ -150,7 +150,7 @@ val encode_full_tsig : Domain_name.t -> tsig -> Cstruct.t
 
 type dnskey = {
   flags : int ; (* uint16 *)
-  key_algorithm :  Dns_enum.dnskey ; (* u_int8_t *)
+  key_algorithm :  Udns_enum.dnskey ; (* u_int8_t *)
   key : Cstruct.t ;
 }
 (** The type of dnskey resource records. *)
@@ -235,9 +235,9 @@ val encode_opt : opt -> Cstruct.t
 (** [encode_opt opt] encodes [opt] into a freshly allocated buffer. *)
 
 type tlsa = {
-  tlsa_cert_usage : Dns_enum.tlsa_cert_usage ;
-  tlsa_selector : Dns_enum.tlsa_selector ;
-  tlsa_matching_type : Dns_enum.tlsa_matching_type ;
+  tlsa_cert_usage : Udns_enum.tlsa_cert_usage ;
+  tlsa_selector : Udns_enum.tlsa_selector ;
+  tlsa_matching_type : Udns_enum.tlsa_matching_type ;
   tlsa_data : Cstruct.t ;
 }
 (** The type of TLSA resource records. *)
@@ -249,8 +249,8 @@ val pp_tlsa : tlsa Fmt.t
 (** [pp_tlsa ppf tlsa] pretty-prints [tlsa] on [ppf]. *)
 
 type sshfp = {
-  sshfp_algorithm : Dns_enum.sshfp_algorithm ;
-  sshfp_type : Dns_enum.sshfp_type ;
+  sshfp_algorithm : Udns_enum.sshfp_algorithm ;
+  sshfp_type : Udns_enum.sshfp_type ;
   sshfp_fingerprint : Cstruct.t ;
 }
 (** The type of SSHFP resource records. *)
@@ -277,7 +277,7 @@ type rdata =
   | OPTS of opt
   | TLSA of tlsa
   | SSHFP of sshfp
-  | Raw of Dns_enum.rr_typ * Cstruct.t
+  | Raw of Udns_enum.rr_typ * Cstruct.t
   (** The type of resource record payload. *)
 
 val pp_rdata : rdata Fmt.t
@@ -289,7 +289,7 @@ val rdata_name : rdata -> Domain_name.Set.t
 val compare_rdata : rdata -> rdata -> int
 (** [compare_rdata rdata rdata'] compares [rdata] with [rdata']. *)
 
-val rdata_to_rr_typ : rdata -> Dns_enum.rr_typ
+val rdata_to_rr_typ : rdata -> Udns_enum.rr_typ
 (** [rdata_to_rr_typ rdata] is the resource record type of [rdata]. *)
 
 type rr = {
@@ -326,15 +326,15 @@ val pp_query : query Fmt.t
 (** [pp_query ppf query] pretty-prints [query] on [ppf]. *)
 
 type rr_prereq =
-  | Exists of Domain_name.t * Dns_enum.rr_typ
+  | Exists of Domain_name.t * Udns_enum.rr_typ
   | Exists_data of Domain_name.t * rdata
-  | Not_exists of Domain_name.t * Dns_enum.rr_typ
+  | Not_exists of Domain_name.t * Udns_enum.rr_typ
   | Name_inuse of Domain_name.t
   | Not_name_inuse of Domain_name.t
   (** The type of DNS update prerequisites. *)
 
 type rr_update =
-  | Remove of Domain_name.t * Dns_enum.rr_typ
+  | Remove of Domain_name.t * Udns_enum.rr_typ
   | Remove_all of Domain_name.t
   | Remove_single of Domain_name.t * rdata
   | Add of rr
@@ -381,20 +381,20 @@ type tsig_sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> tsig ->
 
 val decode : Cstruct.t ->
   (t * int option,
-   [> Dns_name.err
+   [> Udns_name.err
    | `BadOpcode of int | `BadRcode of int
-   | `UnsupportedOpcode of Dns_enum.opcode
+   | `UnsupportedOpcode of Udns_enum.opcode
    | `BadTTL of int32
-   | `BadRRTyp of int | `DisallowedRRTyp of Dns_enum.rr_typ
-   | `BadClass of int | `DisallowedClass of Dns_enum.clas
-   | `UnsupportedClass of Dns_enum.clas
+   | `BadRRTyp of int | `DisallowedRRTyp of Udns_enum.rr_typ
+   | `BadClass of int | `DisallowedClass of Udns_enum.clas
+   | `UnsupportedClass of Udns_enum.clas
    | `BadProto of int | `BadAlgorithm of int | `BadOpt | `BadKeepalive
    | `BadCaaTag
    | `LeftOver
    | `InvalidTimestamp of int64 | `InvalidAlgorithm of Domain_name.t
    | `NonZeroTTL of int32
    | `NonZeroRdlen of int | `InvalidZoneCount of int
-   | `InvalidZoneRR of Dns_enum.rr_typ
+   | `InvalidZoneRR of Udns_enum.rr_typ
    | `BadTlsaCertUsage of int | `BadTlsaSelector of int | `BadTlsaMatchingType of int
    | `BadSshfpAlgorithm of int | `BadSshfpType of int
    | `Bad_edns_version of int
@@ -410,7 +410,7 @@ val encode : ?max_size:int -> ?edns:opt -> proto -> header -> v -> Cstruct.t * i
     freshly allocated buffer, [edns] is appended. If the buffer would exceed
     [max_size] or [proto] restrictions, the truncation bit is set. *)
 
-val error : header -> v -> Dns_enum.rcode -> (Cstruct.t * int) option
+val error : header -> v -> Udns_enum.rcode -> (Cstruct.t * int) option
 (** [error hdr v rcode] encodes a DNS error with the given header, and the first
    question taken from [v]. If the query bit in [hdr] is set, nothing is
    returned (never reply to a reply). *)

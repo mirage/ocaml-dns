@@ -40,14 +40,14 @@ let pp_rank ppf r = Fmt.string ppf (match r with
     | Additional -> "additional data")
 
 type res =
-  | NoErr of Dns_packet.rr list
-  | NoData of Dns_packet.rr
-  | NoDom of Dns_packet.rr
-  | ServFail of Dns_packet.rr
+  | NoErr of Udns_packet.rr list
+  | NoData of Udns_packet.rr
+  | NoDom of Udns_packet.rr
+  | ServFail of Udns_packet.rr
 
 let pp_res ppf = function
-  | NoErr rrs -> Fmt.pf ppf "NoError %a" Dns_packet.pp_rrs rrs
-  | NoData soa -> Fmt.pf ppf "NoData (NoError) SOA %a" Dns_packet.pp_rr soa
-  | NoDom soa -> Fmt.pf ppf "NXDomain SOA %a" Dns_packet.pp_rr soa
-  | ServFail soa -> Fmt.pf ppf "servfail SOA %a" Dns_packet.pp_rr soa
+  | NoErr rrs -> Fmt.pf ppf "NoError %a" Udns_packet.pp_rrs rrs
+  | NoData soa -> Fmt.pf ppf "NoData (NoError) SOA %a" Udns_packet.pp_rr soa
+  | NoDom soa -> Fmt.pf ppf "NXDomain SOA %a" Udns_packet.pp_rr soa
+  | ServFail soa -> Fmt.pf ppf "servfail SOA %a" Udns_packet.pp_rr soa
 

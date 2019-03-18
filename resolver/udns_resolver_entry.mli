@@ -14,9 +14,9 @@ val compare_rank : rank -> rank -> [ `Equal | `Smaller | `Bigger ]
 val pp_rank : rank Fmt.t
 
 type res =
-  | NoErr of Dns_packet.rr list
-  | NoData of Dns_packet.rr
-  | NoDom of Dns_packet.rr
-  | ServFail of Dns_packet.rr
+  | NoErr of Udns_packet.rr list
+  | NoData of Udns_packet.rr
+  | NoDom of Udns_packet.rr
+  | ServFail of Udns_packet.rr
 
 val pp_res : res Fmt.t

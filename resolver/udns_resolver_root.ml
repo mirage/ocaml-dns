@@ -24,17 +24,17 @@ let ns_ttl = 518400l
 let ns_records =
   List.map (fun (name, _) ->
       let ttl = ns_ttl
-      and rdata = Dns_packet.NS name
+      and rdata = Udns_packet.NS name
       in
-      { Dns_packet.name = Domain_name.root ; ttl ; rdata })
+      { Udns_packet.name = Domain_name.root ; ttl ; rdata })
     root_servers
 
 let a_records =
   List.map (fun (name, ip) ->
       let ttl = a_ttl
-      and rdata = Dns_packet.A ip
+      and rdata = Udns_packet.A ip
       in
-      name, { Dns_packet.name ; ttl ; rdata })
+      name, { Udns_packet.name ; ttl ; rdata })
     root_servers
 
 let reserved_zone_records =
@@ -75,10 +75,10 @@ let reserved_zone_records =
 
 let reserved_zones =
   let inv s =
-    let soa = { Dns_packet.nameserver = s ; hostmaster = s ;
+    let soa = { Udns_packet.nameserver = s ; hostmaster = s ;
                 serial = 0l ; refresh = 300l ; retry = 300l ;
                 expiry = 300l ; minimum = 300l }
     in
-    Dns_map.(B (Soa, (300l, soa)))
+    Udns_map.(B (Soa, (300l, soa)))
   in
   Domain_name.Set.fold (fun n acc -> (n, inv n) :: acc) reserved_zone_records []
