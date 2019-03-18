@@ -38,8 +38,9 @@ module Make (S : Mirage_stack_lwt.V4) = struct
       | Ok `Eof -> Ok Cstruct.empty
 
     let send flow s =
-      S.TCPV4.write flow s >|= fun _always_works ->
-      Ok ()
+      S.TCPV4.write flow s >|= function
+      | Error e -> Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e))
+      | Ok () -> Ok ()
   end
 
   include Udns_client_flow.Make(Uflow)
