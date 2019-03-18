@@ -46,8 +46,8 @@ val handle_query : t -> Udns_packet.proto -> Domain_name.t option -> Udns_packet
     for signing, instead of the data trie the key trie is used for lookups. *)
 
 val notify : t -> (Domain_name.t * Ipaddr.V4.t * int) list -> int64 ->
-   Domain_name.t -> Udns_packet.soa -> (int64 * int * Ipaddr.V4.t * int *
-   Udns_packet.header * Udns_packet.query) list
+  Domain_name.t -> Udns_packet.soa ->
+  (int64 * int * Ipaddr.V4.t * int * Udns_packet.header * Udns_packet.query) list
 (** [notify t active_conns now zone soa] creates notifications for [zone]:
     all secondaries with glue in the server state for [zone],
     all matching [active_conns] of the [zone], and all secondaries where a key
@@ -71,9 +71,8 @@ module Primary : sig type s
   val with_data : s -> Udns_trie.t -> s
   (** [with_data s trie] replaces the current data with [trie] in [s]. *)
 
-  (* TODO: could make the Dns_trie.t optional, and have an optional key *)
   val create : ?keys:(Domain_name.t * Udns_packet.dnskey) list ->
-   ?a:Authentication.a list -> tsig_verify:Udns_packet.tsig_verify ->
+    ?a:Authentication.a list -> tsig_verify:Udns_packet.tsig_verify ->
     tsig_sign:Udns_packet.tsig_sign -> rng:(int -> Cstruct.t) -> Udns_trie.t -> s
   (** [create ~keys ~a ~tsig_verify ~tsig_sign ~rng data] creates a primary server. *)
 

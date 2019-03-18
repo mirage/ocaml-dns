@@ -768,7 +768,7 @@ module Primary = struct
       Log.err (fun m -> m "ignoring unsolicited answer, replying with FormErr") ;
       Error Udns_enum.FormErr
     | `Notify _, true ->
-      Log.err (fun m -> m "ignoring unsolicited request") ;
+      Log.err (fun m -> m "ignoring unsolicited notify request") ;
       Ok ((t, l, ns), None, [])
 
   let handle (t, l, ns) now ts proto ip port buf =
