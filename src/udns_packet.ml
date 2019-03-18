@@ -537,6 +537,13 @@ let dnskey_of_string key =
   | [ algo ; key ] -> parse 0 algo key
   | _ -> None
 
+let name_dnskey_of_string str =
+  match Astring.String.cut ~sep:":" str with
+  | None -> Error (`Msg ("couldn't parse " ^ str))
+  | Some (name, key) -> match Domain_name.of_string ~hostname:false name, dnskey_of_string key with
+    | Error _, _ | _, None -> Error (`Msg ("failed to parse key " ^ key))
+    | Ok name, Some dnskey -> Ok (name, dnskey)
+
 let decode_dnskey names buf off =
   let flags = Cstruct.BE.get_uint16 buf off
   and proto = Cstruct.get_uint8 buf (off + 2)

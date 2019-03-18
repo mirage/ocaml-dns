@@ -158,6 +158,10 @@ type dnskey = {
 val dnskey_of_string : string -> dnskey option
 (** [dnskey_of_string str] parses [str] from [flags:]algorithm:base64-key. *)
 
+val name_dnskey_of_string : string -> (Domain_name.t * dnskey, [ `Msg of string ]) result
+(** [name_dnskey_of_string str] attempts to parse a domain_name, colon (':'),
+    and a dnskey (optional flags, algorithm, base64-key). *)
+
 val pp_dnskey : dnskey Fmt.t
 (** [pp_dnskey ppf dnskey] pretty-prints the [dnskey] on [ppf]. *)
 
