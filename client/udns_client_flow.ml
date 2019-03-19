@@ -4,10 +4,13 @@ module type S = sig
   type io_addr
   type ns_addr = ([`TCP | `UDP]) * io_addr
   type stack
+  type t
 
-  val default_ns : ns_addr
+  val create : ?nameserver:ns_addr -> stack -> t
 
-  val connect : stack -> ns_addr -> (flow,'err) io
+  val nameserver : t -> ns_addr
+
+  val connect : ?nameserver:ns_addr -> t -> (flow,'err) io
   val send : flow -> Cstruct.t -> (unit,'b) io
   val recv : flow -> (Cstruct.t, 'b) io
 
@@ -18,19 +21,19 @@ end
 module Make = functor (Uflow:S) ->
 struct
 
-  let default_ns = Uflow.default_ns
+  let create ?nameserver stack = Uflow.create ?nameserver stack
 
-  let getaddrinfo (type requested) stack ?nameserver (query_type:requested Udns_map.k) name
+  let nameserver t = Uflow.nameserver t
+
+  let getaddrinfo (type requested) t ?nameserver (query_type:requested Udns_map.k) name
     : (requested, [> `Msg of string]) Uflow.io =
-    let (proto, _) as ns_addr = match nameserver with None -> Uflow.default_ns | Some x -> x in
+    let proto, _ = match nameserver with None -> Uflow.nameserver t | Some x -> x in
     let tx, state =
-      let cs, state = Udns_client.make_query
-          (match proto with `UDP -> `Udp
-                          | `TCP -> `Tcp) name query_type in
-      cs, state
+      Udns_client.make_query
+        (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
     in
     let (>>=), (>>|) = Uflow.(resolve, map) in
-    Uflow.connect stack ns_addr >>| fun socket ->
+    Uflow.connect ?nameserver t >>| fun socket ->
     Logs.debug (fun m -> m "Connected to NS.");
     Uflow.send socket tx >>| fun () ->
     (* TODO steal loop logic from lwt *)

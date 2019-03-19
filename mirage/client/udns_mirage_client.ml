@@ -7,24 +7,32 @@ module Make (S : Mirage_stack_lwt.V4) = struct
 
   module Uflow : Udns_client_flow.S
     with type flow = S.TCPV4.flow
-     and type stack = S.tcpv4
+     and type stack = S.t
      and type (+'a,+'b) io = ('a, 'b) Lwt_result.t
            constraint 'b = [> `Msg of string]
      and type io_addr = Ipaddr.V4.t * int = struct
     type flow = S.TCPV4.flow
-    type stack = S.tcpv4
+    type stack = S.t
     type io_addr = Ipaddr.V4.t * int
     type ns_addr = [`TCP | `UDP] * io_addr
     type (+'a,+'b) io = ('a, 'b) Lwt_result.t
       constraint 'b = [> `Msg of string]
+    type t = {
+      nameserver : ns_addr ;
+      stack : stack ;
+    }
 
-    let default_ns = `TCP, (Ipaddr.V4.of_string_exn "91.239.100.100", 53)
+    let create ?(nameserver = `TCP, (Ipaddr.V4.of_string_exn "91.239.100.100", 53)) stack =
+      { nameserver ; stack }
+
+    let nameserver { nameserver ; _ } = nameserver
 
     let map = Lwt_result.bind
     let resolve = Lwt_result.bind_result
 
-    let connect stack ((_proto, (ip, port)):ns_addr) =
-      S.TCPV4.create_connection stack (ip, port) >|= function
+    let connect ?nameserver:ns t =
+      let _proto, addr = match ns with None -> nameserver t | Some x -> x in
+      S.TCPV4.create_connection (S.tcpv4 t.stack) addr >|= function
       | Error e ->
         Log.err (fun m -> m "error connecting to nameserver %a"
                     S.TCPV4.pp_error e) ;

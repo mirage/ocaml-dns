@@ -5,30 +5,34 @@
 
 module Uflow : Udns_client_flow.S
   with type flow = Unix.file_descr
-   and type io_addr = string * int
+   and type io_addr = Unix.inet_addr * int
    and type stack = unit
    and type (+'a,+'b) io = ('a,[> `Msg of string]as 'b) result
 = struct
-  type io_addr = string * int
+  type io_addr = Unix.inet_addr * int
   type ns_addr = [`TCP | `UDP] * io_addr
   type stack = unit
   type flow = Unix.file_descr
+  type t = { nameserver : ns_addr }
   type (+'a,+'b) io = ('a,'b) result constraint 'b = [> `Msg of string]
 
-  let default_ns : ns_addr = `TCP, ("91.239.100.100", 53)
+  let create ?(nameserver = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)) () =
+    { nameserver }
+
+  let nameserver { nameserver } = nameserver
 
   let map = Rresult.R.((>>=))
   let resolve = (Rresult.R.(>>=))
 
   open Rresult
 
-  let connect () ((proto,(server,port)):ns_addr) =
+  let connect ?nameserver:ns t =
+    let proto, (server, port) = match ns with None -> nameserver t | Some x -> x in
     begin match proto with
       | `UDP -> Ok Unix.((getprotobyname "udp").p_proto)
       | `TCP -> Ok Unix.((getprotobyname "tcp").p_proto)
     end >>= fun proto_number ->
     let socket = Unix.socket PF_INET SOCK_STREAM proto_number in
-    let server = Unix.inet_addr_of_string server in
     let addr = Unix.ADDR_INET (server, port) in
     Unix.connect socket addr ;
     Ok socket

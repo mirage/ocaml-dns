@@ -27,7 +27,9 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Udns_packet.tlsa)) =
         | n -> loop ((String.sub hex n 56)::acc) (n+56)
       in loop [] 0)
 
-let do_a ((_,(ns_ip,_)) as nameserver) domains _ =
+let do_a nameserver domains _ =
+  let t = Udns_client_lwt.create ?nameserver () in
+  let (_, (ns_ip, _)) = Udns_client_lwt.nameserver t in
   Logs.info (fun m -> m "querying NS %s for A records of %a"
                 (Unix.string_of_inet_addr ns_ip)
                 Fmt.(list ~sep:(unit", ") Domain_name.pp) domains);
@@ -35,7 +37,7 @@ let do_a ((_,(ns_ip,_)) as nameserver) domains _ =
     Lwt_list.iter_p (fun domain ->
         let open Lwt in
         Logs.debug (fun m -> m "looking up %a" Domain_name.pp domain);
-        Udns_client_lwt.(getaddrinfo () ~nameserver Udns_map.A domain)
+        Udns_client_lwt.(getaddrinfo t Udns_map.A domain)
         >|= function
         | Ok (_ttl, addrs) when Udns_map.Ipv4Set.is_empty addrs ->
           (* handle empty response? *)
@@ -53,16 +55,18 @@ let do_a ((_,(ns_ip,_)) as nameserver) domains _ =
   match Lwt_main.run job with
   | () -> Ok () (* TODO handle errors *)
 
-let for_all_domains ((_,(ns_ip,_)) as nameserver) ~domains typ f =
+let for_all_domains nameserver ~domains typ f =
   (* [for_all_domains] is a utility function that lets us avoid duplicating
      this block of code in all the subcommands.
      We leave {!do_a} simple to provide a more readable example. *)
+  let t = Udns_client_lwt.create ?nameserver () in
+  let _, (ns_ip, _) = Udns_client_lwt.nameserver t in
   Logs.info (fun m -> m "NS: %s" @@ Unix.string_of_inet_addr ns_ip);
   let open Lwt in
   match Lwt_main.run
           (Lwt_list.iter_p
              (fun domain ->
-                Udns_client_lwt.getaddrinfo () ~nameserver typ domain
+                Udns_client_lwt.getaddrinfo t typ domain
                 >|= f domain)
              domains) with
   | () -> Ok () (* TODO catch failed jobs *)
@@ -143,8 +147,7 @@ let parse_ns : ('a * (Lwt_unix.inet_addr * int)) Arg.conv =
 
 let arg_ns : 'a Term.t =
   let doc = "IP of nameserver to use" in
-  Arg.(value & opt parse_ns Udns_client_lwt.default_ns
-       & info ~docv:"NS-IP" ~doc ["ns"])
+  Arg.(value & opt (some parse_ns) None & info ~docv:"NS-IP" ~doc ["ns"])
 
 let parse_domain : Domain_name.t Arg.conv =
   ( fun name ->

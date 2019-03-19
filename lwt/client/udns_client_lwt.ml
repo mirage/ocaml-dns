@@ -3,6 +3,8 @@
    Lwt convenience module
 *)
 
+open Lwt.Infix
+
 module Uflow : Udns_client_flow.S
   with type flow = Lwt_unix.file_descr
  and type io_addr = Lwt_unix.inet_addr * int
@@ -15,8 +17,12 @@ module Uflow : Udns_client_flow.S
   type (+'a,+'b) io = ('a,'b) Lwt_result.t
     constraint 'b = [> `Msg of string]
   type stack = unit
+  type t = { nameserver : ns_addr }
 
-  let default_ns = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)
+  let create ?(nameserver = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)) () =
+    { nameserver }
+
+  let nameserver { nameserver } = nameserver
 
   let send socket tx =
     let open Lwt in
@@ -40,8 +46,8 @@ module Uflow : Udns_client_flow.S
   let map = Lwt_result.bind
   let resolve = Lwt_result.bind_result
 
-  let connect () (proto, (server,port)) =
-    let open Lwt in
+  let connect ?nameserver:ns t =
+    let (proto, (server, port)) = match ns with None -> nameserver t | Some x -> x in
     begin match proto with
       | `UDP ->
         Lwt_unix.((getprotobyname "udp") >|= fun x -> x.p_proto,

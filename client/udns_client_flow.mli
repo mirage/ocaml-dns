@@ -29,12 +29,18 @@ module type S = sig
   type stack
   (** A stack with which to connect, e.g. {IPv4.tcpv4}*)
 
-  val default_ns : ns_addr
+  type t
+  (** The abstract state of a DNS client. *)
+
+  val create : ?nameserver:ns_addr -> stack -> t
+  (** [create ~nameserver stack] creates the state record of the DNS client. *)
+
+  val nameserver : t -> ns_addr
   (** The address of a nameserver that is supposed to work with
       the underlying flow, can be used if the user does not want to
       bother with configuring their own.*)
 
-  val connect : stack -> ns_addr -> (flow,'err) io
+  val connect : ?nameserver:ns_addr -> t -> (flow,'err) io
   (** [connect addr] is a new connection ([flow]) to [addr], or an error. *)
 
   val send : flow -> Cstruct.t -> (unit,'err) io
@@ -53,12 +59,13 @@ end
 module Make : functor (U : S) ->
 sig
 
-  val default_ns : U.ns_addr
-  (** The address of a nameserver that is supposed to work with
-      the underlying flow, can be used if the user does not want to
-      bother with configuring their own.*)
+  val create : ?nameserver:U.ns_addr -> U.stack -> U.t
+  (** [create ~nameserver stack] creates the state of the DNS client. *)
 
-  val getaddrinfo : U.stack -> ?nameserver:U.ns_addr -> 'response Udns_map.k ->
+  val nameserver : U.t -> U.ns_addr
+  (** [nameserver t] returns the default nameserver to be used. *)
+
+  val getaddrinfo : U.t -> ?nameserver:U.ns_addr -> 'response Udns_map.k ->
     Domain_name.t -> ('response, 'err) U.io
   (** [getaddrinfo nameserver query_type name] is the [query_type]-dependent
       response from [nameserver] regarding [name], or an [Error _] message.
@@ -66,7 +73,7 @@ sig
       result types.
   *)
 
-  val gethostbyname : U.stack -> ?nameserver:U.ns_addr -> Domain_name.t ->
+  val gethostbyname : U.t -> ?nameserver:U.ns_addr -> Domain_name.t ->
     (Ipaddr.V4.t, 'err) U.io
     (** [gethostbyname ~nameserver name] is the IPv4 address of [name]
         resolved via the [nameserver] specified.

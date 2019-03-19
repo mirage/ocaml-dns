@@ -6,7 +6,7 @@
 (** A flow module based on blocking I/O on top of the Unix socket API. *)
 module Uflow : Udns_client_flow.S
   with type flow = Unix.file_descr
-   and type io_addr = string * int
+   and type io_addr = Unix.inet_addr * int
    and type stack = unit
    and type (+'a,+'b) io = ('a,'b) result
 
