@@ -69,12 +69,7 @@ let parse_response (type requested)
           ) >>= fun relevant_map ->
       begin match (state.key : requested Udns_map.k) with
         | (Udns_map.Any : requested Udns_map.k) ->
-          Ok (((resp.answer:Udns_packet.rr list) ,
-               (((Udns_map.of_rrs resp.answer
-                  |> Domain_name.Map.bindings
-                  |> List.map fst
-                  |> Domain_name.Set.of_list)
-                ) : Domain_name.Set.t)):requested)
+          Ok ((resp.answer, Domain_name.Set.empty):requested)
         | _ ->
           begin match Udns_map.find state.key relevant_map with
             | Some response -> Ok response
