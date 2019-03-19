@@ -54,13 +54,8 @@ let lookup_res name zone ty m =
     match ty with
     | Udns_enum.ANY ->
       let bindings = Udns_map.bindings m in
-      let rrs = List.(flatten (map (Udns_map.to_rr name) bindings))
-      and names =
-        List.fold_left
-          (fun acc v -> Domain_name.Set.union acc (Udns_map.names v))
-          Domain_name.Set.empty bindings
-      in
-      Ok (Udns_map.B (Udns_map.Any, (rrs, names)), to_ns z zmap)
+      let rrs = List.(flatten (map (Udns_map.to_rr name) bindings)) in
+      Ok (Udns_map.B (Udns_map.Any, rrs), to_ns z zmap)
     | _ -> match Udns_map.lookup_rr ty m with
       | Some v -> Ok (v, to_ns z zmap)
       | None -> match Udns_map.findb Udns_map.Cname m with

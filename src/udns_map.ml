@@ -51,7 +51,7 @@ module SshfpSet = Set.Make (struct
   end)
 
 type _ k =
-  | Any : (Udns_packet.rr list * Domain_name.Set.t) k
+  | Any : Udns_packet.rr list k
   | Cname : (int32 * Domain_name.t) k
   | Mx : (int32 * MxSet.t) k
   | Ns : (int32 * Domain_name.Set.t) k
@@ -89,9 +89,8 @@ module K = struct
 
   let pp : type a. Format.formatter -> a t -> a -> unit = fun ppf t v ->
     match t, v with
-    | Any, (entries, names) ->
-      Fmt.pf ppf "any %a %a" Udns_packet.pp_rrs entries
-        Fmt.(list ~sep:(unit ";@,") Domain_name.pp) (Domain_name.Set.elements names)
+    | Any, entries ->
+      Fmt.pf ppf "any %a" Udns_packet.pp_rrs entries
     | Cname, (ttl, alias) -> Fmt.pf ppf "cname ttl %lu %a" ttl Domain_name.pp alias
     | Mx, (ttl, mxs) ->
       Fmt.pf ppf "mx ttl %lu %a" ttl
@@ -222,12 +221,11 @@ include Gmap.Make(K)
 let pp_b ppf (B (k, v)) = K.pp ppf k v
 
 let equal_b b b' = match b, b' with
-  | B (Any, (entries, names)), B (Any, (entries', names')) ->
+  | B (Any, entries), B (Any, entries') ->
     List.length entries = List.length entries' &&
     List.for_all (fun e ->
         List.exists (fun e' -> Udns_packet.rr_equal e e') entries')
-      entries &&
-    Domain_name.Set.equal names names'
+      entries
   | B (Cname, (_, alias)), B (Cname, (_, alias')) ->
     Domain_name.equal alias alias'
   | B (Mx, (_, mxs)), B (Mx, (_, mxs')) ->
@@ -316,13 +314,13 @@ let to_rdata : b -> int32 * Udns_packet.rdata list = fun (B (k, v)) ->
 
 let to_rr : Domain_name.t -> b -> Udns_packet.rr list = fun name b ->
   match b with
-  | B (Any, (entries, _)) -> entries
+  | B (Any, entries) -> entries
   | _ ->
     let ttl, rdatas = to_rdata b in
     List.map (fun rdata -> { Udns_packet.name ; ttl ; rdata }) rdatas
 
 let names = function
-  | B (Any, (_, names)) -> names
+  | B (Any, rrs) -> Udns_packet.rr_names rrs
   | B (Mx, (_, mxs)) ->
     MxSet.fold (fun (_, name) acc -> Domain_name.Set.add name acc)
       mxs Domain_name.Set.empty

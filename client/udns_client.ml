@@ -69,7 +69,7 @@ let parse_response (type requested)
           ) >>= fun relevant_map ->
       begin match (state.key : requested Udns_map.k) with
         | (Udns_map.Any : requested Udns_map.k) ->
-          Ok ((resp.answer, Domain_name.Set.empty):requested)
+          Ok (resp.answer:requested)
         | _ ->
           begin match Udns_map.find state.key relevant_map with
             | Some response -> Ok response
