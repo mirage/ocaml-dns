@@ -71,9 +71,9 @@ The µDNS library is published under the 2 clause BSD license.
 ## Installation
 
 You first need to install [OCaml](https://ocaml.org) (at least 4.04.0) and
-[opam](https://opam.ocaml.org), the OCaml package manager (at least 1.2.2) on
+[opam](https://opam.ocaml.org), the OCaml package manager (at least 2.0.0) on
 your machine (you can use opam to install an up-to-date OCaml (`opam switch
-4.06.0`)).  You may want to follow the [mirage installation
+4.07.1`)).  You may want to follow the [mirage installation
 instructions](https://mirage.io/wiki/install) to get `mirage` installed on your
 computer.
 
@@ -85,4 +85,4 @@ examples at the [unikernel repository](https://github.com/roburio/unikernels).
 
 ## Documentation
 
-Is unfortunately only in the code at the moment.
+API documentation [is available online](https://roburio.github.io/udns/doc/).
