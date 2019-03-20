@@ -26,7 +26,7 @@ struct
 
   let nameserver t = Uflow.nameserver t
 
-  let getaddrinfo (type requested) t ?nameserver (query_type:requested Udns_map.k) name
+  let getaddrinfo (type requested) t ?nameserver (query_type:requested Udns.Rr_map.k) name
     : (requested, [> `Msg of string]) Uflow.io =
     let proto, _ = match nameserver with None -> Uflow.nameserver t | Some x -> x in
     let tx, state =
@@ -54,8 +54,8 @@ struct
 
   let gethostbyname stack ?nameserver domain =
     let (>>=) = Uflow.resolve in
-    getaddrinfo stack ?nameserver Udns_map.A domain >>= fun (_ttl, resp) ->
-    match Udns_map.Ipv4Set.choose_opt resp with
+    getaddrinfo stack ?nameserver Udns.Rr_map.A domain >>= fun (_ttl, resp) ->
+    match Udns.Rr_map.Ipv4_set.choose_opt resp with
     | None -> Error (`Msg "No A record found")
     | Some ip -> Ok ip
 end

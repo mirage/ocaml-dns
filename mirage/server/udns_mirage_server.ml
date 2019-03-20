@@ -143,7 +143,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
           if Dns.IS.mem ip !in_flight then
             Lwt.return_unit
           else begin
-            Logs.info (fun m -> m "creating connection to %a:%d" Ipaddr.V4.pp ip port) ;
+            Log.info (fun m -> m "creating connection to %a:%d" Ipaddr.V4.pp ip port) ;
             in_flight := Dns.IS.add ip !in_flight ;
             T.create_connection (S.tcpv4 stack) (ip, port) >>= function
             | Error e ->

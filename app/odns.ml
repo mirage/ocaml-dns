@@ -5,20 +5,20 @@
 
 let pp_zone ppf (domain,query_type,query_value) =
   Fmt.string ppf
-    (Udns_map.text domain (Udns_map.B (query_type, query_value)))
+    (Udns.Rr_map.text_b domain (Udns.Rr_map.B (query_type, query_value)))
 
-let pp_zone_tlsa ppf (domain,ttl,(tlsa:Udns_packet.tlsa)) =
+let pp_zone_tlsa ppf (domain,ttl,(tlsa:Udns.Tlsa.t)) =
   (* TODO this implementation differs a bit from Udns_map.text and tries to
      follow the `dig` output to make it easier to port existing scripts *)
   Fmt.pf ppf "%a.\t%ld\tIN\t%d\t%d\t%d\t%s"
     Domain_name.pp domain
     ttl
-    (Udns_enum.tlsa_cert_usage_to_int tlsa.tlsa_cert_usage)
-    (Udns_enum.tlsa_selector_to_int tlsa.tlsa_selector)
-    (Udns_enum.tlsa_matching_type_to_int tlsa.tlsa_matching_type)
+    (Udns.Tlsa.cert_usage_to_int tlsa.cert_usage)
+    (Udns.Tlsa.selector_to_int tlsa.selector)
+    (Udns.Tlsa.matching_type_to_int tlsa.matching_type)
     ( (* this produces output similar to `dig`, splitting the hex string
          in chunks of 56 chars (28 bytes): *)
-      let `Hex hex = Hex.of_cstruct tlsa.tlsa_data in
+      let `Hex hex = Hex.of_cstruct tlsa.data in
       let hlen = String.length hex in
       let rec loop acc = function
         | n when n + 56 >= hlen ->
@@ -37,16 +37,15 @@ let do_a nameserver domains _ =
     Lwt_list.iter_p (fun domain ->
         let open Lwt in
         Logs.debug (fun m -> m "looking up %a" Domain_name.pp domain);
-        Udns_client_lwt.(getaddrinfo t Udns_map.A domain)
+        Udns_client_lwt.(getaddrinfo t A domain)
         >|= function
-        | Ok (_ttl, addrs) when Udns_map.Ipv4Set.is_empty addrs ->
+        | Ok (_ttl, addrs) when Udns.Rr_map.Ipv4_set.is_empty addrs ->
           (* handle empty response? *)
           Logs.app (fun m -> m ";%a. IN %a"
                        Domain_name.pp domain
-                       Udns_enum.pp_rr_typ (Udns_map.k_to_rr_typ Udns_map.A))
+                       Udns_enum.pp_rr_typ (Udns.Rr_map.k_to_rr_typ A))
         | Ok resp ->
-          Logs.app (fun m -> m "%a" pp_zone
-                       (domain, Udns_map.A, resp))
+          Logs.app (fun m -> m "%a" pp_zone (domain, A, resp))
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "Failed to lookup %a: %s\n"
                        Domain_name.pp domain msg)
@@ -72,10 +71,10 @@ let for_all_domains nameserver ~domains typ f =
   | () -> Ok () (* TODO catch failed jobs *)
 
 let do_tlsa nameserver domains _ =
-  for_all_domains nameserver ~domains Udns_map.Tlsa
+  for_all_domains nameserver ~domains Udns.Rr_map.Tlsa
     (fun domain -> function
        | Ok (ttl, tlsa_resp) ->
-         Udns_map.TlsaSet.iter (fun tlsa ->
+         Udns.Rr_map.Tlsa_set.iter (fun tlsa ->
              Logs.app (fun m -> m "%a" pp_zone_tlsa (domain,ttl,tlsa))
            ) tlsa_resp
        | Error (`Msg msg) ->
@@ -84,28 +83,20 @@ let do_tlsa nameserver domains _ =
 
 
 let do_txt nameserver domains _ =
-  for_all_domains nameserver ~domains Udns_map.Txt
+  for_all_domains nameserver ~domains Udns.Rr_map.Txt
     (fun domain -> function
        | Ok (ttl, txtset) ->
-         Udns_map.TxtSet.iter (fun txtrr ->
-             Logs.app (fun m -> m "%ld: @[<v>%a@]" ttl
-                          Fmt.(list ~sep:(unit "\n") string) txtrr)
+         Udns.Rr_map.Txt_set.iter (fun txtrr ->
+             Logs.app (fun m -> m "%ld: @[<v>%s@]" ttl txtrr)
            ) txtset
        | Error (`Msg msg) ->
          Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
                       Domain_name.pp domain msg))
 
 
-let do_any nameserver domains _ =
-  for_all_domains nameserver ~domains Udns_map.Any
-    (fun domain -> function
-       | Ok rr_list ->
-         List.iter (fun rr -> Logs.app (fun m -> m "%a" Udns_packet.pp_rr rr))
-           rr_list
-       | Error (`Msg msg) ->
-         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
-                      Domain_name.pp domain msg))
-
+let do_any _nameserver _domains _ =
+  (* TODO *)
+  Error (`Msg "ANY functionality is not present atm due to refactorings, come back later")
 
 let do_dkim nameserver (selector:string) domains _ =
   let domains = List.map (fun original_domain ->
@@ -113,11 +104,11 @@ let do_dkim nameserver (selector:string) domains _ =
         (Domain_name.prepend_exn ~hostname:false
            (original_domain) "_domainkey") selector
     ) domains in
-  for_all_domains nameserver ~domains Udns_map.Txt
+  for_all_domains nameserver ~domains Udns.Rr_map.Txt
     (fun domain -> function
        | Ok (_ttl, txtset) ->
-         Udns_map.TxtSet.iter (fun txt ->
-             Logs.app (fun m -> m "%a" Fmt.(list ~sep:(unit"")string)txt)
+         Udns.Rr_map.Txt_set.iter (fun txt ->
+             Logs.app (fun m -> m "%s" txt)
            ) txtset
        | Error (`Msg msg) ->
          Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"

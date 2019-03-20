@@ -22,89 +22,21 @@ let find_or_generate_key key_filename bits seed =
     Bos.OS.File.write ~mode:0o600 key_filename (Cstruct.to_string pem) >>= fun () ->
     Ok key
 
-let dns_header () =
-  let id =
-    let b = Nocrypto.Rng.generate 2 in
-    Cstruct.BE.get_uint16 b 0
-  in
-  Udns_cli.dns_header id
-
 let query_certificate sock public_key fqdn =
-  let good_tlsa tlsa =
-    if
-      tlsa.Udns_packet.tlsa_cert_usage = Udns_enum.Domain_issued_certificate
-      && tlsa.Udns_packet.tlsa_selector = Udns_enum.Tlsa_full_certificate
-      && tlsa.Udns_packet.tlsa_matching_type = Udns_enum.Tlsa_no_hash
-    then
-      match X509.Encoding.parse tlsa.Udns_packet.tlsa_data with
-      | Some cert ->
-        let keys_equal a b = Cstruct.equal (X509.key_id a) (X509.key_id b) in
-        if keys_equal (X509.public_key cert) public_key then
-          Some cert
-        else
-          None
-      | _ -> None
-    else
-      None
-  in
-  let header = dns_header ()
-  and question = { Udns_packet.q_name = fqdn ; q_type = Udns_enum.TLSA }
-  in
-  let query = { Udns_packet.question = [ question ] ; answer = [] ; authority = [] ; additional = [] } in
-  let buf, _ = Udns_packet.encode `Tcp header (`Query query) in
-  Udns_cli.send_tcp sock buf ;
+  let out, recv_cb = Udns_certify.query Nocrypto.Rng.generate public_key fqdn in
+  Udns_cli.send_tcp sock out ;
   let data = Udns_cli.recv_tcp sock in
-  match Udns_packet.decode data with
-  | Ok ((_, `Query q, _, _), _) ->
-    (* collect TLSA pems *)
-    let tlsa =
-      List.fold_left (fun acc rr -> match rr.Udns_packet.rdata with
-          | Udns_packet.TLSA tlsa ->
-            begin match good_tlsa tlsa with
-              | None -> acc
-              | Some cert -> Some cert
-            end
-          | _ -> acc)
-        None q.Udns_packet.answer
-    in
-    tlsa
-  | Ok ((_, v, _, _), _) ->
-    Logs.err (fun m -> m "expected a response, but got %a"
-                 Udns_packet.pp_v v) ;
-    None
-  | Error e ->
-    Logs.err (fun m -> m "error %a while decoding answer"
-                 Udns_packet.pp_err e) ;
-    None
+  recv_cb data
 
-let nsupdate_csr sock now hostname keyname zone dnskey csr =
-  let tlsa =
-    { Udns_packet.tlsa_cert_usage = Udns_enum.Domain_issued_certificate ;
-      tlsa_selector = Udns_enum.Tlsa_selector_private ;
-      tlsa_matching_type = Udns_enum.Tlsa_no_hash ;
-      tlsa_data = X509.Encoding.cs_of_signing_request csr ;
-    }
-  in
-  let nsupdate =
-    let zone = { Udns_packet.q_name = zone ; q_type = Udns_enum.SOA }
-    and update = [
-      Udns_packet.Remove (hostname, Udns_enum.TLSA) ;
-      Udns_packet.Add ({ Udns_packet.name = hostname ; ttl = 600l ; rdata = Udns_packet.TLSA tlsa })
-    ]
-    in
-    { Udns_packet.zone ; prereq = [] ; update ; addition = [] }
-  and header =
-    let hdr = dns_header () in
-    { hdr with Udns_packet.operation = Udns_enum.Update }
-  in
-  match
-    Udns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname >>= fun (data, mac) ->
-    Udns_cli.send_tcp sock data ;
+let nsupdate_csr sock host keyname zone dnskey csr =
+  match Udns_certify.nsupdate Nocrypto.Rng.generate Ptime_clock.now ~host ~keyname ~zone dnskey csr with
+  | Error fail -> Error (`Msg fail)
+  | Ok (out, cb) ->
+    Udns_cli.send_tcp sock out ;
     let data = Udns_cli.recv_tcp sock in
-    Udns_tsig.decode_and_verify now dnskey keyname ~mac data
-  with
-  | Error x -> Error (`Msg x)
-  | Ok _ -> Ok ()
+    match cb data with
+    | Ok () -> Ok ()
+    | Error msg -> Error (`Msg msg)
 
 let jump server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert force =
   Nocrypto_entropy_unix.initialize () ;
@@ -129,9 +61,9 @@ let jump server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert 
       Ok req) >>= fun req ->
   let public_key = (X509.CA.info req).X509.CA.public_key in
   (* before doing anything, let's check whether cert_filename is present, matches public key, and is valid *)
-  let now, tomorrow =
+  let tomorrow =
     let (d, ps) = Ptime_clock.now_d_ps () in
-    Ptime.v (d, ps), Ptime.v (succ d, ps)
+    Ptime.v (succ d, ps)
   in
   (Bos.OS.File.exists cert_filename >>= function
     | true ->
@@ -153,20 +85,20 @@ let jump server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert 
   in
   let sock = Udns_cli.connect_tcp server_ip port in
   match
-    if not force then query_certificate sock public_key hostname else None
+    if not force then query_certificate sock public_key hostname else Error "no"
   with
-  | Some x -> write_certificate x
-  | None ->
-    nsupdate_csr sock now hostname keyname zone dnskey req >>= fun () ->
+  | Ok x -> write_certificate x
+  | Error _ ->
+    nsupdate_csr sock hostname keyname zone dnskey req >>= fun () ->
     let rec request retries =
       if retries = 0 then
         Error (`Msg "failed to request certificate")
       else
         match query_certificate sock public_key hostname with
-        | None ->
+        | Error _ ->
           Unix.sleep 1 ;
           request (pred retries)
-        | Some x -> write_certificate x
+        | Ok x -> write_certificate x
     in
     request 10
 

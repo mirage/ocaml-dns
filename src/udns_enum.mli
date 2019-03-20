@@ -5,7 +5,7 @@
 type clas =
   (* Reserved0 [@id 0] RFC6895 *)
   | IN (* RFC1035 *)
-  (* 2 Uassigned *)
+  (* 2 Unassigned *)
   | CHAOS (* D. Moon, "Chaosnet", A.I. Memo 628, Massachusetts Institute of Technology Artificial Intelligence Laboratory, June 1981. *)
   | HESIOD (* Dyer, S., and F. Hsu, "Hesiod", Project Athena Technical Plan - Name Service, April 1987. *)
   | NONE (* RFC2136 *)
@@ -163,90 +163,5 @@ val rcode_to_int : rcode -> int
 val int_to_rcode : int -> rcode option
 val pp_rcode : rcode Fmt.t
 
-type edns_opt =
-  (* 0,Reserved,,[RFC6891] *)
-  | LLQ (* On-hold,[http://files.dns-sd.org/draft-sekar-dns-llq.txt] *)
-  | UL (* On-hold,[http://files.dns-sd.org/draft-sekar-dns-ul.txt] *)
-  | NSID (* NSID,Standard,[RFC5001] *)
-  (* 4,Reserved,,[draft-cheshire-edns0-owner-option] *)
-  | DAU (* DAU,Standard,[RFC6975] *)
-  | DHU (* DHU,Standard,[RFC6975] *)
-  | N3U (* N3U,Standard,[RFC6975] *)
-  | Client_subnet (* edns-client-subnet,Optional,[RFC7871] *)
-  | Expire (* Optional,[RFC7314] *)
-  | Cookie (* COOKIE,Standard,[RFC7873] *)
-  | TCP_keepalive (* edns-tcp-keepalive,Standard,[RFC7828] *)
-  | Padding (* Padding,Standard,[RFC7830] *)
-  | Chain (* CHAIN,Standard,[RFC7901] *)
-  | Key_tag (* edns-key-tag,Optional,[RFC8145] *)
-  (* 15-26945,Unassigned *)
-  | DeviceID (* DeviceID,Optional,[https://docs.umbrella.com/developer/networkdevices-api/identifying-dns-traffic2][Brian_Hartvigsen] *)
-(* 26947-65000,Unassigned
-65001-65534,Reserved for Local/Experimental Use,,[RFC6891]
-65535,Reserved for future expansion,,[RFC6891] *)
-
-val edns_opt_to_int : edns_opt -> int
-val int_to_edns_opt : int -> edns_opt option
-val pp_edns_opt : edns_opt Fmt.t
-
-type dnskey =
-  | MD5
-  | SHA1
-  | SHA224
-  | SHA256
-  | SHA384
-  | SHA512
-
-val dnskey_to_int : dnskey -> int
-val int_to_dnskey : int -> dnskey option
-val string_to_dnskey : string -> dnskey option
-val pp_dnskey : dnskey Fmt.t
-val dnskey_len : dnskey -> int
-
 module RRMap : Map.S with type key = rr_typ
 
-type tlsa_cert_usage =
-  | CA_constraint
-  | Service_certificate_constraint
-  | Trust_anchor_assertion
-  | Domain_issued_certificate
-
-val tlsa_cert_usage_to_int : tlsa_cert_usage -> int
-val int_to_tlsa_cert_usage : int -> tlsa_cert_usage option
-val pp_tlsa_cert_usage : tlsa_cert_usage Fmt.t
-
-type tlsa_selector =
-  | Tlsa_full_certificate
-  | Tlsa_subject_public_key_info
-  | Tlsa_selector_private
-
-val tlsa_selector_to_int : tlsa_selector -> int
-val int_to_tlsa_selector : int -> tlsa_selector option
-val pp_tlsa_selector : tlsa_selector Fmt.t
-
-type tlsa_matching_type =
-  | Tlsa_no_hash
-  | Tlsa_SHA256
-  | Tlsa_SHA512
-
-val tlsa_matching_type_to_int : tlsa_matching_type -> int
-val int_to_tlsa_matching_type : int -> tlsa_matching_type option
-val pp_tlsa_matching_type : tlsa_matching_type Fmt.t
-
-type sshfp_algorithm =
-  | Sshfp_rsa
-  | Sshfp_dsa
-  | Sshfp_ecdsa
-  | Sshfp_ed25519
-
-val sshfp_algorithm_to_int : sshfp_algorithm -> int
-val int_to_sshfp_algorithm : int -> sshfp_algorithm option
-val pp_sshfp_algorithm : sshfp_algorithm Fmt.t
-
-type sshfp_type =
-  | Sshfp_SHA1
-  | Sshfp_SHA256
-
-val sshfp_type_to_int : sshfp_type -> int
-val int_to_sshfp_type : int -> sshfp_type option
-val pp_sshfp_type : sshfp_type Fmt.t

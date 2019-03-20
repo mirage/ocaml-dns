@@ -20,13 +20,12 @@
 
 open Udns_zone_state
 
-(** Can raise {! ZoneParseError } *)
-let load origin buf =
+let load ?(origin = Domain_name.root) buf =
   try
     let lexbuf = Lexing.from_string buf in
     state.paren <- 0;
-    state.lineno <- 0;
-    state.origin <- Domain_name.of_strings_exn origin;
+    state.lineno <- 1;
+    state.origin <- origin;
     state.ttl <- Int32.of_int 3600;
     state.owner <- state.origin;
     Ok (Udns_zone_parser.zfile Udns_zone_lexer.token lexbuf)

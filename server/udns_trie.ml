@@ -1,16 +1,17 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
+open Udns
+
 module O = struct
   type t = string
   let compare = Domain_name.compare_sub
 end
 module M = Map.Make(O)
 
-type t = N of t M.t * Udns_map.t
+type t = N of t M.t * Rr_map.t
 
-let empty = N (M.empty, Udns_map.empty)
+let empty = N (M.empty, Rr_map.empty)
 
-(*BISECT-IGNORE-BEGIN*)
 let bindings t =
   let rec go pre (N (sub, e)) =
     let subs = M.bindings sub in
@@ -22,59 +23,54 @@ let bindings t =
   go Domain_name.root t
 
 let pp ppf t =
-  Fmt.(list ~sep:(unit ",@ ") (pair ~sep:(unit ":@,") Domain_name.pp Udns_map.pp)) ppf
+  Fmt.(list ~sep:(unit ",@ ") (pair ~sep:(unit ":@,") Domain_name.pp Rr_map.pp)) ppf
     (bindings t)
-(*BISECT-IGNORE-END*)
 
 let rec equal (N (sub, map)) (N (sub', map')) =
-  Udns_map.equal Udns_map.equal_b map map' && M.equal equal sub sub'
+  Rr_map.equal Rr_map.equal_b map map' && M.equal equal sub sub'
 
 open Rresult.R.Infix
 
 let guard p err = if p then Ok () else Error err
 
 let ent name map =
-  let ttl, soa = Udns_map.get Udns_map.Soa map in
-  `EmptyNonTerminal (name, ttl, soa)
+  let soa = Rr_map.(get Soa map) in
+  `EmptyNonTerminal (name, soa)
 let to_ns name map =
   let ttl, ns =
-    match Udns_map.find Udns_map.Ns map with
+    match Rr_map.(find Ns map) with
     | None -> 0l, Domain_name.Set.empty
     | Some (ttl, ns) -> ttl, ns
   in
   (name, ttl, ns)
 
-let lookup_res name zone ty m =
-  match zone with
+let check_zone = function
   | None -> Error `NotAuthoritative
-  | Some (`Delegation (name, (ttl, ns))) ->
-    Error (`Delegation (name, (ttl, ns)))
-  | Some (`Soa (z, zmap)) ->
-    guard (not (Udns_map.is_empty m)) (ent z zmap) >>= fun () ->
-    match ty with
-    | Udns_enum.ANY ->
-      let bindings = Udns_map.bindings m in
-      let rrs = List.(flatten (map (Udns_map.to_rr name) bindings)) in
-      Ok (Udns_map.B (Udns_map.Any, rrs), to_ns z zmap)
-    | _ -> match Udns_map.lookup_rr ty m with
-      | Some v -> Ok (v, to_ns z zmap)
-      | None -> match Udns_map.findb Udns_map.Cname m with
-        | None when Udns_map.cardinal m = 1 && Udns_map.(mem Soa m) ->
-          (* this is primary a hack for localhost, which must be NXDomain,
-             but there's a SOA for localhost (to handle it authoritatively) *)
-          (* TODO should we check that the label-node map is empty?
-                well, if we have a proper authoritative zone, there'll be a NS *)
-          let ttl, soa = Udns_map.get Udns_map.Soa zmap in
-          Error (`NotFound (z, ttl, soa))
-        | None -> Error (ent z zmap)
-        | Some cname -> Ok (cname, to_ns z zmap)
+  | Some (`Delegation (name, (ttl, ns))) -> Error (`Delegation (name, (ttl, ns)))
+  | Some (`Soa (z, zmap)) -> Ok (z, zmap)
+
+let lookup_res zone ty m =
+  check_zone zone >>= fun (z, zmap) ->
+  guard (not (Rr_map.is_empty m)) (ent z zmap) >>= fun () ->
+  match Rr_map.lookup_rr ty m with
+  | Some v -> Ok (v, to_ns z zmap)
+  | None -> match Rr_map.(findb Cname m) with
+    | None when Rr_map.cardinal m = 1 && Rr_map.(mem Soa m) ->
+      (* this is primary a hack for localhost, which must be NXDomain,
+         but there's a SOA for localhost (to handle it authoritatively) *)
+      (* TODO should we check that the label-node map is empty?
+         well, if we have a proper authoritative zone, there'll be a NS *)
+      let soa = Rr_map.get Rr_map.Soa zmap in
+      Error (`NotFound (z, soa))
+    | None -> Error (ent z zmap)
+    | Some cname -> Ok (cname, to_ns z zmap)
 
 let lookup_aux name t =
   let k = Domain_name.to_array name in
   let l = Array.length k in
   let fzone idx map =
     let name = Domain_name.(of_array (Array.sub (to_array name) 0 idx)) in
-    match Udns_map.(mem Soa map, find Ns map) with
+    match Rr_map.(mem Soa map, find Ns map) with
     | true, _ -> Some (`Soa (name, map))
     | false, Some ns -> Some (`Delegation (name, ns))
     | false, None -> None
@@ -90,8 +86,8 @@ let lookup_aux name t =
               Error (`Delegation (name, (ttl, ns)))
             | None -> Error `NotAuthoritative
             | Some (`Soa (name, map)) ->
-              let ttl, soa = Udns_map.get Udns_map.Soa map in
-              Error (`NotFound (name, ttl, soa))
+              let soa = Rr_map.(get Soa map) in
+              Error (`NotFound (name, soa))
           end
         | x -> go (succ idx) zone x
   in
@@ -99,29 +95,36 @@ let lookup_aux name t =
 
 let lookupb name ty t =
   lookup_aux name t >>= fun (zone, _sub, map) ->
-  lookup_res name zone ty map
+  lookup_res zone ty map
 
 let lookup name key t =
   match lookup_aux name t with
   | Error e -> Error e
   | Ok (_zone, _sub, map) ->
-    match Udns_map.find key map with
+    match Rr_map.(find key map) with
     | Some v -> Ok v
-    | None -> match Udns_map.find Udns_map.Soa map with
+    | None -> match Rr_map.(find Soa map) with
       | None -> Error `NotAuthoritative
-      | Some (ttl, soa) -> Error (`NotFound (name, ttl, soa))
+      | Some soa -> Error (`NotFound (name, soa))
+
+let lookup_any name t =
+  match lookup_aux name t with
+  | Error e -> Error e
+  | Ok (zone, _sub, m) ->
+    check_zone zone >>= fun (z, zmap) ->
+    Ok (m, to_ns z zmap)
 
 let lookup_ignore name ty t =
   match lookup_aux name t with
   | Error _ -> Error ()
   | Ok (_zone, _sub, map) ->
-    match Udns_map.lookup_rr ty map with
+    match Rr_map.lookup_rr ty map with
     | None -> Error ()
     | Some v -> Ok v
 
 let folde name key t f s =
   let get name map acc =
-    match Udns_map.find key map with
+    match Rr_map.find key map with
     | Some a -> f name a acc
     | None -> acc
   in
@@ -138,7 +141,7 @@ let folde name key t f s =
 
 let fold name t f acc =
   let rec foldm name (N (sub, map)) acc =
-    let acc' = Udns_map.fold (f name) map acc in
+    let acc' = Rr_map.fold (f name) map acc in
     let dns_name = Domain_name.prepend_exn ~hostname:false in
     M.fold (fun pre v acc -> foldm (dns_name name pre) v acc) sub acc'
   in
@@ -147,12 +150,13 @@ let fold name t f acc =
   | Ok (_zone, sub, map) -> Ok (foldm name (N (sub, map)) acc)
 
 let collect_rrs name sub map =
+  (* TODO: do not cross zone boundaries! or maybe not!? *)
   let collect_map name rrmap =
     (* collecting rr out of rrmap + name, no SOA! *)
-    Udns_map.fold (fun v acc ->
+    Rr_map.fold (fun v acc ->
         match v with
-        | Udns_map.B (Udns_map.Soa, _) -> acc
-        | v -> Udns_map.to_rr name v @ acc)
+        | Rr_map.(B (Soa, _)) -> acc
+        | v -> (name, v) :: acc)
       rrmap []
   in
   let rec go name sub map =
@@ -166,20 +170,24 @@ let collect_rrs name sub map =
 
 let collect_entries name sub map =
   let ttlsoa =
-    match Udns_map.find Udns_map.Soa map with
+    match Rr_map.(find Soa map) with
     | Some v -> Some v
     | None when Domain_name.(equal root name) ->
-      Some (0l, { Udns_packet.nameserver = Domain_name.root ;
-                  hostmaster = Domain_name.root ;
-                  serial = 0l ; refresh = 0l ; retry = 0l ;
-                  expiry = 0l ; minimum = 0l })
+      Some { Soa.nameserver = Domain_name.root ;
+             hostmaster = Domain_name.root ;
+             serial = 0l ; refresh = 0l ; retry = 0l ;
+             expiry = 0l ; minimum = 0l }
     | None -> None
   in
   match ttlsoa with
   | None -> Error `NotAuthoritative
-  | Some (ttl, soa) ->
+  | Some soa ->
     let entries = collect_rrs name sub map in
-    Ok ({ Udns_packet.name ; ttl ; rdata = Udns_packet.SOA soa }, entries)
+    let map =
+      List.fold_left (fun acc (name, b) -> Name_rr_map.add name b acc)
+        Domain_name.Map.empty entries
+    in
+    Ok (soa, map)
 
 let entries name t =
   lookup_aux name t >>= fun (zone, sub, map) ->
@@ -194,7 +202,7 @@ let entries name t =
 type err = [ `Missing_soa of Domain_name.t
            | `Cname_other of Domain_name.t
            | `Any_not_allowed of Domain_name.t
-           | `Bad_ttl of Domain_name.t * Udns_map.b
+           | `Bad_ttl of Domain_name.t * Rr_map.b
            | `Empty of Domain_name.t * Udns_enum.rr_typ
            | `Missing_address of Domain_name.t
            | `Soa_not_ns of Domain_name.t ]
@@ -202,31 +210,31 @@ type err = [ `Missing_soa of Domain_name.t
 (* TODO: check for no cname loops? and dangling cname!? *)
 let check trie =
   let has_address name =
-    match lookup name Udns_map.A trie with
+    match lookup name Rr_map.A trie with
     | Ok _ -> true
     | Error (`Delegation _) -> true
-    | _ -> match lookup name Udns_map.Aaaa trie with
+    | _ -> match lookup name Rr_map.Aaaa trie with
       | Ok _ -> true
       | _ -> false
   in
   let rec check_sub names state sub map =
     let name = Domain_name.of_strings_exn ~hostname:false (List.rev names) in
     let state' =
-      match Udns_map.find Udns_map.Soa map with
-      | None -> begin match Udns_map.find Udns_map.Ns map with
+      match Rr_map.(find Soa map) with
+      | None -> begin match Rr_map.(find Ns map) with
           | None -> state
           | Some _ -> `None
         end
       | Some _ -> `Soa name
     in
-    guard ((Udns_map.mem Udns_map.Cname map && Udns_map.cardinal map = 1) ||
-           not (Udns_map.mem Udns_map.Cname map)) (`Cname_other name) >>= fun () ->
-    Udns_map.fold (fun v r ->
+    guard Rr_map.((mem Cname map && cardinal map = 1) ||
+                not (mem Cname map)) (`Cname_other name) >>= fun () ->
+    Rr_map.fold (fun v r ->
         r >>= fun () ->
+        let open Rr_map in
         match v with
-        | Udns_map.B (Udns_map.Dnskey, _) -> Ok ()
-        | Udns_map.B (Udns_map.Any, _) -> Error (`Any_not_allowed name)
-        | Udns_map.B (Udns_map.Ns, (ttl, names)) ->
+        | B (Dnskey, _) -> Ok ()
+        | B (Ns, (ttl, names)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else if Domain_name.Set.cardinal names = 0 then
             Error (`Empty (name, Udns_enum.NS))
@@ -238,75 +246,71 @@ let check trie =
                   guard (has_address name) (`Missing_address name)
                 else
                   Ok ()) names (Ok ())
-        | Udns_map.B (Udns_map.Cname, (ttl, _)) ->
+        | B (Cname, (ttl, _)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v)) else Ok ()
-        | Udns_map.B (Udns_map.Mx, (ttl, mxs)) ->
+        | B (Mx, (ttl, mxs)) ->
           if ttl < 0l then
             Error (`Bad_ttl (name, v))
-          else if Udns_map.MxSet.is_empty mxs then
+          else if Mx_set.is_empty mxs then
             Error (`Empty (name, Udns_enum.MX))
           else
             let domain = match state' with `None -> name | `Soa zone -> zone in
-            Udns_map.MxSet.fold (fun (_, name) r ->
+            Mx_set.fold (fun { mail_exchange ; _ } r ->
                 r >>= fun () ->
-                if Domain_name.sub ~subdomain:name ~domain then
-                  guard (has_address name) (`Missing_address name)
+                if Domain_name.sub ~subdomain:mail_exchange ~domain then
+                  guard (has_address mail_exchange) (`Missing_address mail_exchange)
                 else
                   Ok ())
               mxs (Ok ())
-        | Udns_map.B (Udns_map.Ptr, (ttl, name)) ->
+        | B (Ptr, (ttl, name)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v)) else Ok ()
-        | Udns_map.B (Udns_map.Soa, (ttl, soa)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else begin match Udns_map.find Udns_map.Ns map with
+        | B (Soa, soa) ->
+          begin match find Ns map with
             | Some (_, names) ->
-              if Domain_name.Set.mem soa.Udns_packet.nameserver names then
+              if Domain_name.Set.mem soa.nameserver names then
                 Ok ()
               else
-                Error (`Soa_not_ns soa.Udns_packet.nameserver)
+                Error (`Soa_not_ns soa.nameserver)
             | None -> Ok () (* we're happy to only have a soa, but nothing else -- useful for grounding zones! *)
           end
-        | Udns_map.B (Udns_map.Txt, (ttl, txts)) ->
+        | B (Txt, (ttl, txts)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Udns_map.TxtSet.is_empty txts then
+          else if Txt_set.is_empty txts then
             Error (`Empty (name, Udns_enum.TXT))
           else if
-            Udns_map.TxtSet.exists (function
-                | [] -> true
-                | xs -> List.exists (fun s -> String.length s = 0) xs)
-              txts
+            Txt_set.exists (fun s -> String.length s > 0) txts
           then
-            Error (`Empty (name, Udns_enum.TXT))
-          else
             Ok ()
-        | Udns_map.B (Udns_map.A, (ttl, a)) ->
+          else
+            Error (`Empty (name, Udns_enum.TXT))
+        | B (A, (ttl, a)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Udns_map.Ipv4Set.is_empty a then
+          else if Ipv4_set.is_empty a then
             Error (`Empty (name, Udns_enum.A))
           else Ok ()
-        | Udns_map.B (Udns_map.Aaaa, (ttl, aaaa)) ->
+        | B (Aaaa, (ttl, aaaa)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Udns_map.Ipv6Set.is_empty aaaa then
+          else if Ipv6_set.is_empty aaaa then
             Error (`Empty (name, Udns_enum.AAAA))
           else Ok ()
-        | Udns_map.B (Udns_map.Srv, (ttl, srvs)) ->
+        | B (Srv, (ttl, srvs)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Udns_map.SrvSet.is_empty srvs then
+          else if Srv_set.is_empty srvs then
             Error (`Empty (name, Udns_enum.SRV))
           else Ok ()
-        | Udns_map.B (Udns_map.Caa, (ttl, caas)) ->
+        | B (Caa, (ttl, caas)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Udns_map.CaaSet.is_empty caas then
+          else if Caa_set.is_empty caas then
             Error (`Empty (name, Udns_enum.CAA))
           else Ok ()
-        | Udns_map.B (Udns_map.Tlsa, (ttl, tlsas)) ->
+        | B (Tlsa, (ttl, tlsas)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Udns_map.TlsaSet.is_empty tlsas then
+          else if Tlsa_set.is_empty tlsas then
             Error (`Empty (name, Udns_enum.TLSA))
           else Ok ()
-        | Udns_map.B (Udns_map.Sshfp, (ttl, sshfps)) ->
+        | B (Sshfp, (ttl, sshfps)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Udns_map.SshfpSet.is_empty sshfps then
+          else if Sshfp_set.is_empty sshfps then
             Error (`Empty (name, Udns_enum.SSHFP))
           else Ok ())
       map (Ok ()) >>= fun () ->
@@ -322,7 +326,7 @@ let insertb name b t =
   let l = Array.length k in
   let rec go idx (N (sub, map)) =
     if idx = l then
-      N (sub, Udns_map.addb b map)
+      N (sub, Rr_map.addb b map)
     else
       let lbl = Array.get k idx in
       let node = match M.find lbl sub with
@@ -334,11 +338,11 @@ let insertb name b t =
   in
   go 0 t
 
-let insert name k v t = insertb name (Udns_map.B (k, v)) t
+let insert name k v t = insertb name (Rr_map.B (k, v)) t
 
 let insert_map m t =
   Domain_name.Map.fold (fun name map trie ->
-      Udns_map.fold (fun v trie -> insertb name v trie) map trie)
+      Rr_map.fold (fun v trie -> insertb name v trie) map trie)
     m t
 
 let remove_aux k t a =
@@ -352,7 +356,7 @@ let remove_aux k t a =
       | exception Not_found -> N (sub, map)
       | x ->
         let N (sub', map') = go (succ idx) x in
-        if M.is_empty sub' && Udns_map.is_empty map' then
+        if M.is_empty sub' && Rr_map.is_empty map' then
           N (M.remove lbl sub, map)
         else
           N (M.add lbl (N (sub', map')) sub, map)
@@ -361,10 +365,17 @@ let remove_aux k t a =
 
 let remove k ty t =
   let remove sub map =
+    let map' = Rr_map.remove ty map in
+    N (sub, map')
+  in
+  remove_aux k t remove
+
+let remove_rr k ty t =
+  let remove sub map =
     if ty = Udns_enum.ANY then
-      N (sub, Udns_map.empty)
+      N (sub, Rr_map.empty)
     else
-      let map' = Udns_map.remove_rr ty map in
+      let map' = Rr_map.remove_rr ty map in
       N (sub, map')
   in
   remove_aux k t remove
@@ -373,23 +384,22 @@ let remove_zone name t =
   let remove sub _ =
     let rec go sub =
       M.fold (fun lbl (N (sub, map)) s ->
-          if Udns_map.(mem Soa map) then
+          if Rr_map.(mem Soa map) then
             M.add lbl (N (sub, map)) s
           else
             let sub' = go sub in
-            if sub' = M.empty then s else M.add lbl (N (sub', Udns_map.empty)) s)
+            if sub' = M.empty then s else M.add lbl (N (sub', Rr_map.empty)) s)
         sub M.empty
     in
-    N (go sub, Udns_map.empty)
+    N (go sub, Rr_map.empty)
   in
   remove_aux name t remove
 
-(*BISECT-IGNORE-BEGIN*)
 let pp_err ppf = function
   | `Missing_soa name -> Fmt.pf ppf "missing soa for %a" Domain_name.pp name
   | `Cname_other name -> Fmt.pf ppf "%a contains a cname record, and also other entries" Domain_name.pp name
   | `Any_not_allowed name -> Fmt.pf ppf "resource type ANY is not allowed, but present for %a" Domain_name.pp name
-  | `Bad_ttl (name, v) -> Fmt.pf ppf "bad TTL for %a %a" Domain_name.pp name Udns_map.pp_b v
+  | `Bad_ttl (name, v) -> Fmt.pf ppf "bad TTL for %a %a" Domain_name.pp name Rr_map.pp_b v
   | `Empty (name, typ) -> Fmt.pf ppf "%a empty %a" Domain_name.pp name Udns_enum.pp_rr_typ typ
   | `Missing_address name -> Fmt.pf ppf "missing address record for %a" Domain_name.pp name
   | `Soa_not_ns name -> Fmt.pf ppf "%a nameserver of SOA is not in nameserver set" Domain_name.pp name
@@ -398,8 +408,7 @@ let pp_e ppf = function
   | `Delegation (name, (ttl, ns)) ->
     Fmt.pf ppf "delegation %a to TTL %lu %a" Domain_name.pp name ttl
       Fmt.(list ~sep:(unit ",@,") Domain_name.pp) (Domain_name.Set.elements ns)
-  | `EmptyNonTerminal (name, ttl, soa) ->
-    Fmt.pf ppf "empty non terminal %a TTL %lu SOA %a" Domain_name.pp name ttl Udns_packet.pp_soa soa
+  | `EmptyNonTerminal (name, soa) ->
+    Fmt.pf ppf "empty non terminal %a SOA %a" Domain_name.pp name Soa.pp soa
   | `NotAuthoritative -> Fmt.string ppf "not authoritative"
-  | `NotFound (name, ttl, soa) -> Fmt.pf ppf "not found %a TTL %lu soa %a" Domain_name.pp name ttl Udns_packet.pp_soa soa
-(*BISECT-IGNORE-END*)
+  | `NotFound (name, soa) -> Fmt.pf ppf "not found %a soa %a" Domain_name.pp name Soa.pp soa

@@ -20,11 +20,12 @@
 
 (* State variables for the parser & lexer *)
 type parserstate = {
-  mutable paren : int;
-  mutable lineno : int;
-  mutable origin : Domain_name.t;
-  mutable ttl : int32;
-  mutable owner : Domain_name.t;
+  mutable paren : int ;
+  mutable lineno : int ;
+  mutable origin : Domain_name.t ;
+  mutable ttl : int32 ;
+  mutable owner : Domain_name.t ;
+  mutable zone : Udns.Name_rr_map.t ;
 }
 
 let state = {
@@ -33,6 +34,7 @@ let state = {
   ttl = Int32.of_int 3600 ;
   origin = Domain_name.root ;
   owner = Domain_name.root ;
+  zone = Domain_name.Map.empty ;
 }
 
 exception Zone_parse_problem of string

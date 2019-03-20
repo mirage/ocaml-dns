@@ -1,0 +1,6 @@
+(library
+ (name udns_certify)
+ (synopsis "A Domain Name system (DNS) library, certificate integration")
+ (public_name udns-certify)
+ (wrapped false)
+ (libraries udns udns-tsig x509 randomconv))

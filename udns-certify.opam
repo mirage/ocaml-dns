@@ -11,9 +11,10 @@ depends: [
   "dune" {build & >= "1.2.0"}
   "ocaml" {>= "4.07.0"}
   "udns"
+  "udns-tsig"
   "randomconv"
   "duration"
-  "alcotest" {with-test}
+  "x509"
 ]
 
 build: [
@@ -22,8 +23,8 @@ build: [
   ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
 
-synopsis: "DNS server, primary and secondary"
+synopsis: "MirageOS let's encrypt certificate retrieval"
 description: """
-Primary and secondary DNS server implemented in value-passing style. Needs an
-effectful layer to be useful.
+A function to retrieve a certificate when providing a hostname, TSIG key, server
+IP, and an optional key seed. Best used with an letsencrypt unikernel.
 """

@@ -1,5 +1,9 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
+[@@@ocaml.warning "-27"]
+
+open Udns
+
 open Udns_resolver_entry
 
 module V = struct
@@ -58,28 +62,9 @@ let pp = LRU.pp Fmt.(pair ~sep:(unit ": ") Domain_name.pp V.pp)
 
 module N = Domain_name.Set
 
-let update_ttl created ts rr =
-  let used = Duration.to_sec (Int64.sub ts created) in
-  match Int32.to_int rr.Udns_packet.ttl - used with
-  | x when x < 0 -> None
-  | ttl -> Some { rr with Udns_packet.ttl = Int32.of_int ttl }
-
 let update_res created ts res =
-  let up = update_ttl created ts in
-  let ups =
-    List.fold_left
-      (fun acc rr -> match up rr with None -> acc | Some x -> x :: acc)
-      []
-  in
-  match res with
-  | NoData soa ->
-    (match up soa with Some soa -> Some (NoData soa) | None -> None)
-  | NoDom soa ->
-    (match up soa with Some soa -> Some (NoDom soa) | None -> None)
-  | ServFail soa ->
-    (match up soa with Some soa -> Some (ServFail soa) | None -> None)
-  | NoErr rrs ->
-    (match ups rrs with [] -> None | rrs -> Some (NoErr rrs))
+  let used = Int32.of_int (Duration.to_sec (Int64.sub ts created)) in
+  decrease_ttl used res
 
 let cached t ts typ nam =
   match LRU.find nam t with
@@ -133,76 +118,52 @@ and 1035 6.2:
    change the SOA MINIMUM field without ambiguous semantics.
 *)
 let week = Int32.of_int Duration.(to_sec (of_day 7))
-let smooth_rr rr =
-  if rr.Udns_packet.ttl > week then begin
-    Logs.warn (fun m -> m "reduced TTL of %a to one week" Udns_packet.pp_rr rr) ;
-    { rr with Udns_packet.ttl = week }
-  end else
-    rr
 
-let smooth_ttl = function
-  | NoErr rrs -> NoErr (List.map smooth_rr rrs)
-  | NoData rr -> NoData (smooth_rr rr)
-  | NoDom rr -> NoDom (smooth_rr rr)
-  | ServFail rr -> ServFail (smooth_rr rr)
+let smooth_ttl = smooth_ttl week
 
 let maybe_insert typ nam ts rank res t =
-  match res with
-  | NoErr [] ->
-    Logs.warn (fun m -> m "won't add an empty rr for %a (%a)!"
-                  Domain_name.pp nam Udns_enum.pp_rr_typ typ) ;
-    t
-  | _ ->
-    let add_entry tm t =
-      let full = (ts, rank, smooth_ttl res) in
-      let v = match typ, res with
-        | Udns_enum.CNAME, _ -> V.All full
-        | _, NoDom _ -> V.All full
-        | _, _ -> V.Entries (Udns_enum.RRMap.add typ full tm)
-      in
-      s := { !s with insert = succ !s.insert } ;
-      LRU.add nam v t
+  let add_entry tm t =
+    let full = (ts, rank, smooth_ttl res) in
+    let v = match typ, res with
+      | Udns_enum.CNAME, _ -> V.All full
+      | _, NoDom _ -> V.All full
+      | _, _ -> V.Entries (Udns_enum.RRMap.add typ full tm)
     in
-    let add_if_ranked_higher (ts', rank', res') tm t =
-      match update_res ts' ts res', compare_rank rank' rank with
-      | Some _, `Bigger -> t
-      | _ -> add_entry tm t
-    in
-    match LRU.find ~promote:false nam t with
-    | None -> add_entry Udns_enum.RRMap.empty t
-    | Some (V.All triple, t) -> add_if_ranked_higher triple Udns_enum.RRMap.empty t
-    | Some (V.Entries tm, t) -> match Udns_enum.RRMap.find typ tm with
-      | exception Not_found -> add_entry tm t
-      | triple -> add_if_ranked_higher triple tm t
+    s := { !s with insert = succ !s.insert } ;
+    LRU.add nam v t
+  in
+  let add_if_ranked_higher (ts', rank', res') tm t =
+    match update_res ts' ts res', compare_rank rank' rank with
+    | Some _, `Bigger -> t
+    | _ -> add_entry tm t
+  in
+  match LRU.find ~promote:false nam t with
+  | None -> add_entry Udns_enum.RRMap.empty t
+  | Some (V.All triple, t) -> add_if_ranked_higher triple Udns_enum.RRMap.empty t
+  | Some (V.Entries tm, t) -> match Udns_enum.RRMap.find typ tm with
+    | exception Not_found -> add_entry tm t
+    | triple -> add_if_ranked_higher triple tm t
 
 let resolve_ns t ts name =
   match cached t ts Udns_enum.A name with
   | Error _ -> `NeedA name, t
-  | Ok (NoErr answer, t) ->
-    begin match
-        List.fold_left (fun acc rr ->
-            match rr.Udns_packet.rdata, acc with
-            | Udns_packet.A ip, `Ip ips -> `Ip (ip :: ips)
-            | Udns_packet.A ip, _ -> `Ip [ ip ]
-            | _, `Ip ips -> `Ip ips
-            | Udns_packet.CNAME name, `No -> `Cname name
-            | rdata, x ->
-              Logs.warn (fun m -> m "resolve_ns: ignoring %a (looked A %a)"
-                           Udns_packet.pp_rdata rdata Domain_name.pp name) ;
-              x)
-          `No answer
-      with
-      | `No -> `NeedA name, t
-      | `Ip ips -> `HaveIPS ips, t
-      | `Cname cname ->
+  | Ok (NoErr Rr_map.(B (k, v) as b), t) ->
+    begin
+      match k, v with
+      | Rr_map.A, (_, ips) -> `HaveIPS ips, t
+      | Rr_map.Cname, (_, alias) ->
         Logs.warn
           (fun m -> m "resolve_ns: asked for A record of NS %a, got cname %a"
-              Domain_name.pp name Domain_name.pp cname) ;
-        `NeedCname cname, t
+              Domain_name.pp name Domain_name.pp alias) ;
+        `NeedCname alias, t
+      | _ ->
+        Logs.warn (fun m -> m "resolve_ns: ignoring %a (looked A %a)"
+                      Rr_map.pp_b b Domain_name.pp name) ;
+        `NeedA name, t
     end
-  | Ok (NoDom rr, t) ->
-    Logs.warn (fun m -> m "resolve_ns: NoDom, cache lookup for %a is %a"
-                  Domain_name.pp name Udns_packet.pp_rr rr) ;
+  | Ok (NoDom _, t) ->
+    Logs.warn (fun m -> m "resolve_ns: NoDom, cache lookup for %a"
+                  Domain_name.pp name) ;
     `NoDom, t
   | Ok (r, t) ->
     Logs.warn (fun m -> m "resolve_ns: No, cache lookup for %a is %a"
@@ -217,51 +178,45 @@ let find_ns t rng ts stash name =
   in
   match cached t ts Udns_enum.NS name with
   | Error _ -> `NeedNS, t
-  | Ok (NoErr [], t) -> `No, t
-  | Ok (NoErr xs, t) ->
+  | Ok (NoErr Rr_map.(B (k, v) as b), t) ->
     (* TODO test case -- we can't pick right now, unfortunately
        the following setup is there in the wild:
        berliner-zeitung.de NS 1.ns.berlinonline.de, 2.ns.berlinonline.de, x.ns.berlinonline.de
        berlinonline.de NS 1.ns.berlinonline.net, 2.ns.berlinonline.net, dns-berlinonline-de.unbelievable-machine.net
        berlinonline.net NS 2.ns.berlinonline.de, x.ns.berlinonline.de, 1.ns.berlinonline.de.
        --> all delivered without glue *)
-    begin match
-        List.fold_left (fun acc rr ->
-            match acc, rr.Udns_packet.rdata with
-            | `Name ns, Udns_packet.NS n -> `Name (Domain_name.Set.add n ns)
-            | _, Udns_packet.NS n -> `Name (Domain_name.Set.singleton n)
-            | `Nothing, Udns_packet.CNAME name -> `Cname name (* foo.com CNAME bar.com case *)
-            | acc, x ->
-              Logs.err (fun m -> m "find_ns: looked for NS %a, but got %a"
-                           Domain_name.pp name Udns_packet.pp_rdata x) ;
-              acc) `Nothing xs
-      with
-      | `Cname name -> `Cname name, t
-      | `Nothing -> `No, t
-      | `Name ns ->
-        let actual = Domain_name.Set.diff ns stash in
-        match pick (Domain_name.Set.elements actual) with
-        | None ->
-          Logs.warn (fun m -> m "find_ns: couldn't take any name from %a (stash: %a), returning loop"
-                        Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements ns)
-                        Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements stash)) ;
-          `Loop, t
-        | Some nsname ->
-          (* tricky conditional:
-             foo.com NS ns1.foo.com ; ns1.foo.com CNAME ns1.bar.com (well, may not happen ;)
-             foo.com NS ns1.foo.com -> NeedGlue foo.com *)
-          match resolve_ns t ts nsname with
-          | `NeedA aname, t when Domain_name.sub ~subdomain:aname ~domain:name -> `NeedGlue name, t
-          | `NeedCname cname, t -> `NeedA cname, t
-          | `HaveIPS ips, t ->
-            (* TODO should use a non-empty list of ips here *)
-            begin match pick ips with
-              | None -> `NeedA nsname, t
-              | Some ip -> `HaveIP ip, t
-            end
-          | `NeedA aname, t -> `NeedA aname, t
-          | `No, t -> `No, t
-          | `NoDom, t -> `NoDom, t
+    begin match k, v with
+      | Rr_map.Ns, (_, ns) ->
+        begin
+          let actual = Domain_name.Set.diff ns stash in
+          match pick (Domain_name.Set.elements actual) with
+          | None ->
+            Logs.warn (fun m -> m "find_ns: couldn't take any name from %a (stash: %a), returning loop"
+                          Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements ns)
+                          Fmt.(list ~sep:(unit ",@ ") Domain_name.pp) (Domain_name.Set.elements stash)) ;
+            `Loop, t
+          | Some nsname ->
+            (* tricky conditional:
+               foo.com NS ns1.foo.com ; ns1.foo.com CNAME ns1.bar.com (well, may not happen ;)
+               foo.com NS ns1.foo.com -> NeedGlue foo.com *)
+            match resolve_ns t ts nsname with
+            | `NeedA aname, t when Domain_name.sub ~subdomain:aname ~domain:name -> `NeedGlue name, t
+            | `NeedCname cname, t -> `NeedA cname, t
+            | `HaveIPS ips, t ->
+              (* TODO should use a non-empty list of ips here *)
+              begin match pick (Rr_map.Ipv4_set.elements ips) with
+                | None -> `NeedA nsname, t
+                | Some ip -> `HaveIP ip, t
+              end
+            | `NeedA aname, t -> `NeedA aname, t
+            | `No, t -> `No, t
+            | `NoDom, t -> `NoDom, t
+        end
+      | Rr_map.Cname, (_, alias) -> `Cname alias, t (* foo.com CNAME bar.com case *)
+      | _ ->
+        Logs.err (fun m -> m "find_ns: looked for NS %a, but got %a"
+                     Domain_name.pp name Rr_map.pp_b b) ;
+        `No, t
     end
   | Ok (_, t) -> `No, t
 
@@ -278,18 +233,10 @@ let find_nearest_ns rng ts t name =
     | Some ip -> ip
   in
   let find_ns name = match cached t ts Udns_enum.NS name with
-    | Ok (NoErr rrs, _) ->
-      List.fold_left (fun acc rr ->
-          match rr.Udns_packet.rdata with
-          | Udns_packet.NS name -> name :: acc
-          | _ -> acc) [] rrs
+    | Ok (NoErr Rr_map.(B (Ns, (_, names))), _) -> Domain_name.Set.elements names
     | _ -> []
   and find_a name = match cached t ts Udns_enum.A name with
-    | Ok (NoErr rrs, _) ->
-      List.fold_left (fun acc rr ->
-          match rr.Udns_packet.rdata with
-          | Udns_packet.A ip -> ip :: acc
-          | _ -> acc) [] rrs
+    | Ok (NoErr Rr_map.(B (A, (_, ips))), _) -> Rr_map.Ipv4_set.elements ips
     | _ -> []
   in
   let rec go nam =
@@ -440,47 +387,39 @@ let _resolve t ~rng ts name typ =
   in
   go t (N.singleton name) typ Domain_name.root (List.rev (Domain_name.to_strings name)) Domain_name.root root
 
-let follow_cname t ts typ name answer =
-  let rec follow t names acc curr =
-    match
-      match curr with
-      | [ x ] ->
-        begin match x.Udns_packet.rdata with
-          | Udns_packet.CNAME n -> Some n
-          | _ -> None
-        end
-      | _ -> None
-    with
-    | None ->
-      Logs.debug (fun m -> m "follow_cname: followed names %a noerror"
-                     Fmt.(list ~sep:(unit ", ") Domain_name.pp) (N.elements names)) ;
-      `NoError (acc, t)
-    | Some n ->
-      if N.mem n names then begin
+let follow_cname t ts typ name b =
+  let rec follow t acc name Rr_map.(B (k, v) as b) =
+    match k, v with
+    | Rr_map.Cname, (_, alias) ->
+      if Domain_name.Map.mem alias acc then begin
         Logs.debug (fun m -> m "follow_cname: cycle detected") ;
         `Cycle (acc, t)
-      end else
-        match cached t ts typ n with
+      end else begin
+        match cached t ts typ alias with
         | Error _ ->
-          Logs.debug (fun m -> m "follow_cname: cache miss, need to query %a" Domain_name.pp n) ;
-          `Query (n, t)
+          Logs.debug (fun m -> m "follow_cname: cache miss, need to query %a" Domain_name.pp alias) ;
+          `Query (alias, t)
         | Ok (NoErr ans, t) ->
           Logs.debug (fun m -> m "follow_cname: noerr, follow again") ;
-          follow t (N.add n names) (acc@ans) ans
-        | Ok (NoDom soa, t) ->
+          follow t (Name_rr_map.add alias ans acc) alias ans
+        | Ok (NoDom (ttl, soa) as res, t) ->
           Logs.debug (fun m -> m "follow_cname: nodom") ;
-          `NoDom ((acc, soa), t)
-        | Ok (NoData soa, t) ->
+          `NoDom ((acc, to_map res), t)
+        | Ok (NoData (ttl, soa) as res, t) ->
           Logs.debug (fun m -> m "follow_cname: nodata") ;
-          `NoData ((acc, soa), t)
+          `NoData ((acc, to_map res), t)
         (* XXX: the last case here is not symmetric... the acc is dropped
-           TODO: write tests and evalute what we need (what clients expect) *)
-        | Ok (ServFail soa, t) ->
+           TODO: write tests and evaluate what we need (what clients expect) *)
+        | Ok (ServFail (ttl, soa) as res, t) ->
           Logs.debug (fun m -> m "follow_cname: servfail") ;
-          `ServFail (soa, t)
+          `ServFail (to_map res, t)
+      end
+    | _ -> `NoError (Name_rr_map.add name b acc, t)
   in
-  follow t (N.singleton name) answer answer
+  let initial = Name_rr_map.add name b Domain_name.Map.empty in
+  follow t initial name b
 
+(*
 let additionals t ts rrs =
   (* TODO: also AAAA *)
   N.fold (fun nam (acc, t) ->
@@ -489,47 +428,45 @@ let additionals t ts rrs =
       | _ -> acc, t)
     (Udns_packet.rr_names rrs)
     ([], t)
+*)
 
-let answer t ts q id =
+let answer t ts (name, typ) id =
   let packet t add rcode answer authority =
     (* TODO why is this RA + RD in here? should not be for recursive algorithm
          also, there should be authoritative... *)
-    let header = { Udns_packet.id ; query = false ; operation = Udns_enum.Query ;
-                   authoritative = false ; truncation = false ;
-                   recursion_desired = true ; recursion_available = true ;
-                   authentic_data = false ; checking_disabled = false ;
-                   rcode }
+    let flags = Packet.Header.FS.(add `Recursion_desired (singleton `Recursion_available)) in
+    let header = { Packet.Header.id ; query = false ; operation = Udns_enum.Query ;
+                   rcode ; flags }
     (* XXX: we should look for a fixpoint here ;) *)
-    and additional, t = if add then additionals t ts answer else [], t
-    and question = [ q ]
-    in
-    (header, `Query { Udns_packet.question ; answer ; authority ; additional }, t)
+    (*    and additional, t = if add then additionals t ts answer else [], t *)
+    and query = (answer, authority) in
+    (header, `Query query, t)
   in
-  match cached t ts q.Udns_packet.q_type q.Udns_packet.q_name with
-  | Error _ -> `Query (q.Udns_packet.q_name, t)
-  | Ok (NoDom authority, t) ->
-    `Packet (packet t false Udns_enum.NXDomain [] [authority])
-  | Ok (NoData authority, t) ->
-    `Packet (packet t false Udns_enum.NoError [] [authority])
-  | Ok (ServFail authority, t) ->
-    `Packet (packet t false Udns_enum.ServFail [] [authority])
-  | Ok (NoErr answer, t) -> match q.Udns_packet.q_type with
-    | Udns_enum.CNAME -> `Packet (packet t false Udns_enum.NoError answer [])
+  match cached t ts typ name with
+  | Error _ -> `Query (name, t)
+  | Ok (NoDom (ttl, authority) as res, t) ->
+    `Packet (packet t false Udns_enum.NXDomain Domain_name.Map.empty (to_map res))
+  | Ok (NoData (ttl, authority) as res, t) ->
+    `Packet (packet t false Udns_enum.NoError Domain_name.Map.empty (to_map res))
+  | Ok (ServFail (ttl, authority) as res, t) ->
+    `Packet (packet t false Udns_enum.ServFail Domain_name.Map.empty (to_map res))
+  | Ok (NoErr answer as res, t) -> match typ with
+    | Udns_enum.CNAME -> `Packet (packet t false Udns_enum.NoError (to_map res) Domain_name.Map.empty)
     | _ ->
-      match follow_cname t ts q.Udns_packet.q_type q.Udns_packet.q_name answer with
-      | `NoError (answer, t) -> `Packet (packet t true Udns_enum.NoError answer [])
-      | `Cycle (answer, t) -> `Packet (packet t true Udns_enum.NoError answer [])
+      match follow_cname t ts typ name answer with
+      | `NoError (answer, t) -> `Packet (packet t true Udns_enum.NoError answer Domain_name.Map.empty)
+      | `Cycle (answer, t) -> `Packet (packet t true Udns_enum.NoError answer Domain_name.Map.empty)
       | `Query (n, t) -> `Query (n, t)
-      | `NoDom ((answer, soa), t) -> `Packet (packet t true Udns_enum.NXDomain answer [soa])
-      | `NoData ((answer, soa), t) -> `Packet (packet t true Udns_enum.NoError answer [soa])
-      | `ServFail (soa, t) -> `Packet (packet t true Udns_enum.ServFail [] [soa])
+      | `NoDom ((answer, soa), t) -> `Packet (packet t true Udns_enum.NXDomain answer soa)
+      | `NoData ((answer, soa), t) -> `Packet (packet t true Udns_enum.NoError answer soa)
+      | `ServFail (soa, t) -> `Packet (packet t true Udns_enum.ServFail Domain_name.Map.empty soa)
 
 let handle_query t ~rng ts q qid =
   match answer t ts q qid with
   | `Packet (hdr, pkt, t) -> `Answer (hdr, pkt), t
   | `Query (name, t) ->
     let r =
-      match q.Udns_packet.q_type with
+      match snd q with
       (* similar for TLSA, which uses _443._tcp.<name> (not a service name!) *)
       | Udns_enum.SRV when Domain_name.is_service name ->
         Ok (Domain_name.drop_labels_exn ~amount:2 name, Udns_enum.NS)
@@ -548,7 +485,7 @@ let handle_query t ~rng ts q qid =
         `Nothing, t
       | Ok (zone, name', typ, ip, t) ->
         let name, typ =
-          match Domain_name.equal name' qname, q.Udns_packet.q_type with
+          match Domain_name.equal name' qname, snd q with
           | true, Udns_enum.SRV -> name, Udns_enum.SRV
           | _ -> name', typ
         in

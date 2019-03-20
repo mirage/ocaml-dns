@@ -11,7 +11,7 @@
   (public_name ocertify)
   (package udns-cli)
   (modules ocertify)
-  (libraries udns udns-tsig udns-cli bos fpath x509 ptime ptime.clock.os nocrypto nocrypto.unix))
+  (libraries udns udns-certify udns-cli bos fpath x509 ptime ptime.clock.os nocrypto nocrypto.unix))
 
 (executable
   (name oupdate)
@@ -26,6 +26,13 @@
   (package udns-cli)
   (modules onotify)
   (libraries udns udns-tsig udns-cli ptime ptime.clock.os nocrypto nocrypto.unix))
+
+(executable
+  (name ozone)
+  (public_name ozone)
+  (package udns-cli)
+  (modules ozone)
+  (libraries udns udns-cli udns-zonefile udns-server bos rresult))
 
 (executable
   (name         odns)

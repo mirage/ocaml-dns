@@ -9,19 +9,23 @@ license: "BSD2"
 
 depends: [
   "dune" {build & >= "1.2.0"}
-  "ocaml" {>= "4.04.0"}
+  "ocaml" {>= "4.07.0"}
   "udns"
   "udns-tsig"
   "udns-client-lwt"
+  "udns-zonefile"
+  "udns-server"
+  "udns-certify"
   "rresult"
-  "randomconv"
-  "duration"
   "bos"
   "cmdliner"
   "fpath"
   "x509"
   "nocrypto"
   "hex"
+  "ptime"
+  "logs"
+  "fmt"
   "ipaddr" {>= "3.0.0"}
   "alcotest" {with-test}
 ]

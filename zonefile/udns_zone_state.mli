@@ -22,6 +22,7 @@ type parserstate = {
     mutable origin : Domain_name.t;
     mutable ttl : int32;
     mutable owner : Domain_name.t;
+    mutable zone : Udns.Name_rr_map.t ;
   }
 
 val state : parserstate

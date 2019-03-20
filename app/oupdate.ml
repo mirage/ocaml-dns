@@ -1,19 +1,23 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 
-let update zone hostname ip_address keyname dnskey now =
-  let nsupdate =
-    let zone = { Udns_packet.q_name = zone ; q_type = Udns_enum.SOA }
-    and update = [
-      Udns_packet.Remove (hostname, Udns_enum.A) ;
-      Udns_packet.Add ({ Udns_packet.name = hostname ; ttl = 60l ; rdata = Udns_packet.A ip_address })
-    ]
+open Udns
+
+let create_update zone hostname ip_address =
+  let zone = (zone, Udns_enum.SOA)
+  and update =
+    let up =
+      Domain_name.Map.singleton hostname
+        [
+          Packet.Update.Remove Udns_enum.A ;
+          Packet.Update.Add Rr_map.(B (A, (60l, Ipv4_set.singleton ip_address)))
+        ]
     in
-    { Udns_packet.zone ; prereq = [] ; update ; addition = [] }
+    (Domain_name.Map.empty, up)
   and header =
     let hdr = Udns_cli.dns_header (Random.int 0xFFFF) in
-    { hdr with Udns_packet.operation = Udns_enum.Update }
+    { hdr with operation = Udns_enum.Update }
   in
-  Udns_tsig.encode_and_sign ~proto:`Tcp header (`Update nsupdate) now dnskey keyname
+  (header, zone, `Update update)
 
 let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
   Random.self_init () ;
@@ -23,8 +27,9 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
                Domain_name.pp zone
                Domain_name.pp hostname
                Ipaddr.V4.pp ip_address) ;
-  Logs.debug (fun m -> m "using key %a: %a" Domain_name.pp keyname Udns_packet.pp_dnskey dnskey) ;
-  match update zone hostname ip_address keyname dnskey now with
+  Logs.debug (fun m -> m "using key %a: %a" Domain_name.pp keyname Udns.Dnskey.pp dnskey) ;
+  let hdr, zone, update = create_update zone hostname ip_address in
+  match Udns_tsig.encode_and_sign ~proto:`Tcp hdr zone update now dnskey keyname with
   | Error msg -> `Error (false, msg)
   | Ok (data, mac) ->
     let data_len = Cstruct.len data in
@@ -32,12 +37,18 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
     let socket = Udns_cli.connect_tcp serverip port in
     Udns_cli.send_tcp socket data ;
     let read_data = Udns_cli.recv_tcp socket in
+    (try (Unix.close socket) with _ -> ()) ;
     match Udns_tsig.decode_and_verify now dnskey keyname ~mac read_data with
-    | Error e -> `Error (false, "nsupdate replied with error " ^ e)
-    | Ok _ ->
-      Logs.app (fun m -> m "successfull update!") ;
-      Unix.close socket ;
+    | Error e ->
+      Logs.err (fun m -> m "nsupdate error %s" e) ;
+      `Error (false, "")
+    | Ok (res, _, _) when Packet.is_reply hdr zone res ->
+      Logs.app (fun m -> m "successful and signed update!") ;
       `Ok ()
+    | Ok (res, _, _) ->
+      Logs.err (fun m -> m "expected reply to %a %a, got %a"
+                   Packet.Header.pp hdr Packet.Question.pp zone Packet.pp_res res) ;
+      `Error (false, "")
 
 open Cmdliner
 

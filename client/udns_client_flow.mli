@@ -67,7 +67,7 @@ sig
   val nameserver : U.t -> U.ns_addr
   (** [nameserver t] returns the default nameserver to be used. *)
 
-  val getaddrinfo : U.t -> ?nameserver:U.ns_addr -> 'response Udns_map.k ->
+  val getaddrinfo : U.t -> ?nameserver:U.ns_addr -> 'response Udns.Rr_map.k ->
     Domain_name.t -> ('response, 'err) U.io
   (** [getaddrinfo nameserver query_type name] is the [query_type]-dependent
       response from [nameserver] regarding [name], or an [Error _] message.

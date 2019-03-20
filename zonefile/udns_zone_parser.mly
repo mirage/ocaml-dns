@@ -49,6 +49,7 @@ let parse_uint32 s =
 let parse_ipv6 s =
   Ipaddr.V6.of_string_exn s
 
+open Udns
 %}
 
 %token EOF
@@ -82,19 +83,18 @@ let parse_ipv6 s =
 %token <string> CLASS_HS
 
 %start zfile
-%type <Udns_packet.rr list> zfile  /* This list is in reverse order! */
+%type <Udns.Name_rr_map.t> zfile
 
 %%
 
-zfile: lines EOF { $1 } | lines error EOF { $1 }
+zfile: lines EOF { state.zone }
 
 lines:
-   /* nothing */ { [] }
- | lines EOL { $1 }
- | lines origin EOL { $1 }
- | lines ttl EOL { $1 }
- | lines rrline EOL { $2 :: $1 }
- | lines error EOL { $1 }
+   /* nothing */ { }
+ | lines EOL { }
+ | lines origin EOL { }
+ | lines ttl EOL { }
+ | lines rrline EOL { }
 
 s: SPACE {} | s SPACE {}
 
@@ -103,11 +103,11 @@ origin: SORIGIN s domain { state.origin <- $3 }
 ttl: STTL s int32 { state.ttl <- $3 }
 
 rrline:
-   owner s int32 s rrclass s rr { { Udns_packet.name = $1 ; ttl = $3 ; rdata = $7 } }
- | owner s rrclass s int32 s rr { { Udns_packet.name = $1 ; ttl = $5 ; rdata = $7 } }
- | owner s rrclass s rr { { Udns_packet.name = $1 ; ttl = state.ttl ; rdata = $5 } }
- | owner s int32 s rr { { Udns_packet.name = $1 ; ttl = $3 ; rdata = $5 } }
- | owner s rr { { Udns_packet.name = $1 ; ttl = state.ttl ; rdata = $3 } }
+   owner s int32 s rrclass s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $7 $3) state.zone }
+ | owner s rrclass s int32 s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $7 $5) state.zone  }
+ | owner s rrclass s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $5 state.ttl) state.zone }
+ | owner s int32 s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $5 $3) state.zone }
+ | owner s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $3 state.ttl) state.zone }
 
 rrclass:
    CLASS_IN {}
@@ -117,50 +117,54 @@ rrclass:
 
 rr:
      /* RFC 1035 */
- | TYPE_A s ipv4 { Udns_packet.A $3 }
- | TYPE_NS s domain { Udns_packet.NS $3 }
- | TYPE_CNAME s domain { Udns_packet.CNAME $3 }
+ | TYPE_A s ipv4 { B (A, (0l, Rr_map.Ipv4_set.singleton $3)) }
+ | TYPE_NS s domain { B (Ns, (0l, Domain_name.Set.singleton $3)) }
+ | TYPE_CNAME s domain { B (Cname, (0l, $3)) }
  | TYPE_SOA s domain s domain s int32 s int32 s int32 s int32 s int32
-     { Udns_packet.SOA { Udns_packet.nameserver = $3 ; hostmaster = $5 ;
-                        serial = $7 ; refresh = $9 ; retry = $11 ; expiry = $13 ;
-                        minimum = $15 } }
- | TYPE_PTR s domain { Udns_packet.PTR $3 }
- | TYPE_MX s int16 s domain { Udns_packet.MX ($3, $5) }
- | TYPE_TXT s charstrings { Udns_packet.TXT $3 }
+     { B (Soa, { Soa.nameserver = $3 ; hostmaster = $5 ; serial = $7 ;
+                 refresh = $9 ; retry = $11 ; expiry = $13 ; minimum = $15 }) }
+ | TYPE_PTR s domain { B (Ptr, (0l, $3)) }
+ | TYPE_MX s int16 s domain { B (Mx, (0l, Rr_map.Mx_set.singleton { Mx.preference = $3 ; mail_exchange = $5 })) }
+ | TYPE_TXT s charstrings { B (Txt, (0l, Rr_map.Txt_set.of_list $3)) }
      /* RFC 2782 */
  | TYPE_SRV s int16 s int16 s int16 s domain
-     { Udns_packet.SRV { Udns_packet.priority = $3 ; weight = $5 ; port = $7 ; target = $9 } }
+     { B (Srv, (0l, Rr_map.Srv_set.singleton { Srv.priority = $3 ; weight = $5 ; port = $7 ; target = $9 })) }
      /* RFC 3596 */
  | TYPE_TLSA s int8 s int8 s int8 s hex
      { match
-         Udns_enum.int_to_tlsa_cert_usage $3,
-         Udns_enum.int_to_tlsa_selector $5,
-         Udns_enum.int_to_tlsa_matching_type $7
+         Tlsa.int_to_cert_usage $3,
+         Tlsa.int_to_selector $5,
+         Tlsa.int_to_matching_type $7
        with
-       | Some tlsa_cert_usage, Some tlsa_selector, Some tlsa_matching_type ->
-          Udns_packet.TLSA { Udns_packet.tlsa_cert_usage ; tlsa_selector ; tlsa_matching_type ; tlsa_data = $9 }
+       | Some cert_usage, Some selector, Some matching_type ->
+          let tlsa = { Tlsa.cert_usage ; selector ; matching_type ; data = $9 } in
+          B (Tlsa, (0l, Rr_map.Tlsa_set.singleton tlsa ))
        | _ -> raise Parsing.Parse_error
      }
  | TYPE_SSHFP s int8 s int8 s hex
      { match
-         Udns_enum.int_to_sshfp_algorithm $3,
-         Udns_enum.int_to_sshfp_type $5
+         Sshfp.int_to_algorithm $3,
+         Sshfp.int_to_typ $5
        with
-       | Some sshfp_algorithm, Some sshfp_type ->
-          Udns_packet.SSHFP { Udns_packet.sshfp_algorithm ; sshfp_type ; sshfp_fingerprint = $7 }
+       | Some algorithm, Some typ ->
+          let sshfp = { Sshfp.algorithm ; typ ; fingerprint = $7 } in
+          B (Sshfp, (0l, Rr_map.Sshfp_set.singleton sshfp))
        | _ -> raise Parsing.Parse_error
      }
- | TYPE_AAAA s ipv6 { Udns_packet.AAAA $3 }
+ | TYPE_AAAA s ipv6 { B (Aaaa, (0l, Rr_map.Ipv6_set.singleton $3)) }
  | TYPE_DNSKEY s int16 s int16 s int16 s charstring
      { if not ($5 = 3) then
            parse_error ("DNSKEY protocol is not 3, but " ^ string_of_int $5) ;
-       match Udns_enum.int_to_dnskey $7 with
+       match Dnskey.int_to_algorithm $7 with
        | None -> parse_error ("DNSKEY algorithm not supported " ^ string_of_int $7)
-       | Some x -> Udns_packet.DNSKEY { Udns_packet.flags = $3 ; key_algorithm = x ; key = Cstruct.of_string $9 }
+       | Some x ->
+          let dnskey = { Dnskey.flags = $3 ; algorithm = x ; key = Cstruct.of_string $9 } in
+          B (Dnskey, (0l, Rr_map.Dnskey_set.singleton dnskey))
      }
  | TYPE_CAA s int16 s charstring s charstrings
      { let critical = if $3 = 0x80 then true else false in
-       Udns_packet.CAA { Udns_packet.critical ; tag = $5 ; value = $7 } }
+       let caa = { Caa.critical ; tag = $5 ; value = $7 } in
+       B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
 
 single_hex: charstring
@@ -212,10 +216,10 @@ owner:
 domain:
    DOT { Domain_name.root }
  | AT { state.origin }
- | label_except_at { Domain_name.prepend_exn state.origin $1 }
- | label DOT { Domain_name.of_strings_exn [$1] }
- | label DOT domain_labels { Domain_name.of_strings_exn ($1 :: $3 @ (Domain_name.to_strings state.origin)) }
- | label DOT domain_labels DOT { Domain_name.of_strings_exn ($1 :: $3) }
+ | label_except_at { Domain_name.prepend_exn ~hostname:false state.origin $1 }
+ | label DOT { Domain_name.of_strings_exn ~hostname:false [$1] }
+ | label DOT domain_labels { Domain_name.of_strings_exn ~hostname:false ($1 :: $3 @ (Domain_name.to_strings state.origin)) }
+ | label DOT domain_labels DOT { Domain_name.of_strings_exn ~hostname:false ($1 :: $3) }
 
 domain_labels:
    label { [$1] }

@@ -9,7 +9,7 @@ license: "BSD2"
 
 depends: [
   "dune" {build & > "1.2.0"}
-  "ocaml" {>= "4.04.0"}
+  "ocaml" {>= "4.07.0"}
   "udns"
   "nocrypto"
   "alcotest" {with-test}
