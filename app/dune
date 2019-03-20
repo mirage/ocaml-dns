@@ -21,6 +21,13 @@
   (libraries udns udns-tsig udns-cli ptime nocrypto nocrypto.unix))
 
 (executable
+  (name onotify)
+  (public_name onotify)
+  (package udns-cli)
+  (modules onotify)
+  (libraries udns udns-tsig udns-cli ptime nocrypto nocrypto.unix))
+
+(executable
   (name         odns)
   (public_name  odns)
   (modules      odns)
