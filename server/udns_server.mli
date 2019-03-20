@@ -81,14 +81,15 @@ module Primary : sig
 
   val handle_frame : s -> int64 -> Ipaddr.V4.t -> int -> Udns_packet.proto ->
     Domain_name.t option -> Udns_packet.header -> Udns_packet.v ->
-    (s * (Udns_packet.header * Udns_packet.v) option * (Ipaddr.V4.t * int * Cstruct.t) list,
+    (s * (Udns_packet.header * Udns_packet.v) option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify | `Signed_notify ] option,
      Udns_enum.rcode) result
   (** [handle_frame s now src src_port proto key hdr v] handles the given
      [frame], returning new state, an answer, and potentially notify packets to
      secondary name servers. *)
 
-  val handle : s -> Ptime.t -> int64 -> Udns_packet.proto -> Ipaddr.V4.t -> int
-    -> Cstruct.t -> s * Cstruct.t option * (Ipaddr.V4.t * int * Cstruct.t) list
+  val handle : s -> Ptime.t -> int64 -> Udns_packet.proto ->
+    Ipaddr.V4.t -> int -> Cstruct.t ->
+    s * Cstruct.t option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify | `Signed_notify ] option
   (** [handle s now ts proto src src_port buffer] decodes the [buffer],
      processes the DNS frame using {!handle_frame}, and encodes the reply. *)
 

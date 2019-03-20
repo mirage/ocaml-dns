@@ -238,8 +238,8 @@ let handle_primary t now ts proto sender sport header v opt tsig tsig_off buf =
       `No
     else
       match Udns_server.Primary.handle_frame t ts sender sport proto name header v with
-      | Ok (_, None, _) -> `None (* incoming notifications are never replied to *)
-      | Ok (t, Some (header, v'), _) ->
+      | Ok (_, None, _, _) -> `None (* incoming notifications are never replied to *)
+      | Ok (t, Some (header, v'), _, _) ->
           (* delegation if authoritative is not set! *)
           if header.Udns_packet.authoritative then begin
             s := { !s with authoritative = succ !s.authoritative } ;

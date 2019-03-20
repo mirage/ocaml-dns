@@ -755,7 +755,7 @@ module Primary = struct
           (zone, ip, port) :: List.filter other l
         | _ -> l
       in
-      Ok ((t, l', ns), Some answer, [])
+      Ok ((t, l', ns), Some answer, [], None)
     | `Update u, true ->
       (* TODO: intentional? all other notifications apart from the new ones are dropped *)
       handle_update t l ts proto key u >>= fun (t', ns) ->
@@ -769,21 +769,25 @@ module Primary = struct
         s_header header,
         `Update { u with Udns_packet.prereq = [] ; update = [] ; addition = [] }
       in
-      Ok ((t', l, ns), Some answer, out)
+      Ok ((t', l, ns), Some answer, out, None)
     | `Notify _, false ->
       let notifications =
         List.filter (fun (_, _, ip', _, hdr', _) ->
             not (Ipaddr.V4.compare ip ip' = 0 && header.Udns_packet.id = hdr'.Udns_packet.id))
           ns
       in
-      Ok ((t, l, notifications), None, [])
+      Ok ((t, l, notifications), None, [], None)
     | _, false ->
       (* this happens when the other side is a tinydns and we're sending notify *)
       Log.err (fun m -> m "ignoring unsolicited answer, replying with FormErr") ;
       Error Udns_enum.FormErr
-    | `Notify _, true ->
-      Log.err (fun m -> m "ignoring unsolicited notify request") ;
-      Ok ((t, l, ns), None, [])
+    | `Notify n, true ->
+      Log.warn (fun m -> m "unsolicited notify request") ;
+      let reply =
+        let n = { n with Udns_packet.answer = [] ; authority = [] ; additional = [] } in
+        s_header header, `Notify n
+      in
+      Ok ((t, l, ns), Some reply, [], Some `Notify)
 
   let handle (t, l, ns) now ts proto ip port buf =
     match
@@ -791,35 +795,36 @@ module Primary = struct
       guard (not header.Udns_packet.truncation) Udns_enum.FormErr >>= fun () ->
       Ok ((header, v, opt, tsig), tsig_off)
     with
-    | Error rcode -> (t, l, ns), raw_server_error buf rcode, []
+    | Error rcode -> (t, l, ns), raw_server_error buf rcode, [], None
     | Ok ((header, v, opt, tsig), tsig_off) ->
       Log.debug (fun m -> m "%a sent %a" Ipaddr.V4.pp ip
                     Udns_packet.pp (header, v, opt, tsig)) ;
       let handle_inner keyname =
         match handle_frame (t, l, ns) ts ip port proto keyname header v with
-        | Ok (t, Some (header, answer), out) ->
+        | Ok (t, Some (header, answer), out, notify) ->
           let max_size, edns = Udns_packet.reply_opt opt in
           (* be aware, this may be truncated... here's where AXFR is assembled! *)
-          (t, Some (Udns_packet.encode ?max_size ?edns proto header answer), out)
-        | Ok (t, None, out) -> (t, None, out)
-        | Error rcode -> ((t, l, ns), err header v rcode, [])
+          (t, Some (Udns_packet.encode ?max_size ?edns proto header answer), out, notify)
+        | Ok (t, None, out, notify) -> (t, None, out, notify)
+        | Error rcode -> ((t, l, ns), err header v rcode, [], None)
       in
       match handle_tsig t now header v tsig tsig_off buf with
-      | Error data -> ((t, l, ns), data, [])
+      | Error data -> ((t, l, ns), data, [], None)
       | Ok None ->
         begin match handle_inner None with
-          | t, None, out -> t, None, out
-          | t, Some (cs, _), out -> t, Some cs, out
+          | t, None, out, notify -> t, None, out, notify
+          | t, Some (cs, _), out, notify -> t, Some cs, out, notify
         end
       | Ok (Some (name, tsig, mac, key)) ->
+        let n = function Some `Notify -> Some `Signed_notify | x -> x in
         match handle_inner (Some name) with
-        | (a, None, out) -> (a, None, out)
-        | (a, Some (buf, max_size), out) ->
+        | (a, None, out, notify) -> (a, None, out, n notify)
+        | (a, Some (buf, max_size), out, notify) ->
           match t.tsig_sign ~max_size ~mac name tsig ~key buf with
           | None ->
             Log.warn (fun m -> m "couldn't use %a to tsig sign" Domain_name.pp name) ;
-            (a, None, out)
-          | Some (buf, _) -> (a, Some buf, out)
+            (a, None, out, n notify)
+          | Some (buf, _) -> (a, Some buf, out, n notify)
 
   let closed (t, l, ns) ip port =
     let l' =

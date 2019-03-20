@@ -11,7 +11,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
 
   module T = S.TCPV4
 
-  let primary ?(on_update = fun _trie -> Lwt.return_unit) ?(timer = 2) ?(port = 53) stack t =
+  let primary ?(on_update = fun _ -> Lwt.return_unit) ?(on_notify = fun _ _ -> Lwt.return None) ?(timer = 2) ?(port = 53) stack t =
     let state = ref t in
     let tcp_out = ref Dns.IPM.empty in
 
@@ -22,6 +22,11 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
         Lwt.return_unit
       else
         on_update t
+    and maybe_notify t = function
+      | None -> Lwt.return_unit
+      | Some n -> on_notify n t >|= function
+        | None -> ()
+        | Some trie -> state := Udns_server.Primary.with_data t trie
     in
 
     let drop ip port =
@@ -41,8 +46,9 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp src src_port) ;
       let now = Ptime.v (P.now_d_ps ()) in
       let elapsed = M.elapsed_ns () in
-      let t, answer, notify = Udns_server.Primary.handle !state now elapsed `Udp src src_port buf in
+      let t, answer, notify, n = Udns_server.Primary.handle !state now elapsed `Udp src src_port buf in
       maybe_update_state t !state >>= fun () ->
+      maybe_notify t n >>= fun () ->
       (match answer with
        | None -> Log.warn (fun m -> m "empty answer") ; Lwt.return_unit
        | Some answer -> Dns.send_udp stack port src src_port answer) >>= fun () ->
@@ -61,8 +67,9 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
         | Ok data ->
           let now = Ptime.v (P.now_d_ps ()) in
           let elapsed = M.elapsed_ns () in
-          let t, answer, notify = Udns_server.Primary.handle !state now elapsed `Tcp dst_ip dst_port data in
+          let t, answer, notify, n = Udns_server.Primary.handle !state now elapsed `Tcp dst_ip dst_port data in
           maybe_update_state t !state >>= fun () ->
+          maybe_notify t n >>= fun () ->
           Lwt_list.iter_p send_notify notify >>= fun () ->
           match answer with
           | None -> Log.warn (fun m -> m "empty answer") ; loop ()
