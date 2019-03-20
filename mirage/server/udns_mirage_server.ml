@@ -11,9 +11,19 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
 
   module T = S.TCPV4
 
-  let primary stack ?(timer = 2) ?(port = 53) t =
+  let primary ?(on_update = fun _trie -> Lwt.return_unit) ?(timer = 2) ?(port = 53) stack t =
     let state = ref t in
     let tcp_out = ref Dns.IPM.empty in
+
+    let maybe_update_state t t' =
+      let trie server = Udns_server.((Primary.server server).data) in
+      state := t ;
+      if Udns_trie.equal (trie t) (trie t') then
+        Lwt.return_unit
+      else
+        on_update t
+    in
+
     let drop ip port =
       tcp_out := Dns.IPM.remove (ip, port) !tcp_out ;
       state := Udns_server.Primary.closed !state ip port
@@ -32,7 +42,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       let now = Ptime.v (P.now_d_ps ()) in
       let elapsed = M.elapsed_ns () in
       let t, answer, notify = Udns_server.Primary.handle !state now elapsed `Udp src src_port buf in
-      state := t ;
+      maybe_update_state t !state >>= fun () ->
       (match answer with
        | None -> Log.warn (fun m -> m "empty answer") ; Lwt.return_unit
        | Some answer -> Dns.send_udp stack port src src_port answer) >>= fun () ->
@@ -52,7 +62,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
           let now = Ptime.v (P.now_d_ps ()) in
           let elapsed = M.elapsed_ns () in
           let t, answer, notify = Udns_server.Primary.handle !state now elapsed `Tcp dst_ip dst_port data in
-          state := t ;
+          maybe_update_state t !state >>= fun () ->
           Lwt_list.iter_p send_notify notify >>= fun () ->
           match answer with
           | None -> Log.warn (fun m -> m "empty answer") ; loop ()
@@ -67,14 +77,14 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
     Log.info (fun m -> m "DNS server listening on TCP port %d" port) ;
     let rec time () =
       let t, notifies = Udns_server.Primary.timer !state (M.elapsed_ns ()) in
-      state := t ;
+      maybe_update_state t !state >>= fun () ->
       Lwt_list.iter_p send_notify notifies >>= fun () ->
       TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
       time ()
     in
     Lwt.async time
 
-  let secondary ?(on_update = fun _trie -> Lwt.return_unit) stack ?(timer = 5) ?(port = 53) t =
+  let secondary ?(on_update = fun _trie -> Lwt.return_unit) ?(timer = 5) ?(port = 53) stack t =
     let state = ref t in
     let tcp_out = ref Dns.IM.empty in
     let in_flight = ref Dns.IS.empty in

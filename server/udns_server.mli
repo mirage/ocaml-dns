@@ -60,7 +60,10 @@ val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Udns_packet.header ->
 (** [handle_tsig ~mac t now hdr v tsig offset buffer] verifies the tsig
     signature if present, returning the keyname, tsig, mac, and used key. *)
 
-module Primary : sig type s
+module Primary : sig
+
+  type s
+  (** The state of a primary DNS server. *)
 
   val server : s -> t
   (** [server s] is the server of the primary. *)
@@ -98,7 +101,10 @@ module Primary : sig type s
 
 end
 
-module Secondary : sig type s
+module Secondary : sig
+
+  type s
+  (** The state of a secondary DNS server. *)
 
   val server : s -> t
   (** [server s] is the server of the secondary. *)
