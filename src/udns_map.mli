@@ -95,6 +95,6 @@ val equal_b : b -> b -> bool
 val of_rrs : Udns_packet.rr list -> t Domain_name.Map.t
 (** [of_rrs rrs] is a domain-name indexed map of resource record maps. *)
 
-val text : Domain_name.t -> b -> string
-(** [text domain-name binding] is the zone file format of [binding] using
+val text : ?origin:Domain_name.t -> ?default_ttl:int32 -> Domain_name.t -> b -> string
+(** [text ~origin ~default_ttl domain-name binding] is the zone file format of [binding] using
    [domain-name]. *)

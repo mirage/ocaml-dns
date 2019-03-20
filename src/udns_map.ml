@@ -130,7 +130,7 @@ module K = struct
         Fmt.(list ~sep:(unit ";@,") Udns_packet.pp_sshfp)
         (SshfpSet.elements sshfps)
 
-  let text : type a. Domain_name.t -> a t -> a -> string = fun n t v ->
+  let text : type a. ?origin:Domain_name.t -> ?default_ttl:int32 -> Domain_name.t -> a t -> a -> string = fun ?origin ?default_ttl n t v ->
     let hex cs =
       let buf = Bytes.create (Cstruct.len cs * 2) in
       for i = 0 to pred (Cstruct.len cs) do
@@ -142,76 +142,96 @@ module K = struct
       done;
       Bytes.unsafe_to_string buf
     in
-    let name n = Domain_name.to_string ~trailing:true n in
+    let origin = match origin with
+      | None -> None
+      | Some n -> Some (n, Array.length (Domain_name.to_array n))
+    in
+    let name n = match origin with
+      | Some (domain, amount) when Domain_name.sub ~subdomain:n ~domain ->
+        let n' = Domain_name.drop_labels_exn ~back:true ~amount n in
+        if Domain_name.equal n' Domain_name.root then
+          "@"
+        else
+          Domain_name.to_string n'
+      | _ -> Domain_name.to_string ~trailing:true n
+    in
+    let ttl_opt ttl = match default_ttl with
+      | Some d when Int32.compare ttl d = 0 -> None
+      | _ -> Some ttl
+    in
+    let ttl_fmt = Fmt.(option (suffix (unit "\t") uint32)) in
     let str_name = name n in
     let strs =
       match t, v with
       | Any, _ -> (* no *) []
       | Cname, (ttl, alias) ->
-        [ Fmt.strf "%s\t%lu\tCNAME\t%s" str_name ttl (name alias) ]
+        [ Fmt.strf "%s\t%aCNAME\t%s" str_name ttl_fmt (ttl_opt ttl) (name alias) ]
       | Mx, (ttl, mxs) ->
-        List.map (fun (prio, mx) ->
-            Fmt.strf "%s\t%lu\tMX\t%u\t%s" str_name ttl prio (name mx))
-          (MxSet.elements mxs)
+        MxSet.fold (fun (prio, mx) acc ->
+            Fmt.strf "%s\t%aMX\t%u\t%s" str_name ttl_fmt (ttl_opt ttl) prio (name mx) :: acc)
+          mxs []
       | Ns, (ttl, ns) ->
         Domain_name.Set.fold (fun ns acc ->
-            Fmt.strf "%s\t%lu\tNS\t%s" str_name ttl (name ns) :: acc)
+            Fmt.strf "%s\t%aNS\t%s" str_name ttl_fmt (ttl_opt ttl) (name ns) :: acc)
           ns []
       | Ptr, (ttl, ptr) ->
-        [ Fmt.strf "%s\t%lu\tPTR\t%s" str_name ttl (name ptr) ]
+        [ Fmt.strf "%s\t%aPTR\t%s" str_name ttl_fmt (ttl_opt ttl) (name ptr) ]
       | Soa, (ttl, soa) ->
-        [ Fmt.strf "%s\t%lu\tSOA\t%s\t%s\t%lu\t%lu\t%lu\t%lu\t%lu" str_name ttl
+        [ Fmt.strf "%s\t%aSOA\t%s\t%s\t%lu\t%lu\t%lu\t%lu\t%lu" str_name
+            ttl_fmt (ttl_opt ttl)
             (name soa.Udns_packet.nameserver)
             (name soa.Udns_packet.hostmaster)
             soa.Udns_packet.serial soa.Udns_packet.refresh soa.Udns_packet.retry
             soa.Udns_packet.expiry soa.Udns_packet.minimum ]
       | Txt, (ttl, txts) ->
-        List.map (fun txt ->
-            Fmt.strf "%s\t%lu\tTXT\t%s" str_name ttl (String.concat "" txt))
-          (TxtSet.elements txts)
+        TxtSet.fold (fun txt acc ->
+            Fmt.strf "%s\t%aTXT\t%s" str_name ttl_fmt (ttl_opt ttl) (String.concat "" txt) :: acc)
+          txts []
       | A, (ttl, a) ->
-        List.map (fun ip ->
-          Fmt.strf "%s\t%lu\tA\t%s" str_name ttl (Ipaddr.V4.to_string ip))
-          (Ipv4Set.elements a)
+        Ipv4Set.fold (fun ip acc ->
+          Fmt.strf "%s\t%aA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V4.to_string ip) :: acc)
+          a []
       | Aaaa, (ttl, aaaa) ->
-        List.map (fun ip ->
-            Fmt.strf "%s\t%lu\tAAAA\t%s" str_name ttl (Ipaddr.V6.to_string ip))
-          (Ipv6Set.elements aaaa)
+        Ipv6Set.fold (fun ip acc ->
+            Fmt.strf "%s\t%aAAAA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V6.to_string ip) :: acc)
+          aaaa []
       | Srv, (ttl, srvs) ->
-        List.map (fun srv ->
-            Fmt.strf "%s\t%lu\tSRV\t%u\t%u\t%u\t%s"
-              str_name ttl srv.Udns_packet.priority srv.Udns_packet.weight
-              srv.Udns_packet.port (name srv.Udns_packet.target))
-          (SrvSet.elements srvs)
+        SrvSet.fold (fun srv acc ->
+            Fmt.strf "%s\t%aSRV\t%u\t%u\t%u\t%s"
+              str_name ttl_fmt (ttl_opt ttl)
+              srv.Udns_packet.priority srv.Udns_packet.weight srv.Udns_packet.port
+              (name srv.Udns_packet.target) :: acc)
+          srvs []
       | Dnskey, keys ->
-        List.map (fun key ->
+        DnskeySet.fold (fun key acc ->
             Fmt.strf "%s\t300\tDNSKEY\t%u\t3\t%d\t%s"
               str_name key.Udns_packet.flags
               (Udns_enum.dnskey_to_int key.Udns_packet.key_algorithm)
-              (hex key.Udns_packet.key))
-          (DnskeySet.elements keys)
+              (hex key.Udns_packet.key) :: acc)
+          keys []
       | Caa, (ttl, caas) ->
-        List.map (fun caa ->
-            Fmt.strf "%s\t%lu\tCAA\t%s\t%s\t%s"
-              str_name ttl (if caa.Udns_packet.critical then "128" else "0")
-              caa.Udns_packet.tag (String.concat ";" caa.Udns_packet.value))
-          (CaaSet.elements caas)
+        CaaSet.fold (fun caa acc ->
+            Fmt.strf "%s\t%aCAA\t%s\t%s\t%s"
+              str_name ttl_fmt (ttl_opt ttl)
+              (if caa.Udns_packet.critical then "128" else "0")
+              caa.Udns_packet.tag (String.concat ";" caa.Udns_packet.value) :: acc)
+          caas []
       | Tlsa, (ttl, tlsas) ->
-        List.map (fun tlsa ->
-            Fmt.strf "%s\t%lu\tTLSA\t%u\t%u\t%u\t%s"
-              str_name ttl
+        TlsaSet.fold (fun tlsa acc ->
+            Fmt.strf "%s\t%aTLSA\t%u\t%u\t%u\t%s"
+              str_name ttl_fmt (ttl_opt ttl)
               (Udns_enum.tlsa_cert_usage_to_int tlsa.Udns_packet.tlsa_cert_usage)
               (Udns_enum.tlsa_selector_to_int tlsa.Udns_packet.tlsa_selector)
               (Udns_enum.tlsa_matching_type_to_int tlsa.Udns_packet.tlsa_matching_type)
-              (hex tlsa.Udns_packet.tlsa_data))
-          (TlsaSet.elements tlsas)
+              (hex tlsa.Udns_packet.tlsa_data) :: acc)
+          tlsas []
       | Sshfp, (ttl, sshfps) ->
-        List.map (fun sshfp ->
-            Fmt.strf "%s\t%lu\tSSHFP\t%u\t%u\t%s" str_name ttl
+        SshfpSet.fold (fun sshfp acc ->
+            Fmt.strf "%s\t%aSSHFP\t%u\t%u\t%s" str_name ttl_fmt (ttl_opt ttl)
               (Udns_enum.sshfp_algorithm_to_int sshfp.Udns_packet.sshfp_algorithm)
               (Udns_enum.sshfp_type_to_int sshfp.Udns_packet.sshfp_type)
-              (hex sshfp.Udns_packet.sshfp_fingerprint))
-          (SshfpSet.elements sshfps)
+              (hex sshfp.Udns_packet.sshfp_fingerprint) :: acc)
+          sshfps []
     in
     String.concat "\n" strs
 end
@@ -469,4 +489,5 @@ let of_rrs rrs =
       Domain_name.Map.add rr.Udns_packet.name m' map)
     Domain_name.Map.empty rrs
 
-let text name (B (key, v)) = K.text name key v
+let text ?origin ?default_ttl name (B (key, v)) =
+  K.text ?origin ?default_ttl name key v

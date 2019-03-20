@@ -229,11 +229,25 @@ type t = {
 
 let text name t =
   let buf = Buffer.create 1024 in
+  (* first, find the start of authority (if any) *)
+  let origin, default_ttl =
+    match Udns_trie.lookup name Udns_map.Soa t.data with
+    | Error e ->
+      Log.err (fun m -> m "couldn't find SOA when serialising zone for %a: %a"
+                  Domain_name.pp name Udns_trie.pp_e e) ;
+      None, None
+    | Ok (ttl, _) ->
+      Buffer.add_string buf
+        ("$ORIGIN " ^ Domain_name.to_string ~trailing:true name ^ "\n") ;
+      Buffer.add_string buf
+        ("$TTL " ^ Int32.to_string ttl ^ "\n") ;
+      Some name, Some ttl
+  in
   Rresult.R.reword_error
     (Fmt.to_to_string Udns_trie.pp_e)
     (Udns_trie.fold name t.data
        (fun name v () ->
-          Buffer.add_string buf (Udns_map.text name v) ;
+          Buffer.add_string buf (Udns_map.text ?origin ?default_ttl name v) ;
           Buffer.add_char buf '\n')
        ()) >>| fun () ->
   Buffer.contents buf
