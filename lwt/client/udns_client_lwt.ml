@@ -45,6 +45,7 @@ module Uflow : Udns_client_flow.S
 
   let map = Lwt_result.bind
   let resolve = Lwt_result.bind_result
+  let lift = Lwt_result.lift
 
   let connect ?nameserver:ns t =
     let (proto, (server, port)) = match ns with None -> nameserver t | Some x -> x in

@@ -23,6 +23,7 @@ module Uflow : Udns_client_flow.S
 
   let map = Rresult.R.((>>=))
   let resolve = (Rresult.R.(>>=))
+  let lift v = v
 
   open Rresult
 

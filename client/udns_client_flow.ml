@@ -16,6 +16,7 @@ module type S = sig
 
   val resolve : ('a,'b) io -> ('a -> ('c,'b) result) -> ('c,'b) io
   val map : ('a,'b) io -> ('a -> ('c,'b) io) -> ('c,'b) io
+  val lift : ('a,'b) result -> ('a,'b) io
 end
 
 module Make = functor (Uflow:S) ->
@@ -32,18 +33,24 @@ struct
       Udns_client.make_query
         (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
     in
-    let (>>=), (>>|) = Uflow.(resolve, map) in
+    let (>>|) = Uflow.map in
     Uflow.connect ?nameserver t >>| fun socket ->
     Logs.debug (fun m -> m "Connected to NS.");
     Uflow.send socket tx >>| fun () ->
-    (* TODO steal loop logic from lwt *)
-    Logs.debug (fun m -> m "Receiving from NS");
-    Uflow.recv socket >>= fun recv_buffer ->
-    Logs.debug (fun m -> m "Read %d bytes" (Cstruct.len recv_buffer));
-    match Udns_client.parse_response state recv_buffer with
-    | Ok x -> Ok x
-    | Error (`Msg xxx) -> Error (`Msg( "err: " ^ xxx))
-    | Error `Partial -> Error (`Msg "got something else, partial")
+    let () = Logs.debug (fun m -> m "Receiving from NS") in
+    let rec recv_loop acc =
+      Uflow.recv socket >>| fun recv_buffer ->
+      Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
+                     (Cstruct.len recv_buffer)) ;
+      let buf = Cstruct.append acc recv_buffer in
+      match Udns_client.parse_response state buf with
+      | Ok x -> Uflow.lift (Ok x)
+      | Error (`Msg xxx) ->
+        Uflow.lift (Error (`Msg( "err: " ^ xxx)))
+      | Error `Partial -> begin match proto with
+          | `TCP -> recv_loop buf
+          | `UDP -> Uflow.lift (Error (`Msg "Truncated UDP response")) end
+    in recv_loop Cstruct.empty
 
   let gethostbyname stack ?nameserver domain =
     let (>>=) = Uflow.resolve in

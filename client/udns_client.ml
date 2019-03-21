@@ -45,8 +45,13 @@ let parse_response (type requested)
       begin match Cstruct.BE.get_uint16 buf 0 with
         | exception Invalid_argument _ -> Error `Partial (* TODO *)
         | pkt_len when pkt_len > Cstruct.len buf -2 ->
+          Logs.debug (fun m -> m "Partial: %d >= %d-2"
+                         pkt_len (Cstruct.len buf));
           Error `Partial (* TODO return remaining # *)
-        | pkt_len -> Ok (Cstruct.sub buf 2 pkt_len)
+        | pkt_len ->
+          if 2 + pkt_len < Cstruct.len buf then
+            Logs.warn (fun m -> m "Extraneous data in DNS response");
+          Ok (Cstruct.sub buf 2 pkt_len)
       end
   end >>= fun buf ->
   match Udns_packet.decode buf with

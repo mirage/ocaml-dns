@@ -29,6 +29,7 @@ module Make (S : Mirage_stack_lwt.V4) = struct
 
     let map = Lwt_result.bind
     let resolve = Lwt_result.bind_result
+    let lift = Lwt_result.lift
 
     let connect ?nameserver:ns t =
       let _proto, addr = match ns with None -> nameserver t | Some x -> x in

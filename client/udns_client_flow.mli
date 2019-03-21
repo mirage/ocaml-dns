@@ -54,6 +54,8 @@ module type S = sig
 
   val map : ('ok,'err) io -> ('ok -> ('next,'err) io) -> ('next,'err) io
   (** a.k.a. [>>=] *)
+
+  val lift : ('ok, 'err) result -> ('ok,'err) io
 end
 
 module Make : functor (U : S) ->
