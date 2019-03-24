@@ -157,15 +157,16 @@ let decode_ntc names buf off =
   in
   match Udns_enum.int_to_rr_typ typ with
   | None -> Error (`BadRRTyp typ)
-  | Some Udns_enum.(TLSA | SRV as t) when Domain_name.is_service name ->
-    Ok ((name, t, cls), names, off + 4)
-  | Some Udns_enum.(TLSA | SRV) -> (* MUST be service names: *)
-    Error (`BadContent (Domain_name.to_string name))
   | Some Udns_enum.(DNSKEY | TSIG | TXT | CNAME as t) ->
     Ok ((name, t, cls), names, off + 4)
+  | Some Udns_enum.(TLSA | SRV as t) when Domain_name.is_service name ->
+    Ok ((name, t, cls), names, off + 4)
+  | Some Udns_enum.SRV -> (* MUST be service name *)
+    Error (`BadContent (Domain_name.to_string name))
   | Some t when Domain_name.is_hostname name ->
     Ok ((name, t, cls), names, off + 4)
-  | Some _ -> Error (`BadContent (Domain_name.to_string name))
+  | Some _ ->
+    Error (`BadContent (Domain_name.to_string name))
 
 let encode_ntc offs buf off (n, t, c) =
   let offs, off = Udns_name.encode offs buf off n in
