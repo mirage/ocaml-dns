@@ -129,6 +129,7 @@ module Name = struct
     in
     names, off
 
+  (* enable once https://github.com/ocaml/dune/issues/897 is resolved
   let%expect_test "decode" =
     let test ?hostname ?(map = Int_map.empty) ?(off = 0) data rmap roff =
       match decode ?hostname map (Cstruct.of_string data) ~off with
@@ -271,7 +272,7 @@ module Name = struct
     [%expect {|
 03 66 6f 6f 03 62 61 72  00 03 62 61 7a 03 66 6f
 6f 03 62 61 72 00|}]
-
+*)
 end
 
 (* start of authority *)
