@@ -1,0 +1,46 @@
+opam-version: "2.0"
+maintainer: "team AT robur dot io"
+authors: ["Hannes Mehnert <hannes@mehnert.org>"]
+homepage: "https://github.com/roburio/udns"
+doc: "https://roburio.github.io/udns/doc"
+dev-repo: "git+https://github.com/roburio/udns.git"
+bug-reports: "https://github.com/roburio/udns/issues"
+license: "BSD2"
+
+depends: [
+  "dune" {build & >= "1.2.0"}
+  "ocaml" {>= "4.07.0"}
+  "udns"
+  "udns-tsig"
+  "udns-client-lwt"
+  "udns-zonefile"
+  "udns-server"
+  "udns-certify"
+  "rresult"
+  "bos"
+  "cmdliner"
+  "fpath"
+  "x509"
+  "nocrypto"
+  "hex"
+  "ptime"
+  "logs"
+  "fmt"
+  "ipaddr" {>= "3.0.0"}
+  "alcotest" {with-test}
+]
+
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+
+synopsis: "Unix command line utilities using uDNS"
+description: """
+'oupdate' sends a DNS update frome to a DNS server that sets 'hostname A ip'.
+For authentication via TSIG, a hmac secret needs to be provided.
+
+'ocertify' updates DNS with a certificate signing request, and polls a matching
+certificate. Best used with an letsencrypt unikernel.
+"""

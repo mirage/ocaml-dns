@@ -1,5 +1,0 @@
-(library
-  (name        dns_async)
-  (public_name dns-async)
-  (libraries   dns async)
-  (wrapped     false))

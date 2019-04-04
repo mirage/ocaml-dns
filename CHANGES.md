@@ -1,3 +1,8 @@
+### v2.0.0 (dev)
+
+* Switch to uDNS implementation.
+  TODO more details.
+
 ### v1.1.2 (2019-02-28)
 
 * Mirage: adapt to mirage-kv 2.0.0 interface (#156 by @samoht)

@@ -1,0 +1,10 @@
+(library
+ (name udns_zonefile)
+ (synopsis "A tiny Domain Name system (DNS) library, zonefile parser")
+ (public_name udns-zonefile)
+ (private_modules udns_zone_state udns_zone_parser udns_zone_lexer)
+ (libraries udns)
+ (wrapped false))
+
+(ocamlyacc udns_zone_parser)
+(ocamllex udns_zone_lexer)

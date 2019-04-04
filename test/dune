@@ -1,0 +1,23 @@
+(test
+ (name tests)
+ (package udns)
+ (libraries udns alcotest)
+ (modules tests))
+
+(test
+ (name server)
+ (package udns-server)
+ (libraries udns-server alcotest)
+ (modules server))
+
+(test
+ (name tsig)
+ (package udns-tsig)
+ (libraries udns-tsig alcotest)
+ (modules tsig))
+
+;(test
+; (name resolver)
+; (package udns-resolver)
+; (libraries udns-resolver alcotest)
+; (modules resolver))

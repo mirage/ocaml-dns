@@ -1,0 +1,31 @@
+opam-version: "2.0"
+maintainer: "team AT robur dot io"
+authors: ["Hannes Mehnert <hannes@mehnert.org>"]
+homepage: "https://github.com/roburio/udns"
+doc: "https://roburio.github.io/udns/doc"
+dev-repo: "git+https://github.com/roburio/udns.git"
+bug-reports: "https://github.com/roburio/udns/issues"
+license: "BSD2"
+
+depends: [
+  "dune" {build & >= "1.2.0"}
+  "ocaml" {>= "4.07.0"}
+  "udns"
+  "udns-server"
+  "lru"
+  "duration"
+  "randomconv"
+  "alcotest" {with-test}
+]
+
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+
+synopsis: "DNS resolver business logic"
+description: """
+Forwarding and recursive resolvers as value-passing functions. To be used with
+an effectful layer.
+"""

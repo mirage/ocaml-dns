@@ -1,0 +1,30 @@
+opam-version: "2.0"
+maintainer: "team AT robur dot io"
+authors: ["Hannes Mehnert <hannes@mehnert.org>"]
+homepage: "https://github.com/roburio/udns"
+doc: "https://roburio.github.io/udns/doc"
+dev-repo: "git+https://github.com/roburio/udns.git"
+bug-reports: "https://github.com/roburio/udns/issues"
+license: "BSD2"
+
+depends: [
+  "dune" {build & >= "1.2.0"}
+  "ocaml" {>= "4.07.0"}
+  "udns"
+  "udns-tsig"
+  "randomconv"
+  "duration"
+  "x509"
+]
+
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+
+synopsis: "MirageOS let's encrypt certificate retrieval"
+description: """
+A function to retrieve a certificate when providing a hostname, TSIG key, server
+IP, and an optional key seed. Best used with an letsencrypt unikernel.
+"""

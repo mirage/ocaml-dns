@@ -1,0 +1,6 @@
+(library
+ (name udns_mirage_resolver)
+ (synopsis "A Domain Name system (DNS) library, MirageOS resolver integration")
+ (public_name udns-mirage-resolver)
+ (wrapped false)
+ (libraries udns udns-resolver udns-server udns-mirage lwt duration mirage-time-lwt mirage-clock-lwt mirage-stack-lwt mirage-random))

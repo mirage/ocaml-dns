@@ -1,5 +1,0 @@
-(library
-  (name        dns_lwt)
-  (public_name dns-lwt)
-  (libraries   dns lwt mirage-profile)
-  (wrapped     false))
