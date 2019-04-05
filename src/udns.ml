@@ -2636,6 +2636,7 @@ module Packet = struct
       let errbuf = Cstruct.create max_reply_udp in
       Header.encode errbuf header ;
       let _names, off = Question.encode Domain_name.Map.empty errbuf Header.len question in
+      Cstruct.BE.set_uint16 errbuf 4 1;
       let off = encode_edns header (Some (Edns.create ())) errbuf off in
       Some (Cstruct.sub errbuf 0 off, max_reply_udp)
     else
