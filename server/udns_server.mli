@@ -36,7 +36,7 @@ val create : Udns_trie.t -> Authentication.t -> (int -> Cstruct.t) ->
 (** [create trie auth rng verify sign] creates a state record. *)
 
 val text : Domain_name.t -> Udns_trie.t -> (string, string) result
-(** [text name t] results in a string representation (zonefile) of the server. *)
+(** [text name trie] results in a string representation (zonefile) of the trie. *)
 
 val handle_question : t -> proto -> Domain_name.t option -> Packet.Header.t ->
   Packet.Question.t ->

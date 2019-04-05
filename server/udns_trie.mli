@@ -31,6 +31,7 @@ val empty : t
 (** [empty] is the empty trie. *)
 
 val equal : t -> t -> bool
+(** [equal a b] compares [a] with [b]. *)
 
 (** {2 Operations to modify the trie} *)
 

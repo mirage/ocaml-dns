@@ -1264,7 +1264,7 @@ module Edns = struct
                   a.extensions b.extensions))))
 
   let pp ppf opt =
-    Fmt.(pf ppf "EDNS (ext %u version %u dnssec_ok %b payload_size %u extensions %a"
+    Fmt.(pf ppf "EDNS rcode %u version %u dnssec_ok %b payload_size %u extensions %a"
            opt.extended_rcode opt.version opt.dnssec_ok opt.payload_size
            (list ~sep:(unit ", ") pp_extension) opt.extensions)
 

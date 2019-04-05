@@ -226,31 +226,41 @@ type t = {
 }
 
 let text name data =
-  let buf = Buffer.create 1024 in
-  (* first, find the start of authority (if any) *)
-  let origin, default_ttl =
-    match Udns_trie.lookup name Rr_map.Soa data with
-    | Error e ->
-      Log.err (fun m -> m "couldn't find SOA when serialising zone for %a: %a"
-                  Domain_name.pp name Udns_trie.pp_e e) ;
-      None, None
-    | Ok soa ->
+  match Udns_trie.entries name data with
+  | Error e ->
+    Error (Fmt.strf "text: couldn't find zone %a: %a" Domain_name.pp name Udns_trie.pp_e e)
+  | Ok (soa, map) ->
+    let buf = Buffer.create 1024 in
+    let origin, default_ttl =
       Buffer.add_string buf
         ("$ORIGIN " ^ Domain_name.to_string ~trailing:true name ^ "\n") ;
       let ttl = soa.minimum in
       Buffer.add_string buf
         ("$TTL " ^ Int32.to_string ttl ^ "\n") ;
-      Some name, Some ttl
-  in
-  Rresult.R.reword_error
-    (Fmt.to_to_string Udns_trie.pp_e)
-    (Udns_trie.fold name data
-       (fun name v () ->
-          Buffer.add_string buf (Rr_map.text_b ?origin ?default_ttl name v) ;
-          Buffer.add_char buf '\n')
-       ()) >>| fun () ->
-  Buffer.contents buf
-
+      name, ttl
+    in
+    Buffer.add_string buf (Rr_map.text ~origin ~default_ttl name Soa soa) ;
+    Buffer.add_char buf '\n' ;
+    let out map =
+      Domain_name.Map.iter (fun name rrs ->
+          Rr_map.iter (fun b ->
+              Buffer.add_string buf (Rr_map.text_b ~origin ~default_ttl name b) ;
+              Buffer.add_char buf '\n')
+            rrs)
+        map
+    in
+    let is_special name _ =
+      (* if only domain-name had proper types *)
+      let arr = Domain_name.to_array name in
+      match Array.get arr (pred (Array.length arr)) with
+      | exception Invalid_argument _ -> false
+      | lbl -> try String.get lbl 0 = '_' with Not_found -> false
+    in
+    let service, entries = Domain_name.Map.partition is_special map in
+    out entries ;
+    Buffer.add_char buf '\n' ;
+    out service ;
+    Ok (Buffer.contents buf)
 
 let create data auth rng tsig_verify tsig_sign =
   { data ; auth ; rng ; tsig_verify ; tsig_sign }
