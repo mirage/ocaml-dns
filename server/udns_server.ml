@@ -680,7 +680,7 @@ let update_data trie zone (prereq, update) =
    | Ok () -> Ok ()
    | Error e ->
      Log.err (fun m -> m "check after update returned %a" Udns_trie.pp_err e) ;
-     Error Udns_enum.FormErr) >>= fun () ->
+     Error Udns_enum.YXRRSet) >>= fun () ->
   match Udns_trie.lookup zone Soa trie, Udns_trie.lookup zone Soa trie' with
   | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa -> Ok (trie', Some (zone, soa))
   | _, Ok soa ->
