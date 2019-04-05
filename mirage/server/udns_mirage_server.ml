@@ -98,6 +98,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
   let secondary ?(on_update = fun _trie -> Lwt.return_unit) ?(timer = 5) ?(port = 53) stack t =
     let state = ref t in
     let tcp_out = ref Dns.IM.empty in
+    let tcp_packet_transit = ref Dns.IM.empty in
     let in_flight = ref Dns.IS.empty in
 
     let maybe_update_state t t' =
@@ -123,7 +124,12 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       Dns.read_tcp f >>= function
       | Error () ->
         Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
-        close ip port
+        close ip port >>= fun () ->
+        (* re-send once *)
+        begin match Dns.IM.find ip !tcp_packet_transit with
+          | None -> Lwt.return_unit
+          | Some data -> request ~record:false data
+        end
       | Ok data ->
         let now = Ptime.v (P.now_d_ps ()) in
         let elapsed = M.elapsed_ns () in
@@ -140,7 +146,9 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
             Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
             close ip port
           | Ok () -> read_and_handle ip port f
-    and request (proto, ip, port, data) =
+    and request ?(record = true) (proto, ip, port, data) =
+      if record then
+        tcp_packet_transit := Dns.IM.add ip (proto, ip, port, data) !tcp_packet_transit;
       match Dns.IM.find ip !tcp_out with
       | None ->
         begin
