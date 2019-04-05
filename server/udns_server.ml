@@ -815,7 +815,10 @@ module Primary = struct
         let n = Packet.Query.empty in
         s_header header, `Notify n, None
       in
-      Ok ((t, l, ns), Some reply, [], Some `Notify)
+      let soa = match Name_rr_map.find (fst question) Soa (fst n) with
+        | Some soa -> Some (soa : Soa.t) | _ -> None
+      in
+      Ok ((t, l, ns), Some reply, [], Some (`Notify soa))
     | p, false ->
       Log.err (fun m -> m "ignoring unsolicited answer %a" Packet.pp p) ;
       Ok ((t, l, ns), None, [], None)
@@ -860,7 +863,7 @@ module Primary = struct
           | t, Some (_, _, (cs, _)), out, notify -> t, Some cs, out, notify
         end
       | Ok (Some (name, tsig, mac, key)) ->
-        let n = function Some `Notify -> Some `Signed_notify | x -> x in
+        let n = function Some (`Notify n) -> Some (`Signed_notify n) | None -> None in
         match handle_inner (Some name) with
         | (a, None, out, notify) -> (a, None, out, n notify)
         | (a, Some (hdr, question, (buf, max_size)), out, notify) ->

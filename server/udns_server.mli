@@ -77,7 +77,7 @@ module Primary : sig
   val handle_frame : s -> int64 -> Udns.proto -> Ipaddr.V4.t -> int ->
     Packet.Header.t -> Packet.Question.t -> Packet.t ->
     Name_rr_map.t -> Domain_name.t option ->
-    (s * (Packet.Header.t * Packet.t * Name_rr_map.t option) option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify | `Signed_notify ] option,
+    (s * (Packet.Header.t * Packet.t * Name_rr_map.t option) option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option,
      Udns_enum.rcode) result
   (** [handle_frame s now src src_port proto key hdr v] handles the given
      [frame], returning new state, an answer, and potentially notify packets to
@@ -85,7 +85,7 @@ module Primary : sig
 
   val handle : s -> Ptime.t -> int64 -> Udns.proto ->
     Ipaddr.V4.t -> int -> Cstruct.t ->
-    s * Cstruct.t option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify | `Signed_notify ] option
+    s * Cstruct.t option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
   (** [handle s now ts proto src src_port buffer] decodes the [buffer],
      processes the DNS frame using {!handle_frame}, and encodes the reply. *)
 
