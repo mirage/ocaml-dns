@@ -47,14 +47,6 @@ val handle_question : t -> proto -> Domain_name.t option -> Packet.Header.t ->
    DNSKEY. Zone transfer need to be authorised. If a `Key-management key was used
     for signing, instead of the data trie the key trie is used for lookups. *)
 
-val notify : t -> (Domain_name.t * Ipaddr.V4.t * int) list -> int64 ->
-  Domain_name.t -> Soa.t ->
-  (int64 * int * Ipaddr.V4.t * int * (Packet.Header.t * Packet.Question.t * Packet.t)) list
-(** [notify t active_conns now zone soa] creates notifications for [zone]:
-    all secondaries with glue in the server state for [zone],
-    all matching [active_conns] of the [zone], and all secondaries where a key
-    is in the server state with IP addresses in their names. *)
-
 val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.Header.t ->
   Packet.Question.t -> (Domain_name.t * Tsig.t * int) option ->
   Cstruct.t -> ((Domain_name.t * Tsig.t * Cstruct.t * Dnskey.t) option,
@@ -73,8 +65,9 @@ module Primary : sig
   val data : s -> Udns_trie.t
   (** [data s] is the data store of [s]. *)
 
-  val with_data : s -> Udns_trie.t -> s
-  (** [with_data s trie] replaces the current data with [trie] in [s]. *)
+  val with_data : s -> int64 -> Udns_trie.t -> s * (Ipaddr.V4.t * int * Cstruct.t) list
+  (** [with_data s ts trie] replaces the current data with [trie] in [s].
+      The returned notifications should be send out. *)
 
   val create : ?keys:(Domain_name.t * Udns.Dnskey.t) list ->
     ?a:Authentication.a list -> tsig_verify:Tsig_op.verify ->
