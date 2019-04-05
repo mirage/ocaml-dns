@@ -713,9 +713,18 @@ module Packet : sig
 end
 
 module Tsig_op : sig
+  type e = [
+    | `Bad_key of Domain_name.t * Tsig.t
+    | `Bad_timestamp of Domain_name.t * Tsig.t * Dnskey.t
+    | `Bad_truncation of Domain_name.t * Tsig.t
+    | `Invalid_mac of Domain_name.t * Tsig.t
+  ]
+
+  val pp_e : e Fmt.t
+
   type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.Header.t -> Packet.Question.t ->
     Domain_name.t -> key:Dnskey.t option -> Tsig.t -> Cstruct.t ->
-    (Tsig.t * Cstruct.t * Dnskey.t, Cstruct.t option) result
+    (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
 
   type sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> Tsig.t ->
     key:Dnskey.t -> Packet.Header.t -> Packet.Question.t -> Cstruct.t ->

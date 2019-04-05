@@ -56,9 +56,9 @@ val notify : t -> (Domain_name.t * Ipaddr.V4.t * int) list -> int64 ->
     is in the server state with IP addresses in their names. *)
 
 val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.Header.t ->
-   Packet.Question.t -> (Domain_name.t * Tsig.t * int) option ->
-   Cstruct.t -> ((Domain_name.t * Tsig.t * Cstruct.t *
-   Dnskey.t) option, Cstruct.t option) result
+  Packet.Question.t -> (Domain_name.t * Tsig.t * int) option ->
+  Cstruct.t -> ((Domain_name.t * Tsig.t * Cstruct.t * Dnskey.t) option,
+                Tsig_op.e * Cstruct.t option) result
 (** [handle_tsig ~mac t now hdr v tsig offset buffer] verifies the tsig
     signature if present, returning the keyname, tsig, mac, and used key. *)
 

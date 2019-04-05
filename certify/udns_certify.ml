@@ -5,6 +5,12 @@ let dns_header rng =
   { Packet.Header.id ; query = true ; operation = Udns_enum.Query ;
     rcode = Udns_enum.NoError ; flags = Packet.Header.FS.empty }
 
+type u_err = [ `Tsig of Udns_tsig.e | `Bad_reply of Packet.res ]
+
+let pp_u_err ppf = function
+  | `Tsig e -> Fmt.pf ppf "tsig error %a" Udns_tsig.pp_e e
+  | `Bad_reply res -> Fmt.pf ppf "bad reply %a" Packet.pp_res res
+
 let nsupdate rng now ~host ~keyname ~zone dnskey csr =
   let tlsa =
     { Tlsa.cert_usage = Domain_issued_certificate ;
@@ -32,11 +38,21 @@ let nsupdate rng now ~host ~keyname ~zone dnskey csr =
   | Ok (data, mac) ->
     Ok (data, (fun data ->
         match Udns_tsig.decode_and_verify now dnskey keyname ~mac data with
-        | Error e -> Error e
+        | Error e -> Error (`Tsig e)
         | Ok (res, _, _) when Packet.is_reply header zone res -> Ok ()
-        | Ok (res, _, _) ->
-          Error (Fmt.strf "nsupdate invalid reply %a" Packet.pp_res res)))
+        | Ok (res, _, _) -> Error (`Bad_reply res)))
   | Error e -> Error e
+
+type q_err = [
+  | `Decode of Udns.Packet.err
+  | `Bad_reply of Udns.Packet.res
+  | `No_tlsa
+]
+
+let pp_q_err ppf = function
+  | `Decode err -> Fmt.pf ppf "decoding failed %a" Packet.pp_err err
+  | `Bad_reply res -> Fmt.pf ppf "bad reply %a" Packet.pp_res res
+  | `No_tlsa -> Fmt.pf ppf "No TLSA record found"
 
 let query rng public_key fqdn =
   let good_tlsa tlsa =
@@ -64,16 +80,14 @@ let query rng public_key fqdn =
       when Packet.is_reply header question res ->
       (* collect TLSA pems *)
       begin match Name_rr_map.find fqdn Tlsa answer with
-        | None -> Error "no TLSA records found"
+        | None -> Error `No_tlsa
         | Some (_, tlsas) ->
           Rr_map.Tlsa_set.(fold (fun tlsa r ->
               match parse tlsa, r with Some c, _ -> Ok c | None, x -> x)
               (filter good_tlsa tlsas)
-              (Error "no matching record found"))
+              (Error `No_tlsa))
       end
-    | Ok res ->
-      Error (Fmt.strf "expected a response, but got %a" Packet.pp_res res)
-    | Error e ->
-      Error (Fmt.strf "error %a while decoding answer" Packet.pp_err e)
+    | Ok res -> Error (`Bad_reply res)
+    | Error e -> Error (`Decode e)
   in
   (out, react)

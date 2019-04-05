@@ -2670,9 +2670,22 @@ module Packet = struct
 end
 
 module Tsig_op = struct
+  type e = [
+    | `Bad_key of Domain_name.t * Tsig.t
+    | `Bad_timestamp of Domain_name.t * Tsig.t * Dnskey.t
+    | `Bad_truncation of Domain_name.t * Tsig.t
+    | `Invalid_mac of Domain_name.t * Tsig.t
+  ]
+
+  let pp_e ppf = function
+    | `Bad_key (name, tsig) -> Fmt.pf ppf "bad key %a: %a" Domain_name.pp name Tsig.pp tsig
+    | `Bad_timestamp (name, tsig, key) -> Fmt.pf ppf "bad timestamp: %a %a %a" Domain_name.pp name Tsig.pp tsig Dnskey.pp key
+    | `Bad_truncation (name, tsig) -> Fmt.pf ppf "bad truncation %a %a" Domain_name.pp name Tsig.pp tsig
+    | `Invalid_mac (name, tsig) -> Fmt.pf ppf "invalid mac %a %a" Domain_name.pp name Tsig.pp tsig
+
   type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.Header.t -> Packet.Question.t ->
     Domain_name.t -> key:Dnskey.t option -> Tsig.t -> Cstruct.t ->
-    (Tsig.t * Cstruct.t * Dnskey.t, Cstruct.t option) result
+    (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
 
   type sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> Tsig.t ->
     key:Dnskey.t -> Packet.Header.t -> Packet.Question.t -> Cstruct.t ->

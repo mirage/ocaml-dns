@@ -250,8 +250,12 @@ let handle_primary t now ts proto sender sport header question p additional edns
         `No
   in
   match Udns_server.handle_tsig (Udns_server.Primary.server t) now header question tsig buf with
-  | Error (Some data) -> `Reply (t, (header, question, (data, 0)))
-  | Error None -> `None
+  | Error (e, data) ->
+    Logs.err (fun m -> m "tsig failed %a" Tsig_op.pp_e e) ;
+    begin match data with
+      | Some data -> `Reply (t, (header, question, (data, 0)))
+      | None -> `None
+    end
   | Ok None -> handle_inner None
   | Ok (Some (name, tsig, mac, key)) ->
     match handle_inner (Some name) with

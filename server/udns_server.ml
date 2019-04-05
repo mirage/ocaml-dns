@@ -740,7 +740,9 @@ module Primary = struct
           ((t, l, ns), res, [], None)
       in
       match handle_tsig t now header question tsig buf with
-      | Error data -> ((t, l, ns), data, [], None)
+      | Error (e, data) ->
+        Log.err (fun m -> m "error %a while handling tsig" Tsig_op.pp_e e) ;
+        ((t, l, ns), data, [], None)
       | Ok None ->
         begin match handle_inner None with
           | t, None, out, notify -> t, None, out, notify
@@ -1212,7 +1214,9 @@ module Secondary = struct
       in
       let mac = find_mac zones question in
       match handle_tsig ?mac t now header question tsig buf with
-      | Error data -> ((t, zones), data, [])
+      | Error (e, data) ->
+        Logs.err (fun m -> m "error %a while handling tsig" Tsig_op.pp_e e) ;
+        ((t, zones), data, [])
       | Ok None ->
         begin match handle_inner None with
           | (t, None, out) -> (t, None, out)

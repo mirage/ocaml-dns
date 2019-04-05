@@ -18,7 +18,7 @@ depends: [
   "udns-certify"
   "rresult"
   "bos"
-  "cmdliner"
+  "cmdliner" {>= "1.0.0"}
   "fpath"
   "x509"
   "nocrypto"

@@ -30,7 +30,8 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
   Logs.debug (fun m -> m "using key %a: %a" Domain_name.pp keyname Udns.Dnskey.pp dnskey) ;
   let hdr, zone, update = create_update zone hostname ip_address in
   match Udns_tsig.encode_and_sign ~proto:`Tcp hdr zone update now dnskey keyname with
-  | Error msg -> `Error (false, msg)
+  | Error s ->
+    Error (`Msg (Fmt.strf "tsig sign error %a" Udns_tsig.pp_s s))
   | Ok (data, mac) ->
     let data_len = Cstruct.len data in
     Logs.debug (fun m -> m "built data %d" data_len) ;
@@ -40,15 +41,13 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
     (try (Unix.close socket) with _ -> ()) ;
     match Udns_tsig.decode_and_verify now dnskey keyname ~mac read_data with
     | Error e ->
-      Logs.err (fun m -> m "nsupdate error %s" e) ;
-      `Error (false, "")
+      Error (`Msg (Fmt.strf "nsupdate error %a" Udns_tsig.pp_e e))
     | Ok (res, _, _) when Packet.is_reply hdr zone res ->
       Logs.app (fun m -> m "successful and signed update!") ;
-      `Ok ()
+      Ok ()
     | Ok (res, _, _) ->
-      Logs.err (fun m -> m "expected reply to %a %a, got %a"
-                   Packet.Header.pp hdr Packet.Question.pp zone Packet.pp_res res) ;
-      `Error (false, "")
+      Error (`Msg (Fmt.strf "expected reply to %a %a, got %a"
+                     Packet.Header.pp hdr Packet.Question.pp zone Packet.pp_res res))
 
 open Cmdliner
 
@@ -73,7 +72,7 @@ let ip_address =
   Arg.(required & pos 3 (some Udns_cli.ip_c) None & info [] ~doc ~docv:"IP")
 
 let cmd =
-  Term.(ret (const jump $ Udns_cli.setup_log $ serverip $ port $ key $ hostname $ ip_address)),
+  Term.(term_result (const jump $ Udns_cli.setup_log $ serverip $ port $ key $ hostname $ ip_address)),
   Term.info "oupdate" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
