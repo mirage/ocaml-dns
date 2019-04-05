@@ -23,14 +23,16 @@ let find_or_generate_key key_filename bits seed =
     Ok key
 
 let query_certificate sock public_key fqdn =
-  let out, recv_cb = Udns_certify.query Nocrypto.Rng.generate public_key fqdn in
-  Udns_cli.send_tcp sock out ;
-  let data = Udns_cli.recv_tcp sock in
-  recv_cb data
+  match Udns_certify.query Nocrypto.Rng.generate public_key fqdn with
+  | Error e -> Error e
+  | Ok (out, cb) ->
+    Udns_cli.send_tcp sock out ;
+    let data = Udns_cli.recv_tcp sock in
+    cb data
 
 let nsupdate_csr sock host keyname zone dnskey csr =
   match Udns_certify.nsupdate Nocrypto.Rng.generate Ptime_clock.now ~host ~keyname ~zone dnskey csr with
-  | Error s -> Error (`Msg (Fmt.strf "nsupdate sign error %a" Udns_tsig.pp_s s))
+  | Error s -> Error s
   | Ok (out, cb) ->
     Udns_cli.send_tcp sock out ;
     let data = Udns_cli.recv_tcp sock in
@@ -94,7 +96,8 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
      | Error `No_tlsa ->
        Logs.debug (fun m -> m "no TLSA found, sending update");
        Ok true
-     | Error e ->
+     | Error (`Msg m) -> Error (`Msg m)
+     | Error ((`Decode _ | `Bad_reply _) as e) ->
        Error (`Msg (Fmt.strf "error %a while parsing TLSA reply" Udns_certify.pp_q_err e)))
   >>= fun send_update ->
   if send_update then
@@ -107,7 +110,10 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
         | Error `No_tlsa ->
           Unix.sleep 1 ;
           request (pred retries)
-        | Error e ->
+        | Error (`Msg msg) ->
+          Logs.err (fun m -> m "error %s" msg) ;
+          Error (`Msg msg)
+        | Error ((`Decode _ | `Bad_reply _) as e) ->
           Logs.err (fun m -> m "error %a while handling TLSA reply (retrying anyways)" Udns_certify.pp_q_err e) ;
           request (pred retries)
         | Ok x -> write_certificate x

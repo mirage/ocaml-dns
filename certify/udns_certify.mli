@@ -1,5 +1,9 @@
 open Udns
 
+val letsencrypt_name : Domain_name.t -> (Domain_name.t, [> `Msg of string ]) result
+(** [letsencrypt_name host] is the service name at which we store let's encrypt
+    certificates for the [host]. *)
+
 type u_err = [ `Tsig of Udns_tsig.e | `Bad_reply of Packet.res ]
 
 val pp_u_err : u_err Fmt.t
@@ -7,7 +11,8 @@ val pp_u_err : u_err Fmt.t
 val nsupdate : (int -> Cstruct.t) -> (unit -> Ptime.t) -> host:Domain_name.t ->
   keyname:Domain_name.t -> zone:Domain_name.t -> Udns.Dnskey.t ->
   X509.CA.signing_request ->
-  (Cstruct.t * (Cstruct.t -> (unit, u_err) result), Udns_tsig.s) result
+  (Cstruct.t * (Cstruct.t -> (unit, [> u_err ]) result),
+   [> `Msg of string ]) result
 (** [nsupdate rng now ~host ~keyname ~zone dnskey csr] is a buffer with a DNS
    update that removes all TLSA records from the given [host], and adds a single
    TLSA record containing the certificate signing request. It also returns a
@@ -25,7 +30,8 @@ type q_err = [
 val pp_q_err : q_err Fmt.t
 
 val query : (int -> Cstruct.t) -> X509.public_key -> Domain_name.t ->
-  Cstruct.t * (Cstruct.t -> (X509.t, q_err) result)
-(** [query rng pubkey name] is a buffer
-    with a DNS TLSA query for the given [name], and a function that decodes a
-    given answer, either returning a X509 certificate or an error. *)
+  (Cstruct.t * (Cstruct.t -> (X509.t, [> q_err ]) result),
+   [> `Msg of string ]) result
+(** [query rng pubkey name] is a buffer with a DNS TLSA query for the given
+   [name], and a function that decodes a given answer, either returning a X509
+   certificate or an error. *)

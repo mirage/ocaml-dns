@@ -70,7 +70,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       Udns_certify.nsupdate R.generate (fun () -> Ptime.v (P.now_d_ps ()))
         ~host ~keyname ~zone dnskey csr
     with
-    | Error s -> Lwt.return (Error (`Msg (Fmt.strf "sign error %a" Udns_tsig.pp_s s)))
+    | Error s -> Lwt.return (Error s)
     | Ok (out, cb) ->
       Dns.send_tcp (Dns.flow flow) out >>= function
       | Error () -> Lwt.return (Error (`Msg "tcp sending error"))
@@ -81,15 +81,17 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
           | Ok () -> Ok ()
 
   let query_certificate flow public_key name =
-    let out, cb = Udns_certify.query R.generate public_key name in
-    Dns.send_tcp (Dns.flow flow) out >>= function
-    | Error () -> Lwt.return (Error (`Communication "couldn't send tcp"))
-    | Ok () ->
-      Dns.read_tcp flow >|= function
-      | Error () -> Error (`Communication "error while reading answer")
-      | Ok data -> match cb data with
-        | Error e -> Error (`Query e)
-        | Ok cert -> Ok cert
+    match Udns_certify.query R.generate public_key name with
+    | Error e -> Lwt.return (Error e)
+    | Ok (out, cb) ->
+      Dns.send_tcp (Dns.flow flow) out >>= function
+      | Error () -> Lwt.return (Error (`Msg "couldn't send tcp"))
+      | Ok () ->
+        Dns.read_tcp flow >|= function
+        | Error () -> Error (`Msg "error while reading answer")
+        | Ok data -> match cb data with
+          | Error e -> Error e
+          | Ok cert -> Ok cert
 
   let initialise_csr hostname additionals seed =
     let private_key =
@@ -123,13 +125,13 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
     | Ok certificate ->
       Log.info (fun m -> m "found certificate in DNS") ;
       Lwt.return (Ok certificate)
-    | Error (`Communication msg) ->
-      Log.err (fun m -> m "communication error %s" msg) ;
+    | Error (`Msg msg) ->
+      Log.err (fun m -> m "error %s" msg) ;
       Lwt.return (Error (`Msg msg))
-    | Error (`Query ((`Decode _ | `Bad_reply _) as e)) ->
+    | Error ((`Decode _ | `Bad_reply _) as e) ->
       Log.err (fun m -> m "query error %a, giving up" Udns_certify.pp_q_err e);
       Lwt.return (Error (`Msg "query error"))
-    | Error (`Query `No_tlsa) ->
+    | Error `No_tlsa ->
       Log.info (fun m -> m "no certificate in DNS, need to transmit the CSR") ;
       nsupdate_csr flow hostname keyname zone dnskey csr >>= function
       | Error (`Msg msg) ->
@@ -144,10 +146,10 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
             | Ok certificate ->
               Log.info (fun m -> m "finally found a certificate") ;
               Lwt.return (Ok certificate)
-            | Error (`Communication msg) ->
-              Log.err (fun m -> m "communication error while querying certificate %s" msg) ;
+            | Error (`Msg msg) ->
+              Log.err (fun m -> m "error while querying certificate %s" msg) ;
               Lwt.return (Error (`Msg msg))
-            | Error (`Query q) ->
+            | Error (#Udns_certify.q_err as q) ->
               Log.info (fun m -> m "still waiting for certificate, got error %a" Udns_certify.pp_q_err q) ;
               TIME.sleep_ns (Duration.of_sec 1) >>= fun () ->
               wait_for_cert ~retry:(pred retry) ()
