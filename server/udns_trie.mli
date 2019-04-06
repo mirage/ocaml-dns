@@ -119,15 +119,5 @@ val entries : Domain_name.t -> t ->
 (** [entries name t] returns either the SOA and all entries for the requested
     [name], or an error. *)
 
-val fold : Domain_name.t -> t -> (Domain_name.t -> Rr_map.b -> 'a -> 'a) -> 'a ->
-  ('a, [> `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
-       | `NotAuthoritative
-       | `NotFound of Domain_name.t * Soa.t ]) result
-
-val folde : Domain_name.t -> 'a Rr_map.key -> t ->
-  (Domain_name.t -> 'a -> 'b -> 'b) -> 'b ->
-  ('b, [> `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
-       | `NotAuthoritative
-       | `NotFound of Domain_name.t * Soa.t ]) result
-(** [folde name key t f acc] calls [f] with [dname value acc] element in [t]
-    where [dname] has [name] as prefix, or an error. *)
+val fold : 'a Rr_map.key -> t -> (Domain_name.t -> 'a -> 'b -> 'b) -> 'b -> 'b
+(** [fold key t f acc] calls [f] with [dname value acc] element in [t]. *)

@@ -49,10 +49,8 @@ module Authentication = struct
     | `Update -> "_update"
     | `Transfer -> "_transfer"
 
-  let operation_name ?(zone = Domain_name.root) op =
-    Domain_name.prepend_exn ~hostname:false zone (operation_to_string op)
-
   let is_op op name =
+    (* TODO should check that op is in the beginning somewhere? *)
     let arr = Domain_name.to_array name in
     Array.exists (String.equal (operation_to_string op)) arr
 
@@ -61,8 +59,9 @@ module Authentication = struct
        e.g. 192.168.42.2_1053.192.168.42.1._transfer.mirage
        alternative: <whatever>.primaryip._transfer.zone *)
     let arr = Domain_name.to_array name in
+    let transfer = operation_to_string `Transfer in
     try
-      let rec go idx = if Array.get arr idx = "_transfer" then idx else go (succ idx) in
+      let rec go idx = if Array.get arr idx = transfer then idx else go (succ idx) in
       let zone_idx = go 0 in
       let zone = Domain_name.of_array (Array.sub arr 0 zone_idx) in
       let start = succ zone_idx in
@@ -90,19 +89,21 @@ module Authentication = struct
     with Invalid_argument _ -> None
 
   let find_ns s (trie, _) zone =
-    let tx = operation_name ~zone `Transfer in
     let accumulate name _ acc =
-      match find_zone_ips name, s with
-      | None, _ -> acc
-      | Some (_, prim, _), `P ->
-        let (ip, port) = prim in
-        (name, ip, port) :: acc
-      | Some (_, _, Some sec), `S ->
-        let (ip, port) = sec in
-        (name, ip, port) :: acc
-      | Some (_, _, None), `S -> acc
+      if Domain_name.sub ~domain:zone ~subdomain:name && is_op `Transfer name then
+        match find_zone_ips name, s with
+        | None, _ -> acc
+        | Some (_, prim, _), `P ->
+          let (ip, port) = prim in
+          (name, ip, port) :: acc
+        | Some (_, _, Some sec), `S ->
+          let (ip, port) = sec in
+          (name, ip, port) :: acc
+        | Some (_, _, None), `S -> acc
+      else
+        acc
     in
-    Udns_trie.folde tx Rr_map.Dnskey trie accumulate []
+    Udns_trie.fold Rr_map.Dnskey trie accumulate []
 
   let secondaries t zone = find_ns `S t zone
 
@@ -597,12 +598,9 @@ module Notification = struct
           secondaries []
       | _ -> []
     in
-    let ip_ports = match Authentication.secondaries server.auth zone with
-      | Ok name_ip_ports ->
-        List.fold_left (fun acc (_, ip, port) -> (ip, port) :: acc) ip_ports name_ip_ports
-      | Error e ->
-        Log.warn (fun m -> m "no secondaries keys found (err %a)" Udns_trie.pp_e e) ;
-        ip_ports
+    let ip_ports =
+      let name_ip_ports = Authentication.secondaries server.auth zone in
+      List.fold_left (fun acc (_, ip, port) -> (ip, port) :: acc) ip_ports name_ip_ports
     in
     let tcp_ip_ports = match Domain_name.Map.find zone conn with
       | None -> []
@@ -740,8 +738,8 @@ module Primary = struct
 
   let with_data (t, l, n) now data =
     (* we're the primary and need to notify our friends! *)
-    match
-      Udns_trie.folde Domain_name.root Soa data
+    let n', out =
+      Udns_trie.fold Soa data
         (fun name soa (n, outs) ->
            match Udns_trie.lookup name Soa t.data with
            | Error _ ->
@@ -752,12 +750,8 @@ module Primary = struct
              (n', outs @ outs')
            | Ok _ -> (n, outs))
         (n, [])
-    with
-    | Ok (n', out) -> ({ t with data }, l, n'), out
-    | Error e ->
-      Log.err (fun m -> m "with_data failed during fold (using old data): %a"
-                  Udns_trie.pp_e e);
-      (t, l, n), []
+    in
+    ({ t with data }, l, n'), out
 
   let create ?(keys = []) ?(a = []) ~tsig_verify ~tsig_sign ~rng data =
     let keys = Authentication.of_keys keys in
@@ -768,11 +762,7 @@ module Primary = struct
         (* we drop notifications, the first call to timer will solve this :) *)
         fst (Notification.notify Domain_name.Map.empty ns t 0L name soa)
       in
-      match Udns_trie.folde Domain_name.root Rr_map.Soa data f Notification.IPM.empty with
-      | Ok ns -> ns
-      | Error e ->
-        Log.warn (fun m -> m "error %a while collecting zones" Udns_trie.pp_e e) ;
-        Notification.IPM.empty
+      Udns_trie.fold Rr_map.Soa data f Notification.IPM.empty
     in
     t, Domain_name.Map.empty, notifications
 
@@ -915,7 +905,7 @@ module Secondary = struct
       let f name _ zones =
         Log.debug (fun m -> m "soa found for %a" Domain_name.pp name) ;
         match Authentication.primaries (keys, []) name with
-        | Ok [] -> begin match primary with
+        | [] -> begin match primary with
             | None ->
               Log.warn (fun m -> m "no nameserver found for %a" Domain_name.pp name) ;
               zones
@@ -935,22 +925,15 @@ module Secondary = struct
                     zones
                   end) zones keylist
           end
-        | Ok primaries ->
+        | primaries ->
           List.fold_left (fun zones (keyname, ip, port) ->
               Log.app (fun m -> m "adding transfer key %a for zone %a"
-                           Domain_name.pp keyname Domain_name.pp name) ;
+                          Domain_name.pp keyname Domain_name.pp name) ;
               let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, port, keyname in
               Domain_name.Map.add name v zones)
             zones primaries
-        | Error e ->
-          Log.warn (fun m -> m "error %a while looking up keys for %a" Udns_trie.pp_e e Domain_name.pp name) ;
-          zones
       in
-      match Udns_trie.folde Domain_name.root Rr_map.Soa keys f Domain_name.Map.empty with
-      | Ok zones -> zones
-      | Error e ->
-        Log.warn (fun m -> m "error %a while collecting zones" Udns_trie.pp_e e) ;
-        Domain_name.Map.empty
+      Udns_trie.fold Rr_map.Soa keys f Domain_name.Map.empty
     in
     (create Udns_trie.empty (keys, a) rng tsig_verify tsig_sign, zones)
 
