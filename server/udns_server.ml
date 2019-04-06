@@ -681,13 +681,15 @@ let update_data trie zone (prereq, update) =
    | Error e ->
      Log.err (fun m -> m "check after update returned %a" Udns_trie.pp_err e) ;
      Error Udns_enum.YXRRSet) >>= fun () ->
-  match Udns_trie.lookup zone Soa trie, Udns_trie.lookup zone Soa trie' with
-  | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa -> Ok (trie', Some (zone, soa))
-  | _, Ok soa ->
-    let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
-    let trie'' = Udns_trie.insert zone Soa soa trie' in
-    Ok (trie'', Some (zone, soa))
-  | _, _ -> Ok (trie', None)
+  if Udns_trie.equal trie trie' then
+    Ok (trie, None)
+  else match Udns_trie.lookup zone Soa trie, Udns_trie.lookup zone Soa trie' with
+    | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa -> Ok (trie', Some (zone, soa))
+    | _, Ok soa ->
+      let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
+      let trie'' = Udns_trie.insert zone Soa soa trie' in
+      Ok (trie'', Some (zone, soa))
+    | _, _ -> Ok (trie', None)
 
 let handle_update t proto key (zone, _) ((_prereq, update) as u) =
   if Authentication.authorise t.auth proto key zone `Key_management then begin
