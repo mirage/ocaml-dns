@@ -28,6 +28,7 @@ let load ?(origin = Domain_name.root) buf =
     state.origin <- origin;
     state.ttl <- Int32.of_int 3600;
     state.owner <- state.origin;
+    state.zone <- Udns.Name_rr_map.empty;
     Ok (Udns_zone_parser.zfile Udns_zone_lexer.token lexbuf)
   with
     | Parsing.Parse_error -> Error (Printf.sprintf "zone parse error at line %d" state.lineno)
