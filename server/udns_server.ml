@@ -896,8 +896,6 @@ module Secondary = struct
 
   let with_data (t, zones) data = ({ t with data }, zones)
 
-  let zones (_, zones) = fst (List.split (Domain_name.Map.bindings zones))
-
   let create ?(a = []) ?primary ~tsig_verify ~tsig_sign ~rng keylist =
     (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
     let keys = Authentication.of_keys keylist in

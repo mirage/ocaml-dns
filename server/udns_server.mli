@@ -112,9 +112,6 @@ module Secondary : sig
   val with_data : s -> Udns_trie.t -> s
   (** [with_data s trie] is [s] with its data replaced by [trie]. *)
 
-  val zones : s -> Domain_name.t list
-  (** [zones s] is a set of domain names of the zones defined in [s]. *)
-
   val create : ?a:Authentication.a list -> ?primary:Ipaddr.V4.t ->
    tsig_verify:Tsig_op.verify -> tsig_sign:Tsig_op.sign ->
     rng:(int -> Cstruct.t) -> (Domain_name.t * Udns.Dnskey.t) list -> s
