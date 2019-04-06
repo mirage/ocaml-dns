@@ -16,5 +16,5 @@
  *
  *)
 
-val load : ?origin:Domain_name.t -> string -> (Udns.Name_rr_map.t, string) result
+val load : string -> (Udns.Name_rr_map.t, [> `Msg of string ]) result
 (** Load a domain's zone from a string. *)

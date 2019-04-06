@@ -37,5 +37,13 @@ let state = {
   zone = Domain_name.Map.empty ;
 }
 
+let reset () =
+  state.paren <- 0;
+  state.lineno <- 1;
+  state.ttl <- Int32.of_int 3600;
+  state.origin <- Domain_name.root;
+  state.owner <- Domain_name.root;
+  state.zone <- Udns.Name_rr_map.empty
+
 exception Zone_parse_problem of string
 

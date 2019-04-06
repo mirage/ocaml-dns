@@ -14,7 +14,7 @@ let e_to_msg = function Ok a -> Ok a | Error e -> Error (`Msg (Fmt.to_to_string 
 
 let load_zone zone =
   Bos.OS.File.read Fpath.(v zone) >>= fun data ->
-  str_to_msg (Udns_zonefile.load data) >>| fun zone ->
+  Udns_zonefile.load data >>| fun zone ->
   Udns_trie.(insert_map zone empty)
 
 let jump _ zone old =

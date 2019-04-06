@@ -790,7 +790,6 @@ module Primary = struct
       in
       Ok ((t, l', ns), Some answer, [], None)
     | `Update u, true ->
-      (* TODO: intentional? all other notifications apart from the new ones are dropped *)
       handle_update t proto key question u >>= fun (t', stuff) ->
       let ns, out = match stuff with
         | None -> ns, []

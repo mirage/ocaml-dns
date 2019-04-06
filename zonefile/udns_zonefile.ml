@@ -18,19 +18,12 @@
  *
  *)
 
-open Udns_zone_state
-
-let load ?(origin = Domain_name.root) buf =
+let load buf =
+  Udns_zone_state.reset ();
   try
     let lexbuf = Lexing.from_string buf in
-    state.paren <- 0;
-    state.lineno <- 1;
-    state.origin <- origin;
-    state.ttl <- Int32.of_int 3600;
-    state.owner <- state.origin;
-    state.zone <- Udns.Name_rr_map.empty;
     Ok (Udns_zone_parser.zfile Udns_zone_lexer.token lexbuf)
   with
-    | Parsing.Parse_error -> Error (Printf.sprintf "zone parse error at line %d" state.lineno)
-    | Zone_parse_problem s -> Error (Printf.sprintf "zone parse problem at line %d: %s" state.lineno s)
-    | exn -> Error (Printexc.to_string exn)
+    | Parsing.Parse_error -> Error (`Msg (Fmt.strf "zone parse error at line %d" Udns_zone_state.(state.lineno)))
+    | Udns_zone_state.Zone_parse_problem s -> Error (`Msg (Fmt.strf "zone parse problem at line %d: %s" Udns_zone_state.(state.lineno) s))
+    | exn -> Error (`Msg (Printexc.to_string exn))
