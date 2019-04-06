@@ -82,6 +82,12 @@ val pp_e : [< `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
            | `NotAuthoritative
            | `NotFound of Domain_name.t * Soa.t ] Fmt.t
 
+val zone : Domain_name.t -> t ->
+  (Domain_name.t * Soa.t,
+   [> `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
+   | `EmptyNonTerminal of Domain_name.t * Soa.t
+   | `NotAuthoritative
+   | `NotFound of Domain_name.t * Soa.t ]) result
 
 val lookupb : Domain_name.t -> Udns_enum.rr_typ -> t ->
   (Rr_map.b * (Domain_name.t * int32 * Domain_name.Set.t),

@@ -13,7 +13,7 @@ let err_to_msg = function Ok () -> Ok () | Error e -> Error (`Msg (Fmt.to_to_str
 let load_zone zone =
   Bos.OS.File.read Fpath.(v zone) >>= fun data ->
   Udns_zonefile.load data >>| fun zone ->
-  Udns_trie.(insert_map zone empty)
+  Udns_trie.insert_map zone Udns_trie.empty
 
 let jump _ zone old =
   load_zone zone >>= fun trie ->

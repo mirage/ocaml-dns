@@ -50,7 +50,7 @@ module Authentication = struct
     | `Transfer -> "_transfer"
 
   let is_op op name =
-    (* TODO should check that op is in the beginning somewhere? *)
+    (* TODO should check that op is at the beginning? *)
     let arr = Domain_name.to_array name in
     Array.exists (String.equal (operation_to_string op)) arr
 

@@ -122,6 +122,14 @@ let lookup_ignore name ty t =
     | None -> Error ()
     | Some v -> Ok v
 
+let zone name t =
+  match lookup_aux name t with
+  | Error e -> Error e
+  | Ok (zone, _, _) ->
+    match check_zone zone with
+    | Error e -> Error e
+    | Ok (name, map) -> Ok (name, Rr_map.get Soa map) (* we ended with `Soa, which checked that map contains a Soa *)
+
 let fold key (N (sub, map)) f s =
   let get name map acc =
     match Rr_map.find key map with
