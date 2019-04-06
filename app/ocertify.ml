@@ -26,7 +26,7 @@ let query_certificate sock public_key fqdn =
   match Udns_certify.query Nocrypto.Rng.generate public_key fqdn with
   | Error e -> Error e
   | Ok (out, cb) ->
-    Udns_cli.send_tcp sock out ;
+    Udns_cli.send_tcp sock out;
     let data = Udns_cli.recv_tcp sock in
     cb data
 
@@ -34,14 +34,14 @@ let nsupdate_csr sock host keyname zone dnskey csr =
   match Udns_certify.nsupdate Nocrypto.Rng.generate Ptime_clock.now ~host ~keyname ~zone dnskey csr with
   | Error s -> Error s
   | Ok (out, cb) ->
-    Udns_cli.send_tcp sock out ;
+    Udns_cli.send_tcp sock out;
     let data = Udns_cli.recv_tcp sock in
     match cb data with
     | Ok () -> Ok ()
     | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Udns_certify.pp_u_err e))
 
 let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert force =
-  Nocrypto_entropy_unix.initialize () ;
+  Nocrypto_entropy_unix.initialize ();
   let fn suffix = function
     | None -> Fpath.(v (Domain_name.to_string hostname) + suffix)
     | Some x -> Fpath.v x
@@ -108,13 +108,14 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
       else
         match query_certificate sock public_key hostname with
         | Error `No_tlsa ->
-          Unix.sleep 1 ;
+          Logs.warn (fun m -> m "still no tlsa, sleeping one more second");
+          Unix.sleep 1;
           request (pred retries)
         | Error (`Msg msg) ->
-          Logs.err (fun m -> m "error %s" msg) ;
+          Logs.err (fun m -> m "error %s" msg);
           Error (`Msg msg)
         | Error ((`Decode _ | `Bad_reply _) as e) ->
-          Logs.err (fun m -> m "error %a while handling TLSA reply (retrying anyways)" Udns_certify.pp_q_err e) ;
+          Logs.err (fun m -> m "error %a while handling TLSA reply (retrying anyways)" Udns_certify.pp_q_err e);
           request (pred retries)
         | Ok x -> write_certificate x
     in
