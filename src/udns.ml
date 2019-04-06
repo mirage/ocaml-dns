@@ -2140,7 +2140,6 @@ module Packet = struct
                      Question.pp (qname, qtyp) Name_rr_map.pp map) ;
       (* A foo.com? foo.com CNAME bar.com ; bar.com A 127.0.0.1 *)
       let rec encode_one names off count name =
-        Log.debug (fun m -> m "encoding %d %a" count Domain_name.pp name) ;
         match Domain_name.Map.find name map with
         | None -> (names, off), count
         | Some rrmap ->
