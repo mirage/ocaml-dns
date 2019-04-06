@@ -103,9 +103,6 @@ module Secondary : sig
   type s
   (** The state of a secondary DNS server. *)
 
-  val server : s -> t
-  (** [server s] is the server of the secondary. *)
-
   val data : s -> Udns_trie.t
   (** [data s] is the zone data of [s]. *)
 

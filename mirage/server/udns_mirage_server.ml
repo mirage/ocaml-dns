@@ -31,7 +31,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
 
     let maybe_update_state t =
       let old = !state in
-      let trie server = Udns_server.((Primary.server server).data) in
+      let trie server = Udns_server.Primary.data server in
       state := t;
       if Udns_trie.equal (trie t) (trie old) then
         Lwt.return_unit
@@ -104,7 +104,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
 
     let maybe_update_state t =
       let old = !state in
-      let trie server = Udns_server.((Secondary.server server).data) in
+      let trie server = Udns_server.Secondary.data server in
       state := t ;
       if Udns_trie.equal (trie t) (trie old) then
         Lwt.return_unit

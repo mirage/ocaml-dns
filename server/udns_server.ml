@@ -890,8 +890,6 @@ module Secondary = struct
   (* TODO undefined what happens if there are multiple transfer keys for zone x *)
   type s = t * (state * Ipaddr.V4.t * int * Domain_name.t) Domain_name.Map.t
 
-  let server (t, _) = t
-
   let data (t, _) = t.data
 
   let with_data (t, zones) data = ({ t with data }, zones)
