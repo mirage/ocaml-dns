@@ -21,6 +21,7 @@
 let load buf =
   Udns_zone_state.reset ();
   try
+    (* TODO end-of-file handling? insert a newline at the end before lexing? *)
     let lexbuf = Lexing.from_string buf in
     Ok (Udns_zone_parser.zfile Udns_zone_lexer.token lexbuf)
   with

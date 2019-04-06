@@ -478,6 +478,7 @@ let handle_rr_update trie name = function
           Udns_trie.insert name k v' trie
     end
   | Packet.Update.Add Rr_map.(B (k, add) as b) ->
+    (* turns out, RFC 2136, 3.4.2.2 says "SOA with smaller or equal serial is silently ignored" *)
     begin match Udns_trie.lookup name k trie with
       | Ok old ->
         let newval = Rr_map.combine_k k old add in
@@ -682,6 +683,7 @@ let update_data trie zone (prereq, update) =
      Log.err (fun m -> m "check after update returned %a" Udns_trie.pp_err e) ;
      Error Udns_enum.YXRRSet) >>= fun () ->
   if Udns_trie.equal trie trie' then
+    (* should this error out? - RFC 2136 3.4.2.7 says NoError at the end *)
     Ok (trie, None)
   else match Udns_trie.lookup zone Soa trie, Udns_trie.lookup zone Soa trie' with
     | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa -> Ok (trie', Some (zone, soa))
