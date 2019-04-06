@@ -128,7 +128,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
     | Error (`Msg msg) ->
       Log.err (fun m -> m "error %s" msg) ;
       Lwt.return (Error (`Msg msg))
-    | Error ((`Decode _ | `Bad_reply _) as e) ->
+    | Error ((`Decode _ | `Bad_reply _ | `Rcode _) as e) ->
       Log.err (fun m -> m "query error %a, giving up" Udns_certify.pp_q_err e);
       Lwt.return (Error (`Msg "query error"))
     | Error `No_tlsa ->
@@ -157,6 +157,9 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         wait_for_cert ()
 
   let retrieve_certificate ?(ca = `Staging) stack ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
+    (match ca with
+     | `Staging -> Logs.warn (fun m -> m "staging environment - test use only")
+     | `Production -> Logs.warn (fun m -> m "production environment - take care what you do"));
     let keyname, zone, dnskey =
       match Astring.String.cut ~sep:":" dns_key with
       | None -> invalid_arg "couldn't parse dnskey"

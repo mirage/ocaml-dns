@@ -25,6 +25,7 @@ type q_err = [
   | `Decode of Packet.err
   | `Bad_reply of Packet.res
   | `No_tlsa
+  | `Rcode of Udns_enum.rcode
 ]
 
 val pp_q_err : q_err Fmt.t

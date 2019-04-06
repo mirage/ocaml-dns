@@ -55,12 +55,14 @@ type q_err = [
   | `Decode of Udns.Packet.err
   | `Bad_reply of Udns.Packet.res
   | `No_tlsa
+  | `Rcode of Udns_enum.rcode
 ]
 
 let pp_q_err ppf = function
   | `Decode err -> Fmt.pf ppf "decoding failed %a" Packet.pp_err err
   | `Bad_reply res -> Fmt.pf ppf "bad reply %a" Packet.pp_res res
   | `No_tlsa -> Fmt.pf ppf "No TLSA record found"
+  | `Rcode r -> Fmt.pf ppf "Received rcode %a" Udns_enum.pp_rcode r
 
 let query rng public_key host =
   match letsencrypt_name host with
@@ -87,16 +89,21 @@ let query rng public_key host =
     let out, _ = Packet.encode `Tcp header question (`Query Packet.Query.empty)
     and react data =
       match Packet.decode data with
-      | Ok ((_, _, `Query (answer, _), _, _, _) as res)
-        when Packet.is_reply header question res ->
-        (* collect TLSA pems *)
-        begin match Name_rr_map.find host Tlsa answer with
-          | None -> Error `No_tlsa
-          | Some (_, tlsas) ->
-            Rr_map.Tlsa_set.(fold (fun tlsa r ->
-                match parse tlsa, r with Some c, _ -> Ok c | None, x -> x)
-                (filter good_tlsa tlsas)
-                (Error `No_tlsa))
+      | Ok ((header, _, `Query (answer, _), _, _, _) as res)
+        when Packet.is_reply ~not_error:false header question res ->
+        begin match header.Packet.Header.rcode with
+          | Udns_enum.NXDomain -> Error `No_tlsa
+          | Udns_enum.NoError ->
+            (* collect TLSA pems *)
+            begin match Name_rr_map.find host Tlsa answer with
+              | None -> Error `No_tlsa
+              | Some (_, tlsas) ->
+                Rr_map.Tlsa_set.(fold (fun tlsa r ->
+                    match parse tlsa, r with Some c, _ -> Ok c | None, x -> x)
+                    (filter good_tlsa tlsas)
+                    (Error `No_tlsa))
+            end
+          | e -> Error (`Rcode e)
         end
       | Ok res -> Error (`Bad_reply res)
       | Error e -> Error (`Decode e)
