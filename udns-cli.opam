@@ -13,7 +13,7 @@ depends: [
   "udns"
   "udns-tsig"
   "udns-client-lwt"
-  "udns-zonefile"
+  "udns-zone"
   "udns-server"
   "udns-certify"
   "rresult"

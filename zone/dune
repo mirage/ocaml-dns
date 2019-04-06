@@ -1,7 +1,7 @@
 (library
- (name udns_zonefile)
- (synopsis "A tiny Domain Name system (DNS) library, zonefile parser")
- (public_name udns-zonefile)
+ (name udns_zone)
+ (synopsis "A tiny Domain Name system (DNS) library, zone format parser")
+ (public_name udns-zone)
  (private_modules udns_zone_state udns_zone_parser udns_zone_lexer)
  (libraries udns)
  (wrapped false))

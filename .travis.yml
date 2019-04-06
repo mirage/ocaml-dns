@@ -6,10 +6,10 @@ services:
 sudo: false
 env:
   global:
-    - PINS="udns.dev:. udns-certify.dev:. udns-client.dev:. udns-client-lwt.dev:. udns-mirage-client.dev:. udns-client-unix.dev:. udns-resolver.dev:. udns-server.dev:. udns-tsig.dev:. udns-zonefile.dev:. udns-cli.dev:. udns-mirage.dev:. udns-mirage-resolver.dev:. udns-mirage-server.dev:. udns-mirage-certify.dev:."
+    - PINS="udns.dev:. udns-certify.dev:. udns-client.dev:. udns-client-lwt.dev:. udns-mirage-client.dev:. udns-client-unix.dev:. udns-resolver.dev:. udns-server.dev:. udns-tsig.dev:. udns-zone.dev:. udns-cli.dev:. udns-mirage.dev:. udns-mirage-resolver.dev:. udns-mirage-server.dev:. udns-mirage-certify.dev:."
   matrix:
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns"
-    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns-zonefile"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns-zone"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns-resolver"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns-mirage"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="udns-mirage-resolver"
