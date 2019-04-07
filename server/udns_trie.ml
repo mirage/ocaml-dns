@@ -215,7 +215,7 @@ let check trie =
       | _ -> false
   in
   let rec check_sub names state sub map =
-    let name = Domain_name.of_strings_exn ~hostname:false (List.rev names) in
+    let name = Domain_name.of_strings_exn ~hostname:false names in
     let state' =
       match Rr_map.(find Soa map) with
       | None -> begin match Rr_map.(find Ns map) with
@@ -230,7 +230,11 @@ let check trie =
         r >>= fun () ->
         let open Rr_map in
         match v with
-        | B (Dnskey, _) -> Ok ()
+        | B (Dnskey, (ttl, keys)) ->
+          if ttl < 0l then Error (`Bad_ttl (name, v))
+          else if Dnskey_set.is_empty keys then
+            Error (`Empty (name, Udns_enum.DNSKEY))
+          else Ok ()
         | B (Ns, (ttl, names)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else if Domain_name.Set.cardinal names = 0 then
