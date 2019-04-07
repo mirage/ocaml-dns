@@ -33,7 +33,7 @@ let nsupdate rng now ~host ~keyname ~zone dnskey csr =
         Domain_name.Map.singleton host
           [
             Packet.Update.Remove Udns_enum.TLSA ;
-            Packet.Update.Add Rr_map.(B (Tlsa, (600l, Tlsa_set.singleton tlsa)))
+            Packet.Update.Add Rr_map.(B (Tlsa, (3600l, Tlsa_set.singleton tlsa)))
           ]
       in
       (Domain_name.Map.empty, up)

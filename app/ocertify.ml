@@ -108,8 +108,8 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
       else
         match query_certificate sock public_key hostname with
         | Error `No_tlsa ->
-          Logs.warn (fun m -> m "still no tlsa, sleeping one more second");
-          Unix.sleep 1;
+          Logs.warn (fun m -> m "still no tlsa, sleeping two more seconds");
+          Unix.sleep 2;
           request (pred retries)
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "error %s" msg);
@@ -119,7 +119,7 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
           request (pred retries)
         | Ok x -> write_certificate x
     in
-    request 5
+    request 10
   else
     Ok ()
 

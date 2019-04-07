@@ -138,7 +138,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         Log.err (fun m -> m "failed to nsupdate TLSA %s" msg) ;
         Lwt.fail_with "nsupdate issue"
       | Ok () ->
-        let rec wait_for_cert ?(retry = 5) () =
+        let rec wait_for_cert ?(retry = 10) () =
           if retry = 0 then
             Lwt.return (Error (`Msg "too many retries, giving up"))
           else
@@ -151,7 +151,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
               Lwt.return (Error (`Msg msg))
             | Error (#Udns_certify.q_err as q) ->
               Log.info (fun m -> m "still waiting for certificate, got error %a" Udns_certify.pp_q_err q) ;
-              TIME.sleep_ns (Duration.of_sec 1) >>= fun () ->
+              TIME.sleep_ns (Duration.of_sec 2) >>= fun () ->
               wait_for_cert ~retry:(pred retry) ()
         in
         wait_for_cert ()
