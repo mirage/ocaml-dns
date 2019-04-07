@@ -12,8 +12,14 @@ let err_to_msg = function Ok () -> Ok () | Error e -> Error (`Msg (Fmt.to_to_str
 
 let load_zone zone =
   Bos.OS.File.read Fpath.(v zone) >>= fun data ->
-  Udns_zone.parse data >>| fun zone ->
-  Udns_trie.insert_map zone Udns_trie.empty
+  Udns_zone.parse data >>= fun rrs ->
+  (let domain = Domain_name.of_string_exn zone in
+   if not (Domain_name.Map.for_all (fun name _ -> Domain_name.sub ~domain ~subdomain:name) rrs) then
+     Error (`Msg (Fmt.strf "an entry of %a is not in its zone, won't handle this@.%a"
+                    Domain_name.pp domain Udns.Name_rr_map.pp rrs))
+   else
+     Ok ()) >>| fun () ->
+  Udns_trie.insert_map rrs Udns_trie.empty
 
 let jump _ zone old =
   load_zone zone >>= fun trie ->
