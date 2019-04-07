@@ -3,6 +3,10 @@
 type proto = [ `Tcp | `Udp ]
 
 let andThen v f = match v with 0 -> f | x -> x
+let opt_eq f a b = match a, b with
+  | Some a, Some b -> f a b
+  | None, None -> true
+  | _ -> false
 
 let int_compare (a : int) (b : int) = compare a b
 let int32_compare (a : int32) (b : int32) = Int32.compare a b
@@ -888,6 +892,15 @@ module Tsig = struct
     other : Ptime.t option
   }
 
+  let equal a b =
+    a.algorithm = b.algorithm &&
+    Ptime.equal a.signed b.signed &&
+    Ptime.Span.equal a.fudge b.fudge &&
+    Cstruct.equal a.mac b.mac &&
+    a.original_id = b.original_id &&
+    a.error = b.error &&
+    opt_eq Ptime.equal a.other b.other
+
   let algorithm_to_name, algorithm_of_name =
     let of_s = Domain_name.of_string_exn in
     let map =
@@ -1219,7 +1232,7 @@ module Edns = struct
     and tl = Cstruct.BE.get_uint16 buf (off + 2)
     in
     let v = Cstruct.sub buf (off + 4) tl in
-    guard (len = tl + 4) (`Leftover (off, "edns extension")) >>= fun () ->
+    guard (len >= tl + 4) `Partial >>= fun () ->
     let len = tl + 4 in
     match int_to_extension code with
     | Some `nsid -> Ok (Nsid v, len)
@@ -2173,12 +2186,10 @@ module Packet = struct
 
     let empty = None
 
-    let equal a b = match a, b with
-      | None, None -> true
-      | Some (soa, entries), Some (soa', entries') ->
-        Soa.compare soa soa' = 0 &&
-        Name_rr_map.equal entries entries'
-      | _ -> false
+    let equal = opt_eq
+        (fun (soa, entries) (soa', entries') ->
+           Soa.compare soa soa' = 0 &&
+           Name_rr_map.equal entries entries')
 
     let pp ppf = function
       | None -> Fmt.string ppf "none"
@@ -2459,6 +2470,17 @@ module Packet = struct
       Name_rr_map.pp additional
       Fmt.(option ~none:(unit "no") Edns.pp) edns
       Fmt.(option ~none:(unit "no") pp_tsig) tsig
+
+  let equal_res (hdr, q, t, add, edns, tsig) (hdr', q', t', add', edns', tsig') =
+    Header.compare hdr hdr' = 0 &&
+    Question.compare q q' = 0 &&
+    equal t t' &&
+    Name_rr_map.equal add add' &&
+    opt_eq (fun a b -> Edns.compare a b = 0) edns edns' &&
+    opt_eq (fun (name, tsig, off) (name', tsig', off') ->
+        Domain_name.equal name name' &&
+        Tsig.equal tsig tsig' &&
+        off = off') tsig tsig'
 
   let decode_additional names buf off allow_trunc =
     let open Rresult.R.Infix in

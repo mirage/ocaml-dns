@@ -428,6 +428,8 @@ module Tsig : sig
 
   val pp : t Fmt.t
 
+  val equal : t -> t -> bool
+
   val encode_raw : Domain_name.t -> t -> Cstruct.t
 
   val encode_full : Domain_name.t -> t -> Cstruct.t
@@ -687,6 +689,8 @@ module Packet : sig
   type res = Header.t * Question.t * t * Name_rr_map.t * Edns.t option * (Domain_name.t * Tsig.t * int) option
 
   val pp_res : res Fmt.t
+
+  val equal_res : res -> res -> bool
 
   val decode : Cstruct.t -> (res, err) result
 
