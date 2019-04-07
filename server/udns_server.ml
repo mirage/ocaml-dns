@@ -505,18 +505,48 @@ module Notification = struct
 
   type connections = (Ipaddr.V4.t * int) list Domain_name.Map.t
 
-  let insert conn name ip port =
-    Log.info (fun m -> m "inserting notifications for %a %a:%d" Domain_name.pp name Ipaddr.V4.pp ip port);
-    let cur = match Domain_name.Map.find name conn with
-      | None -> []
-      | Some xs -> xs
+  let secondaries trie zone =
+    match Udns_trie.lookup zone Rr_map.Ns trie, Udns_trie.lookup zone Rr_map.Soa trie with
+    | Ok (_, ns), Ok soa ->
+      let secondaries = Domain_name.Set.remove soa.Soa.nameserver ns in
+      (* TODO AAAA records *)
+      Domain_name.Set.fold (fun ns acc ->
+          match Udns_trie.lookup ns Rr_map.A trie with
+          | Ok (_, ips) -> ips
+          | _ ->
+            Log.err (fun m -> m "lookup for A %a returned nothing as well"
+                        Domain_name.pp ns) ;
+            acc)
+        secondaries Rr_map.Ipv4_set.empty
+    | _ -> Rr_map.Ipv4_set.empty
+
+  let key_ips auth zone =
+    let name_ip_ports = Authentication.secondaries auth zone in
+    List.fold_left (fun acc (_, ip, port) -> (ip, port) :: acc)
+      [] name_ip_ports
+
+  let insert data keys conn name ip port =
+    let ips = Rr_map.Ipv4_set.(union (secondaries data name)
+                                 (of_list (List.map fst (key_ips keys name))))
     in
-    Domain_name.Map.add name ((ip, port)::cur) conn
+    if Rr_map.Ipv4_set.mem ip ips then begin
+      Log.warn (fun m -> m "IP %a already in notification list" Ipaddr.V4.pp ip);
+      conn
+    end else begin
+      Log.info (fun m -> m "inserting notifications for %a %a:%d"
+                   Domain_name.pp name Ipaddr.V4.pp ip port);
+      let cur = match Domain_name.Map.find name conn with
+        | None -> []
+        | Some xs -> xs
+      in
+      Domain_name.Map.add name ((ip, port)::cur) conn
+    end
 
   let remove conn ip port =
     let is_not_it name (ip', port') =
       if Ipaddr.V4.compare ip ip' = 0 && port = port' then begin
-        Log.info (fun m -> m "removing notification for %a %a:%d" Domain_name.pp name Ipaddr.V4.pp ip port);
+        Log.info (fun m -> m "removing notification for %a %a:%d"
+                     Domain_name.pp name Ipaddr.V4.pp ip port);
         false
       end else true
     in
@@ -582,25 +612,12 @@ module Notification = struct
        1. the NS records of the zone (port 53 as default)
        2. the IP addresses of secondary servers which have transfer keys (port encoded in name)
        3. the TCP connections which requested (signed) SOA in l *)
-    let ip_ports =
-      match Udns_trie.lookup zone Rr_map.Ns server.data with
-      | Ok (_, ns) ->
-        let secondaries = Domain_name.Set.remove soa.Soa.nameserver ns in
-        (* TODO AAAA records *)
-        Domain_name.Set.fold (fun ns acc ->
-            match Udns_trie.lookup ns Rr_map.A server.data with
-            | Ok (_, ips) ->
-              Rr_map.Ipv4_set.fold (fun ip acc -> (ip, 53) :: acc) ips acc
-            | _ ->
-              Log.err (fun m -> m "lookup for A %a returned nothing as well"
-                          Domain_name.pp ns) ;
-              acc)
-          secondaries []
-      | _ -> []
+    let ips = secondaries server.data zone
+    and keys = key_ips server.auth zone
     in
     let ip_ports =
-      let name_ip_ports = Authentication.secondaries server.auth zone in
-      List.fold_left (fun acc (_, ip, port) -> (ip, port) :: acc) ip_ports name_ip_ports
+      let ips' = Rr_map.Ipv4_set.(diff ips (of_list (List.map fst keys))) in
+      List.map (fun x -> x, 53) (Rr_map.Ipv4_set.elements ips') @ keys
     in
     let tcp_ip_ports = match Domain_name.Map.find zone conn with
       | None -> []
@@ -777,7 +794,8 @@ module Primary = struct
       handle_question t proto key header question >>= fun answer ->
       (* if there was a (transfer-key) signed SOA, and tcp, we add to notification list! *)
       let l' = match tcp_soa_query proto question, key with
-        | Ok zone, Some key when Authentication.is_op `Transfer key -> Notification.insert l zone ip port
+        | Ok zone, Some key when Authentication.is_op `Transfer key ->
+          Notification.insert t.data t.auth l zone ip port
         | _ -> l
       in
       Ok ((t, l', ns), Some answer, [], None)
