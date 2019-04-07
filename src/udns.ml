@@ -2602,20 +2602,16 @@ module Packet = struct
   let max_tcp = 1 lsl 16 - 1 (* DNS-over-TCP is 2 bytes len ++ payload *)
 
   let size_edns max_size edns protocol query =
-    let maximum = match max_size, query with
-      | Some x, true -> x
-      | Some x, false -> min x max_reply_udp
-      | None, true -> max_udp
-      | None, false -> max_reply_udp
-    in
-    (* it's udp payload size only, ignore any value for tcp *)
-    let maximum = match protocol with
-      | `Udp -> maximum
-      | `Tcp -> max_tcp
+    let maximum, payload_size = match protocol, max_size, query with
+      | `Tcp, _, _ -> max_tcp, 4096
+      | `Udp, None, true -> max_udp, 4096
+      | `Udp, None, false -> max_reply_udp, 512
+      | `Udp, Some x, true -> x, x
+      | `Udp, Some x, false -> min x max_reply_udp, 512
     in
     let edns = match edns with
       | None -> None
-      | Some opts -> Some ({ opts with Edns.payload_size = maximum })
+      | Some opts -> Some ({ opts with Edns.payload_size })
     in
     maximum, edns
 
