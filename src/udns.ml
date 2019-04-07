@@ -1595,7 +1595,7 @@ module Rr_map = struct
             soa.expiry soa.minimum ]
       | Txt, (ttl, txts) ->
         Txt_set.fold (fun txt acc ->
-            Fmt.strf "%s\t%aTXT\t%s" str_name ttl_fmt (ttl_opt ttl) txt :: acc)
+            Fmt.strf "%s\t%aTXT\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) txt :: acc)
           txts []
       | A, (ttl, a) ->
         Ipv4_set.fold (fun ip acc ->
