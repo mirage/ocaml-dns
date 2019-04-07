@@ -1255,8 +1255,18 @@ module Edns = struct
     extensions : extension list ;
   }
 
+  let min_payload_size = 512 (* from RFC 6891 Section 6.2.3 *)
+
   let create ?(extended_rcode = 0) ?(version = 0) ?(dnssec_ok = false)
-      ?(payload_size = 512) ?(extensions = []) () =
+      ?(payload_size = min_payload_size) ?(extensions = []) () =
+    let payload_size =
+      if payload_size < min_payload_size then begin
+        Logs.warn (fun m -> m "requested payload size %d is too small, using %d"
+                      payload_size min_payload_size);
+        min_payload_size
+      end else
+        payload_size
+    in
     { extended_rcode ; version ; dnssec_ok ; payload_size ; extensions }
 
   (* once we handle cookies, dnssec, or other extensions, need to adjust *)
@@ -1309,6 +1319,14 @@ module Edns = struct
     let off = off + 11 in
     let dnssec_ok = flags land 0x8000_0000 = 0x8000_0000 in
     guard (version = 0) (`Bad_edns_version version) >>= fun () ->
+    let payload_size =
+      if payload_size < min_payload_size then begin
+        Log.warn (fun m -> m "EDNS payload size is too small %d, using %d"
+                     payload_size min_payload_size);
+        min_payload_size
+      end else
+        payload_size
+    in
     let exts_buf = Cstruct.sub buf off len in
     (try decode_extensions exts_buf ~len with _ -> Error `Partial) >>= fun extensions ->
     let opt = { extended_rcode ; version ; dnssec_ok ; payload_size ; extensions } in
@@ -2584,7 +2602,7 @@ module Packet = struct
   let max_tcp = 1 lsl 16 - 1 (* DNS-over-TCP is 2 bytes len ++ payload *)
 
   let size_edns max_size edns protocol query =
-    let max = match max_size, query with
+    let maximum = match max_size, query with
       | Some x, true -> x
       | Some x, false -> min x max_reply_udp
       | None, true -> max_udp
@@ -2592,12 +2610,12 @@ module Packet = struct
     in
     (* it's udp payload size only, ignore any value for tcp *)
     let maximum = match protocol with
-      | `Udp -> max
+      | `Udp -> maximum
       | `Tcp -> max_tcp
     in
     let edns = match edns with
       | None -> None
-      | Some opts -> Some ({ opts with Edns.payload_size = max })
+      | Some opts -> Some ({ opts with Edns.payload_size = maximum })
     in
     maximum, edns
 

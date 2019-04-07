@@ -453,7 +453,7 @@ module Edns : sig
     | Padding of int
     | Extension of int * Cstruct.t
 
-  type t = {
+  type t = private {
     extended_rcode : int ;
     version : int ;
     dnssec_ok : bool ;
