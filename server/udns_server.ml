@@ -32,20 +32,16 @@ let err header rcode =
 
 module Authentication = struct
 
-  type a = Udns_trie.t -> proto -> Domain_name.t option -> string -> Domain_name.t -> bool
-
-  type t = Udns_trie.t * a list
-
-  let keys (keys, _) = keys
-
   type operation = [
-    | `Key_management
     | `Update
     | `Transfer
   ]
 
+  type a = Udns_trie.t -> proto -> Domain_name.t option -> operation -> Domain_name.t -> bool
+
+  type t = Udns_trie.t * a list
+
   let operation_to_string = function
-    | `Key_management -> "_key-management"
     | `Update -> "_update"
     | `Transfer -> "_transfer"
 
@@ -110,7 +106,7 @@ module Authentication = struct
   let primaries t zone = find_ns `P t zone
 
   let all_operations =
-    List.map operation_to_string [ `Key_management ; `Update ; `Transfer ]
+    List.map operation_to_string [ `Update ; `Transfer ]
 
   let zone name =
     let arr = Domain_name.to_array name in
@@ -156,17 +152,6 @@ module Authentication = struct
         add_keys trie name (Rr_map.Dnskey_set.singleton key))
       Udns_trie.empty keys
 
-  let remove_key trie name =
-    let trie' = Udns_trie.remove name Rr_map.Dnskey trie in
-    let zone = zone name in
-    match Udns_trie.entries zone trie' with
-    | Ok (_soa, x) when Domain_name.Map.is_empty x -> Udns_trie.remove_zone zone trie'
-    | Ok _ -> trie'
-    | Error e ->
-      Log.warn (fun m -> m "expected a zone for dnskeys, got error %a"
-                  Udns_trie.pp_e e) ;
-      trie'
-
   let find_key t name =
     match Udns_trie.lookup name Rr_map.Dnskey (fst t) with
     | Ok (_, keys) ->
@@ -183,39 +168,19 @@ module Authentication = struct
                    Domain_name.pp name) ;
       None
 
-  let handle_update keys us =
-    Domain_name.Map.fold (fun name v (keys, actions) ->
-        List.fold_left (fun (keys, actions) -> function
-            | Packet.Update.Remove_all
-            | Packet.Update.Remove Udns_enum.DNSKEY ->
-              let keys = remove_key keys name in
-              keys, `Removed_key name :: actions
-            | Packet.Update.Remove_single Rr_map.(B (Dnskey, _)) ->
-              let keys = remove_key keys name in
-              keys, `Removed_key name :: actions
-            | Packet.Update.Add Rr_map.(B (Dnskey, (_, fresh))) ->
-              let keys = add_keys keys name fresh in
-              keys, `Added_key name :: actions
-            | u ->
-              Log.warn (fun m -> m "only Dnskey, not sure what you intended %a"
-                           Packet.Update.pp_update u) ;
-              keys, actions)
-          (keys, actions) v)
-      us (keys, [])
-
   let tsig_auth _ _ keyname op zone =
     match keyname with
     | None -> false
     | Some subdomain ->
-      let root = Domain_name.of_string_exn ~hostname:false op
-      and zone = Domain_name.prepend_exn ~hostname:false zone op
+      let op_string = operation_to_string op in
+      let root = Domain_name.of_string_exn ~hostname:false op_string
+      and zone = Domain_name.prepend_exn ~hostname:false zone op_string
       in
       Domain_name.sub ~subdomain ~domain:zone
       || Domain_name.sub ~subdomain ~domain:root
 
   let authorise (data, authorised) proto keyname zone operation =
-    let op = operation_to_string operation in
-    List.exists (fun a -> a data proto keyname op zone) authorised
+    List.exists (fun a -> a data proto keyname operation zone) authorised
 end
 
 type t = {
@@ -362,31 +327,13 @@ let axfr trie proto (zone, _) =
     Error Udns_enum.NXDomain
 
 let axfr t proto key ((zone, _) as question) =
-  (if Authentication.authorise t.auth proto key zone `Key_management then begin
-      Log.info (fun m -> m "key-management key %a authorised for AXFR %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Question.pp question) ;
-      Ok (Authentication.keys t.auth)
-    end else if Authentication.authorise t.auth proto key zone `Transfer then begin
-      Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Question.pp question) ;
-      Ok t.data
-    end else
-     Error Udns_enum.NotAuth) >>= fun trie ->
-  axfr trie proto question
-
-let lookup t proto key hdr name typ =
-  let trie =
-    if Authentication.authorise t.auth proto key name `Key_management then begin
-      Log.info (fun m -> m "key-management key %a authorised for lookup %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Question.pp (name, typ)) ;
-      Authentication.keys t.auth
-    end else
-      t.data
-  in
-  lookup trie hdr name typ
+  if Authentication.authorise t.auth proto key zone `Transfer then begin
+    Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
+                 Fmt.(option ~none:(unit "none") Domain_name.pp) key
+                 Packet.Question.pp question) ;
+    axfr t.data proto question
+  end else
+    Error Udns_enum.NotAuth
 
 let safe_decode buf =
   match Packet.decode buf with
@@ -407,16 +354,15 @@ let safe_decode buf =
     Error Udns_enum.FormErr
   | Ok v -> Ok v
 
-let handle_question t proto key header (name, typ) =
+let handle_question t header (name, typ) =
   let open Udns_enum in
-  begin match typ with
-    | AXFR -> assert false (* this won't happen, decoder constructs `Axfr *)
-    | A | NS | CNAME | SOA | PTR | MX | TXT | AAAA | SRV | ANY | CAA | SSHFP | TLSA | DNSKEY ->
-      lookup t proto key header name typ
-    | r ->
-      Log.err (fun m -> m "refusing query type %a" Udns_enum.pp_rr_typ r) ;
-      Error Udns_enum.Refused
-  end
+  match typ with
+  | AXFR -> assert false (* this won't happen, decoder constructs `Axfr *)
+  | A | NS | CNAME | SOA | PTR | MX | TXT | AAAA | SRV | ANY | CAA | SSHFP | TLSA | DNSKEY ->
+    lookup t.data header name typ
+  | r ->
+    Log.err (fun m -> m "refusing query type %a" Udns_enum.pp_rr_typ r) ;
+    Error Udns_enum.Refused
 
 (* this implements RFC 2136 Section 2.4 + 3.2 *)
 let handle_rr_prereq trie name = function
@@ -708,23 +654,15 @@ let update_data trie zone (prereq, update) =
       Ok (trie'', Some (zone, soa))
     | _, _ -> Ok (trie', None)
 
-let handle_update t proto key (zone, _) ((_prereq, update) as u) =
-  if Authentication.authorise t.auth proto key zone `Key_management then begin
-     Log.info (fun m -> m "key-management key %a authorised for update %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Update.pp u) ;
-     let keys, _actions =
-       Authentication.(handle_update (keys t.auth) update)
-     in
-     Ok ({ t with auth = (keys, snd t.auth) }, None)
-   end else if Authentication.authorise t.auth proto key zone `Update then begin
-     Log.info (fun m -> m "update key %a authorised for update %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Update.pp u) ;
-     update_data t.data zone u >>= fun (data', stuff) ->
-     Ok ({ t with data = data' }, stuff)
-   end else
-     Error Udns_enum.NotAuth
+let handle_update t proto key (zone, _) u =
+  if Authentication.authorise t.auth proto key zone `Update then begin
+    Log.info (fun m -> m "update key %a authorised for update %a"
+                 Fmt.(option ~none:(unit "none") Domain_name.pp) key
+                 Packet.Update.pp u) ;
+    update_data t.data zone u >>= fun (data', stuff) ->
+    Ok ({ t with data = data' }, stuff)
+  end else
+    Error Udns_enum.NotAuth
 
 let handle_tsig ?mac t now header question tsig buf =
   match tsig with
@@ -791,7 +729,7 @@ module Primary = struct
   let handle_frame (t, l, ns) ts proto ip port header question p _additional key =
     match p, header.Packet.Header.query with
     | `Query _, true ->
-      handle_question t proto key header question >>= fun answer ->
+      handle_question t header question >>= fun answer ->
       (* if there was a (transfer-key) signed SOA, and tcp, we add to notification list! *)
       let l' = match tcp_soa_query proto question, key with
         | Ok zone, Some key when Authentication.is_op `Transfer key ->
@@ -1205,59 +1143,16 @@ module Secondary = struct
                    Domain_name.pp zone Udns_enum.pp_rr_typ typ) ;
       Error Udns_enum.Refused
 
-  let handle_update t zones now ts proto keyname (zname, _) ((_, update) as u) =
-    (* TODO: handle prereq *)
-    (* TODO: can allow weaker keys for nsupdates we proxy *)
-    guard (Authentication.authorise t.auth proto keyname zname `Key_management) Udns_enum.NotAuth >>= fun () ->
-    Log.info (fun m -> m "key-management key %a authorised for update %a"
-                 Fmt.(option ~none:(unit "none") Domain_name.pp) keyname
-                 Packet.Update.pp u) ;
-    Domain_name.Map.fold (fun name _ r ->
-        r >>= fun () ->
-        guard (in_zone zname name) Udns_enum.NotZone)
-      update (Ok ()) >>= fun () ->
-    let keys, actions = Authentication.(handle_update (keys t.auth) update) in
-    let t = { t with auth = (keys, snd t.auth) } in
-    let zones, outs =
-      (* this is asymmetric - for transfer key additions, we send SOA requests *)
-      List.fold_left (fun (zones, outs) -> function
-          | `Added_key keyname ->
-            begin match Authentication.find_zone_ips keyname with
-              | None -> (zones, outs)
-              | Some (zname, (pip, pport), _) ->
-                match query_soa t `Tcp now ts zname keyname with
-                | None ->
-                  Log.err (fun m -> m "couldn't query soa for %a" Domain_name.pp zname) ;
-                  (zones, outs)
-                | Some (state, out) ->
-                  let zones = Domain_name.Map.add zname (state, pip, pport, keyname) zones in
-                  (zones, (`Tcp, pip, pport, out) :: outs)
-            end
-          | `Removed_key keyname ->
-            let zone = Authentication.zone keyname in
-            let zones' = match Domain_name.Map.find zone zones with
-              | Some (_, _, _, kname) when Domain_name.equal keyname kname ->
-                Domain_name.Map.remove zone zones
-              | _ -> zones
-            in
-            (zones', outs))
-        (zones, []) actions
-    in
-    Ok ((t, zones), outs)
-
-  let handle_frame (t, zones) now ts ip proto keyname header question p _additional =
+  let handle_frame (t, zones) now ts ip keyname header question p _additional =
     match p, header.Packet.Header.query with
     | `Query _q, true ->
-      handle_question t proto keyname header question >>| fun answer ->
+      handle_question t header question >>| fun answer ->
       (t, zones), Some answer, []
     | `Query q, false ->
       handle_answer t zones now ts keyname header question q >>| fun (t, zones, out) ->
       (t, zones), None, out
-    | `Update u, true ->
-      handle_update t zones now ts proto keyname question u >>| fun (t', out) ->
-      let answer = s_header header, `Update Packet.Update.empty, None in
-      t', Some answer, out
-    | `Axfr _, true -> Error Udns_enum.FormErr
+    | `Update _, true -> Error Udns_enum.Refused
+    | `Axfr _, true -> Error Udns_enum.Refused
     | `Axfr axfr, false ->
       handle_axfr t zones ts keyname header question axfr >>= fun (t, zones, out) ->
       Ok ((t, zones), None, out)
@@ -1290,7 +1185,7 @@ module Secondary = struct
     | Error rcode -> ((t, zones), Packet.raw_error buf rcode, [])
     | Ok (header, question, p, additional, edns, tsig) ->
       let handle_inner name =
-        match handle_frame (t, zones) now ts ip proto name header question p additional with
+        match handle_frame (t, zones) now ts ip name header question p additional with
         | Ok (t, Some (header, answer, additional), out) ->
           let max_size, edns = Edns.reply edns in
           (t, Some (header, question, Packet.encode ?max_size ?additional ?edns proto header question answer), out)
