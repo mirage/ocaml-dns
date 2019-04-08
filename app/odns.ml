@@ -4,6 +4,7 @@
 (* RFC 6698 DANE: https://tools.ietf.org/html/rfc6698*)
 
 let pp_zone ppf (domain,query_type,query_value) =
+  (* TODO dig also prints 'IN' after the TTL, we don't... *)
   Fmt.string ppf
     (Udns.Rr_map.text_b domain (Udns.Rr_map.B (query_type, query_value)))
 
@@ -69,6 +70,16 @@ let for_all_domains nameserver ~domains typ f =
                 >|= f domain)
              domains) with
   | () -> Ok () (* TODO catch failed jobs *)
+
+let do_aaaa nameserver domains _ =
+  for_all_domains nameserver ~domains Udns.Rr_map.Aaaa
+    (fun domain -> function
+       | Ok aaaa_resp ->
+         Logs.app (fun m -> m "%a" pp_zone
+                      (domain, Udns.Rr_map.Aaaa, aaaa_resp))
+       | Error (`Msg msg) ->
+         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
+                      Domain_name.pp domain msg))
 
 let do_tlsa nameserver domains _ =
   for_all_domains nameserver ~domains Udns.Rr_map.Tlsa
@@ -166,6 +177,15 @@ let cmd_a : unit Term.t * Term.info =
   Term.(term_result (const do_a $ arg_ns $ arg_domains $ setup_log)),
   Term.info "a" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
+let cmd_aaaa : unit Term.t * Term.info =
+  let doc = "Query a NS for AAAA records" in
+  let man = [
+    `P {| Output mimics that of $(b,dig AAAA )$(i,DOMAIN)|}
+  ] in
+  Term.(term_result (const do_aaaa $ arg_ns $ arg_domains $ setup_log)),
+  Term.info "aaaa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+
+
 let cmd_tlsa : unit Term.t * Term.info =
   let doc = "Query a NS for TLSA records (see DANE / RFC 7671)" in
   let man = [
@@ -241,7 +261,7 @@ run them while passing the help flag: $(tname) $(i,SUBCOMMAND) $(b,--help)
   Term.info "odns" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmds =
-  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ]
+  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ; cmd_aaaa ]
 
 let () =
   Term.(exit @@ eval_choice cmd_help cmds)
