@@ -82,7 +82,7 @@ sig
         If the query fails, or if the [domain] does not have any IPv4 addresses,
         an [Error _] message is returned.
         Any extraneous IPv4 addresses are ignored.
-        For an example of using this API, see [unix/ohostname.ml]
+        For an example of using this API, see [unix/ohost.ml]
         in the distribution of this package.
     *)
 

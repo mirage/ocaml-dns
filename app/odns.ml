@@ -67,19 +67,28 @@ let for_all_domains nameserver ~domains typ f =
           (Lwt_list.iter_p
              (fun domain ->
                 Udns_client_lwt.getaddrinfo t typ domain
+                >|= Rresult.R.reword_error
+                  (function `Msg msg as res ->
+                     Logs.err (fun m ->
+                         m "Failed to lookup %a for %a: %s\n%!"
+                           Udns_enum.pp_rr_typ (Udns.Rr_map.k_to_rr_typ typ)
+                           Domain_name.pp domain msg) ;
+                     res)
                 >|= f domain)
              domains) with
   | () -> Ok () (* TODO catch failed jobs *)
 
+let pp_response typ domain = function
+  | Error _ -> ()
+  | Ok resp -> Logs.app (fun m -> m "%a" pp_zone (domain, typ, resp))
+
 let do_aaaa nameserver domains _ =
   for_all_domains nameserver ~domains Udns.Rr_map.Aaaa
-    (fun domain -> function
-       | Ok aaaa_resp ->
-         Logs.app (fun m -> m "%a" pp_zone
-                      (domain, Udns.Rr_map.Aaaa, aaaa_resp))
-       | Error (`Msg msg) ->
-         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
-                      Domain_name.pp domain msg))
+    (pp_response Udns.Rr_map.Aaaa)
+
+let do_mx nameserver domains _ =
+  for_all_domains nameserver ~domains Udns.Rr_map.Mx
+    (pp_response Udns.Rr_map.Mx)
 
 let do_tlsa nameserver domains _ =
   for_all_domains nameserver ~domains Udns.Rr_map.Tlsa
@@ -88,21 +97,17 @@ let do_tlsa nameserver domains _ =
          Udns.Rr_map.Tlsa_set.iter (fun tlsa ->
              Logs.app (fun m -> m "%a" pp_zone_tlsa (domain,ttl,tlsa))
            ) tlsa_resp
-       | Error (`Msg msg) ->
-         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
-                      Domain_name.pp domain msg))
+       | Error _ -> () )
 
 
 let do_txt nameserver domains _ =
   for_all_domains nameserver ~domains Udns.Rr_map.Txt
-    (fun domain -> function
+    (fun _domain -> function
        | Ok (ttl, txtset) ->
          Udns.Rr_map.Txt_set.iter (fun txtrr ->
              Logs.app (fun m -> m "%ld: @[<v>%s@]" ttl txtrr)
            ) txtset
-       | Error (`Msg msg) ->
-         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
-                      Domain_name.pp domain msg))
+       | Error _ -> () )
 
 
 let do_any _nameserver _domains _ =
@@ -116,14 +121,12 @@ let do_dkim nameserver (selector:string) domains _ =
            (original_domain) "_domainkey") selector
     ) domains in
   for_all_domains nameserver ~domains Udns.Rr_map.Txt
-    (fun domain -> function
+    (fun _domain -> function
        | Ok (_ttl, txtset) ->
          Udns.Rr_map.Txt_set.iter (fun txt ->
              Logs.app (fun m -> m "%s" txt)
            ) txtset
-       | Error (`Msg msg) ->
-         Logs.err (fun m -> m "Failed to lookup %a: %s\n%!"
-                      Domain_name.pp domain msg))
+       | Error _ -> () )
 
 
 open Cmdliner
@@ -185,6 +188,13 @@ let cmd_aaaa : unit Term.t * Term.info =
   Term.(term_result (const do_aaaa $ arg_ns $ arg_domains $ setup_log)),
   Term.info "aaaa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
+let cmd_mx : unit Term.t * Term.info =
+  let doc = "Query a NS for mailserver (MX) records" in
+  let man = [
+    `P {| Output mimics that of $(b,dig MX )$(i,DOMAIN)|}
+  ] in
+  Term.(term_result (const do_mx $ arg_ns $ arg_domains $ setup_log)),
+  Term.info "mx" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_tlsa : unit Term.t * Term.info =
   let doc = "Query a NS for TLSA records (see DANE / RFC 7671)" in
@@ -261,7 +271,7 @@ run them while passing the help flag: $(tname) $(i,SUBCOMMAND) $(b,--help)
   Term.info "odns" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmds =
-  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ; cmd_aaaa ]
+  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ; cmd_aaaa ; cmd_mx ]
 
 let () =
   Term.(exit @@ eval_choice cmd_help cmds)
