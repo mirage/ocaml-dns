@@ -77,13 +77,21 @@ sig
 
   val gethostbyname : U.t -> ?nameserver:U.ns_addr -> Domain_name.t ->
     (Ipaddr.V4.t, 'err) U.io
-    (** [gethostbyname ~nameserver name] is the IPv4 address of [name]
-        resolved via the [nameserver] specified.
-        If the query fails, or if the [name] does not have any IPv4 addresses,
+    (** [gethostbyname state ~nameserver domain] is the IPv4 address of [domain]
+        resolved via the [state] and [nameserver] specified.
+        If the query fails, or if the [domain] does not have any IPv4 addresses,
         an [Error _] message is returned.
         Any extraneous IPv4 addresses are ignored.
-        For an example of using this API, see [unix/ohostname.ml]
+        For an example of using this API, see [unix/ohost.ml]
         in the distribution of this package.
+    *)
+
+  val gethostbyname6 : U.t -> ?nameserver:U.ns_addr -> Domain_name.t ->
+    (Ipaddr.V6.t, 'err) U.io
+    (** [gethostbyname6 state ~nameserver domain] is the IPv6 address of
+        [domain] resolved via the [state] and [nameserver] specified.
+
+        It is the IPv6 equivalent of {!gethostbyname}.
     *)
 
 end

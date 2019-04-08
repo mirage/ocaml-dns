@@ -58,4 +58,11 @@ struct
     match Udns.Rr_map.Ipv4_set.choose_opt resp with
     | None -> Error (`Msg "No A record found")
     | Some ip -> Ok ip
+
+  let gethostbyname6 stack ?nameserver domain =
+    let (>>=) = Uflow.resolve in
+    getaddrinfo stack ?nameserver Udns.Rr_map.Aaaa domain >>= fun (_ttl, res) ->
+    match Udns.Rr_map.Ipv6_set.choose_opt res with
+    | None -> Error (`Msg "No AAAA record found")
+    | Some ip -> Ok ip
 end
