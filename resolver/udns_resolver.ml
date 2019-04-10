@@ -153,7 +153,7 @@ let stats t =
   Logs.info (fun m -> m "stats: %a@.%a@.%d cached resource records (capacity: %d)"
                 pp_stats !s
                 Udns_resolver_cache.pp_stats (Udns_resolver_cache.stats ())
-                (Udns_resolver_cache.items t.cache) (Udns_resolver_cache.capacity t.cache)) ;
+                (Udns_resolver_cache.size t.cache) (Udns_resolver_cache.capacity t.cache)) ;
   let names = fst (List.split (QM.bindings t.transit)) in
   Logs.info (fun m -> m "%d queries in transit %a" (QM.cardinal t.transit)
                 Fmt.(list ~sep:(unit "; ") Packet.Question.pp) names) ;

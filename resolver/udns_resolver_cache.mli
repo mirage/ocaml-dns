@@ -11,7 +11,7 @@ val stats : unit -> stats
 
 val empty : int -> t
 
-val items : t -> int
+val size : t -> int
 
 val capacity : t -> int
 

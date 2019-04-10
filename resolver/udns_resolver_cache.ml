@@ -54,7 +54,7 @@ let stats () = !s
 
 let empty = LRU.empty
 
-let items = LRU.items
+let size = LRU.size
 
 let capacity = LRU.capacity
 
@@ -71,16 +71,16 @@ let cached t ts typ nam =
   | None ->
     s := { !s with miss = succ !s.miss } ;
     Error `Cache_miss
-  | Some (V.All (created, _, res), t) ->
+  | Some V.All (created, _, res) ->
     begin match update_res created ts res with
       | None ->
         s := { !s with drop = succ !s.drop } ;
         Error `Cache_drop
       | Some r ->
         s := { !s with hit = succ !s.hit } ;
-        Ok (r, t)
+        Ok (r, LRU.promote nam t)
     end
-  | Some (V.Entries tm, t) ->
+  | Some V.Entries tm ->
     match Udns_enum.RRMap.find typ tm with
     | exception Not_found ->
       s := { !s with miss = succ !s.miss } ;
@@ -92,7 +92,7 @@ let cached t ts typ nam =
         Error `Cache_drop
       | Some r ->
         s := { !s with hit = succ !s.hit } ;
-        Ok (r, t)
+        Ok (r, LRU.promote nam t)
 
 (* according to RFC1035, section 7.3, a TTL of a week is a good maximum value! *)
 (* XXX: we may want to define a minimum as well (5 minutes? 30 minutes?
@@ -130,17 +130,18 @@ let maybe_insert typ nam ts rank res t =
       | _, _ -> V.Entries (Udns_enum.RRMap.add typ full tm)
     in
     s := { !s with insert = succ !s.insert } ;
-    LRU.add nam v t
+    let t = LRU.add nam v t in
+    LRU.trim t
   in
   let add_if_ranked_higher (ts', rank', res') tm t =
     match update_res ts' ts res', compare_rank rank' rank with
     | Some _, `Bigger -> t
     | _ -> add_entry tm t
   in
-  match LRU.find ~promote:false nam t with
+  match LRU.find nam t with
   | None -> add_entry Udns_enum.RRMap.empty t
-  | Some (V.All triple, t) -> add_if_ranked_higher triple Udns_enum.RRMap.empty t
-  | Some (V.Entries tm, t) -> match Udns_enum.RRMap.find typ tm with
+  | Some V.All triple -> add_if_ranked_higher triple Udns_enum.RRMap.empty t
+  | Some V.Entries tm -> match Udns_enum.RRMap.find typ tm with
     | exception Not_found -> add_entry tm t
     | triple -> add_if_ranked_higher triple tm t
 
