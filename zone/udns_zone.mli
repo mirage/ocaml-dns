@@ -17,4 +17,5 @@
  *)
 
 val parse : string -> (Udns.Name_rr_map.t, [> `Msg of string ]) result
-(** Load a domain's zone from a string. *)
+(** [parse data] attempts to parse the [data], given in [zone file format].
+    It either returns the content as a map, or an error. *)

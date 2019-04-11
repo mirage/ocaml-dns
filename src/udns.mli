@@ -86,6 +86,167 @@ type proto = [ `Tcp | `Udp ]
 (** The type of supported protocols. Used by {!Packet.encode} to decide on
      maximum buffer length, etc. *)
 
+module Rr : sig
+  type t =
+    | A (* a host address [RFC1035] *)
+    | NS (* an authoritative name server,[RFC1035] *)
+    | MD (* a mail destination (OBSOLETE - use MX),[RFC1035] *)
+    | MF (* a mail forwarder (OBSOLETE - use MX),[RFC1035] *)
+    | CNAME (* the canonical name for an alias,[RFC1035] *)
+    | SOA (* marks the start of a zone of authority,[RFC1035] *)
+    | MB (* a mailbox domain name (EXPERIMENTAL),[RFC1035] *)
+    | MG (* a mail group member (EXPERIMENTAL),[RFC1035] *)
+    | MR (* a mail rename domain name (EXPERIMENTAL),[RFC1035] *)
+    | NULL (* a null RR (EXPERIMENTAL),[RFC1035] *)
+    | WKS (* a well known service description,[RFC1035] *)
+    | PTR (* a domain name pointer,[RFC1035] *)
+    | HINFO (* host information,[RFC1035] *)
+    | MINFO (* mailbox or mail list information,[RFC1035] *)
+    | MX (* mail exchange,[RFC1035] *)
+    | TXT (* text strings,[RFC1035] *)
+    | RP (* for Responsible Person,[RFC1183] *)
+    | AFSDB (* for AFS Data Base location,[RFC1183][RFC5864] *)
+    | X25 (* for X.25 PSDN address,[RFC1183] *)
+    | ISDN (* for ISDN address,[RFC1183] *)
+    | RT (* for Route Through,[RFC1183] *)
+    | NSAP (* "for NSAP address, NSAP style A record",[RFC1706] *)
+    | NSAP_PTR (* "for domain name pointer, NSAP style",[RFC1348][RFC1637][RFC1706] *)
+    | SIG (* for security signature,[RFC4034][RFC3755][RFC2535][RFC2536][RFC2537][RFC2931][RFC3110][RFC3008] *)
+    | KEY (* for security key,[RFC4034][RFC3755][RFC2535][RFC2536][RFC2537][RFC2539][RFC3008][RFC3110] *)
+    | PX (* X.400 mail mapping information,[RFC2163] *)
+    | GPOS (* Geographical Position,[RFC1712] *)
+    | AAAA (* IP6 Address,[RFC3596] *)
+    | LOC (* Location Information,[RFC1876] *)
+    | NXT (* Next Domain (OBSOLETE),[RFC3755][RFC2535] *)
+    | EID (* Endpoint Identifier,[Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt],,1995-06 *)
+    | NIMLOC (* Nimrod Locator,[1][Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt],,1995-06 *)
+    | SRV (* Server Selection,[1][RFC2782] *)
+    | ATMA (* ATM Address,"[ATM Forum Technical Committee, ""ATM Name System, V2.0"", Doc ID: AF-DANS-0152.000, July 2000. Available from and held in escrow by IANA.]" *)
+    | NAPTR (* Naming Authority Pointer,[RFC2915][RFC2168][RFC3403] *)
+    | KX (* Key Exchanger,[RFC2230] *)
+    | CERT (* CERT,[RFC4398] *)
+    | A6 (* A6 (OBSOLETE - use AAAA),[RFC3226][RFC2874][RFC6563] *)
+    | DNAME (* ,DNAME,[RFC6672] *)
+    | SINK (* SINK,[Donald_E_Eastlake][http://tools.ietf.org/html/draft-eastlake-kitchen-sink],,1997-11 *)
+    | OPT (* OPT,[RFC6891][RFC3225] *)
+    | APL (* APL,[RFC3123] *)
+    | DS (* Delegation Signer,[RFC4034][RFC3658] *)
+    | SSHFP (* SSH Key Fingerprint,[RFC4255] *)
+    | IPSECKEY (* IPSECKEY,[RFC4025] *)
+    | RRSIG (* RRSIG,[RFC4034][RFC3755] *)
+    | NSEC (* NSEC,[RFC4034][RFC3755] *)
+    | DNSKEY (* DNSKEY,[RFC4034][RFC3755] *)
+    | DHCID (* ,DHCID,[RFC4701] *)
+    | NSEC3 (* NSEC3,[RFC5155] *)
+    | NSEC3PARAM (* NSEC3PARAM,[RFC5155] *)
+    | TLSA (* TLSA,[RFC6698] *)
+    | SMIMEA (* S/MIME cert association,[RFC-ietf-dane-smime-16],SMIMEA/smimea-completed-template,2015-12-01 *)
+    (* Unassigned,54 *)
+    | HIP (* Host Identity Protocol,[RFC8005] *)
+    | NINFO (* NINFO,[Jim_Reid],NINFO/ninfo-completed-template,2008-01-21 *)
+    | RKEY (* RKEY,[Jim_Reid],RKEY/rkey-completed-template,2008-01-21 *)
+    | TALINK (* Trust Anchor LINK,[Wouter_Wijngaards],TALINK/talink-completed-template,2010-02-17 *)
+    | CDS (* Child DS,[RFC7344],CDS/cds-completed-template,2011-06-06 *)
+    | CDNSKEY (* DNSKEY(s) the Child wants reflected in DS,[RFC7344],,2014-06-16 *)
+    | OPENPGPKEY (* OpenPGP Key,[RFC7929],OPENPGPKEY/openpgpkey-completed-template,2014-08-12 *)
+    | CSYNC (* Child-To-Parent Synchronization,[RFC7477],,2015-01-27 *)
+    (* Unassigned,63-98 *)
+    | SPF (* [RFC7208] *)
+    | UINFO (* [IANA-Reserved] *)
+    | UID (* [IANA-Reserved] *)
+    | GID (* [IANA-Reserved] *)
+    | UNSPEC (* [IANA-Reserved] *)
+    | NID (* [RFC6742],ILNP/nid-completed-template *)
+    | L32 (* [RFC6742],ILNP/l32-completed-template *)
+    | L64 (* [RFC6742],ILNP/l64-completed-template *)
+    | LP (* [RFC6742],ILNP/lp-completed-template *)
+    | EUI48 (* an EUI-48 address,[RFC7043],EUI48/eui48-completed-template,2013-03-27 *)
+    | EUI64 (* an EUI-64 address,[RFC7043],EUI64/eui64-completed-template,2013-03-27 *)
+    (* Unassigned,110-248 *)
+    | TKEY (* Transaction Key,[RFC2930] *)
+    | TSIG (* Transaction Signature,[RFC2845] *)
+    | IXFR (* incremental transfer,[RFC1995] *)
+    | AXFR (* transfer of an entire zone,[RFC1035][RFC5936] *)
+    | MAILB (* "mailbox-related RRs (MB, MG or MR)",[RFC1035] *)
+    | MAILA (* mail agent RRs (OBSOLETE - see MX),[RFC1035] *)
+    | ANY (* A request for all records the server/cache has available,[RFC1035][RFC6895] *)
+    | URI (* URI,[RFC7553],URI/uri-completed-template,2011-02-22 *)
+    | CAA (* Certification Authority Restriction,[RFC6844],CAA/caa-completed-template,2011-04-07 *)
+    | AVC (* Application Visibility and Control,[Wolfgang_Riedel],AVC/avc-completed-template,2016-02-26 *)
+    (* Unassigned,259-32767 *)
+    | TA (* DNSSEC Trust Authorities,"[Sam_Weiler][http://cameo.library.cmu.edu/][
+            Deploying DNSSEC Without a Signed Root.  Technical Report 1999-19,
+                      Information Networking Institute, Carnegie Mellon University, April 2004.]",,2005-12-13 *)
+    | DLV (* DNSSEC Lookaside Validation,[RFC4431] *)
+  (* Unassigned,32770-65279 *)
+  (* Private use,65280-65534 *)
+  (* Reserved,65535 *)
+
+  val pp : t Fmt.t
+  val compare : t -> t -> int
+end
+
+module Clas : sig
+  type t =
+    (* Reserved0 [@id 0] RFC6895 *)
+    | IN (* RFC1035 *)
+    (* 2 Uassigned *)
+    | CHAOS (* D. Moon, "Chaosnet", A.I. Memo 628, Massachusetts Institute of Technology Artificial Intelligence Laboratory, June 1981. *)
+    | HESIOD (* Dyer, S., and F. Hsu, "Hesiod", Project Athena Technical Plan - Name Service, April 1987. *)
+    | NONE (* RFC2136 *)
+    | ANY_CLASS (* RFC1035 *)
+  (* 256-65279 Unassigned *)
+  (* 65280-65534 Reserved for Private Use [RFC6895] *)
+  (* ReservedFFFF [@id 65535] *)
+  val pp : t Fmt.t
+  val compare : t -> t -> int
+end
+
+module Opcode : sig
+  type t =
+    | Query (* RFC1035 *)
+    | IQuery (* Inverse Query, OBSOLETE) [RFC3425] *)
+    | Status (* RFC1035 *)
+    (* 3 Unassigned *)
+    | Notify (* RFC1996 *)
+    | Update (* RFC2136 *)
+      (* 6-15 Unassigned *)
+  val pp : t Fmt.t
+  val compare : t -> t -> int
+end
+
+module Rcode : sig
+  type t =
+    | NoError (* No Error,[RFC1035] *)
+    | FormErr (* Format Error,[RFC1035] *)
+    | ServFail (* Server Failure,[RFC1035] *)
+    | NXDomain (* Non-Existent Domain,[RFC1035] *)
+    | NotImp (* Not Implemented,[RFC1035] *)
+    | Refused (* Query Refused,[RFC1035] *)
+    | YXDomain (* Name Exists when it should not,[RFC2136][RFC6672] *)
+    | YXRRSet (* RR Set Exists when it should not,[RFC2136] *)
+    | NXRRSet (* RR Set that should exist does not,[RFC2136] *)
+    | NotAuth (* Server Not Authoritative for zone,[RFC2136]
+                 9,NotAuth,Not Authorized,[RFC2845] *)
+    | NotZone (* Name not contained in zone,[RFC2136] *)
+    (* 11-15,Unassigned *)
+    | BadVersOrSig (* 16,BADVERS,Bad OPT Version,[RFC6891]
+                      16,BADSIG,TSIG Signature Failure,[RFC2845] *)
+    | BadKey (* Key not recognized,[RFC2845] *)
+    | BadTime (* Signature out of time window,[RFC2845] *)
+    | BadMode (* BADMODE,Bad TKEY Mode,[RFC2930] *)
+    | BadName (* BADNAME,Duplicate key name,[RFC2930] *)
+    | BadAlg (* BADALG,Algorithm not supported,[RFC2930] *)
+    | BadTrunc (* BADTRUNC,Bad Truncation,[RFC4635] *)
+    | BadCookie (* BADCOOKIE,Bad/missing Server Cookie,[RFC7873] *)
+  (* 24-3840,Unassigned *)
+  (* 3841-4095,Reserved for Private Use,,[RFC6895] *)
+  (* 4096-65534,Unassigned *)
+  (* 65535,"Reserved, can be allocated by Standards Action",,[RFC6895] *)
+  val pp : t Fmt.t
+  val compare : t -> t -> int
+end
+
 (** Start of authority
 
     The start of authority (SOA) is a resource record at domain boundaries. It
@@ -247,8 +408,8 @@ module Dnskey : sig
     | SHA512
     (** The type of supported algorithms. *)
 
-  val int_to_algorithm : int -> algorithm option
-  (** [int_to_algorithm i] tries to decode [i] to an [algorithm]. *)
+  val int_to_algorithm : ?off:int -> int -> (algorithm, [> `Not_implemented of int * string ]) result
+  (** [int_to_algorithm ~off i] tries to decode [i] to an [algorithm]. *)
 
   val algorithm_to_int : algorithm -> int
   (** [algorithm_to_int a] encodes [a] to an integer. *)
@@ -269,7 +430,7 @@ module Dnskey : sig
   val compare : t -> t -> int
   (** [comapre a b] compares the DNSKEY [a] with [b]. *)
 
-  val of_string : string -> t option
+  val of_string : string -> (t, [> `Msg of string ]) result
   (** [of_string str] attempts to parse [str] to a dnskey. The colon character
       ([:]) is used as separator, supported formats are: [algo:keydata] and
       [flags:algo:keydata], where keydata is a base64 string. *)
@@ -307,7 +468,8 @@ module Tlsa : sig
     | Domain_issued_certificate
 
   val cert_usage_to_int : cert_usage -> int
-  val int_to_cert_usage : int -> cert_usage option
+  val int_to_cert_usage : ?off:int -> int ->
+    (cert_usage, [> `Not_implemented of int * string ]) result
   val pp_cert_usage : cert_usage Fmt.t
 
   type selector =
@@ -316,7 +478,8 @@ module Tlsa : sig
     | Private
 
   val selector_to_int : selector -> int
-  val int_to_selector : int -> selector option
+  val int_to_selector : ?off:int -> int ->
+    (selector, [> `Not_implemented of int * string ]) result
   val pp_selector : selector Fmt.t
 
   type matching_type =
@@ -325,7 +488,8 @@ module Tlsa : sig
     | SHA512
 
   val matching_type_to_int : matching_type -> int
-  val int_to_matching_type : int -> matching_type option
+  val int_to_matching_type : ?off:int -> int ->
+    (matching_type, [> `Not_implemented of int * string ]) result
   val pp_matching_type : matching_type Fmt.t
 
   type t = {
@@ -353,7 +517,8 @@ module Sshfp : sig
     | Ed25519
 
   val algorithm_to_int : algorithm -> int
-  val int_to_algorithm : int -> algorithm option
+  val int_to_algorithm : ?off:int -> int ->
+    (algorithm, [> `Not_implemented of int * string ]) result
   val pp_algorithm : algorithm Fmt.t
 
   type typ =
@@ -361,7 +526,8 @@ module Sshfp : sig
     | SHA256
 
   val typ_to_int : typ -> int
-  val int_to_typ : int -> typ option
+  val int_to_typ : ?off:int -> int ->
+    (typ, [> `Not_implemented of int * string ]) result
   val pp_typ : typ Fmt.t
 
   type t = {
@@ -404,23 +570,24 @@ module Tsig : sig
     fudge : Ptime.Span.t ;
     mac : Cstruct.t ;
     original_id : int ; (* again 16 bit *)
-    error : Udns_enum.rcode ;
+    error : Rcode.t ;
     other : Ptime.t option
   }
 
   val algorithm_to_name : algorithm -> Domain_name.t
 
-  val algorithm_of_name : Domain_name.t -> algorithm option
+  val algorithm_of_name : ?off:int -> Domain_name.t ->
+    (algorithm, [> `Not_implemented of int * string ]) result
 
   val pp_algorithm : algorithm Fmt.t
 
   val tsig : algorithm:algorithm -> signed:Ptime.t ->
     ?fudge:Ptime.span -> ?mac:Cstruct.t -> ?original_id:int ->
-    ?error:Udns_enum.rcode -> ?other:Ptime.t -> unit -> t option
+    ?error:Rcode.t -> ?other:Ptime.t -> unit -> t option
 
   val with_mac : t -> Cstruct.t -> t
 
-  val with_error : t -> Udns_enum.rcode -> t
+  val with_error : t -> Rcode.t -> t
 
   val with_signed : t -> Ptime.t -> t option
 
@@ -434,7 +601,7 @@ module Tsig : sig
 
   val encode_full : Domain_name.t -> t -> Cstruct.t
 
-  val dnskey_to_tsig_algo : Dnskey.t -> algorithm option
+  val dnskey_to_tsig_algo : Dnskey.t -> (algorithm, [> `Msg of string ]) result
 
   val valid_time : Ptime.t -> t -> bool
 end
@@ -510,10 +677,10 @@ module Rr_map : sig
 
   include Gmap.S with type 'a key = 'a k
 
-  val to_rr_typ : b -> Udns_enum.rr_typ
+  val to_rr_typ : b -> Rr.t
   (** [to_rr_typ b] is the resource record typ of [b]. *)
 
-  val k_to_rr_typ : 'a k -> Udns_enum.rr_typ
+  val k_to_rr_typ : 'a k -> Rr.t
   (** [k_to_rr_typ k] is the resource record typ of [k]. *)
 
   val names : 'a k -> 'a -> Domain_name.Set.t
@@ -522,10 +689,10 @@ module Rr_map : sig
   val names_b : b -> Domain_name.Set.t
   (** [names_b binding] are the referenced domain names in the given binding. *)
 
-  val lookup_rr : Udns_enum.rr_typ -> t -> b option
+  val lookup_rr : Rr.t -> t -> b option
   (** [lookup_rr typ t] looks up the [typ] in [t]. *)
 
-  val remove_rr : Udns_enum.rr_typ -> t -> t
+  val remove_rr : Rr.t -> t -> t
   (** [remove_rr typ t] removes the [typ] in [t]. *)
 
   val pp_b : b Fmt.t
@@ -586,11 +753,23 @@ end
 module Packet : sig
 
   type err = [
-    | `Not_implemented of int * string
+    | `Bad_edns_version of int
     | `Leftover of int * string
     | `Malformed of int * string
+    | `Not_implemented of int * string
+    | `Notify_ack_answer_count of int
+    | `Notify_ack_authority_count of int
+    | `Notify_answer_count of int
+    | `Notify_authority_count of int
     | `Partial
-    | `Bad_edns_version of int
+    | `Query_answer_count of int
+    | `Query_authority_count of int
+    | `Rcode_cant_change of Rcode.t
+    | `Rcode_error_cant_noerror of Rcode.t
+    | `Request_rcode of Rcode.t
+    | `Truncated_request
+    | `Update_ack_answer_count of int
+    | `Update_ack_authority_count of int
   ]
 
   val pp_err : err Fmt.t
@@ -613,25 +792,13 @@ module Packet : sig
 
     module FS : Set.S with type elt = Flags.t
 
-    type t = {
-      id : int ;
-      query : bool ;
-      operation : Udns_enum.opcode ;
-      rcode : Udns_enum.rcode ;
-      flags : FS.t
-    }
+    type t = int * FS.t
 
     val compare : t -> t -> int
-
-    val pp : t Fmt.t
-
-    val decode : Cstruct.t -> (t, err) result
-
-    val encode : Cstruct.t -> t -> unit
   end
 
   module Question : sig
-    type t = Domain_name.t * Udns_enum.rr_typ
+    type t = Domain_name.t * Rr.t
 
     val pp : t Fmt.t
     val compare : t -> t -> int
@@ -640,29 +807,29 @@ module Packet : sig
   module Query : sig
     type t = Name_rr_map.t * Name_rr_map.t
     val empty : t
+    val is_empty : t -> bool
     val pp : t Fmt.t
     val equal : t -> t -> bool
   end
 
   module Axfr : sig
-    type t = (Soa.t * Name_rr_map.t) option
-    val empty : t
+    type t = Soa.t * Name_rr_map.t
     val pp : t Fmt.t
     val equal : t -> t -> bool
   end
 
   module Update : sig
     type prereq =
-      | Exists of Udns_enum.rr_typ
+      | Exists of Rr.t
       | Exists_data of Rr_map.b
-      | Not_exists of Udns_enum.rr_typ
+      | Not_exists of Rr.t
       | Name_inuse
       | Not_name_inuse
     val pp_prereq : prereq Fmt.t
     val equal_prereq : prereq -> prereq -> bool
 
     type update =
-      | Remove of Udns_enum.rr_typ
+      | Remove of Rr.t
       | Remove_all
       | Remove_single of Rr_map.b
       | Add of Rr_map.b
@@ -675,45 +842,84 @@ module Packet : sig
     val equal : t -> t -> bool
   end
 
-  type t = [
-    | `Query of Query.t
-    | `Notify of Query.t
-    | `Axfr of Axfr.t
+  type request = [
+    | `Query
+    | `Notify of Soa.t option
+    | `Axfr_request
     | `Update of Update.t
   ]
 
+  val equal_request : request -> request -> bool
+
+  val pp_request : request Fmt.t
+
+  type reply = [
+    | `Answer of Query.t
+    | `Notify_ack
+    | `Axfr_reply of Axfr.t
+    | `Update_ack
+    | `Rcode_error of Rcode.t * Opcode.t * Query.t option
+  ]
+
+  val equal_reply : reply -> reply -> bool
+
+  val pp_reply : reply Fmt.t
+
+  type data = [ request | reply ]
+
+  val opcode_data : data -> Opcode.t
+
+  val rcode_data : data -> Rcode.t
+
+  val equal_data : data -> data -> bool
+
+  val pp_data : data Fmt.t
+
+  type t = private {
+    header : Header.t ;
+    question : Question.t ;
+    data : data ;
+    additional : Name_rr_map.t ;
+    edns : Edns.t option ;
+    tsig : (Domain_name.t * Tsig.t * int) option ;
+  }
+
+  val create : ?max_size:int -> ?additional:Name_rr_map.t -> ?edns:Edns.t ->
+    Header.t -> Question.t -> data -> t
+
+  val with_edns : t -> Edns.t option -> t
+
   val pp : t Fmt.t
+
+  val pp_header : t Fmt.t
 
   val equal : t -> t -> bool
 
-  type res = Header.t * Question.t * t * Name_rr_map.t * Edns.t option * (Domain_name.t * Tsig.t * int) option
+  val decode : Cstruct.t -> (t, err) result
 
-  val pp_res : res Fmt.t
+  type mismatch = [ `Not_a_reply of request
+                  | `Id_mismatch of int * int
+                  | `Operation_mismatch of request * reply
+                  | `Question_mismatch of Question.t * Question.t
+                  | `Expected_request ]
 
-  val equal_res : res -> res -> bool
+  val pp_mismatch : mismatch Fmt.t
 
-  val decode : Cstruct.t -> (res, err) result
-
-  val is_reply : ?not_error:bool -> ?not_truncated:bool -> Header.t -> Question.t -> res -> bool
-  (** [is_reply ~not_error ~not_truncated header question response] validates the reply, and returns either
-      [true] or [false] and logs the failure. The following basic checks are
+  val reply_matches_request : request:t -> t -> (reply, mismatch) result
+  (** [reply_matches_request ~request reply] validates
+      that the [reply] match the [request], and returns either
+      [Ok data] or an [Error]. The following basic checks are
       performed:
       {ul
-      {- Is the header identifier of [header] and [response] equal?}
-      {- Is [res] a reply (first bit set)?}
-      {- Is the operation of [header] and [res] the same?}
-      {- If [not_error] is [true] (the default): is the rcode of [header] NoError?}
-      {- If [not_truncated] is [true] (the default): is the [truncation] flag not set?}
-      {- Is the [question] and the question of [response] equal?}} *)
+      {- Is the header identifier of [request] and [reply] equal?}
+      {- Does the [request] operation match the [reply] operation?}
+      {- Is [question] and the question of [response] equal?}} *)
 
   val size_edns : int option -> Edns.t option -> proto -> bool -> int * Edns.t option
 
-  val encode : ?max_size:int -> ?additional:Name_rr_map.t -> ?edns:Edns.t ->
-    proto -> Header.t -> Question.t -> t -> Cstruct.t * int
+  val encode : ?max_size:int -> proto -> t -> Cstruct.t * int
 
-  val error : Header.t -> Question.t -> Udns_enum.rcode -> (Cstruct.t * int) option
-
-  val raw_error : Cstruct.t -> Udns_enum.rcode -> Cstruct.t option
+  val raw_error : Cstruct.t -> Rcode.t -> Cstruct.t option
 end
 
 module Tsig_op : sig
@@ -726,11 +932,10 @@ module Tsig_op : sig
 
   val pp_e : e Fmt.t
 
-  type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.Header.t -> Packet.Question.t ->
-    Domain_name.t -> key:Dnskey.t option -> Tsig.t -> Cstruct.t ->
+  type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.t ->
+    Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> Cstruct.t ->
     (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
 
   type sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> Tsig.t ->
-    key:Dnskey.t -> Packet.Header.t -> Packet.Question.t -> Cstruct.t ->
-    (Cstruct.t * Cstruct.t) option
+    key:Dnskey.t -> Packet.t -> Cstruct.t -> (Cstruct.t * Cstruct.t) option
 end

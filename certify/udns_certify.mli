@@ -4,9 +4,11 @@ val letsencrypt_name : Domain_name.t -> (Domain_name.t, [> `Msg of string ]) res
 (** [letsencrypt_name host] is the service name at which we store let's encrypt
     certificates for the [host]. *)
 
-type u_err = [ `Tsig of Udns_tsig.e | `Bad_reply of Packet.res ]
+type u_err = [ `Tsig of Udns_tsig.e | `Bad_reply of Packet.mismatch * Packet.t | `Unexpected_reply of Packet.reply  ]
+(** The type of update errors. *)
 
 val pp_u_err : u_err Fmt.t
+(** [pp_u_err ppf u] pretty-prints [u] on [ppf]. *)
 
 val nsupdate : (int -> Cstruct.t) -> (unit -> Ptime.t) -> host:Domain_name.t ->
   keyname:Domain_name.t -> zone:Domain_name.t -> Udns.Dnskey.t ->
@@ -23,16 +25,18 @@ val nsupdate : (int -> Cstruct.t) -> (unit -> Ptime.t) -> host:Domain_name.t ->
 
 type q_err = [
   | `Decode of Packet.err
-  | `Bad_reply of Packet.res
+  | `Bad_reply of Packet.mismatch * Packet.t
+  | `Unexpected_reply of Packet.reply
   | `No_tlsa
-  | `Rcode of Udns_enum.rcode
 ]
+(** The type for query errors. *)
 
 val pp_q_err : q_err Fmt.t
+(** [pp_q_err ppf q] pretty-prints [q] on [ppf]. *)
 
 val query : (int -> Cstruct.t) -> X509.public_key -> Domain_name.t ->
   (Cstruct.t * (Cstruct.t -> (X509.t, [> q_err ]) result),
    [> `Msg of string ]) result
-(** [query rng pubkey name] is a buffer with a DNS TLSA query for the given
-   [name], and a function that decodes a given answer, either returning a X509
+(** [query rng pubkey name] is a [buffer] with a DNS TLSA query for the given
+   [name], and a function that decodes a given answer, either returning a X.509
    certificate or an error. *)

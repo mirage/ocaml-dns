@@ -16,8 +16,8 @@
  (libraries udns-tsig alcotest)
  (modules tsig))
 
-;(test
-; (name resolver)
-; (package udns-resolver)
-; (libraries udns-resolver alcotest)
-; (modules resolver))
+(test
+ (name resolver)
+ (package udns-resolver)
+ (libraries udns-resolver alcotest)
+ (modules resolver))

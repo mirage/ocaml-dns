@@ -12,7 +12,7 @@ module Authentication : sig
   ]
   (** The type of operations. *)
 
-  type a = Udns_trie.t -> proto -> Domain_name.t option -> operation -> Domain_name.t -> bool
+  type a = Udns_trie.t -> proto -> ?key:Domain_name.t -> operation -> zone:Domain_name.t -> bool
   (** The authentifier function signature *)
 
   val tsig_auth : a
@@ -39,21 +39,20 @@ val create : Udns_trie.t -> Authentication.t -> (int -> Cstruct.t) ->
   Tsig_op.verify -> Tsig_op.sign -> t
 (** [create trie auth rng verify sign] creates a state record. *)
 
-val text : Domain_name.t -> Udns_trie.t -> (string, string) result
+val text : Domain_name.t -> Udns_trie.t -> (string, [> `Msg of string ]) result
 (** [text name trie] results in a string representation (zonefile) of the trie. *)
 
-val handle_question : t -> Packet.Header.t ->
-  Packet.Question.t ->
-  (Packet.Header.t * Packet.t * Udns.Name_rr_map.t option, Udns_enum.rcode) result
-(** [handle_question t header query] handles the DNS query [query] in the data
+val handle_question : t -> Packet.Question.t ->
+  (Packet.Header.FS.t * Packet.Query.t * Name_rr_map.t option,
+   Rcode.t * Packet.Query.t option) result
+(** [handle_question t question] handles the DNS query [question] using the data
     of [t]: a whitelist of record types are looked up: A | NS | CNAME | SOA |
     PTR | MX | TXT | AAAA | SRV | ANY | CAA | SSHFP | TLSA | DNSKEY. *)
 
-val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.Header.t ->
-  Packet.Question.t -> (Domain_name.t * Tsig.t * int) option ->
+val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.t ->
   Cstruct.t -> ((Domain_name.t * Tsig.t * Cstruct.t * Dnskey.t) option,
                 Tsig_op.e * Cstruct.t option) result
-(** [handle_tsig ~mac t now hdr v tsig offset buffer] verifies the tsig
+(** [handle_tsig ~mac t now packet buffer] verifies the tsig
     signature if present, returning the keyname, tsig, mac, and used key. *)
 
 module Primary : sig
@@ -71,25 +70,23 @@ module Primary : sig
   (** [with_data s ts trie] replaces the current data with [trie] in [s].
       The returned notifications should be send out. *)
 
-  val create : ?keys:(Domain_name.t * Udns.Dnskey.t) list ->
+  val create : ?keys:(Domain_name.t * Dnskey.t) list ->
     ?a:Authentication.a list -> tsig_verify:Tsig_op.verify ->
     tsig_sign:Tsig_op.sign -> rng:(int -> Cstruct.t) -> Udns_trie.t -> s
   (** [create ~keys ~a ~tsig_verify ~tsig_sign ~rng data] creates a primary server. *)
 
-  val handle_frame : s -> int64 -> Udns.proto -> Ipaddr.V4.t -> int ->
-    Packet.Header.t -> Packet.Question.t -> Packet.t ->
-    Name_rr_map.t -> Domain_name.t option ->
-    (s * (Packet.Header.t * Packet.t * Name_rr_map.t option) option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option,
-     Udns_enum.rcode) result
-  (** [handle_frame s now src src_port proto key hdr v] handles the given
-     [frame], returning new state, an answer, and potentially notify packets to
+  val handle_packet : s -> int64 -> proto -> Ipaddr.V4.t -> int ->
+    Packet.t -> Domain_name.t option ->
+    s * Packet.t option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
+  (** [handle_packet s now src src_port proto key packet] handles the given
+     [packet], returning new state, an answer, and potentially notify packets to
      secondary name servers. *)
 
-  val handle : s -> Ptime.t -> int64 -> Udns.proto ->
+  val handle_buf : s -> Ptime.t -> int64 -> proto ->
     Ipaddr.V4.t -> int -> Cstruct.t ->
     s * Cstruct.t option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
-  (** [handle s now ts proto src src_port buffer] decodes the [buffer],
-     processes the DNS frame using {!handle_frame}, and encodes the reply. *)
+  (** [handle_buf s now ts proto src src_port buffer] decodes the [buffer],
+     processes the DNS frame using {!handle_packet}, and encodes the reply. *)
 
   val closed : s -> Ipaddr.V4.t -> int -> s
   (** [closed s ip port] marks the connection to [ip, port] closed. *)
@@ -113,19 +110,19 @@ module Secondary : sig
 
   val create : ?a:Authentication.a list -> ?primary:Ipaddr.V4.t ->
    tsig_verify:Tsig_op.verify -> tsig_sign:Tsig_op.sign ->
-    rng:(int -> Cstruct.t) -> (Domain_name.t * Udns.Dnskey.t) list -> s
+    rng:(int -> Cstruct.t) -> (Domain_name.t * Dnskey.t) list -> s
   (** [create ~a ~primary ~tsig_verify ~tsig_sign ~rng keys] creates a secondary
      DNS server state. *)
 
-  val handle_frame : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
-    Domain_name.t option -> Packet.Header.t -> Packet.Question.t -> Packet.t -> Name_rr_map.t ->
-    (s * (Packet.Header.t * Packet.t * Name_rr_map.t option) option * (proto * Ipaddr.V4.t * int * Cstruct.t) list,
-     Udns_enum.rcode) result
-  (** [handle_frame s now ts ip proto key hdr v] handles the incoming frame. *)
+  val handle_packet : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
+    Packet.t -> Domain_name.t option ->
+    s * Packet.t option * (proto * Ipaddr.V4.t * int * Cstruct.t) list
+  (** [handle_packet s now ts ip proto key t] handles the incoming packet. *)
 
-  val handle : s -> Ptime.t -> int64 -> Udns.proto -> Ipaddr.V4.t -> Cstruct.t ->
+  val handle_buf : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> Cstruct.t ->
     s * Cstruct.t option * (proto * Ipaddr.V4.t * int * Cstruct.t) list
-  (** [handle s now ts proto src buf] decodes [buf], {!handle_frame}, and encodes the results. *)
+  (** [handle_buf s now ts proto src buf] decodes [buf], processes with
+      {!handle_packet}, and encodes the results. *)
 
   val timer : s -> Ptime.t -> int64 ->
     s * (proto * Ipaddr.V4.t * int * Cstruct.t) list

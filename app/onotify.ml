@@ -3,23 +3,19 @@
 open Udns
 
 let notify zone serial key now =
-  let question = (zone, Udns_enum.SOA)
-  and n =
-    let soa = { Soa.nameserver = zone ; hostmaster = zone ; serial ;
-                refresh = 0l; retry = 0l ; expiry = 0l ; minimum = 0l }
-    in
-    (Domain_name.Map.singleton zone (Rr_map.singleton Rr_map.Soa soa),
-     Name_rr_map.empty)
-  and header =
-    let hdr = Udns_cli.dns_header (Random.int 0xFFFF) in
-    { hdr with operation = Udns_enum.Notify ; flags = Packet.Header.FS.singleton `Authoritative }
+  let question = (zone, Rr.SOA)
+  and soa =
+    { Soa.nameserver = zone ; hostmaster = zone ; serial ;
+      refresh = 0l; retry = 0l ; expiry = 0l ; minimum = 0l }
+  and header = Random.int 0xFFFF, Packet.Header.FS.singleton `Authoritative
   in
+  let p = Packet.create header question (`Notify (Some soa)) in
   match key with
-  | None -> Ok (header, question, fst (Packet.encode `Tcp header question (`Notify n)), Cstruct.empty)
+  | None -> Ok (p, fst (Packet.encode `Tcp p), None)
   | Some (keyname, _, dnskey) ->
     Logs.debug (fun m -> m "signing with key %a: %a" Domain_name.pp keyname Dnskey.pp dnskey) ;
-    match Udns_tsig.encode_and_sign ~proto:`Tcp header question (`Notify n) now dnskey keyname with
-    | Ok (cs, mac) -> Ok (header, question, cs, mac)
+    match Udns_tsig.encode_and_sign ~proto:`Tcp p now dnskey keyname with
+    | Ok (cs, mac) -> Ok (p, cs, Some mac)
     | Error e -> Error e
 
 let jump _ serverip port zone key serial =
@@ -29,7 +25,7 @@ let jump _ serverip port zone key serial =
                Ipaddr.V4.pp serverip port Domain_name.pp zone serial) ;
   match notify zone serial key now with
   | Error s -> Error (`Msg (Fmt.strf "signing %a" Udns_tsig.pp_s s))
-  | Ok (header, question, data, mac) ->
+  | Ok (request, data, mac) ->
     let data_len = Cstruct.len data in
     Logs.debug (fun m -> m "built data %d" data_len) ;
     let socket = Udns_cli.connect_tcp serverip port in
@@ -39,28 +35,32 @@ let jump _ serverip port zone key serial =
     match key with
     | None ->
       begin match Packet.decode read_data with
-        | Ok res when Packet.is_reply header question res ->
-          Logs.app (fun m -> m "successful notify!") ;
-          Ok ()
-        | Ok res ->
-          Error (`Msg (Fmt.strf "expected reply to %a %a, got %a!"
-                         Packet.Header.pp header Packet.Question.pp question
-                         Packet.pp_res res))
+        | Ok reply ->
+          begin match Packet.reply_matches_request ~request reply with
+            | Ok `Notify_ack ->
+              Logs.app (fun m -> m "successful notify!") ;
+              Ok ()
+            | Ok r -> Error (`Msg (Fmt.strf "expected notify ack, got %a" Packet.pp_reply r))
+            | Error e -> Error (`Msg (Fmt.strf "notify reply %a is not ok %a"
+                                        Packet.pp reply Packet.pp_mismatch e))
+          end
         | Error e ->
           Error (`Msg (Fmt.strf "failed to decode notify reply! %a" Packet.pp_err e))
       end
     | Some (keyname, _, dnskey) ->
-      begin match Udns_tsig.decode_and_verify now dnskey keyname ~mac read_data with
-        | Error e ->
-          Error (`Msg (Fmt.strf "failed to decode TSIG signed notify reply! %a" Udns_tsig.pp_e e))
-        | Ok (res, _, _) when Packet.is_reply header question res ->
+      match Udns_tsig.decode_and_verify now dnskey keyname ?mac read_data with
+      | Error e ->
+        Error (`Msg (Fmt.strf "failed to decode TSIG signed notify reply! %a" Udns_tsig.pp_e e))
+      | Ok (reply, _, _) ->
+        match Packet.reply_matches_request ~request reply with
+        | Ok `Notify_ack ->
           Logs.app (fun m -> m "successful TSIG signed notify!") ;
           Ok ()
-        | Ok (res, _, _) ->
+        | Ok r -> Error (`Msg (Fmt.strf "expected notify ack, got %a" Packet.pp_reply r))
+        | Error e ->
           Error (`Msg (Fmt.strf "expected reply to %a %a, got %a!"
-                         Packet.Header.pp header Packet.Question.pp question
-                         Packet.pp_res res))
-      end
+                         Packet.pp_mismatch e
+                         Packet.pp request Packet.pp reply))
 
 open Cmdliner
 

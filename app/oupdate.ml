@@ -3,21 +3,19 @@
 open Udns
 
 let create_update zone hostname ip_address =
-  let zone = (zone, Udns_enum.SOA)
+  let zone = (zone, Rr.SOA)
   and update =
     let up =
       Domain_name.Map.singleton hostname
         [
-          Packet.Update.Remove Udns_enum.A ;
+          Packet.Update.Remove Rr.A ;
           Packet.Update.Add Rr_map.(B (A, (60l, Ipv4_set.singleton ip_address)))
         ]
     in
     (Domain_name.Map.empty, up)
-  and header =
-    let hdr = Udns_cli.dns_header (Random.int 0xFFFF) in
-    { hdr with operation = Udns_enum.Update }
+  and header = Random.int 0xFFFF, Packet.Header.FS.empty
   in
-  (header, zone, `Update update)
+  Packet.create header zone (`Update update)
 
 let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
   Random.self_init () ;
@@ -28,8 +26,8 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
                Domain_name.pp hostname
                Ipaddr.V4.pp ip_address) ;
   Logs.debug (fun m -> m "using key %a: %a" Domain_name.pp keyname Udns.Dnskey.pp dnskey) ;
-  let hdr, zone, update = create_update zone hostname ip_address in
-  match Udns_tsig.encode_and_sign ~proto:`Tcp hdr zone update now dnskey keyname with
+  let p = create_update zone hostname ip_address in
+  match Udns_tsig.encode_and_sign ~proto:`Tcp p now dnskey keyname with
   | Error s ->
     Error (`Msg (Fmt.strf "tsig sign error %a" Udns_tsig.pp_s s))
   | Ok (data, mac) ->
@@ -42,12 +40,16 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
     match Udns_tsig.decode_and_verify now dnskey keyname ~mac read_data with
     | Error e ->
       Error (`Msg (Fmt.strf "nsupdate error %a" Udns_tsig.pp_e e))
-    | Ok (res, _, _) when Packet.is_reply hdr zone res ->
-      Logs.app (fun m -> m "successful and signed update!") ;
-      Ok ()
-    | Ok (res, _, _) ->
-      Error (`Msg (Fmt.strf "expected reply to %a %a, got %a"
-                     Packet.Header.pp hdr Packet.Question.pp zone Packet.pp_res res))
+    | Ok (reply, _, _) ->
+      match Packet.reply_matches_request ~request:p reply with
+      | Ok `Update_ack ->
+        Logs.app (fun m -> m "successful and signed update!") ;
+        Ok ()
+      | Ok r ->
+        Error (`Msg (Fmt.strf "nsupdate expected update ack, received %a" Packet.pp_reply r))
+      | Error e ->
+        Error (`Msg (Fmt.strf "nsupdate error %a (reply %a does not match request %a)"
+                       Packet.pp_mismatch e Packet.pp reply Packet.pp p))
 
 open Cmdliner
 

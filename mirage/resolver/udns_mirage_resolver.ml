@@ -49,7 +49,7 @@ module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_cloc
                 let now = Ptime.v (P.now_d_ps ()) in
                 let ts = M.elapsed_ns () in
                 let new_state, answers, queries =
-                  Udns_resolver.handle !state now ts false `Tcp dst port data
+                  Udns_resolver.handle_buf !state now ts false `Tcp dst port data
                 in
                 state := new_state ;
                 Lwt_list.iter_p handle_answer answers >>= fun () ->
@@ -102,7 +102,7 @@ module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_cloc
       and ts = M.elapsed_ns ()
       in
       let new_state, answers, queries =
-        Udns_resolver.handle !state now ts req `Udp src src_port buf
+        Udns_resolver.handle_buf !state now ts req `Udp src src_port buf
       in
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
@@ -125,7 +125,7 @@ module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_cloc
           let now = Ptime.v (P.now_d_ps ()) in
           let ts = M.elapsed_ns () in
           let new_state, answers, queries =
-            Udns_resolver.handle !state now ts query `Tcp dst_ip dst_port data
+            Udns_resolver.handle_buf !state now ts query `Tcp dst_ip dst_port data
           in
           state := new_state ;
           Lwt_list.iter_p handle_answer answers >>= fun () ->

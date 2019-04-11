@@ -97,7 +97,7 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
        Logs.debug (fun m -> m "no TLSA found, sending update");
        Ok true
      | Error (`Msg m) -> Error (`Msg m)
-     | Error ((`Decode _ | `Bad_reply _ | `Rcode _) as e) ->
+     | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
        Error (`Msg (Fmt.strf "error %a while parsing TLSA reply" Udns_certify.pp_q_err e)))
   >>= fun send_update ->
   if send_update then
@@ -114,7 +114,7 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "error %s" msg);
           Error (`Msg msg)
-        | Error ((`Decode _ | `Bad_reply _ | `Rcode _) as e) ->
+        | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
           Logs.err (fun m -> m "error %a while handling TLSA reply (retrying anyways)" Udns_certify.pp_q_err e);
           request (pred retries)
         | Ok x -> write_certificate x

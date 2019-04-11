@@ -3,14 +3,16 @@
 type t
 (** The type of a DNS resolver. *)
 
-val create : ?size:int -> ?mode:[ `Recursive | `Stub ] -> int64 -> (int -> Cstruct.t) -> Udns_server.Primary.s -> t
+val create : ?size:int -> ?mode:[ `Recursive | `Stub ] -> int64 ->
+  (int -> Cstruct.t) -> Udns_server.Primary.s -> t
 (** [create ~size ~mode now rng primary] creates the value of a resolver,
    pre-filled with root NS and their IP addresses. *)
 
-val handle : t -> Ptime.t -> int64 -> bool -> Udns.proto -> Ipaddr.V4.t -> int -> Cstruct.t ->
+val handle_buf : t -> Ptime.t -> int64 -> bool -> Udns.proto -> Ipaddr.V4.t ->
+  int -> Cstruct.t ->
   t * (Udns.proto * Ipaddr.V4.t * int * Cstruct.t) list
     * (Udns.proto * Ipaddr.V4.t * Cstruct.t) list
-(** [handle t now ts query_or_reply proto sender source-port buf] handles
+(** [handle_buf t now ts query_or_reply proto sender source-port buf] handles
    resolution of [buf], which my involve further outgoing and reply packets. *)
 
 val query_root : t -> int64 -> Udns.proto ->

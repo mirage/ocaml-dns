@@ -1,10 +1,4 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
-open Udns
-
-let dns_header id =
-  { Packet.Header.id ; query = true ; operation = Udns_enum.Query ;
-    rcode = Udns_enum.NoError ; flags = Packet.Header.FS.empty }
-
 let setup_log style_renderer level =
   Fmt_tty.setup_std_outputs ?style_renderer ();
   Logs.set_level level;
@@ -67,13 +61,14 @@ let ip_c : Ipaddr.V4.t Arg.converter =
 
 let namekey_c =
   let parse s =
-    match Astring.String.cut ~sep:":" s with
-    | None -> `Error "invalid key"
-    | Some (name, key) -> match Domain_name.of_string ~hostname:false name, Udns.Dnskey.of_string key with
-      | Error _, _ | _, None -> `Error "failed to parse key"
-      | Ok name, Some dnskey -> match Domain_name.drop_labels ~amount:2 name with
-        | Error _ -> `Error "failed to parse key (couldn't find zone)"
-        | Ok zone -> `Ok (name, zone, dnskey)
+    let open Rresult.R.Infix in
+    match
+      Udns.Dnskey.name_key_of_string s >>= fun (name, key) ->
+      Domain_name.drop_labels ~amount:2 name >>| fun zone ->
+      (name, zone, key)
+    with
+    | Error (`Msg m) -> `Error ("failed to parse key: " ^ m)
+    | Ok a -> `Ok a
   in
   parse, fun ppf (name, zone, key) -> Fmt.pf ppf "key name %a zone %a dnskey %a"
       Domain_name.pp name Domain_name.pp zone Udns.Dnskey.pp key

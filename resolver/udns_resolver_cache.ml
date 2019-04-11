@@ -1,7 +1,5 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-[@@@ocaml.warning "-27"]
-
 open Udns
 
 type rank =
@@ -14,30 +12,25 @@ type rank =
   | Additional
 
 let compare_rank a b = match a, b with
-  | ZoneFile, ZoneFile -> `Equal
-  | ZoneFile, _ -> `Bigger
-  | _, ZoneFile -> `Smaller
-  | ZoneTransfer, ZoneTransfer -> `Equal
-  | ZoneTransfer, _ -> `Bigger
-  | _, ZoneTransfer -> `Smaller
-  | AuthoritativeAnswer, AuthoritativeAnswer -> `Equal
-  | AuthoritativeAnswer, _ -> `Bigger
-  | _, AuthoritativeAnswer -> `Smaller
-  | AuthoritativeAuthority, AuthoritativeAuthority -> `Equal
-  | AuthoritativeAuthority, _ -> `Bigger
-  | _, AuthoritativeAuthority -> `Smaller
-  | ZoneGlue, ZoneGlue -> `Equal
-  | ZoneGlue, _ -> `Bigger
-  | _, ZoneGlue -> `Smaller
-  | NonAuthoritativeAnswer, NonAuthoritativeAnswer -> `Equal
-  | NonAuthoritativeAnswer, _ -> `Bigger
-  | _, NonAuthoritativeAnswer -> `Smaller
-  | Additional, Additional -> `Equal
-
-let pp_ord ppf = function
-  | `Bigger -> Fmt.string ppf "bigger"
-  | `Smaller -> Fmt.string ppf "smaller"
-  | `Equal -> Fmt.string ppf "equal"
+  | ZoneFile, ZoneFile -> 0
+  | ZoneFile, _ -> 1
+  | _, ZoneFile -> -1
+  | ZoneTransfer, ZoneTransfer -> 0
+  | ZoneTransfer, _ -> 1
+  | _, ZoneTransfer -> -1
+  | AuthoritativeAnswer, AuthoritativeAnswer -> 0
+  | AuthoritativeAnswer, _ -> 1
+  | _, AuthoritativeAnswer -> -1
+  | AuthoritativeAuthority, AuthoritativeAuthority -> 0
+  | AuthoritativeAuthority, _ -> 1
+  | _, AuthoritativeAuthority -> -1
+  | ZoneGlue, ZoneGlue -> 0
+  | ZoneGlue, _ -> 1
+  | _, ZoneGlue -> -1
+  | NonAuthoritativeAnswer, NonAuthoritativeAnswer -> 0
+  | NonAuthoritativeAnswer, _ -> 1
+  | _, NonAuthoritativeAnswer -> -1
+  | Additional, Additional -> 0
 
 let pp_rank ppf r = Fmt.string ppf (match r with
     | ZoneFile -> "zone file data"
@@ -47,6 +40,8 @@ let pp_rank ppf r = Fmt.string ppf (match r with
     | ZoneGlue -> "zone file glue"
     | NonAuthoritativeAnswer -> "non-authoritative answer"
     | Additional -> "additional data")
+
+module RRMap = Map.Make(Rr)
 
 module V = struct
   type meta = int64 * rank
@@ -74,11 +69,11 @@ module V = struct
   type t =
     | Alias of meta * int32 * Domain_name.t
     | No_domain of meta * Domain_name.t * Soa.t
-    | Rr_map of (meta * rr_map_entry) Udns_enum.RRMap.t
+    | Rr_map of (meta * rr_map_entry) RRMap.t
 
   let weight = function
     | Alias _ | No_domain _ -> 1
-    | Rr_map tm -> Udns_enum.RRMap.cardinal tm
+    | Rr_map tm -> RRMap.cardinal tm
 
   let pp_entry ppf (meta, entry) = Fmt.pf ppf "e (%a) %a" pp_meta meta pp_map_entry entry
 
@@ -89,8 +84,8 @@ module V = struct
       Fmt.pf ppf "no domain (%a) %a SOA %a" pp_meta meta Domain_name.pp name Soa.pp soa
     | Rr_map rr ->
       Fmt.pf ppf "entries: %a"
-        Fmt.(list ~sep:(unit ";@,") (pair Udns_enum.pp_rr_typ pp_entry))
-        (Udns_enum.RRMap.bindings rr)
+        Fmt.(list ~sep:(unit ";@,") (pair Rr.pp pp_entry))
+        (RRMap.bindings rr)
 end
 
 module LRU = Lru.F.Make(Domain_name)(V)
@@ -111,14 +106,7 @@ let pp_stats pf s =
 
 let stats () = !s
 
-(* this could be improved:
-   lookup : t -> Domain_name.t -> Udns_enum.rr_typ -> int64 ->
-            (Dns_map.B, [ `NoErr | `NoDom | `ServFail | `Timeout ]) result
-
-   a bit more types for Dns_map (by providing some more type parameters)
-
-   or ask someone who knows more about GADT to help me fixing that data
-   structure properly. *)
+(* this could need a `Timeout error result *)
 
 let empty = LRU.empty
 
@@ -172,7 +160,7 @@ let find_lru t name typ =
   | Some Rr_map tm ->
     Some tm,
     try
-      let meta, entry = Udns_enum.RRMap.find typ tm in
+      let meta, entry = RRMap.find typ tm in
       Ok (meta, V.to_res entry)
     with
     | Not_found -> Error `Cache_miss
@@ -184,15 +172,15 @@ let insert_lru t ?map name typ created rank res =
     | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) t
     | `Alias (ttl, alias) -> LRU.add name (Alias (meta, ttl, alias)) t
     | `Entry _ | `No_data _ | `Serv_fail _ ->
-      let map = match map with None -> Udns_enum.RRMap.empty | Some x -> x in
-      let map' = Udns_enum.RRMap.add typ (meta, V.of_res res) map in
+      let map = match map with None -> RRMap.empty | Some x -> x in
+      let map' = RRMap.add typ (meta, V.of_res res) map in
       LRU.add name (Rr_map map') t
   in
   LRU.trim t'
 
 let cached_any rrmap now =
   let rrs =
-    Udns_enum.RRMap.fold (fun typ ((created, _), e) acc ->
+    RRMap.fold (fun _typ ((created, _), e) acc ->
         match e with
         | V.No_data _ | V.Serv_fail _ -> acc
         | V.Entry b ->
@@ -209,7 +197,7 @@ let cached_any rrmap now =
 
 let cached t now typ nam =
   match find_lru t nam typ with
-  | Some rrmap, _ when typ = Udns_enum.ANY ->
+  | Some rrmap, _ when typ = Rr.ANY ->
     begin match cached_any rrmap now with
       | Error e ->
         s := { !s with miss = succ !s.miss };
@@ -272,10 +260,10 @@ let maybe_insert typ nam ts rank e t =
     Logs.debug (fun m -> m "maybe_insert: %a nothing found, adding: %a" Packet.Question.pp (nam, typ) pp_res entry);
     insert_lru ?map t nam typ ts rank entry
   | map, Ok ((_, rank'), entry) ->
-    Logs.debug (fun m -> m "maybe_insert: %a found rank %a insert rank %a: %a (unless bigger)"
-                   Packet.Question.pp (nam, typ) pp_rank rank' pp_rank rank pp_ord (compare_rank rank' rank));
+    Logs.debug (fun m -> m "maybe_insert: %a found rank %a insert rank %a: %d"
+                   Packet.Question.pp (nam, typ) pp_rank rank' pp_rank rank (compare_rank rank' rank));
     match compare_rank rank' rank with
-    | `Bigger -> t
+    | 1 -> t
     | _ -> insert_lru ?map t nam typ ts rank entry
 
 (*
@@ -374,31 +362,32 @@ let find_nearest_ns rng ts t name =
     | [ x ] -> Some x
     | xs -> Some (List.nth xs (Randomconv.int ~bound:(List.length xs) rng))
   in
-  let root =
-    match pick (snd (List.split Udns_resolver_root.root_servers)) with
-    | None -> invalid_arg "not possible"
-    | Some ip -> ip
-  in
-  let find_ns name = match cached t ts Udns_enum.NS name with
+  let find_ns name = match cached t ts Rr.NS name with
     | Ok (`Entry Rr_map.(B (Ns, (_, names))), _) -> Domain_name.Set.elements names
     | _ -> []
-  and find_a name = match cached t ts Udns_enum.A name with
+  and find_a name = match cached t ts Rr.A name with
     | Ok (`Entry Rr_map.(B (A, (_, ips))), _) -> Rr_map.Ipv4_set.elements ips
     | _ -> []
   in
+  let or_root f nam =
+    if Domain_name.(equal root nam) then
+      match pick (snd (List.split Udns_resolver_root.root_servers)) with
+      | None -> assert false
+      | Some ip -> `HaveIP (Domain_name.root, ip)
+    else
+      f (Domain_name.drop_labels_exn nam)
+  in
   let rec go nam =
-    if Domain_name.equal nam Domain_name.root then
-      `HaveIP (Domain_name.root, root)
-    else match pick (find_ns nam) with
-      | None -> go (Domain_name.drop_labels_exn nam)
-      | Some ns -> match pick (find_a ns) with
-        | None ->
-          if Domain_name.sub ~subdomain:ns ~domain:nam then
-            (* we actually need glue *)
-            go (Domain_name.drop_labels_exn nam)
-          else
-            `NeedA ns
-        | Some ip -> `HaveIP (nam, ip)
+    match pick (find_ns nam) with
+    | None -> or_root go nam
+    | Some ns -> match pick (find_a ns) with
+      | None ->
+        if Domain_name.sub ~subdomain:ns ~domain:nam then
+          (* we actually need glue *)
+          or_root go nam
+        else
+          `NeedA ns
+      | Some ip -> `HaveIP (nam, ip)
   in
   go name
 
@@ -433,12 +422,12 @@ let resolve t ~rng ts name typ =
   let rec go t typ name =
     Logs.debug (fun m -> m "go %a" Domain_name.pp name) ;
     match find_nearest_ns rng ts t name with
-    | `NeedA ns -> go t Udns_enum.A ns
-    | `HaveIP (zone, ip) -> Ok (zone, name, typ, ip, t)
+    | `NeedA ns -> go t Rr.A ns
+    | `HaveIP (zone, ip) -> zone, name, typ, ip, t
   in
   go t typ name
 
-(*
+(* this is with qname minimisation!!
 let _resolve t ~rng ts name typ =
   (* TODO return the bailiwick (zone the NS is responsible for) as well *)
   (* TODO this is the query name minimisation approach, reimplement the
@@ -551,7 +540,7 @@ let follow_cname t ts typ ~name ttl ~alias =
       let acc' = Domain_name.Map.add name Rr_map.(singleton Cname (ttl, alias)) acc in
       if Domain_name.Map.mem alias acc then begin
         Logs.warn (fun m -> m "follow_cname: cycle detected") ;
-        `Out (Udns_enum.NoError, acc', Name_rr_map.empty, t)
+        `Out (Rcode.NoError, acc', Name_rr_map.empty, t)
       end else begin
         Logs.debug (fun m -> m "follow_cname: alias to %a, follow again"
                        Domain_name.pp alias);
@@ -560,20 +549,20 @@ let follow_cname t ts typ ~name ttl ~alias =
     | Ok (`Entry (Rr_map.B (k, v)), t) ->
       let acc' = Domain_name.Map.add name Rr_map.(singleton k v) acc in
       Logs.debug (fun m -> m "follow_cname: entry found, returning");
-      `Out (Udns_enum.NoError, acc', Name_rr_map.empty, t)
+      `Out (Rcode.NoError, acc', Name_rr_map.empty, t)
     | Ok (`Entries rr_map, t) ->
       let acc' = Domain_name.Map.add name rr_map acc in
       Logs.debug (fun m -> m "follow_cname: entries found, returning");
-      `Out (Udns_enum.NoError, acc', Name_rr_map.empty, t)
+      `Out (Rcode.NoError, acc', Name_rr_map.empty, t)
     | Ok (`No_domain res, t) ->
       Logs.debug (fun m -> m "follow_cname: nodom");
-      `Out (Udns_enum.NXDomain, acc, to_map res, t)
+      `Out (Rcode.NXDomain, acc, to_map res, t)
     | Ok (`No_data res, t) ->
       Logs.debug (fun m -> m "follow_cname: nodata");
-      `Out (Udns_enum.NoError, acc, to_map res, t)
+      `Out (Rcode.NoError, acc, to_map res, t)
     | Ok (`Serv_fail res, t) ->
       Logs.debug (fun m -> m "follow_cname: servfail") ;
-      `Out (Udns_enum.ServFail, acc, to_map res, t)
+      `Out (Rcode.ServFail, acc, to_map res, t)
   in
   let initial = Domain_name.Map.singleton name Rr_map.(singleton Cname (ttl, alias)) in
   follow t initial alias
@@ -589,17 +578,21 @@ let additionals t ts rrs =
     ([], t)
 *)
 
-let answer t ts (name, typ) id =
-  let packet t add rcode answer authority =
-    (* TODO why is this RA + RD in here? should not be for recursive algorithm
-         also, there should be authoritative... *)
-    let flags = Packet.Header.FS.(add `Recursion_desired (singleton `Recursion_available)) in
-    let header = { Packet.Header.id ; query = false ; operation = Udns_enum.Query ;
-                   rcode ; flags }
+let answer t ts (name, typ) =
+  let packet t _add rcode answer authority =
+    (* TODO why was this RA + RD in here? should not be RD for recursive algorithm
+       TODO should it be authoritative for recursive algorithm? *)
+    let data = (answer, authority) in
+    let flags = Packet.Header.FS.singleton `Recursion_desired
     (* XXX: we should look for a fixpoint here ;) *)
     (*    and additional, t = if add then additionals t ts answer else [], t *)
-    and query = (answer, authority) in
-    (header, `Query query, t)
+    and data = match rcode with
+      | Rcode.NoError -> `Answer data
+      | x ->
+        let data = if Packet.Query.is_empty data then None else Some data in
+        `Rcode_error (x, Opcode.Query, data)
+    in
+    (flags, data, t)
   in
   match cached t ts typ name with
   | Error e ->
@@ -608,43 +601,43 @@ let answer t ts (name, typ) id =
     `Query (name, t)
   | Ok (`No_domain res, t) ->
     Logs.debug (fun m -> m "no domain while looking up %a, query" Packet.Question.pp (name, typ));
-    `Packet (packet t false Udns_enum.NXDomain Domain_name.Map.empty (to_map res))
+    `Packet (packet t false Rcode.NXDomain Domain_name.Map.empty (to_map res))
   | Ok (`No_data res, t) ->
     Logs.debug (fun m -> m "no data while looking up %a" Packet.Question.pp (name, typ));
-    `Packet (packet t false Udns_enum.NoError Domain_name.Map.empty (to_map res))
+    `Packet (packet t false Rcode.NoError Domain_name.Map.empty (to_map res))
   | Ok (`Serv_fail res, t) ->
     Logs.debug (fun m -> m "serv fail while looking up %a" Packet.Question.pp (name, typ));
-    `Packet (packet t false Udns_enum.ServFail Domain_name.Map.empty (to_map res))
+    `Packet (packet t false Rcode.ServFail Domain_name.Map.empty (to_map res))
   | Ok (`Entry (Rr_map.B (k, v)), t) ->
     Logs.debug (fun m -> m "entry while looking up %a" Packet.Question.pp (name, typ));
     let data = Domain_name.Map.singleton name (Rr_map.singleton k v) in
-    `Packet (packet t true Udns_enum.NoError data Domain_name.Map.empty)
+    `Packet (packet t true Rcode.NoError data Domain_name.Map.empty)
   | Ok (`Entries rr_map, t) ->
     Logs.debug (fun m -> m "entries while looking up %a" Packet.Question.pp (name, typ));
     let data = Domain_name.Map.singleton name rr_map in
-    `Packet (packet t true Udns_enum.NoError data Domain_name.Map.empty)
+    `Packet (packet t true Rcode.NoError data Domain_name.Map.empty)
   | Ok (`Alias (ttl, alias), t) ->
     Logs.debug (fun m -> m "alias while looking up %a" Packet.Question.pp (name, typ));
     match typ with
-    | Udns_enum.CNAME ->
+    | Rr.CNAME ->
       let data = Domain_name.Map.singleton name Rr_map.(singleton Cname (ttl, alias)) in
-      `Packet (packet t false Udns_enum.NoError data Domain_name.Map.empty)
+      `Packet (packet t false Rcode.NoError data Domain_name.Map.empty)
     | _ ->
       match follow_cname t ts typ ~name ttl ~alias with
       | `Out (rcode, answer, authority, t) ->
         `Packet (packet t true rcode answer authority)
       | `Query (n, t) -> `Query (n, t)
 
-let handle_query t ~rng ts q qid =
-  match answer t ts q qid with
-  | `Packet (hdr, pkt, t) -> `Answer (hdr, pkt), t
+let handle_query t ~rng ts q =
+  match answer t ts q with
+  | `Packet (flags, data, t) -> `Reply (flags, data), t
   | `Query (name, t) ->
     let r =
       match snd q with
       (* similar for TLSA, which uses _443._tcp.<name> (not a service name!) *)
-      | Udns_enum.SRV when Domain_name.is_service name ->
-        Ok (Domain_name.drop_labels_exn ~amount:2 name, Udns_enum.NS)
-      | Udns_enum.SRV ->
+      | Rr.SRV when Domain_name.is_service name ->
+        Ok (Domain_name.drop_labels_exn ~amount:2 name, Rr.NS)
+      | Rr.SRV ->
         Logs.err (fun m -> m "requested SRV record %a, but not a service name"
                      Domain_name.pp name) ;
         Error ()
@@ -653,19 +646,13 @@ let handle_query t ~rng ts q qid =
     match r with
     | Error () -> `Nothing, t
     | Ok (qname, typ) ->
-      match resolve t ~rng ts qname typ with
-      | Error e ->
-        Logs.err (fun m -> m "resolve returned error %s" e) ;
-        `Nothing, t
-      | Ok (zone, name', typ, ip, t) ->
-        let name, typ =
-          match Domain_name.equal name' qname, snd q with
-          | true, Udns_enum.SRV -> name, Udns_enum.SRV
-          | _ -> name', typ
-        in
-        Logs.debug (fun m -> m "resolve returned zone %a name %a typ %a, ip %a"
-                       Domain_name.pp zone
-                       Domain_name.pp name
-                       Udns_enum.pp_rr_typ typ
-                       Ipaddr.V4.pp ip) ;
-        `Query (zone, name, typ, ip), t
+      let zone, name', typ, ip, t = resolve t ~rng ts qname typ in
+      let name, typ =
+        match Domain_name.equal name' qname, snd q with
+        | true, Rr.SRV -> name, Rr.SRV
+        | _ -> name', typ
+      in
+      Logs.debug (fun m -> m "resolve returned zone %a name %a typ %a, ip %a"
+                     Domain_name.pp zone Domain_name.pp name
+                     Rr.pp typ Ipaddr.V4.pp ip) ;
+      `Query (zone, name, typ, ip), t
