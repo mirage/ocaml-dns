@@ -64,14 +64,14 @@ let create ?(size = 10000) ?(mode = `Recursive) now rng primary =
   let cache =
     List.fold_left (fun cache (name, b) ->
         Udns_resolver_cache.maybe_insert
-          Udns_enum.A name now Udns_resolver_entry.Additional
-          (Udns_resolver_entry.NoErr b) cache)
+          Udns_enum.A name now Udns_resolver_cache.Additional
+          (`Entry b) cache)
       cache Udns_resolver_root.a_records
   in
   let cache =
     Udns_resolver_cache.maybe_insert
-      Udns_enum.NS Domain_name.root now Udns_resolver_entry.Additional
-      (Udns_resolver_entry.NoErr Udns_resolver_root.ns_records) cache
+      Udns_enum.NS Domain_name.root now Udns_resolver_cache.Additional
+      (`Entry Udns_resolver_root.ns_records) cache
   in
   { rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty ; mode }
 
@@ -207,7 +207,7 @@ let scrub_it mode t proto zone edns ts header q query =
       List.fold_left
         (fun t (ty, n, r, e) ->
            Logs.debug (fun m -> m "maybe_insert %a %a %a"
-                            Udns_enum.pp_rr_typ ty Domain_name.pp n Udns_resolver_entry.pp_res e) ;
+                            Udns_enum.pp_rr_typ ty Domain_name.pp n Udns_resolver_cache.pp_res e) ;
            Udns_resolver_cache.maybe_insert ty n ts r e t)
         t xs
     in
@@ -500,9 +500,9 @@ let query_root t now proto =
   and q_type = Udns_enum.NS
   in
   let ip, cache =
-    match Udns_resolver_cache.find_ns t.cache t.rng now Domain_name.Set.empty q_name with
+(*    match Udns_resolver_cache.find_ns t.cache t.rng now Domain_name.Set.empty q_name with
     | `HaveIP ip, cache -> ip, cache
-    | _ ->
+      | _ ->*)
       let roots = snd (List.split Udns_resolver_root.root_servers) in
       (List.nth roots (Randomconv.int ~bound:(List.length roots) t.rng),
        t.cache)

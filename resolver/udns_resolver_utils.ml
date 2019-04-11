@@ -2,8 +2,8 @@
 
 [@@@ocaml.warning "-27-32"]
 
-open Udns_resolver_entry
 open Udns
+open Udns_resolver_cache
 
 open Rresult.R.Infix
 
@@ -16,18 +16,17 @@ let invalid_soa name =
     | Ok name -> name
     | Error _ -> name
   in
-  let soa = {
+  {
     Soa.nameserver = p "ns" ; hostmaster = p "hostmaster" ;
     serial = 1l ; refresh = 16384l ; retry = 2048l ;
     expiry = 1048576l ; minimum = 300l
-  } in
-  name, (soa.minimum, soa)
+  }
 
 let soa_map name soa =
   Domain_name.Map.singleton name Rr_map.(singleton Soa soa)
 
 let invalid_soa_map name =
-  let _, (_, soa) = invalid_soa name in
+  let soa = invalid_soa name in
   soa_map name soa
 
 
@@ -196,17 +195,21 @@ let nxdomain (name, _typ) hdr (answer, authority) =
      no soa in authority and no cname answer -> inject an invalid_soa (avoid loops)
      a matching soa, no cname -> NoDom q_name
      _, a matching cname -> NoErr q_name with cname
- *)
-  match soa, cname_opt with
-  | None, [] ->
-    let name, soa = invalid_soa name in
-    [ Udns_enum.CNAME, name, rank, NoDom (name, soa) ]
-  | Some (name, soa), [] ->
-    [ Udns_enum.CNAME, name, rank, NoDom (name, (soa.minimum, soa)) ]
-  | _, rrs ->
-    List.map (fun (name, cname) ->
-        Udns_enum.CNAME, name, rank, NoErr Rr_map.(B (Cname, cname)))
-      rrs
+  *)
+  let entries =
+    match soa, cname_opt with
+    | None, [] ->
+      let soa = invalid_soa name in
+      [ name, `No_domain (name, soa) ]
+    | Some (name, soa), [] ->
+      [ name, `No_domain (name, soa) ]
+    | _, rrs ->
+      List.map (fun (name, cname) ->
+          name, `Entry Rr_map.(B (Cname, cname)))
+        rrs
+  in
+  (* the cname does not matter *)
+  List.map (fun (name, res) -> Udns_enum.CNAME, name, rank, res) entries
 
 let noerror_stub (name, typ) (answer, authority) =
   (* no glue, just answers - but get all the cnames *)
@@ -224,18 +227,18 @@ let noerror_stub (name, typ) (answer, authority) =
   let rec go acc name = match find_entry_or_cname name with
     | None ->
       let name, soa = match find_soa name authority with
-        | Some (name, soa) -> (name, (soa.minimum, soa))
-        | None -> invalid_soa name
+        | Some (name, soa) -> (name, soa)
+        | None -> name, invalid_soa name
       in
-      (typ, name, NonAuthoritativeAnswer, NoData (name, soa)) :: acc
+      (typ, name, NonAuthoritativeAnswer, `No_data (name, soa)) :: acc
     | Some (`Cname (ttl, alias)) ->
       let b = Rr_map.(B (Cname, (ttl, alias))) in
-      go ((Udns_enum.CNAME, name, NonAuthoritativeAnswer, NoErr b) :: acc) alias
+      go ((Udns_enum.CNAME, name, NonAuthoritativeAnswer, `Entry b) :: acc) alias
     | Some (`Entry b) ->
-      (typ, name, NonAuthoritativeAnswer, NoErr b) :: acc
+      (typ, name, NonAuthoritativeAnswer, `Entry b) :: acc
     | Some (`Entries map) ->
       Rr_map.fold (fun Rr_map.(B (k, v) as b) acc ->
-          (Rr_map.k_to_rr_typ k, name, NonAuthoritativeAnswer, NoErr b) :: acc)
+          (Rr_map.k_to_rr_typ k, name, NonAuthoritativeAnswer, `Entry b) :: acc)
         map acc
   in
   go [] name
@@ -250,6 +253,7 @@ let scrub ?(mode = `Recursive) zone hdr q dns =
   | `Stub, Udns_enum.NoError -> Ok (noerror_stub q dns)
   | _, Udns_enum.NXDomain -> Ok (nxdomain q hdr dns)
   | `Stub, Udns_enum.ServFail ->
-    let ttl, soa = invalid_soa (fst q) in
-    Ok [ Udns_enum.CNAME, (fst q), NonAuthoritativeAnswer, ServFail (ttl, soa)  ]
+    let name = fst q in
+    let soa = invalid_soa name in
+    Ok [ Udns_enum.CNAME, name, NonAuthoritativeAnswer, `Serv_fail (name, soa) ]
   | _, e -> Error e
