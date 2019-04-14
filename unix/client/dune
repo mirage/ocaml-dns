@@ -8,8 +8,8 @@
 )
 
 (executable
-  (name         ohostname)
-  (modules      ohostname)
+  (name         ohost)
+  (modules      ohost)
   (package      udns-client-unix)
   (public_name  udns-client-unix)
   (flags       (:standard -safe-string))

@@ -23,23 +23,25 @@ let find_or_generate_key key_filename bits seed =
     Ok key
 
 let query_certificate sock public_key fqdn =
-  let out, recv_cb = Udns_certify.query Nocrypto.Rng.generate public_key fqdn in
-  Udns_cli.send_tcp sock out ;
-  let data = Udns_cli.recv_tcp sock in
-  recv_cb data
+  match Udns_certify.query Nocrypto.Rng.generate public_key fqdn with
+  | Error e -> Error e
+  | Ok (out, cb) ->
+    Udns_cli.send_tcp sock out;
+    let data = Udns_cli.recv_tcp sock in
+    cb data
 
 let nsupdate_csr sock host keyname zone dnskey csr =
   match Udns_certify.nsupdate Nocrypto.Rng.generate Ptime_clock.now ~host ~keyname ~zone dnskey csr with
-  | Error fail -> Error (`Msg fail)
+  | Error s -> Error s
   | Ok (out, cb) ->
-    Udns_cli.send_tcp sock out ;
+    Udns_cli.send_tcp sock out;
     let data = Udns_cli.recv_tcp sock in
     match cb data with
     | Ok () -> Ok ()
-    | Error msg -> Error (`Msg msg)
+    | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Udns_certify.pp_u_err e))
 
-let jump server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert force =
-  Nocrypto_entropy_unix.initialize () ;
+let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert force =
+  Nocrypto_entropy_unix.initialize ();
   let fn suffix = function
     | None -> Fpath.(v (Domain_name.to_string hostname) + suffix)
     | Some x -> Fpath.v x
@@ -84,30 +86,42 @@ let jump server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert 
     Bos.OS.File.write cert_filename (Cstruct.to_string cert)
   in
   let sock = Udns_cli.connect_tcp server_ip port in
-  match
-    if not force then query_certificate sock public_key hostname else Error "no"
-  with
-  | Ok x -> write_certificate x
-  | Error _ ->
+  (if force then
+     Ok true
+   else match query_certificate sock public_key hostname with
+     | Ok x ->
+       Logs.app (fun m -> m "found cached certificate in DNS");
+       write_certificate x >>| fun () ->
+       false
+     | Error `No_tlsa ->
+       Logs.debug (fun m -> m "no TLSA found, sending update");
+       Ok true
+     | Error (`Msg m) -> Error (`Msg m)
+     | Error ((`Decode _ | `Bad_reply _ | `Rcode _) as e) ->
+       Error (`Msg (Fmt.strf "error %a while parsing TLSA reply" Udns_certify.pp_q_err e)))
+  >>= fun send_update ->
+  if send_update then
     nsupdate_csr sock hostname keyname zone dnskey req >>= fun () ->
     let rec request retries =
       if retries = 0 then
         Error (`Msg "failed to request certificate")
       else
         match query_certificate sock public_key hostname with
-        | Error _ ->
-          Unix.sleep 1 ;
+        | Error `No_tlsa ->
+          Logs.warn (fun m -> m "still no tlsa, sleeping two more seconds");
+          Unix.sleep 2;
+          request (pred retries)
+        | Error (`Msg msg) ->
+          Logs.err (fun m -> m "error %s" msg);
+          Error (`Msg msg)
+        | Error ((`Decode _ | `Bad_reply _ | `Rcode _) as e) ->
+          Logs.err (fun m -> m "error %a while handling TLSA reply (retrying anyways)" Udns_certify.pp_q_err e);
           request (pred retries)
         | Ok x -> write_certificate x
     in
     request 10
-
-let jump_res _ dns_server port dns_key hostname csr key seed bits cert force =
-  match
-    jump dns_server port dns_key hostname csr key seed bits cert force
-  with
-  | Ok () -> `Ok ()
-  | Error (`Msg m) -> `Error (false, m)
+  else
+    Ok ()
 
 open Cmdliner
 
@@ -154,7 +168,7 @@ let force =
 let ocertify =
   let doc = "ocertify requests a signed certificate" in
   let man = [ `S "BUGS"; `P "Submit bugs to me";] in
-  Term.(ret (const jump_res $ Udns_cli.setup_log $ dns_server $ port $ dns_key $ hostname $ csr $ key $ seed $ bits $ cert $ force)),
+  Term.(term_result (const jump $ Udns_cli.setup_log $ dns_server $ port $ dns_key $ hostname $ csr $ key $ seed $ bits $ cert $ force)),
   Term.info "ocertify" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () = match Term.eval ocertify with `Ok () -> exit 0 | _ -> exit 1

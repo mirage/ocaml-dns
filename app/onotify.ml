@@ -28,7 +28,7 @@ let jump _ serverip port zone key serial =
   Logs.app (fun m -> m "notifying to %a:%d zone %a serial %lu"
                Ipaddr.V4.pp serverip port Domain_name.pp zone serial) ;
   match notify zone serial key now with
-  | Error msg -> `Error (false, msg)
+  | Error s -> Error (`Msg (Fmt.strf "signing %a" Udns_tsig.pp_s s))
   | Ok (header, question, data, mac) ->
     let data_len = Cstruct.len data in
     Logs.debug (fun m -> m "built data %d" data_len) ;
@@ -41,29 +41,25 @@ let jump _ serverip port zone key serial =
       begin match Packet.decode read_data with
         | Ok res when Packet.is_reply header question res ->
           Logs.app (fun m -> m "successful notify!") ;
-          `Ok ()
+          Ok ()
         | Ok res ->
-          Logs.err (fun m -> m "expected reply to %a %a, got %a!"
-                       Packet.Header.pp header Packet.Question.pp question
-                       Packet.pp_res res) ;
-          `Error (false, "")
+          Error (`Msg (Fmt.strf "expected reply to %a %a, got %a!"
+                         Packet.Header.pp header Packet.Question.pp question
+                         Packet.pp_res res))
         | Error e ->
-          Logs.err (fun m -> m "failed to decode notify reply! %a" Packet.pp_err e) ;
-          `Error (false, "")
+          Error (`Msg (Fmt.strf "failed to decode notify reply! %a" Packet.pp_err e))
       end
     | Some (keyname, _, dnskey) ->
       begin match Udns_tsig.decode_and_verify now dnskey keyname ~mac read_data with
         | Error e ->
-          Logs.err (fun m -> m "failed to decode TSIG signed notify reply! %s" e) ;
-          `Error (false, "")
+          Error (`Msg (Fmt.strf "failed to decode TSIG signed notify reply! %a" Udns_tsig.pp_e e))
         | Ok (res, _, _) when Packet.is_reply header question res ->
           Logs.app (fun m -> m "successful TSIG signed notify!") ;
-          `Ok ()
+          Ok ()
         | Ok (res, _, _) ->
-          Logs.err (fun m -> m "expected reply to %a %a, got %a!"
-                       Packet.Header.pp header Packet.Question.pp question
-                       Packet.pp_res res) ;
-          `Error (false, "")
+          Error (`Msg (Fmt.strf "expected reply to %a %a, got %a!"
+                         Packet.Header.pp header Packet.Question.pp question
+                         Packet.pp_res res))
       end
 
 open Cmdliner
@@ -89,7 +85,7 @@ let zone =
   Arg.(required & pos 1 (some Udns_cli.name_c) None & info [] ~doc ~docv:"ZONE")
 
 let cmd =
-  Term.(ret (const jump $ Udns_cli.setup_log $ serverip $ port $ zone $ key $ serial)),
+  Term.(term_result (const jump $ Udns_cli.setup_log $ serverip $ port $ zone $ key $ serial)),
   Term.info "onotify" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

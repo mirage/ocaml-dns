@@ -14,22 +14,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  *
- * dnsserver.ml -- an authoritative DNS server
- *
  *)
 
-open Udns_zone_state
-
-let load ?(origin = Domain_name.root) buf =
-  try
-    let lexbuf = Lexing.from_string buf in
-    state.paren <- 0;
-    state.lineno <- 1;
-    state.origin <- origin;
-    state.ttl <- Int32.of_int 3600;
-    state.owner <- state.origin;
-    Ok (Udns_zone_parser.zfile Udns_zone_lexer.token lexbuf)
-  with
-    | Parsing.Parse_error -> Error (Printf.sprintf "zone parse error at line %d" state.lineno)
-    | Zone_parse_problem s -> Error (Printf.sprintf "zone parse problem at line %d: %s" state.lineno s)
-    | exn -> Error (Printexc.to_string exn)
+val parse : string -> (Udns.Name_rr_map.t, [> `Msg of string ]) result
+(** Load a domain's zone from a string. *)

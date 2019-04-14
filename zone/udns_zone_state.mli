@@ -27,4 +27,6 @@ type parserstate = {
 
 val state : parserstate
 
+val reset : unit -> unit
+
 exception Zone_parse_problem of string

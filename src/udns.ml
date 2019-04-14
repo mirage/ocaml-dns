@@ -3,6 +3,10 @@
 type proto = [ `Tcp | `Udp ]
 
 let andThen v f = match v with 0 -> f | x -> x
+let opt_eq f a b = match a, b with
+  | Some a, Some b -> f a b
+  | None, None -> true
+  | _ -> false
 
 let int_compare (a : int) (b : int) = compare a b
 let int32_compare (a : int32) (b : int32) = Int32.compare a b
@@ -888,6 +892,15 @@ module Tsig = struct
     other : Ptime.t option
   }
 
+  let equal a b =
+    a.algorithm = b.algorithm &&
+    Ptime.equal a.signed b.signed &&
+    Ptime.Span.equal a.fudge b.fudge &&
+    Cstruct.equal a.mac b.mac &&
+    a.original_id = b.original_id &&
+    a.error = b.error &&
+    opt_eq Ptime.equal a.other b.other
+
   let algorithm_to_name, algorithm_of_name =
     let of_s = Domain_name.of_string_exn in
     let map =
@@ -1219,7 +1232,7 @@ module Edns = struct
     and tl = Cstruct.BE.get_uint16 buf (off + 2)
     in
     let v = Cstruct.sub buf (off + 4) tl in
-    guard (len = tl + 4) (`Leftover (off, "edns extension")) >>= fun () ->
+    guard (len >= tl + 4) `Partial >>= fun () ->
     let len = tl + 4 in
     match int_to_extension code with
     | Some `nsid -> Ok (Nsid v, len)
@@ -1242,8 +1255,18 @@ module Edns = struct
     extensions : extension list ;
   }
 
+  let min_payload_size = 512 (* from RFC 6891 Section 6.2.3 *)
+
   let create ?(extended_rcode = 0) ?(version = 0) ?(dnssec_ok = false)
-      ?(payload_size = 512) ?(extensions = []) () =
+      ?(payload_size = min_payload_size) ?(extensions = []) () =
+    let payload_size =
+      if payload_size < min_payload_size then begin
+        Logs.warn (fun m -> m "requested payload size %d is too small, using %d"
+                      payload_size min_payload_size);
+        min_payload_size
+      end else
+        payload_size
+    in
     { extended_rcode ; version ; dnssec_ok ; payload_size ; extensions }
 
   (* once we handle cookies, dnssec, or other extensions, need to adjust *)
@@ -1264,7 +1287,7 @@ module Edns = struct
                   a.extensions b.extensions))))
 
   let pp ppf opt =
-    Fmt.(pf ppf "EDNS (ext %u version %u dnssec_ok %b payload_size %u extensions %a"
+    Fmt.(pf ppf "EDNS rcode %u version %u dnssec_ok %b payload_size %u extensions %a"
            opt.extended_rcode opt.version opt.dnssec_ok opt.payload_size
            (list ~sep:(unit ", ") pp_extension) opt.extensions)
 
@@ -1296,6 +1319,14 @@ module Edns = struct
     let off = off + 11 in
     let dnssec_ok = flags land 0x8000_0000 = 0x8000_0000 in
     guard (version = 0) (`Bad_edns_version version) >>= fun () ->
+    let payload_size =
+      if payload_size < min_payload_size then begin
+        Log.warn (fun m -> m "EDNS payload size is too small %d, using %d"
+                     payload_size min_payload_size);
+        min_payload_size
+      end else
+        payload_size
+    in
     let exts_buf = Cstruct.sub buf off len in
     (try decode_extensions exts_buf ~len with _ -> Error `Partial) >>= fun extensions ->
     let opt = { extended_rcode ; version ; dnssec_ok ; payload_size ; extensions } in
@@ -1564,7 +1595,7 @@ module Rr_map = struct
             soa.expiry soa.minimum ]
       | Txt, (ttl, txts) ->
         Txt_set.fold (fun txt acc ->
-            Fmt.strf "%s\t%aTXT\t%s" str_name ttl_fmt (ttl_opt ttl) txt :: acc)
+            Fmt.strf "%s\t%aTXT\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) txt :: acc)
           txts []
       | A, (ttl, a) ->
         Ipv4_set.fold (fun ip acc ->
@@ -2140,7 +2171,6 @@ module Packet = struct
                      Question.pp (qname, qtyp) Name_rr_map.pp map) ;
       (* A foo.com? foo.com CNAME bar.com ; bar.com A 127.0.0.1 *)
       let rec encode_one names off count name =
-        Log.debug (fun m -> m "encoding %d %a" count Domain_name.pp name) ;
         match Domain_name.Map.find name map with
         | None -> (names, off), count
         | Some rrmap ->
@@ -2174,12 +2204,10 @@ module Packet = struct
 
     let empty = None
 
-    let equal a b = match a, b with
-      | None, None -> true
-      | Some (soa, entries), Some (soa', entries') ->
-        Soa.compare soa soa' = 0 &&
-        Name_rr_map.equal entries entries'
-      | _ -> false
+    let equal = opt_eq
+        (fun (soa, entries) (soa', entries') ->
+           Soa.compare soa soa' = 0 &&
+           Name_rr_map.equal entries entries')
 
     let pp ppf = function
       | None -> Fmt.string ppf "none"
@@ -2461,6 +2489,17 @@ module Packet = struct
       Fmt.(option ~none:(unit "no") Edns.pp) edns
       Fmt.(option ~none:(unit "no") pp_tsig) tsig
 
+  let equal_res (hdr, q, t, add, edns, tsig) (hdr', q', t', add', edns', tsig') =
+    Header.compare hdr hdr' = 0 &&
+    Question.compare q q' = 0 &&
+    equal t t' &&
+    Name_rr_map.equal add add' &&
+    opt_eq (fun a b -> Edns.compare a b = 0) edns edns' &&
+    opt_eq (fun (name, tsig, off) (name', tsig', off') ->
+        Domain_name.equal name name' &&
+        Tsig.equal tsig tsig' &&
+        off = off') tsig tsig'
+
   let decode_additional names buf off allow_trunc =
     let open Rresult.R.Infix in
     let adcount = Cstruct.BE.get_uint16 buf 10 in
@@ -2563,20 +2602,16 @@ module Packet = struct
   let max_tcp = 1 lsl 16 - 1 (* DNS-over-TCP is 2 bytes len ++ payload *)
 
   let size_edns max_size edns protocol query =
-    let max = match max_size, query with
-      | Some x, true -> x
-      | Some x, false -> min x max_reply_udp
-      | None, true -> max_udp
-      | None, false -> max_reply_udp
-    in
-    (* it's udp payload size only, ignore any value for tcp *)
-    let maximum = match protocol with
-      | `Udp -> max
-      | `Tcp -> max_tcp
+    let maximum, payload_size = match protocol, max_size, query with
+      | `Tcp, _, _ -> max_tcp, 4096
+      | `Udp, None, true -> max_udp, 4096
+      | `Udp, None, false -> max_reply_udp, 512
+      | `Udp, Some x, true -> x, x
+      | `Udp, Some x, false -> min x max_reply_udp, 512
     in
     let edns = match edns with
       | None -> None
-      | Some opts -> Some ({ opts with Edns.payload_size = max })
+      | Some opts -> Some ({ opts with Edns.payload_size })
     in
     maximum, edns
 
@@ -2636,6 +2671,7 @@ module Packet = struct
       let errbuf = Cstruct.create max_reply_udp in
       Header.encode errbuf header ;
       let _names, off = Question.encode Domain_name.Map.empty errbuf Header.len question in
+      Cstruct.BE.set_uint16 errbuf 4 1;
       let off = encode_edns header (Some (Edns.create ())) errbuf off in
       Some (Cstruct.sub errbuf 0 off, max_reply_udp)
     else
@@ -2670,9 +2706,22 @@ module Packet = struct
 end
 
 module Tsig_op = struct
+  type e = [
+    | `Bad_key of Domain_name.t * Tsig.t
+    | `Bad_timestamp of Domain_name.t * Tsig.t * Dnskey.t
+    | `Bad_truncation of Domain_name.t * Tsig.t
+    | `Invalid_mac of Domain_name.t * Tsig.t
+  ]
+
+  let pp_e ppf = function
+    | `Bad_key (name, tsig) -> Fmt.pf ppf "bad key %a: %a" Domain_name.pp name Tsig.pp tsig
+    | `Bad_timestamp (name, tsig, key) -> Fmt.pf ppf "bad timestamp: %a %a %a" Domain_name.pp name Tsig.pp tsig Dnskey.pp key
+    | `Bad_truncation (name, tsig) -> Fmt.pf ppf "bad truncation %a %a" Domain_name.pp name Tsig.pp tsig
+    | `Invalid_mac (name, tsig) -> Fmt.pf ppf "invalid mac %a %a" Domain_name.pp name Tsig.pp tsig
+
   type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.Header.t -> Packet.Question.t ->
     Domain_name.t -> key:Dnskey.t option -> Tsig.t -> Cstruct.t ->
-    (Tsig.t * Cstruct.t * Dnskey.t, Cstruct.t option) result
+    (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
 
   type sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> Tsig.t ->
     key:Dnskey.t -> Packet.Header.t -> Packet.Question.t -> Cstruct.t ->

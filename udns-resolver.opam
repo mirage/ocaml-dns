@@ -12,7 +12,7 @@ depends: [
   "ocaml" {>= "4.07.0"}
   "udns"
   "udns-server"
-  "lru"
+  "lru" {>= "0.3.0"}
   "duration"
   "randomconv"
   "alcotest" {with-test}

@@ -428,6 +428,8 @@ module Tsig : sig
 
   val pp : t Fmt.t
 
+  val equal : t -> t -> bool
+
   val encode_raw : Domain_name.t -> t -> Cstruct.t
 
   val encode_full : Domain_name.t -> t -> Cstruct.t
@@ -451,7 +453,7 @@ module Edns : sig
     | Padding of int
     | Extension of int * Cstruct.t
 
-  type t = {
+  type t = private {
     extended_rcode : int ;
     version : int ;
     dnssec_ok : bool ;
@@ -688,6 +690,8 @@ module Packet : sig
 
   val pp_res : res Fmt.t
 
+  val equal_res : res -> res -> bool
+
   val decode : Cstruct.t -> (res, err) result
 
   val is_reply : ?not_error:bool -> ?not_truncated:bool -> Header.t -> Question.t -> res -> bool
@@ -713,9 +717,18 @@ module Packet : sig
 end
 
 module Tsig_op : sig
+  type e = [
+    | `Bad_key of Domain_name.t * Tsig.t
+    | `Bad_timestamp of Domain_name.t * Tsig.t * Dnskey.t
+    | `Bad_truncation of Domain_name.t * Tsig.t
+    | `Invalid_mac of Domain_name.t * Tsig.t
+  ]
+
+  val pp_e : e Fmt.t
+
   type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.Header.t -> Packet.Question.t ->
     Domain_name.t -> key:Dnskey.t option -> Tsig.t -> Cstruct.t ->
-    (Tsig.t * Cstruct.t * Dnskey.t, Cstruct.t option) result
+    (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
 
   type sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> Tsig.t ->
     key:Dnskey.t -> Packet.Header.t -> Packet.Question.t -> Cstruct.t ->

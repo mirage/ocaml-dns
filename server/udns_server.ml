@@ -32,27 +32,21 @@ let err header rcode =
 
 module Authentication = struct
 
-  type a = Udns_trie.t -> proto -> Domain_name.t option -> string -> Domain_name.t -> bool
-
-  type t = Udns_trie.t * a list
-
-  let keys (keys, _) = keys
-
   type operation = [
-    | `Key_management
     | `Update
     | `Transfer
   ]
 
+  type a = Udns_trie.t -> proto -> Domain_name.t option -> operation -> Domain_name.t -> bool
+
+  type t = Udns_trie.t * a list
+
   let operation_to_string = function
-    | `Key_management -> "_key-management"
     | `Update -> "_update"
     | `Transfer -> "_transfer"
 
-  let operation_name ?(zone = Domain_name.root) op =
-    Domain_name.prepend_exn ~hostname:false zone (operation_to_string op)
-
   let is_op op name =
+    (* TODO should check that op is at the beginning? *)
     let arr = Domain_name.to_array name in
     Array.exists (String.equal (operation_to_string op)) arr
 
@@ -61,8 +55,9 @@ module Authentication = struct
        e.g. 192.168.42.2_1053.192.168.42.1._transfer.mirage
        alternative: <whatever>.primaryip._transfer.zone *)
     let arr = Domain_name.to_array name in
+    let transfer = operation_to_string `Transfer in
     try
-      let rec go idx = if Array.get arr idx = "_transfer" then idx else go (succ idx) in
+      let rec go idx = if Array.get arr idx = transfer then idx else go (succ idx) in
       let zone_idx = go 0 in
       let zone = Domain_name.of_array (Array.sub arr 0 zone_idx) in
       let start = succ zone_idx in
@@ -90,26 +85,28 @@ module Authentication = struct
     with Invalid_argument _ -> None
 
   let find_ns s (trie, _) zone =
-    let tx = operation_name ~zone `Transfer in
     let accumulate name _ acc =
-      match find_zone_ips name, s with
-      | None, _ -> acc
-      | Some (_, prim, _), `P ->
-        let (ip, port) = prim in
-        (name, ip, port) :: acc
-      | Some (_, _, Some sec), `S ->
-        let (ip, port) = sec in
-        (name, ip, port) :: acc
-      | Some (_, _, None), `S -> acc
+      if Domain_name.sub ~domain:zone ~subdomain:name && is_op `Transfer name then
+        match find_zone_ips name, s with
+        | None, _ -> acc
+        | Some (_, prim, _), `P ->
+          let (ip, port) = prim in
+          (name, ip, port) :: acc
+        | Some (_, _, Some sec), `S ->
+          let (ip, port) = sec in
+          (name, ip, port) :: acc
+        | Some (_, _, None), `S -> acc
+      else
+        acc
     in
-    Udns_trie.folde tx Rr_map.Dnskey trie accumulate []
+    Udns_trie.fold Rr_map.Dnskey trie accumulate []
 
   let secondaries t zone = find_ns `S t zone
 
   let primaries t zone = find_ns `P t zone
 
   let all_operations =
-    List.map operation_to_string [ `Key_management ; `Update ; `Transfer ]
+    List.map operation_to_string [ `Update ; `Transfer ]
 
   let zone name =
     let arr = Domain_name.to_array name in
@@ -155,17 +152,6 @@ module Authentication = struct
         add_keys trie name (Rr_map.Dnskey_set.singleton key))
       Udns_trie.empty keys
 
-  let remove_key trie name =
-    let trie' = Udns_trie.remove name Rr_map.Dnskey trie in
-    let zone = zone name in
-    match Udns_trie.entries zone trie' with
-    | Ok (_soa, x) when Domain_name.Map.is_empty x -> Udns_trie.remove_zone zone trie'
-    | Ok _ -> trie'
-    | Error e ->
-      Log.warn (fun m -> m "expected a zone for dnskeys, got error %a"
-                  Udns_trie.pp_e e) ;
-      trie'
-
   let find_key t name =
     match Udns_trie.lookup name Rr_map.Dnskey (fst t) with
     | Ok (_, keys) ->
@@ -182,39 +168,19 @@ module Authentication = struct
                    Domain_name.pp name) ;
       None
 
-  let handle_update keys us =
-    Domain_name.Map.fold (fun name v (keys, actions) ->
-        List.fold_left (fun (keys, actions) -> function
-            | Packet.Update.Remove_all
-            | Packet.Update.Remove Udns_enum.DNSKEY ->
-              let keys = remove_key keys name in
-              keys, `Removed_key name :: actions
-            | Packet.Update.Remove_single Rr_map.(B (Dnskey, _)) ->
-              let keys = remove_key keys name in
-              keys, `Removed_key name :: actions
-            | Packet.Update.Add Rr_map.(B (Dnskey, (_, fresh))) ->
-              let keys = add_keys keys name fresh in
-              keys, `Added_key name :: actions
-            | u ->
-              Log.warn (fun m -> m "only Dnskey, not sure what you intended %a"
-                           Packet.Update.pp_update u) ;
-              keys, actions)
-          (keys, actions) v)
-      us (keys, [])
-
   let tsig_auth _ _ keyname op zone =
     match keyname with
     | None -> false
     | Some subdomain ->
-      let root = Domain_name.of_string_exn ~hostname:false op
-      and zone = Domain_name.prepend_exn ~hostname:false zone op
+      let op_string = operation_to_string op in
+      let root = Domain_name.of_string_exn ~hostname:false op_string
+      and zone = Domain_name.prepend_exn ~hostname:false zone op_string
       in
       Domain_name.sub ~subdomain ~domain:zone
       || Domain_name.sub ~subdomain ~domain:root
 
   let authorise (data, authorised) proto keyname zone operation =
-    let op = operation_to_string operation in
-    List.exists (fun a -> a data proto keyname op zone) authorised
+    List.exists (fun a -> a data proto keyname operation zone) authorised
 end
 
 type t = {
@@ -226,31 +192,41 @@ type t = {
 }
 
 let text name data =
-  let buf = Buffer.create 1024 in
-  (* first, find the start of authority (if any) *)
-  let origin, default_ttl =
-    match Udns_trie.lookup name Rr_map.Soa data with
-    | Error e ->
-      Log.err (fun m -> m "couldn't find SOA when serialising zone for %a: %a"
-                  Domain_name.pp name Udns_trie.pp_e e) ;
-      None, None
-    | Ok soa ->
+  match Udns_trie.entries name data with
+  | Error e ->
+    Error (Fmt.strf "text: couldn't find zone %a: %a" Domain_name.pp name Udns_trie.pp_e e)
+  | Ok (soa, map) ->
+    let buf = Buffer.create 1024 in
+    let origin, default_ttl =
       Buffer.add_string buf
         ("$ORIGIN " ^ Domain_name.to_string ~trailing:true name ^ "\n") ;
       let ttl = soa.minimum in
       Buffer.add_string buf
         ("$TTL " ^ Int32.to_string ttl ^ "\n") ;
-      Some name, Some ttl
-  in
-  Rresult.R.reword_error
-    (Fmt.to_to_string Udns_trie.pp_e)
-    (Udns_trie.fold name data
-       (fun name v () ->
-          Buffer.add_string buf (Rr_map.text_b ?origin ?default_ttl name v) ;
-          Buffer.add_char buf '\n')
-       ()) >>| fun () ->
-  Buffer.contents buf
-
+      name, ttl
+    in
+    Buffer.add_string buf (Rr_map.text ~origin ~default_ttl name Soa soa) ;
+    Buffer.add_char buf '\n' ;
+    let out map =
+      Domain_name.Map.iter (fun name rrs ->
+          Rr_map.iter (fun b ->
+              Buffer.add_string buf (Rr_map.text_b ~origin ~default_ttl name b) ;
+              Buffer.add_char buf '\n')
+            rrs)
+        map
+    in
+    let is_special name _ =
+      (* if only domain-name had proper types *)
+      let arr = Domain_name.to_array name in
+      match Array.get arr (pred (Array.length arr)) with
+      | exception Invalid_argument _ -> false
+      | lbl -> try String.get lbl 0 = '_' with Not_found -> false
+    in
+    let service, entries = Domain_name.Map.partition is_special map in
+    out entries ;
+    Buffer.add_char buf '\n' ;
+    out service ;
+    Ok (Buffer.contents buf)
 
 let create data auth rng tsig_verify tsig_sign =
   { data ; auth ; rng ; tsig_verify ; tsig_sign }
@@ -351,31 +327,13 @@ let axfr trie proto (zone, _) =
     Error Udns_enum.NXDomain
 
 let axfr t proto key ((zone, _) as question) =
-  (if Authentication.authorise t.auth proto key zone `Key_management then begin
-      Log.info (fun m -> m "key-management key %a authorised for AXFR %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Question.pp question) ;
-      Ok (Authentication.keys t.auth)
-    end else if Authentication.authorise t.auth proto key zone `Transfer then begin
-      Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Question.pp question) ;
-      Ok t.data
-    end else
-     Error Udns_enum.NotAuth) >>= fun trie ->
-  axfr trie proto question
-
-let lookup t proto key hdr name typ =
-  let trie =
-    if Authentication.authorise t.auth proto key name `Key_management then begin
-      Log.info (fun m -> m "key-management key %a authorised for lookup %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Question.pp (name, typ)) ;
-      Authentication.keys t.auth
-    end else
-      t.data
-  in
-  lookup trie hdr name typ
+  if Authentication.authorise t.auth proto key zone `Transfer then begin
+    Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
+                 Fmt.(option ~none:(unit "none") Domain_name.pp) key
+                 Packet.Question.pp question) ;
+    axfr t.data proto question
+  end else
+    Error Udns_enum.NotAuth
 
 let safe_decode buf =
   match Packet.decode buf with
@@ -396,16 +354,15 @@ let safe_decode buf =
     Error Udns_enum.FormErr
   | Ok v -> Ok v
 
-let handle_question t proto key header (name, typ) =
+let handle_question t header (name, typ) =
   let open Udns_enum in
-  begin match typ with
-    | AXFR -> assert false (* this won't happen, decoder constructs `Axfr *)
-    | A | NS | CNAME | SOA | PTR | MX | TXT | AAAA | SRV | ANY | CAA | SSHFP | TLSA | DNSKEY ->
-      lookup t proto key header name typ
-    | r ->
-      Log.err (fun m -> m "refusing query type %a" Udns_enum.pp_rr_typ r) ;
-      Error Udns_enum.Refused
-  end
+  match typ with
+  | AXFR -> assert false (* this won't happen, decoder constructs `Axfr *)
+  | A | NS | CNAME | SOA | PTR | MX | TXT | AAAA | SRV | ANY | CAA | SSHFP | TLSA | DNSKEY ->
+    lookup t.data header name typ
+  | r ->
+    Log.err (fun m -> m "refusing query type %a" Udns_enum.pp_rr_typ r) ;
+    Error Udns_enum.Refused
 
 (* this implements RFC 2136 Section 2.4 + 3.2 *)
 let handle_rr_prereq trie name = function
@@ -468,6 +425,7 @@ let handle_rr_update trie name = function
           Udns_trie.insert name k v' trie
     end
   | Packet.Update.Add Rr_map.(B (k, add) as b) ->
+    (* turns out, RFC 2136, 3.4.2.2 says "SOA with smaller or equal serial is silently ignored" *)
     begin match Udns_trie.lookup name k trie with
       | Ok old ->
         let newval = Rr_map.combine_k k old add in
@@ -485,57 +443,181 @@ let handle_rr_update trie name = function
         Udns_trie.insert name k add trie
     end
 
-let notify t l now zone soa =
-  (* we use
-     1. the NS records of the zone
-     2. the IP addresses of secondary servers which have transfer keys
-     3. the TCP connections requesting (signed) SOA in l *)
-  let ips =
-    match Udns_trie.lookup zone Rr_map.Ns t.data with
-    | Ok (_, ns) ->
+module Notification = struct
+  (* TODO dnskey authentication of outgoing packets (preserve in connections, name of key should be enough) *)
+  (* TODO protocol selection - dnskey name again? what about those in zonefile? *)
+  (* needed for passive secondaries (behind NAT etc.) such as let's encrypt,
+     which initiated a signed! TCP session *)
+
+  type connections = (Ipaddr.V4.t * int) list Domain_name.Map.t
+
+  let secondaries trie zone =
+    match Udns_trie.lookup zone Rr_map.Ns trie, Udns_trie.lookup zone Rr_map.Soa trie with
+    | Ok (_, ns), Ok soa ->
       let secondaries = Domain_name.Set.remove soa.Soa.nameserver ns in
       (* TODO AAAA records *)
       Domain_name.Set.fold (fun ns acc ->
-          let ips = match Udns_trie.lookup ns Rr_map.A t.data with
-            | Ok (_, ips) ->
-              Rr_map.Ipv4_set.fold (fun ip acc -> IPM.add ip 53 acc) ips IPM.empty
-            | _ ->
-              Log.err (fun m -> m "lookup for A %a returned nothing as well"
-                          Domain_name.pp ns) ;
-              IPM.empty
-          in
-          IPM.union (fun _ a _ -> Some a) ips acc)
-        secondaries IPM.empty
-    | _ -> IPM.empty
-  in
-  let ips = match Authentication.secondaries t.auth zone with
-    | Ok name_ip_ports ->
-      List.fold_left (fun m (_, ip, port) -> IPM.add ip port m) ips name_ip_ports
-    | Error e ->
-      Log.warn (fun m -> m "no secondaries keys found (err %a)" Udns_trie.pp_e e) ;
-      ips
-  in
-  let ips =
-    List.fold_left (fun m (_, ip, port) -> IPM.add ip port m)
-      ips
-      (List.filter (fun (zone', _, _) -> Domain_name.equal zone zone') l)
-  in
-  Log.debug (fun m -> m "notifying %a %a" Domain_name.pp zone
-                Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ":") Ipaddr.V4.pp int))
-                (IPM.bindings ips)) ;
-  let question, notify =
-    (zone, Udns_enum.SOA),
-    `Notify (Domain_name.Map.singleton zone Rr_map.(singleton Soa soa), Name_rr_map.empty)
-  in
-  let one ip port =
-    let id = Randomconv.int ~bound:(1 lsl 16 - 1) t.rng in
-    let header = {
-      Packet.Header.id ; query = true ; operation = Udns_enum.Notify ; rcode = Udns_enum.NoError ;
-      flags = authoritative }
+          match Udns_trie.lookup ns Rr_map.A trie with
+          | Ok (_, ips) -> ips
+          | _ ->
+            Log.err (fun m -> m "lookup for A %a returned nothing as well"
+                        Domain_name.pp ns) ;
+            acc)
+        secondaries Rr_map.Ipv4_set.empty
+    | _ -> Rr_map.Ipv4_set.empty
+
+  let key_ips auth zone =
+    let name_ip_ports = Authentication.secondaries auth zone in
+    List.fold_left (fun acc (_, ip, port) -> (ip, port) :: acc)
+      [] name_ip_ports
+
+  let insert data keys conn name ip port =
+    let ips = Rr_map.Ipv4_set.(union (secondaries data name)
+                                 (of_list (List.map fst (key_ips keys name))))
     in
-    (now, 0, ip, port, (header, question, notify))
-  in
-  IPM.fold (fun ip port acc -> one ip port :: acc) ips []
+    if Rr_map.Ipv4_set.mem ip ips then begin
+      Log.warn (fun m -> m "IP %a already in notification list" Ipaddr.V4.pp ip);
+      conn
+    end else begin
+      Log.info (fun m -> m "inserting notifications for %a %a:%d"
+                   Domain_name.pp name Ipaddr.V4.pp ip port);
+      let cur = match Domain_name.Map.find name conn with
+        | None -> []
+        | Some xs -> xs
+      in
+      Domain_name.Map.add name ((ip, port)::cur) conn
+    end
+
+  let remove conn ip port =
+    let is_not_it name (ip', port') =
+      if Ipaddr.V4.compare ip ip' = 0 && port = port' then begin
+        Log.info (fun m -> m "removing notification for %a %a:%d"
+                     Domain_name.pp name Ipaddr.V4.pp ip port);
+        false
+      end else true
+    in
+    Domain_name.Map.fold (fun name conns new_map ->
+      match List.filter (is_not_it name) conns with
+      | [] -> new_map
+      | xs -> Domain_name.Map.add name xs new_map)
+      conn Domain_name.Map.empty
+
+  (* that's udp only *)
+  module IPM = struct
+    include Map.Make(struct
+        type t = Ipaddr.V4.t * int
+        let compare (ip, p) (ip', p') = match Ipaddr.V4.compare ip ip' with
+          | 0 -> compare p p'
+          | x -> x
+      end)
+    let find k t = try Some (find k t) with Not_found -> None
+  end
+
+  (* outstanding notifications, with timestamp and retry count
+     (at most one per zone per ip*port) *)
+  type outstanding =
+    (int64 * int * (Packet.Header.t * Packet.Question.t * Packet.Query.t)) Domain_name.Map.t IPM.t
+
+  (* operations:
+     - timer occured, retransmit outstanding or drop
+     - send out notification for a given zone
+     - a (signed?) notify response came in, drop it from outstanding
+  *)
+  let retransmit = Array.map Duration.of_sec [| 5 ; 12 ; 25 ; 40 ; 60 |]
+
+  (* TODO EDNS? *)
+  let encode ip port hdr question n =
+    (ip, port, fst (Packet.encode `Udp hdr question (`Notify n)))
+
+  let retransmit ns now =
+    let max = pred (Array.length retransmit) in
+    IPM.fold (fun (ip, port) map (new_ns, out) ->
+        let new_map, out =
+          Domain_name.Map.fold
+            (fun name (ts, count, (hdr, question, n)) (new_map, out) ->
+               if Int64.add ts retransmit.(count) < now then
+                 (if count = max then begin
+                     Log.warn (fun m -> m "retransmitting notify to %a:%d the last time %a %a %a"
+                                 Ipaddr.V4.pp ip port Packet.Header.pp hdr
+                                 Packet.Question.pp question
+                                 Packet.Query.pp n) ;
+                    new_map
+                   end else
+                    (Domain_name.Map.add name (ts, succ count, (hdr, question, n)) new_map)),
+                 encode ip port hdr question n :: out
+               else
+                 (Domain_name.Map.add name (ts, count, (hdr, question, n)) new_map, out))
+            map (Domain_name.Map.empty, out)
+        in
+        (if Domain_name.Map.is_empty new_map then new_ns else IPM.add (ip, port) new_map new_ns),
+        out)
+      ns (IPM.empty, [])
+
+  let notify conn ns server now zone soa =
+    (* we use
+       1. the NS records of the zone (port 53 as default)
+       2. the IP addresses of secondary servers which have transfer keys (port encoded in name)
+       3. the TCP connections which requested (signed) SOA in l *)
+    let ips = secondaries server.data zone
+    and keys = key_ips server.auth zone
+    in
+    let ip_ports =
+      let ips' = Rr_map.Ipv4_set.(diff ips (of_list (List.map fst keys))) in
+      List.map (fun x -> x, 53) (Rr_map.Ipv4_set.elements ips') @ keys
+    in
+    let tcp_ip_ports = match Domain_name.Map.find zone conn with
+      | None -> []
+      | Some conns -> conns
+    in
+    Log.debug (fun m -> m "notifying %a %a (and tcp %a)" Domain_name.pp zone
+                  Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ":") Ipaddr.V4.pp int))
+                  ip_ports
+                  Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ":") Ipaddr.V4.pp int))
+                  ip_ports) ;
+    let question, (notify : Name_rr_map.t * Name_rr_map.t) =
+      (zone, Udns_enum.SOA),
+      (Domain_name.Map.singleton zone Rr_map.(singleton Soa soa),
+       Name_rr_map.empty)
+    and header =
+      let id = Randomconv.int ~bound:(1 lsl 16 - 1) server.rng in
+      { Packet.Header.id ; query = true ; operation = Udns_enum.Notify ;
+        rcode = Udns_enum.NoError ; flags = authoritative }
+    in
+    let out ip port = encode ip port header question notify in
+    let add_to_ns ns ip port =
+      let data = (now, 0, (header, question, notify)) in
+      let map = match IPM.find (ip, port) ns with
+        | None -> Domain_name.Map.empty
+        | Some map -> map
+      in
+      let map' = Domain_name.Map.add zone data map in
+      IPM.add (ip, port) map' ns
+    in
+    let ns', outs =
+      List.fold_left (fun (ns, outs) (ip, port) ->
+          let ns = add_to_ns ns ip port in
+          ns, out ip port :: outs) (ns, []) ip_ports
+    in
+    let tcp_outs =
+      List.fold_left (fun acc (ip, port) -> out ip port :: acc) [] tcp_ip_ports
+    in
+    ns', outs @ tcp_outs
+
+  let received_reply ns ip port zone header =
+    match IPM.find (ip, port) ns with
+    | None -> ns
+    | Some map ->
+      let map' = match Domain_name.Map.find zone map with
+        | Some (_, _, (header', _, _)) when Packet.Header.(header.id = header'.id) ->
+          Domain_name.Map.remove zone map
+        | Some (_, _, (header', _, _)) ->
+          Log.warn (fun m -> m "notify reply header didn't match our %a vs recv %a"
+                       Packet.Header.pp header' Packet.Header.pp header);
+          map
+        | _ -> map
+      in
+      if Domain_name.Map.is_empty map' then IPM.remove (ip, port) ns else IPM.add (ip, port) map' ns
+end
 
 let in_zone zone name = Domain_name.sub ~subdomain:name ~domain:zone
 
@@ -560,38 +642,27 @@ let update_data trie zone (prereq, update) =
    | Ok () -> Ok ()
    | Error e ->
      Log.err (fun m -> m "check after update returned %a" Udns_trie.pp_err e) ;
-     Error Udns_enum.FormErr) >>= fun () ->
-  match Udns_trie.lookup zone Soa trie, Udns_trie.lookup zone Soa trie' with
-  | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa -> Ok (trie', Some soa)
-  | _, Ok soa ->
-    let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
-    let trie'' = Udns_trie.insert zone Soa soa trie' in
-    Ok (trie'', Some soa)
-  | _, _ -> Ok (trie', None)
+     Error Udns_enum.YXRRSet) >>= fun () ->
+  if Udns_trie.equal trie trie' then
+    (* should this error out? - RFC 2136 3.4.2.7 says NoError at the end *)
+    Ok (trie, None)
+  else match Udns_trie.lookup zone Soa trie, Udns_trie.lookup zone Soa trie' with
+    | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa -> Ok (trie', Some (zone, soa))
+    | _, Ok soa ->
+      let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
+      let trie'' = Udns_trie.insert zone Soa soa trie' in
+      Ok (trie'', Some (zone, soa))
+    | _, _ -> Ok (trie', None)
 
-let handle_update t l ts proto key (zone, _) ((_prereq, update) as u) =
-  if Authentication.authorise t.auth proto key zone `Key_management then begin
-     Log.info (fun m -> m "key-management key %a authorised for update %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Update.pp u) ;
-     let keys, _actions =
-       Authentication.(handle_update (keys t.auth) update)
-     in
-     let t = { t with auth = (keys, snd t.auth) } in
-     Ok (t, [])
-   end else if Authentication.authorise t.auth proto key zone `Update then begin
-     Log.info (fun m -> m "update key %a authorised for update %a"
-                   Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                   Packet.Update.pp u) ;
-     update_data t.data zone u >>= fun (data', soa) ->
-     let t = { t with data = data' } in
-     let notifies = match soa with
-       | None -> []
-       | Some soa -> notify t l ts zone soa
-     in
-     Ok (t, notifies)
-   end else
-     Error Udns_enum.NotAuth
+let handle_update t proto key (zone, _) u =
+  if Authentication.authorise t.auth proto key zone `Update then begin
+    Log.info (fun m -> m "update key %a authorised for update %a"
+                 Fmt.(option ~none:(unit "none") Domain_name.pp) key
+                 Packet.Update.pp u) ;
+    update_data t.data zone u >>= fun (data', stuff) ->
+    Ok ({ t with data = data' }, stuff)
+  end else
+    Error Udns_enum.NotAuth
 
 let handle_tsig ?mac t now header question tsig buf =
   match tsig with
@@ -614,32 +685,41 @@ module Primary = struct
   (* TODO: there's likely a better data structure for outstanding notifications *)
   (* the list of zone, ip, port, keyname is whom to notify *)
   type s =
-    t *
-    (Domain_name.t * Ipaddr.V4.t * int) list *
-    (int64 * int * Ipaddr.V4.t * int *
-     (Packet.Header.t * Packet.Question.t * Packet.t)) list
+    t * Notification.connections * Notification.outstanding
 
   let server (t, _, _) = t
 
   let data (t, _, _) = t.data
 
-  let with_data (t, l, n) data = { t with data }, l, n
+  let with_data (t, l, n) now data =
+    (* we're the primary and need to notify our friends! *)
+    let n', out =
+      Udns_trie.fold Soa data
+        (fun name soa (n, outs) ->
+           match Udns_trie.lookup name Soa t.data with
+           | Error _ ->
+             let n', outs' = Notification.notify l n t now name soa in
+             (n', outs @ outs')
+           | Ok old when Soa.newer ~old soa ->
+             let n', outs' = Notification.notify l n t now name soa in
+             (n', outs @ outs')
+           | Ok _ -> (n, outs))
+        (n, [])
+    in
+    ({ t with data }, l, n'), out
 
   let create ?(keys = []) ?(a = []) ~tsig_verify ~tsig_sign ~rng data =
     let keys = Authentication.of_keys keys in
     let t = create data (keys, a) rng tsig_verify tsig_sign in
     let notifications =
-      let f name soa acc =
+      let f name soa ns =
         Log.debug (fun m -> m "soa found for %a" Domain_name.pp name) ;
-        acc @ notify t [] 0L name soa
+        (* we drop notifications, the first call to timer will solve this :) *)
+        fst (Notification.notify Domain_name.Map.empty ns t 0L name soa)
       in
-      match Udns_trie.folde Domain_name.root Rr_map.Soa data f [] with
-      | Ok ns -> ns
-      | Error e ->
-        Log.warn (fun m -> m "error %a while collecting zones" Udns_trie.pp_e e) ;
-        []
+      Udns_trie.fold Rr_map.Soa data f Notification.IPM.empty
     in
-    (t, [], notifications)
+    t, Domain_name.Map.empty, notifications
 
   let tcp_soa_query proto (name, typ) =
     match proto, typ with
@@ -649,25 +729,19 @@ module Primary = struct
   let handle_frame (t, l, ns) ts proto ip port header question p _additional key =
     match p, header.Packet.Header.query with
     | `Query _, true ->
-      handle_question t proto key header question >>= fun answer ->
+      handle_question t header question >>= fun answer ->
       (* if there was a (transfer-key) signed SOA, and tcp, we add to notification list! *)
       let l' = match tcp_soa_query proto question, key with
         | Ok zone, Some key when Authentication.is_op `Transfer key ->
-          let other (z, i, p) =
-            not (Domain_name.equal z zone && Ipaddr.V4.compare i ip = 0 && p = port)
-          in
-          (zone, ip, port) :: List.filter other l
+          Notification.insert t.data t.auth l zone ip port
         | _ -> l
       in
       Ok ((t, l', ns), Some answer, [], None)
     | `Update u, true ->
-      (* TODO: intentional? all other notifications apart from the new ones are dropped *)
-      handle_update t l ts proto key question u >>= fun (t', ns) ->
-      let out =
-        let edns = Edns.create () in
-        List.map (fun (_, _, ip, port, (hdr, question, n)) ->
-            (ip, port, fst (Packet.encode ~edns `Udp hdr question n)))
-          ns
+      handle_update t proto key question u >>= fun (t', stuff) ->
+      let ns, out = match stuff with
+        | None -> ns, []
+        | Some (zone, soa) -> Notification.notify l ns t' ts zone soa
       in
       let answer =
         s_header header,
@@ -681,12 +755,8 @@ module Primary = struct
       Ok ((t, l, ns), Some (hdr, answer, None), [], None)
     | `Axfr (Some _), true -> Error Udns_enum.FormErr
     | `Notify _, false ->
-      let notifications =
-        List.filter (fun (_, _, ip', _, (hdr', _, _)) ->
-            not (Ipaddr.V4.compare ip ip' = 0 && header.id = hdr'.Packet.Header.id))
-          ns
-      in
-      Ok ((t, l, notifications), None, [], None)
+      let ns' = Notification.received_reply ns ip port (fst question) header in
+      Ok ((t, l, ns'), None, [], None)
     | `Notify n, true ->
       Log.warn (fun m -> m "unsolicited notify request %a (replying anyways)"
                    Packet.Query.pp n) ;
@@ -694,7 +764,10 @@ module Primary = struct
         let n = Packet.Query.empty in
         s_header header, `Notify n, None
       in
-      Ok ((t, l, ns), Some reply, [], Some `Notify)
+      let soa = match Name_rr_map.find (fst question) Soa (fst n) with
+        | Some soa -> Some (soa : Soa.t) | _ -> None
+      in
+      Ok ((t, l, ns), Some reply, [], Some (`Notify soa))
     | p, false ->
       Log.err (fun m -> m "ignoring unsolicited answer %a" Packet.pp p) ;
       Ok ((t, l, ns), None, [], None)
@@ -730,14 +803,16 @@ module Primary = struct
           ((t, l, ns), res, [], None)
       in
       match handle_tsig t now header question tsig buf with
-      | Error data -> ((t, l, ns), data, [], None)
+      | Error (e, data) ->
+        Log.err (fun m -> m "error %a while handling tsig" Tsig_op.pp_e e) ;
+        ((t, l, ns), data, [], None)
       | Ok None ->
         begin match handle_inner None with
           | t, None, out, notify -> t, None, out, notify
           | t, Some (_, _, (cs, _)), out, notify -> t, Some cs, out, notify
         end
       | Ok (Some (name, tsig, mac, key)) ->
-        let n = function Some `Notify -> Some `Signed_notify | x -> x in
+        let n = function Some (`Notify n) -> Some (`Signed_notify n) | None -> None in
         match handle_inner (Some name) with
         | (a, None, out, notify) -> (a, None, out, n notify)
         | (a, Some (hdr, question, (buf, max_size)), out, notify) ->
@@ -748,35 +823,12 @@ module Primary = struct
           | Some (buf, _) -> (a, Some buf, out, n notify)
 
   let closed (t, l, ns) ip port =
-    let l' =
-      List.filter (fun (_, ip', port') ->
-          not (Ipaddr.V4.compare ip ip' = 0 && port = port'))
-        l
-    in
+    let l' = Notification.remove l ip port in
     (t, l', ns)
 
-  let retransmit = Array.map Duration.of_sec [| 5 ; 12 ; 25 ; 40 ; 60 |]
-
   let timer (t, l, ns) now =
-    let max = pred (Array.length retransmit) in
-    let encode hdr question n = fst @@ Packet.encode `Udp hdr question n in
-    let notifications, out =
-      List.fold_left (fun (ns, acc) (ts, count, ip, port, (hdr, question, n)) ->
-          if Int64.add ts retransmit.(count) < now then
-            (if count = max then begin
-                Log.warn (fun m -> m "retransmitting to %a:%d the last time %a %a %a"
-                             Ipaddr.V4.pp ip port Packet.Header.pp hdr
-                             Packet.Question.pp question
-                             Packet.pp n) ;
-                ns
-              end else
-               (ts, succ count, ip, port, (hdr, question, n)) :: ns),
-            (ip, port, encode hdr question n) :: acc
-          else
-            (ts, count, ip, port, (hdr, question, n)) :: ns, acc)
-        ([], []) ns
-    in
-    (t, l, notifications), out
+    let ns', out = Notification.retransmit ns now in
+    (t, l, ns'), out
 end
 
 module Secondary = struct
@@ -794,13 +846,9 @@ module Secondary = struct
   (* TODO undefined what happens if there are multiple transfer keys for zone x *)
   type s = t * (state * Ipaddr.V4.t * int * Domain_name.t) Domain_name.Map.t
 
-  let server (t, _) = t
-
   let data (t, _) = t.data
 
   let with_data (t, zones) data = ({ t with data }, zones)
-
-  let zones (_, zones) = fst (List.split (Domain_name.Map.bindings zones))
 
   let create ?(a = []) ?primary ~tsig_verify ~tsig_sign ~rng keylist =
     (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
@@ -809,7 +857,7 @@ module Secondary = struct
       let f name _ zones =
         Log.debug (fun m -> m "soa found for %a" Domain_name.pp name) ;
         match Authentication.primaries (keys, []) name with
-        | Ok [] -> begin match primary with
+        | [] -> begin match primary with
             | None ->
               Log.warn (fun m -> m "no nameserver found for %a" Domain_name.pp name) ;
               zones
@@ -829,22 +877,15 @@ module Secondary = struct
                     zones
                   end) zones keylist
           end
-        | Ok primaries ->
+        | primaries ->
           List.fold_left (fun zones (keyname, ip, port) ->
               Log.app (fun m -> m "adding transfer key %a for zone %a"
-                           Domain_name.pp keyname Domain_name.pp name) ;
+                          Domain_name.pp keyname Domain_name.pp name) ;
               let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, port, keyname in
               Domain_name.Map.add name v zones)
             zones primaries
-        | Error e ->
-          Log.warn (fun m -> m "error %a while looking up keys for %a" Udns_trie.pp_e e Domain_name.pp name) ;
-          zones
       in
-      match Udns_trie.folde Domain_name.root Rr_map.Soa keys f Domain_name.Map.empty with
-      | Ok zones -> zones
-      | Error e ->
-        Log.warn (fun m -> m "error %a while collecting zones" Udns_trie.pp_e e) ;
-        Domain_name.Map.empty
+      Udns_trie.fold Rr_map.Soa keys f Domain_name.Map.empty
     in
     (create Udns_trie.empty (keys, a) rng tsig_verify tsig_sign, zones)
 
@@ -1102,59 +1143,16 @@ module Secondary = struct
                    Domain_name.pp zone Udns_enum.pp_rr_typ typ) ;
       Error Udns_enum.Refused
 
-  let handle_update t zones now ts proto keyname (zname, _) ((_, update) as u) =
-    (* TODO: handle prereq *)
-    (* TODO: can allow weaker keys for nsupdates we proxy *)
-    guard (Authentication.authorise t.auth proto keyname zname `Key_management) Udns_enum.NotAuth >>= fun () ->
-    Log.info (fun m -> m "key-management key %a authorised for update %a"
-                 Fmt.(option ~none:(unit "none") Domain_name.pp) keyname
-                 Packet.Update.pp u) ;
-    Domain_name.Map.fold (fun name _ r ->
-        r >>= fun () ->
-        guard (in_zone zname name) Udns_enum.NotZone)
-      update (Ok ()) >>= fun () ->
-    let keys, actions = Authentication.(handle_update (keys t.auth) update) in
-    let t = { t with auth = (keys, snd t.auth) } in
-    let zones, outs =
-      (* this is asymmetric - for transfer key additions, we send SOA requests *)
-      List.fold_left (fun (zones, outs) -> function
-          | `Added_key keyname ->
-            begin match Authentication.find_zone_ips keyname with
-              | None -> (zones, outs)
-              | Some (zname, (pip, pport), _) ->
-                match query_soa t `Tcp now ts zname keyname with
-                | None ->
-                  Log.err (fun m -> m "couldn't query soa for %a" Domain_name.pp zname) ;
-                  (zones, outs)
-                | Some (state, out) ->
-                  let zones = Domain_name.Map.add zname (state, pip, pport, keyname) zones in
-                  (zones, (`Tcp, pip, pport, out) :: outs)
-            end
-          | `Removed_key keyname ->
-            let zone = Authentication.zone keyname in
-            let zones' = match Domain_name.Map.find zone zones with
-              | Some (_, _, _, kname) when Domain_name.equal keyname kname ->
-                Domain_name.Map.remove zone zones
-              | _ -> zones
-            in
-            (zones', outs))
-        (zones, []) actions
-    in
-    Ok ((t, zones), outs)
-
-  let handle_frame (t, zones) now ts ip proto keyname header question p _additional =
+  let handle_frame (t, zones) now ts ip keyname header question p _additional =
     match p, header.Packet.Header.query with
     | `Query _q, true ->
-      handle_question t proto keyname header question >>| fun answer ->
+      handle_question t header question >>| fun answer ->
       (t, zones), Some answer, []
     | `Query q, false ->
       handle_answer t zones now ts keyname header question q >>| fun (t, zones, out) ->
       (t, zones), None, out
-    | `Update u, true ->
-      handle_update t zones now ts proto keyname question u >>| fun (t', out) ->
-      let answer = s_header header, `Update Packet.Update.empty, None in
-      t', Some answer, out
-    | `Axfr _, true -> Error Udns_enum.FormErr
+    | `Update _, true -> Error Udns_enum.Refused
+    | `Axfr _, true -> Error Udns_enum.Refused
     | `Axfr axfr, false ->
       handle_axfr t zones ts keyname header question axfr >>= fun (t, zones, out) ->
       Ok ((t, zones), None, out)
@@ -1187,7 +1185,7 @@ module Secondary = struct
     | Error rcode -> ((t, zones), Packet.raw_error buf rcode, [])
     | Ok (header, question, p, additional, edns, tsig) ->
       let handle_inner name =
-        match handle_frame (t, zones) now ts ip proto name header question p additional with
+        match handle_frame (t, zones) now ts ip name header question p additional with
         | Ok (t, Some (header, answer, additional), out) ->
           let max_size, edns = Edns.reply edns in
           (t, Some (header, question, Packet.encode ?max_size ?additional ?edns proto header question answer), out)
@@ -1202,7 +1200,9 @@ module Secondary = struct
       in
       let mac = find_mac zones question in
       match handle_tsig ?mac t now header question tsig buf with
-      | Error data -> ((t, zones), data, [])
+      | Error (e, data) ->
+        Logs.err (fun m -> m "error %a while handling tsig" Tsig_op.pp_e e) ;
+        ((t, zones), data, [])
       | Ok None ->
         begin match handle_inner None with
           | (t, None, out) -> (t, None, out)

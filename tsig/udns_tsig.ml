@@ -50,6 +50,9 @@ let sign ?mac ?max_size name tsig ~key hdr question buf =
        - _one_ additional, the TSIG itself *)
     match add_tsig ?max_size name tsig buf with
     | Some out -> Some (out, mac)
+    | None when hdr.Packet.Header.query ->
+      Log.err (fun m -> m "dns_tsig sign: truncated, is a query, not doing anything") ;
+      None
     | None ->
       Log.err (fun m -> m "dns_tsig sign: truncated, sending tsig error") ;
       let header = {
@@ -71,68 +74,86 @@ let sign ?mac ?max_size name tsig ~key hdr question buf =
       | Some out -> Some (out, mac)
 
 let verify_raw ?mac now name ~key tsig tbs =
-  Rresult.R.of_option ~none:(fun () -> Error (`BadKey (name, tsig)))
+  Rresult.R.of_option ~none:(fun () -> Error (`Bad_key (name, tsig)))
     (Nocrypto.Base64.decode key.Dnskey.key) >>= fun priv ->
   let ac = Cstruct.BE.get_uint16 tbs 10 in
   Cstruct.BE.set_uint16 tbs 10 (pred ac) ;
   let prep = mac_to_prep mac in
   let computed = compute_tsig name tsig ~key:priv (Cstruct.append prep tbs) in
   let mac = tsig.Tsig.mac in
-  guard (Cstruct.len mac = Cstruct.len computed) (`BadTruncation (name, tsig)) >>= fun () ->
-  guard (Cstruct.equal computed mac) (`InvalidMac (name, tsig)) >>= fun () ->
-  guard (Tsig.valid_time now tsig) (`BadTimestamp (name, tsig, key)) >>= fun () ->
-  Rresult.R.of_option ~none:(fun () -> Error (`BadTimestamp (name, tsig, key)))
-    (Tsig.with_signed tsig now) >>= fun tsig ->
-  Ok (tsig, mac)
+  guard (Cstruct.len mac = Cstruct.len computed) (`Bad_truncation (name, tsig)) >>= fun () ->
+  guard (Cstruct.equal computed mac) (`Invalid_mac (name, tsig)) >>= fun () ->
+  guard (Tsig.valid_time now tsig) (`Bad_timestamp (name, tsig, key)) >>= fun () ->
+  Rresult.R.of_option ~none:(fun () -> Error (`Bad_timestamp (name, tsig, key)))
+    (Tsig.with_signed tsig now) >>| fun tsig ->
+  tsig, mac
 
 let verify ?mac now header question name ~key tsig tbs =
   match
-    Rresult.R.of_option ~none:(fun () -> Error (`BadKey (name, tsig))) key >>= fun key ->
+    Rresult.R.of_option ~none:(fun () -> Error (`Bad_key (name, tsig))) key >>= fun key ->
     verify_raw ?mac now name ~key tsig tbs >>= fun (tsig, mac) ->
     Ok (tsig, mac, key)
   with
   | Ok x -> Ok x
   | Error e ->
-    let header = { header with Packet.Header.query = not header.Packet.Header.query } in
-    let or_err f err = match f err with None -> Some err | Some x -> Some x in
-    match Packet.error header question Udns_enum.NotAuth, e with
-    | None, _ -> Error None
-    | Some (err, max_size), `BadKey (name, tsig) ->
-      let tsig = Tsig.with_error (Tsig.with_mac tsig Cstruct.empty) Udns_enum.BadKey in
-      Error (or_err (add_tsig ~max_size name tsig) err)
-    | Some (err, max_size), `InvalidMac (name, tsig) ->
-      let tsig = Tsig.with_error (Tsig.with_mac tsig Cstruct.empty) Udns_enum.BadVersOrSig in
-      Error (or_err (add_tsig ~max_size name tsig) err)
-    | Some (err, max_size), `BadTruncation (name, tsig) ->
-      let tsig = Tsig.with_error (Tsig.with_mac tsig (Cstruct.create 0)) Udns_enum.BadTrunc in
-      Error (or_err (add_tsig ~max_size name tsig) err)
-    | Some (err, max_size), `BadTimestamp (name, tsig, key) ->
-      let tsig = Tsig.with_error tsig Udns_enum.BadTime in
-      match Tsig.with_other tsig (Some now) with
-      | None -> Error (Some err)
-      | Some tsig ->
-        match sign ~max_size ~mac:tsig.Tsig.mac name tsig ~key header question err with
-        | None -> Error (Some err)
-        | Some (buf, _) -> Error (Some buf)
+    let answer =
+      let header = { header with Packet.Header.query = not header.Packet.Header.query } in
+      let or_err f err = match f err with None -> Some err | Some x -> Some x in
+      match Packet.error header question Udns_enum.NotAuth, e with
+      | None, _ -> None
+      | Some (err, max_size), `Bad_key (name, tsig) ->
+        let tsig = Tsig.with_error (Tsig.with_mac tsig Cstruct.empty) Udns_enum.BadKey in
+        or_err (add_tsig ~max_size name tsig) err
+      | Some (err, max_size), `Invalid_mac (name, tsig) ->
+        let tsig = Tsig.with_error (Tsig.with_mac tsig Cstruct.empty) Udns_enum.BadVersOrSig in
+        or_err (add_tsig ~max_size name tsig) err
+      | Some (err, max_size), `Bad_truncation (name, tsig) ->
+        let tsig = Tsig.with_error (Tsig.with_mac tsig (Cstruct.create 0)) Udns_enum.BadTrunc in
+        or_err (add_tsig ~max_size name tsig) err
+      | Some (err, max_size), `Bad_timestamp (name, tsig, key) ->
+        let tsig = Tsig.with_error tsig Udns_enum.BadTime in
+        match Tsig.with_other tsig (Some now) with
+        | None -> Some err
+        | Some tsig ->
+          match sign ~max_size ~mac:tsig.Tsig.mac name tsig ~key header question err with
+          | None -> Some err
+          | Some (buf, _) -> Some buf
+    in
+    Error (e, answer)
+
+type s = [ `Key_algorithm of Dnskey.t | `Tsig_creation | `Sign ]
+
+let pp_s ppf = function
+  | `Key_algorithm key -> Fmt.pf ppf "can't use algorithm %a for tsig" Dnskey.pp key
+  | `Tsig_creation -> Fmt.pf ppf "failed to create tsig"
+  | `Sign -> Fmt.pf ppf "failed to sign"
 
 let encode_and_sign ?(proto = `Udp) ?additional header question p now key keyname =
   let b, _ = Packet.encode ?additional proto header question p in
   match Tsig.dnskey_to_tsig_algo key with
-  | None -> Error "cannot discover tsig algorithm of key"
+  | None -> Error (`Key_algorithm key)
   | Some algorithm -> match Tsig.tsig ~algorithm ~signed:now () with
-    | None -> Error "couldn't create tsig"
+    | None -> Error `Tsig_creation
     | Some tsig -> match sign keyname ~key tsig header question b with
-      | None -> Error "key is not good"
+      | None -> Error `Sign
       | Some r -> Ok r
+
+type e = [ `Decode of Packet.err | `Unsigned of Packet.res | `Crypto of Tsig_op.e | `Invalid_key of Domain_name.t * Domain_name.t ]
+
+let pp_e ppf = function
+  | `Decode err -> Fmt.pf ppf "decode %a" Packet.pp_err err
+  | `Unsigned res -> Fmt.pf ppf "unsigned %a" Packet.pp_res res
+  | `Crypto c -> Fmt.pf ppf "crypto %a" Tsig_op.pp_e c
+  | `Invalid_key (key, used) -> Fmt.pf ppf "invalid key, expected %a, but %a was used"
+                                  Domain_name.pp key Domain_name.pp used
 
 let decode_and_verify now key keyname ?mac buf =
   match Packet.decode buf with
-  | Error _ -> Error "decode"
-  | Ok (_, _, _, _, _, None) -> Error "not signed"
+  | Error e -> Error (`Decode e)
+  | Ok ((_, _, _, _, _, None) as res) -> Error (`Unsigned res)
   | Ok ((_, _, _, _, _, Some (name, tsig, tsig_off)) as res) when Domain_name.equal keyname name ->
       begin match verify_raw ?mac now keyname ~key tsig (Cstruct.sub buf 0 tsig_off) with
         | Ok (_, mac) -> Ok (res, tsig, mac)
-        | Error _ -> Error "invalid signature"
+        | Error e -> Error (`Crypto e)
       end
-  | Ok (_, _, _, _, _, Some _) ->
-    Error "invalid key name"
+  | Ok (_, _, _, _, _, Some (name, _, _)) -> Error (`Invalid_key (keyname, name))

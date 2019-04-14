@@ -11,23 +11,9 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
 
   module T = S.TCPV4
 
-  let primary ?(on_update = fun _ -> Lwt.return_unit) ?(on_notify = fun _ _ -> Lwt.return None) ?(timer = 2) ?(port = 53) stack t =
+  let primary ?(on_update = fun ~old:_ _ -> Lwt.return_unit) ?(on_notify = fun _ _ -> Lwt.return None) ?(timer = 2) ?(port = 53) stack t =
     let state = ref t in
     let tcp_out = ref Dns.IPM.empty in
-
-    let maybe_update_state t t' =
-      let trie server = Udns_server.((Primary.server server).data) in
-      state := t ;
-      if Udns_trie.equal (trie t) (trie t') then
-        Lwt.return_unit
-      else
-        on_update t
-    and maybe_notify t = function
-      | None -> Lwt.return_unit
-      | Some n -> on_notify n t >|= function
-        | None -> ()
-        | Some trie -> state := Udns_server.Primary.with_data t trie
-    in
 
     let drop ip port =
       tcp_out := Dns.IPM.remove (ip, port) !tcp_out ;
@@ -42,13 +28,32 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
           drop ip dport ;
           Dns.send_udp stack port ip dport data
     in
+
+    let maybe_update_state t =
+      let old = !state in
+      let trie server = Udns_server.Primary.data server in
+      state := t;
+      if Udns_trie.equal (trie t) (trie old) then
+        Lwt.return_unit
+      else
+        on_update ~old:(trie old) t
+    and maybe_notify t ts = function
+      | None -> Lwt.return_unit
+      | Some n -> on_notify n t >>= function
+        | None -> Lwt.return_unit
+        | Some trie ->
+          let state', outs = Udns_server.Primary.with_data t ts trie in
+          state := state';
+          Lwt_list.iter_p send_notify outs
+    in
+
     let udp_cb ~src ~dst:_ ~src_port buf =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp src src_port) ;
       let now = Ptime.v (P.now_d_ps ()) in
       let elapsed = M.elapsed_ns () in
       let t, answer, notify, n = Udns_server.Primary.handle !state now elapsed `Udp src src_port buf in
-      maybe_update_state t !state >>= fun () ->
-      maybe_notify t n >>= fun () ->
+      maybe_update_state t >>= fun () ->
+      maybe_notify t elapsed n >>= fun () ->
       (match answer with
        | None -> Log.warn (fun m -> m "empty answer") ; Lwt.return_unit
        | Some answer -> Dns.send_udp stack port src src_port answer) >>= fun () ->
@@ -68,8 +73,8 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
           let now = Ptime.v (P.now_d_ps ()) in
           let elapsed = M.elapsed_ns () in
           let t, answer, notify, n = Udns_server.Primary.handle !state now elapsed `Tcp dst_ip dst_port data in
-          maybe_update_state t !state >>= fun () ->
-          maybe_notify t n >>= fun () ->
+          maybe_update_state t >>= fun () ->
+          maybe_notify t elapsed n >>= fun () ->
           Lwt_list.iter_p send_notify notify >>= fun () ->
           match answer with
           | None -> Log.warn (fun m -> m "empty answer") ; loop ()
@@ -84,25 +89,27 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
     Log.info (fun m -> m "DNS server listening on TCP port %d" port) ;
     let rec time () =
       let t, notifies = Udns_server.Primary.timer !state (M.elapsed_ns ()) in
-      maybe_update_state t !state >>= fun () ->
+      maybe_update_state t >>= fun () ->
       Lwt_list.iter_p send_notify notifies >>= fun () ->
       TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
       time ()
     in
     Lwt.async time
 
-  let secondary ?(on_update = fun _trie -> Lwt.return_unit) ?(timer = 5) ?(port = 53) stack t =
+  let secondary ?(on_update = fun ~old:_ _trie -> Lwt.return_unit) ?(timer = 5) ?(port = 53) stack t =
     let state = ref t in
     let tcp_out = ref Dns.IM.empty in
+    let tcp_packet_transit = ref Dns.IM.empty in
     let in_flight = ref Dns.IS.empty in
 
-    let maybe_update_state t t' =
-      let trie server = Udns_server.((Secondary.server server).data) in
+    let maybe_update_state t =
+      let old = !state in
+      let trie server = Udns_server.Secondary.data server in
       state := t ;
-      if Udns_trie.equal (trie t) (trie t') then
+      if Udns_trie.equal (trie t) (trie old) then
         Lwt.return_unit
       else
-        on_update t
+        on_update ~old:(trie old) t
     in
 
     let rec close ip port =
@@ -119,14 +126,19 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       Dns.read_tcp f >>= function
       | Error () ->
         Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
-        close ip port
+        close ip port >>= fun () ->
+        (* re-send once *)
+        begin match Dns.IM.find ip !tcp_packet_transit with
+          | None -> Lwt.return_unit
+          | Some data -> request ~record:false data
+        end
       | Ok data ->
         let now = Ptime.v (P.now_d_ps ()) in
         let elapsed = M.elapsed_ns () in
         let t, answer, out =
           Udns_server.Secondary.handle !state now elapsed `Tcp ip data
         in
-        maybe_update_state t !state >>= fun () ->
+        maybe_update_state t >>= fun () ->
         Lwt_list.iter_s request out >>= fun () ->
         match answer with
         | None -> read_and_handle ip port f
@@ -136,7 +148,9 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
             Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
             close ip port
           | Ok () -> read_and_handle ip port f
-    and request (proto, ip, port, data) =
+    and request ?(record = true) (proto, ip, port, data) =
+      if record then
+        tcp_packet_transit := Dns.IM.add ip (proto, ip, port, data) !tcp_packet_transit;
       match Dns.IM.find ip !tcp_out with
       | None ->
         begin
@@ -180,7 +194,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       let now = Ptime.v (P.now_d_ps ()) in
       let elapsed = M.elapsed_ns () in
       let t, answer, out = Udns_server.Secondary.handle !state now elapsed `Udp src buf in
-      maybe_update_state t !state >>= fun () ->
+      maybe_update_state t >>= fun () ->
       List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
       match answer with
       | None -> Lwt.return_unit
@@ -202,7 +216,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
           let t, answer, out =
             Udns_server.Secondary.handle !state now elapsed `Tcp dst_ip data
           in
-          maybe_update_state t !state >>= fun () ->
+          maybe_update_state t >>= fun () ->
           List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
           match answer with
           | None ->
@@ -222,7 +236,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       let now = Ptime.v (P.now_d_ps ()) in
       let elapsed = M.elapsed_ns () in
       let t, out = Udns_server.Secondary.timer !state now elapsed in
-      maybe_update_state t !state >>= fun () ->
+      maybe_update_state t >>= fun () ->
       List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
       TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
       time ()

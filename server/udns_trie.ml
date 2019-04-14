@@ -122,7 +122,15 @@ let lookup_ignore name ty t =
     | None -> Error ()
     | Some v -> Ok v
 
-let folde name key t f s =
+let zone name t =
+  match lookup_aux name t with
+  | Error e -> Error e
+  | Ok (zone, _, _) ->
+    match check_zone zone with
+    | Error e -> Error e
+    | Ok (name, map) -> Ok (name, Rr_map.get Soa map) (* we ended with `Soa, which checked that map contains a Soa *)
+
+let fold key (N (sub, map)) f s =
   let get name map acc =
     match Rr_map.find key map with
     | Some a -> f name a acc
@@ -135,19 +143,8 @@ let folde name key t f s =
         collect n' sub keys)
       acc (M.bindings sub)
   in
-  match lookup_aux name t with
-  | Error e -> Error e
-  | Ok (_zone, sub, map) -> Ok (collect name sub (get name map s))
-
-let fold name t f acc =
-  let rec foldm name (N (sub, map)) acc =
-    let acc' = Rr_map.fold (f name) map acc in
-    let dns_name = Domain_name.prepend_exn ~hostname:false in
-    M.fold (fun pre v acc -> foldm (dns_name name pre) v acc) sub acc'
-  in
-  match lookup_aux name t with
-  | Error e -> Error e
-  | Ok (_zone, sub, map) -> Ok (foldm name (N (sub, map)) acc)
+  let name = Domain_name.root in
+  collect name sub (get name map s)
 
 let collect_rrs name sub map =
   (* TODO: do not cross zone boundaries! or maybe not!? *)
@@ -218,7 +215,7 @@ let check trie =
       | _ -> false
   in
   let rec check_sub names state sub map =
-    let name = Domain_name.of_strings_exn ~hostname:false (List.rev names) in
+    let name = Domain_name.of_strings_exn ~hostname:false names in
     let state' =
       match Rr_map.(find Soa map) with
       | None -> begin match Rr_map.(find Ns map) with
@@ -233,7 +230,11 @@ let check trie =
         r >>= fun () ->
         let open Rr_map in
         match v with
-        | B (Dnskey, _) -> Ok ()
+        | B (Dnskey, (ttl, keys)) ->
+          if ttl < 0l then Error (`Bad_ttl (name, v))
+          else if Dnskey_set.is_empty keys then
+            Error (`Empty (name, Udns_enum.DNSKEY))
+          else Ok ()
         | B (Ns, (ttl, names)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else if Domain_name.Set.cardinal names = 0 then

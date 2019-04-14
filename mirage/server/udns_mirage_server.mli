@@ -2,15 +2,15 @@
 
 module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (T : Mirage_time_lwt.S) (S : Mirage_stack_lwt.V4) : sig
 
-  val primary : ?on_update:(Udns_server.Primary.s -> unit Lwt.t) ->
-    ?on_notify:([ `Notify | `Signed_notify ] -> Udns_server.Primary.s -> Udns_trie.t option Lwt.t) ->
+  val primary : ?on_update:(old:Udns_trie.t -> Udns_server.Primary.s -> unit Lwt.t) ->
+    ?on_notify:([ `Notify of Udns.Soa.t option | `Signed_notify of Udns.Soa.t option ] -> Udns_server.Primary.s -> Udns_trie.t option Lwt.t) ->
     ?timer:int -> ?port:int -> S.t -> Udns_server.Primary.s -> unit
   (** [primary ~on_update ~timer ~port stack primary] starts a primary server on [port]
      (default 53, both TCP and UDP) with the given [primary] configuration. [timer] is the
      DNS notify timer in seconds, and defaults to 2 seconds. *)
 
   val secondary :
-    ?on_update:(Udns_server.Secondary.s -> unit Lwt.t) ->
+    ?on_update:(old:Udns_trie.t -> Udns_server.Secondary.s -> unit Lwt.t) ->
     ?timer:int -> ?port:int -> S.t -> Udns_server.Secondary.s ->
     unit
   (** [secondary ~on_update ~timer ~port stack secondary] starts a secondary
