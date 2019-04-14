@@ -1,6 +1,6 @@
-# µDNS - an opinionated Domain Name System (DNS) library
+# ocaml-dns - a Domain Name System (DNS) library
 
-[![Build Status](https://travis-ci.org/roburio/udns.svg?branch=master)](https://travis-ci.org/roburio/udns)
+[![Build Status](https://travis-ci.org/mirage/ocaml-dns.svg?branch=master)](https://travis-ci.org/roburio/udns)
 
 (c) 2017,2018 Hannes Mehnert (robur.io, Center for the Cultivation of Technology)
 
@@ -85,4 +85,23 @@ examples at the [unikernel repository](https://github.com/roburio/unikernels).
 
 ## Documentation
 
-API documentation [is available online](https://roburio.github.io/udns/doc/).
+API documentation [is available online](https://mirage.github.io/ocaml-dns/).
+
+## Transition from older versions
+
+The pre-2.0.0 versions of ocaml-dns had a significantly different interface,
+and so applications using them will need to be rewritten to follow the
+stricter coding style used in the post-2.0.0 branches.  The major improvements
+from 1.x to the 2.x series are: 
+
+- data (rrset) is defined in a single GADT in `Rr_map`
+- add support for: notify, dynamic update, zone transfer, tsig (hmac authentication), edns
+- no mutable datastructures to make reasoning about library state easier
+- switches to an independent `domain_name` library which uses a faster and more compact `string array` instead of `string list` for storing domain names
+- integration with LetsEncrypt for provisioning valid X.509 certificates
+- more strict hostname validation
+- no use of exceptions, instead preferring explicit result values from API functions
+
+Please get in touch on <mirageos-devel@lists.xenproject.org> or on the Discuss forum
+at <https://discuss.ocaml.org> (with the `mirageos` tag) if you have any questions
+about migrating (or just general questions).
