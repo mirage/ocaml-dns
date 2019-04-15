@@ -43,7 +43,7 @@ val text : Domain_name.t -> Udns_trie.t -> (string, [> `Msg of string ]) result
 (** [text name trie] results in a string representation (zonefile) of the trie. *)
 
 val handle_question : t -> Packet.Question.t ->
-  (Packet.Header.FS.t * Packet.Query.t * Name_rr_map.t option,
+  (Packet.Flags.t * Packet.Query.t * Name_rr_map.t option,
    Rcode.t * Packet.Query.t option) result
 (** [handle_question t question] handles the DNS query [question] using the data
     of [t]: a whitelist of record types are looked up: A | NS | CNAME | SOA |

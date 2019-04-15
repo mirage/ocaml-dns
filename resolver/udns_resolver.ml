@@ -82,9 +82,9 @@ let build_query ?id ?(recursion_desired = false) t ts proto question retry zone 
     (* TODO not clear about this.. *)
     let flags =
       if recursion_desired then
-        Packet.Header.FS.singleton `Recursion_desired
+        Packet.Flags.singleton `Recursion_desired
       else
-        Packet.Header.FS.empty
+        Packet.Flags.empty
     in
     id, flags
   in
@@ -106,7 +106,7 @@ let maybe_query ?recursion_desired t ts retry out ip name typ (proto, zone, edns
     let edns = Some (Edns.create ())
     and proto = `Udp
     in
-    (* TODO: is `Udp good here? *)
+    (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
     let transit, packet = build_query ?recursion_desired t ts proto k retry zone edns ip in
     let t = { t with transit ; queried = QM.add k [await] t.queried } in
     let packet = Packet.with_edns packet edns in
@@ -200,7 +200,7 @@ let scrub_it mode t proto zone edns ts p =
            Udns_resolver_cache.maybe_insert ty n ts r e t)
         t xs
     in
-    if Packet.Header.FS.mem `Truncation (snd p.header) && proto = `Udp then
+    if Packet.Flags.mem `Truncation (snd p.header) && proto = `Udp then
       (Logs.warn (fun m -> m "NS truncated reply, using TCP now") ;
        `Upgrade_to_tcp cache)
     else
@@ -220,7 +220,7 @@ let handle_primary t now ts proto sender sport packet _request buf =
     | None -> `None (* TODO incoming ??? are never replied to - should be revised!? *)
     | Some reply ->
       (* delegation if authoritative is not set! *)
-      if Packet.Header.FS.mem `Authoritative (snd reply.header) then begin
+      if Packet.Flags.mem `Authoritative (snd reply.header) then begin
         s := { !s with authoritative = succ !s.authoritative };
         Logs.debug (fun m -> m "authoritative reply %a" Packet.pp reply) ;
         let r = Packet.encode proto reply in
@@ -274,7 +274,7 @@ let resolve t ts proto sender sport req =
   match req.Packet.data with
   | `Query ->
     Logs.info (fun m -> m "resolving %a" Packet.pp req) ;
-    if not (Packet.Header.FS.mem `Recursion_desired (snd req.header)) then
+    if not (Packet.Flags.mem `Recursion_desired (snd req.header)) then
       Logs.warn (fun m -> m "recursion not desired") ;
     if List.mem (snd req.question) supported then begin
       s := { !s with questions = succ !s.questions };
@@ -287,7 +287,7 @@ let resolve t ts proto sender sport req =
     end else begin
       Logs.err (fun m -> m "unsupported query type %a" Rr.pp (snd req.question));
       let pkt =
-        Packet.create (fst req.header, Packet.Header.FS.empty) req.question
+        Packet.create (fst req.header, Packet.Flags.empty) req.question
           (`Rcode_error (Rcode.NotImp, Opcode.Query, None))
       in
       let buf, _ = Packet.encode proto pkt in
@@ -296,7 +296,7 @@ let resolve t ts proto sender sport req =
   | _ ->
     Logs.err (fun m -> m "ignoring %a" Packet.pp req);
     let pkt = Packet.create
-        (fst req.header, Packet.Header.FS.empty) req.question
+        (fst req.header, Packet.Flags.empty) req.question
         (`Rcode_error (Rcode.NotImp, Packet.opcode_data req.data, None))
     in
     let buf, _ = Packet.encode proto pkt in
@@ -366,7 +366,8 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
     begin match Udns_resolver_cache.answer t.cache ts req.question with
       | `Query (name, cache) ->
         let t = { t with cache } in
-        (* we should look into delegation for the actual delegation, but instead we're looking for glue A *)
+        (* we should look into delegation for the actual delegation name,
+           but instead we're looking for any glue (A) in additional *)
         let ips = Domain_name.Map.fold (fun n rrmap ips ->
             Logs.debug (fun m -> m "%a maybe in %a" Domain_name.pp n Rr_map.pp rrmap) ;
             match Rr_map.(find A rrmap) with
@@ -402,7 +403,7 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
   | _ ->
     Logs.err (fun m -> m "ignoring %a" Packet.pp req) ;
     let pkt =
-      Packet.create (fst req.header, Packet.Header.FS.empty)
+      Packet.create (fst req.header, Packet.Flags.empty)
         req.question (`Rcode_error (Rcode.NotImp, Packet.opcode_data req.data, None))
     in
     t, [ proto, sender, sport, fst (Packet.encode proto pkt) ], []
@@ -476,7 +477,7 @@ let query_root t now proto =
   let edns = Some (Edns.create ()) in
   let el = (now, 0, proto, Domain_name.root, edns, ip, 53, q, id) in
   let t = { t with transit = QM.add q el t.transit } in
-  let packet = Packet.create ?edns (id, Packet.Header.FS.empty) q `Query in
+  let packet = Packet.create ?edns (id, Packet.Flags.empty) q `Query in
   let cs, _ = Packet.encode proto packet in
   t, (proto, ip, cs)
 
@@ -486,7 +487,7 @@ let err_retries t question =
   let t, reqs = find_queries t question in
   t, List.fold_left (fun acc (_, _, proto, _, _, ip, port, q, qid) ->
       Logs.debug (fun m -> m "now erroring to %a" Packet.Question.pp q) ;
-      let packet = Packet.create (qid, Packet.Header.FS.empty) q
+      let packet = Packet.create (qid, Packet.Flags.empty) q
           (`Rcode_error (Rcode.ServFail, Opcode.Query, None))
       in
       let buf, _ = Packet.encode proto packet in

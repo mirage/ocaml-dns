@@ -7,7 +7,7 @@ let notify zone serial key now =
   and soa =
     { Soa.nameserver = zone ; hostmaster = zone ; serial ;
       refresh = 0l; retry = 0l ; expiry = 0l ; minimum = 0l }
-  and header = Random.int 0xFFFF, Packet.Header.FS.singleton `Authoritative
+  and header = Random.int 0xFFFF, Packet.Flags.singleton `Authoritative
   in
   let p = Packet.create header question (`Notify (Some soa)) in
   match key with

@@ -59,7 +59,7 @@ let sign ?mac ?max_size name tsig ~key p buf =
         Log.err (fun m -> m "dns_tsig sign: truncated reply %a, sending tsig error"
                     Packet.pp_reply r) ;
         let header =
-          fst p.header, Packet.Header.FS.add `Truncation (snd p.header)
+          fst p.header, Packet.Flags.add `Truncation (snd p.header)
         in
         let rc = Packet.rcode_data r
         and op = Packet.opcode_data r
@@ -107,7 +107,7 @@ let verify ?mac now p name ?key tsig tbs =
       | #Packet.request as r ->
         (* now we prepare a reply for the request! *)
         (* TODO not clear which flags to preserve *)
-        let header = fst p.Packet.header, Packet.Header.FS.empty
+        let header = fst p.Packet.header, Packet.Flags.empty
         and opcode = Packet.opcode_data r
         in
         (* TODO: edns *)

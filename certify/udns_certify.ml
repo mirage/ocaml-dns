@@ -2,7 +2,7 @@ open Udns
 
 let dns_header rng =
   let id = Randomconv.int16 rng in
-  (id, Packet.Header.FS.empty)
+  (id, Packet.Flags.empty)
 
 let letsencrypt_name name =
   match Domain_name.prepend ~hostname:false name "_tcp" with

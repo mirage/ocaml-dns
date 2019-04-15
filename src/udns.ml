@@ -334,45 +334,6 @@ module Name = struct
     end)
   type name_offset_map = int Domain_name.Map.t
 
-  type err = [
-    | `Bad_edns_version of int
-    | `Leftover of int * string
-    | `Malformed of int * string
-    | `Not_implemented of int * string
-    | `Notify_ack_answer_count of int
-    | `Notify_ack_authority_count of int
-    | `Notify_answer_count of int
-    | `Notify_authority_count of int
-    | `Partial
-    | `Query_answer_count of int
-    | `Query_authority_count of int
-    | `Rcode_cant_change of Rcode.t
-    | `Rcode_error_cant_noerror of Rcode.t
-    | `Request_rcode of Rcode.t
-    | `Truncated_request
-    | `Update_ack_answer_count of int
-    | `Update_ack_authority_count of int
-  ]
-
-  let pp_err ppf = function
-    | `Bad_edns_version version -> Fmt.pf ppf "bad edns version %d" version
-    | `Leftover (off, n) -> Fmt.pf ppf "leftover %s at %d" n off
-    | `Malformed (off, n) -> Fmt.pf ppf "malformed at %d: %s" off n
-    | `Not_implemented (off, msg) -> Fmt.pf ppf "not implemented at %d: %s" off msg
-    | `Notify_ack_answer_count an -> Fmt.pf ppf "notify ack answer count is %d" an
-    | `Notify_ack_authority_count au -> Fmt.pf ppf "notify ack authority count is %d" au
-    | `Notify_answer_count an -> Fmt.pf ppf "notify answer count is %d" an
-    | `Notify_authority_count au -> Fmt.pf ppf "notify authority count is %d" au
-    | `Partial -> Fmt.string ppf "partial"
-    | `Query_answer_count an -> Fmt.pf ppf "query answer count is %d" an
-    | `Query_authority_count au -> Fmt.pf ppf "query authority count is %d" au
-    | `Rcode_cant_change rc -> Fmt.pf ppf "edns tried to change rcode from noerror to %a" Rcode.pp rc
-    | `Rcode_error_cant_noerror rc -> Fmt.pf ppf "edns tried to change rcode from %a to noerror" Rcode.pp rc
-    | `Request_rcode rc -> Fmt.pf ppf "query with rcode %a (must be noerr)" Rcode.pp rc
-    | `Truncated_request -> Fmt.string ppf "truncated request"
-    | `Update_ack_answer_count an -> Fmt.pf ppf "update ack answer count is %d" an
-    | `Update_ack_authority_count au -> Fmt.pf ppf "update ack authority count is %d" au
-
   let ptr_tag = 0xC0 (* = 1100 0000 *)
 
   let decode ?(hostname = true) names buf ~off =
@@ -818,7 +779,8 @@ module Srv = struct
     Cstruct.BE.set_uint16 buf off t.priority ;
     Cstruct.BE.set_uint16 buf (off + 2) t.weight ;
     Cstruct.BE.set_uint16 buf (off + 4) t.port ;
-    Name.encode t.target names buf (off + 6)
+    (* as of rfc2782, no name compression for target! rfc2052 required it *)
+    Name.encode ~compress:false t.target names buf (off + 6)
 end
 
 (* DNS key *)
@@ -2218,103 +2180,81 @@ module Name_rr_map = struct
       sub map
 end
 
-let decode_ntc names buf off =
-  let open Rresult.R.Infix in
-  Name.decode ~hostname:false names buf ~off >>= fun (name, names, off) ->
-  guard (Cstruct.len buf - off >= 4) `Partial >>= fun () ->
-  let typ = Cstruct.BE.get_uint16 buf off
-  and cls = Cstruct.BE.get_uint16 buf (off + 2)
-  (* CLS is interpreted differently by OPT, thus no int_to_clas called here *)
-  in
-  Rr.of_int ~off typ >>= function
-  | Rr.(DNSKEY | TSIG | TXT | CNAME as t) -> Ok ((name, t, cls), names, off + 4)
-  | Rr.(TLSA | SRV as t) when Domain_name.is_service name -> Ok ((name, t, cls), names, off + 4)
-  | Rr.SRV -> (* MUST be service name *)
-    Error (`Malformed (off, Fmt.strf "SRV must be a service name %a"
-                         Domain_name.pp name))
-  | t when Domain_name.is_hostname name -> Ok ((name, t, cls), names, off + 4)
-  | _ ->
-    Error (`Malformed (off, Fmt.strf "record must be a hostname %a"
-                         Domain_name.pp name))
-
 module Packet = struct
 
-  type err = Name.err
+  module Flag = struct
+    type t = [
+      | `Authoritative
+      | `Truncation
+      | `Recursion_desired
+      | `Recursion_available
+      | `Authentic_data
+      | `Checking_disabled
+    ]
 
-  let pp_err = Name.pp_err
+    let all = [
+      `Authoritative ; `Truncation ; `Recursion_desired ;
+      `Recursion_available ; `Authentic_data ; `Checking_disabled
+    ]
+
+    let compare a b = match a, b with
+      | `Authoritative, `Authoritative -> 0
+      | `Authoritative, _ -> 1 | _, `Authoritative -> -1
+      | `Truncation, `Truncation -> 0
+      | `Truncation, _ -> 1 | _, `Truncation -> -1
+      | `Recursion_desired, `Recursion_desired -> 0
+      | `Recursion_desired, _ -> 1 | _, `Recursion_desired -> -1
+      | `Recursion_available, `Recursion_available -> 0
+      | `Recursion_available, _ -> 1 | _, `Recursion_available -> -1
+      | `Authentic_data, `Authentic_data -> 0
+      | `Authentic_data, _ -> 1 | _, `Authentic_data -> -1
+      | `Checking_disabled, `Checking_disabled -> 0
+    (* | `Checking_disabled, _ -> 1 | _, `Checking_disabled -> -1 *)
+
+    let pp ppf = function
+      | `Authoritative -> Fmt.string ppf "authoritative"
+      | `Truncation -> Fmt.string ppf "truncation"
+      | `Recursion_desired -> Fmt.string ppf "recursion desired"
+      | `Recursion_available -> Fmt.string ppf "recursion available"
+      | `Authentic_data -> Fmt.string ppf "authentic data"
+      | `Checking_disabled -> Fmt.string ppf "checking disabled"
+
+    let pp_short ppf = function
+      | `Authoritative -> Fmt.string ppf "AA"
+      | `Truncation -> Fmt.string ppf "TC"
+      | `Recursion_desired -> Fmt.string ppf "RD"
+      | `Recursion_available -> Fmt.string ppf "RA"
+      | `Authentic_data -> Fmt.string ppf "AD"
+      | `Checking_disabled -> Fmt.string ppf "CD"
+
+    let bit = function
+      | `Authoritative -> 5
+      | `Truncation -> 6
+      | `Recursion_desired -> 7
+      | `Recursion_available -> 8
+      | `Authentic_data -> 10
+      | `Checking_disabled -> 11
+
+    let number f = 1 lsl (15 - bit f)
+  end
+
+  module Flags = Set.Make(Flag)
 
   module Header = struct
-    module Flags = struct
-      type t = [
-        | `Authoritative
-        | `Truncation
-        | `Recursion_desired
-        | `Recursion_available
-        | `Authentic_data
-        | `Checking_disabled
-      ]
 
-      let all = [
-        `Authoritative ; `Truncation ; `Recursion_desired ;
-        `Recursion_available ; `Authentic_data ; `Checking_disabled
-      ]
-
-      let compare a b = match a, b with
-        | `Authoritative, `Authoritative -> 0
-        | `Authoritative, _ -> 1 | _, `Authoritative -> -1
-        | `Truncation, `Truncation -> 0
-        | `Truncation, _ -> 1 | _, `Truncation -> -1
-        | `Recursion_desired, `Recursion_desired -> 0
-        | `Recursion_desired, _ -> 1 | _, `Recursion_desired -> -1
-        | `Recursion_available, `Recursion_available -> 0
-        | `Recursion_available, _ -> 1 | _, `Recursion_available -> -1
-        | `Authentic_data, `Authentic_data -> 0
-        | `Authentic_data, _ -> 1 | _, `Authentic_data -> -1
-        | `Checking_disabled, `Checking_disabled -> 0
-      (* | `Checking_disabled, _ -> 1 | _, `Checking_disabled -> -1 *)
-
-      let pp ppf = function
-        | `Authoritative -> Fmt.string ppf "authoritative"
-        | `Truncation -> Fmt.string ppf "truncation"
-        | `Recursion_desired -> Fmt.string ppf "recursion desired"
-        | `Recursion_available -> Fmt.string ppf "recursion available"
-        | `Authentic_data -> Fmt.string ppf "authentic data"
-        | `Checking_disabled -> Fmt.string ppf "checking disabled"
-
-      let pp_short ppf = function
-        | `Authoritative -> Fmt.string ppf "AA"
-        | `Truncation -> Fmt.string ppf "TC"
-        | `Recursion_desired -> Fmt.string ppf "RD"
-        | `Recursion_available -> Fmt.string ppf "RA"
-        | `Authentic_data -> Fmt.string ppf "AD"
-        | `Checking_disabled -> Fmt.string ppf "CD"
-
-      let bit = function
-        | `Authoritative -> 5
-        | `Truncation -> 6
-        | `Recursion_desired -> 7
-        | `Recursion_available -> 8
-        | `Authentic_data -> 10
-        | `Checking_disabled -> 11
-
-      let number f = 1 lsl (15 - bit f)
-    end
-
-    module FS = Set.Make(Flags)
-
-    type t = int * FS.t
+    type t = int * Flags.t
 
     let compare_id (id, _) (id', _) = int_compare id id'
 
     let compare (id, flags) (id', flags') =
-      andThen (int_compare id id') (FS.compare flags flags')
+      andThen (int_compare id id') (Flags.compare flags flags')
 
     let pp ppf ((id, flags), query, operation, rcode) =
       Fmt.pf ppf "%04X (%s) operation %a rcode @[%a@] flags: @[%a@]"
         id (if query then "query" else "response")
         Opcode.pp operation
         Rcode.pp rcode
-        Fmt.(list ~sep:(unit ", ") Flags.pp) (FS.elements flags)
+        Fmt.(list ~sep:(unit ", ") Flag.pp) (Flags.elements flags)
 
     let len = 12
 
@@ -2332,8 +2272,8 @@ module Packet = struct
 
     let decode_flags hdr =
       List.fold_left (fun flags flag ->
-          if Flags.number flag land hdr > 0 then FS.add flag flags else flags)
-        FS.empty Flags.all
+          if Flag.number flag land hdr > 0 then Flags.add flag flags else flags)
+        Flags.empty Flag.all
 
     let decode buf =
       let open Rresult.R.Infix in
@@ -2352,7 +2292,7 @@ module Packet = struct
       Ok ((id, flags), query, operation, rcode)
 
     let encode_flags flags =
-      FS.fold (fun f acc -> acc + Flags.number f) flags 0
+      Flags.fold (fun f acc -> acc + Flag.number f) flags 0
 
     let encode buf ((id, flags), query, operation, rcode) =
       let query = if query then 0x0000 else 0x8000 in
@@ -2372,53 +2312,53 @@ module Packet = struct
         Format.printf "%a" Cstruct.hexdump_pp (Cstruct.sub cs off len)
       and test_hdr a b =
         match b with
-        | Error e -> Format.printf "%a" pp_err e
+        | Error _ -> Format.printf "error"
         | Ok b -> if eq a b then Format.printf "ok" else Format.printf "not ok"
       in
-      let hdr = (1, FS.empty), true, Opcode.Query, Rcode.NoError in
+      let hdr = (1, Flags.empty), true, Opcode.Query, Rcode.NoError in
       encode cs hdr; (* basic query encoding works *)
       test_cs 4;
       [%expect {|00 01 00 00|}];
       test_hdr hdr (decode cs);
       [%expect {|ok|}];
-      let hdr = (0x1010, FS.empty), false, Opcode.Query, Rcode.NXDomain in
+      let hdr = (0x1010, Flags.empty), false, Opcode.Query, Rcode.NXDomain in
       encode cs hdr; (* second encoded header works *)
       test_cs 4;
       [%expect {|10 10 80 03|}];
       test_hdr hdr (decode cs);
       [%expect {|ok|}];
-      let hdr = (0x0101, FS.singleton `Authentic_data), true, Opcode.Update, Rcode.NoError in
+      let hdr = (0x0101, Flags.singleton `Authentic_data), true, Opcode.Update, Rcode.NoError in
       encode cs hdr; (* flags look nice *)
       test_cs 4;
       [%expect {|01 01 28 20|}];
       test_hdr hdr (decode cs);
       [%expect {|ok|}];
-      let hdr = (0x0080, FS.singleton `Truncation), true, Opcode.Query, Rcode.NoError in
+      let hdr = (0x0080, Flags.singleton `Truncation), true, Opcode.Query, Rcode.NoError in
       encode cs hdr; (* truncation flag *)
       test_cs 4;
       [%expect {|00 80 02 00|}];
       test_hdr hdr (decode cs);
       [%expect {|ok|}];
-      let hdr = (0x8080, FS.singleton `Checking_disabled), true, Opcode.Query, Rcode.NoError in
+      let hdr = (0x8080, Flags.singleton `Checking_disabled), true, Opcode.Query, Rcode.NoError in
       encode cs hdr; (* checking disabled flag *)
       test_cs 4;
       [%expect {|80 80 00 10|}];
       test_hdr hdr (decode cs);
       [%expect {|ok|}];
-      let hdr = (0x1234, FS.singleton `Authoritative), true, Opcode.Query, Rcode.NoError in
+      let hdr = (0x1234, Flags.singleton `Authoritative), true, Opcode.Query, Rcode.NoError in
       encode cs hdr; (* authoritative flag *)
       test_cs 4;
       [%expect {|12 34 04 00|}];
       test_hdr hdr (decode cs);
       [%expect {|ok|}];
-      let hdr = (0xFFFF, FS.singleton `Recursion_desired), true, Opcode.Query, Rcode.NoError in
+      let hdr = (0xFFFF, Flags.singleton `Recursion_desired), true, Opcode.Query, Rcode.NoError in
       encode cs hdr; (* rd flag *)
       test_cs 4;
       [%expect {|ff ff 01 00|}];
       test_hdr hdr (decode cs);
       [%expect {|ok|}];
       let hdr =
-        let flags = FS.(add `Recursion_desired (singleton `Authoritative)) in
+        let flags = Flags.(add `Recursion_desired (singleton `Authoritative)) in
         (0xE0E0, flags), true, Opcode.Query, Rcode.NoError
       in
       encode cs hdr; (* rd + auth *)
@@ -2426,7 +2366,7 @@ module Packet = struct
       [%expect {|e0 e0 05 00|}];
       test_hdr hdr (decode cs);
       [%expect {|ok|}];
-      let hdr = (0xAA00, FS.singleton `Recursion_available), true, Opcode.Query, Rcode.NoError in
+      let hdr = (0xAA00, Flags.singleton `Recursion_available), true, Opcode.Query, Rcode.NoError in
       encode cs hdr; (* ra *)
       test_cs 4;
       [%expect {|aa 00 00 80|}];
@@ -2443,6 +2383,24 @@ module Packet = struct
       test_err (decode data);
       [%expect {|ok|}] *)
   end
+
+  let decode_ntc names buf off =
+    let open Rresult.R.Infix in
+    Name.decode ~hostname:false names buf ~off >>= fun (name, names, off) ->
+    guard (Cstruct.len buf - off >= 4) `Partial >>= fun () ->
+    let typ = Cstruct.BE.get_uint16 buf off
+    and cls = Cstruct.BE.get_uint16 buf (off + 2)
+    (* CLS is interpreted differently by OPT, thus no int_to_clas called here *)
+    in
+    Rr.of_int ~off typ >>= function
+    | Rr.(DNSKEY | TSIG | TXT | CNAME as t) -> Ok ((name, t, cls), names, off + 4)
+    | Rr.(TLSA | SRV as t) when Domain_name.is_service name -> Ok ((name, t, cls), names, off + 4)
+    | Rr.SRV -> (* MUST be service name *)
+      Error (`Malformed (off, Fmt.strf "SRV must be a service name %a"
+                           Domain_name.pp name))
+    | t when Domain_name.is_hostname name -> Ok ((name, t, cls), names, off + 4)
+    | t -> Error (`Malformed (off, Fmt.strf "record %a must be a hostname %a"
+                                Rr.pp t Domain_name.pp name))
 
   module Question = struct
     type t = Domain_name.t * Rr.t
@@ -2549,7 +2507,7 @@ module Packet = struct
 
     let decode (_, flags) buf names off =
       let open Rresult.R.Infix in
-      let truncated = Header.FS.mem `Truncation flags in
+      let truncated = Flags.mem `Truncation flags in
       let ancount = Cstruct.BE.get_uint16 buf 6
       and aucount = Cstruct.BE.get_uint16 buf 8
       in
@@ -2605,7 +2563,7 @@ module Packet = struct
 
     let decode (_, flags) buf names off ancount =
       let open Rresult.R.Infix in
-      guard (not (Header.FS.mem `Truncation flags)) `Partial >>= fun () ->
+      guard (not (Flags.mem `Truncation flags)) `Partial >>= fun () ->
       let empty = Domain_name.Map.empty in
       (* TODO handle partial AXFR:
          - only first frame must have the question, subsequent may have empty questions
@@ -2956,6 +2914,46 @@ module Packet = struct
     opt_eq eq_tsig a.tsig b.tsig &&
     equal_data a.data b.data
 
+
+  type err = [
+    | `Bad_edns_version of int
+    | `Leftover of int * string
+    | `Malformed of int * string
+    | `Not_implemented of int * string
+    | `Notify_ack_answer_count of int
+    | `Notify_ack_authority_count of int
+    | `Notify_answer_count of int
+    | `Notify_authority_count of int
+    | `Partial
+    | `Query_answer_count of int
+    | `Query_authority_count of int
+    | `Rcode_cant_change of Rcode.t
+    | `Rcode_error_cant_noerror of Rcode.t
+    | `Request_rcode of Rcode.t
+    | `Truncated_request
+    | `Update_ack_answer_count of int
+    | `Update_ack_authority_count of int
+  ]
+
+  let pp_err ppf = function
+    | `Bad_edns_version version -> Fmt.pf ppf "bad edns version %d" version
+    | `Leftover (off, n) -> Fmt.pf ppf "leftover %s at %d" n off
+    | `Malformed (off, n) -> Fmt.pf ppf "malformed at %d: %s" off n
+    | `Not_implemented (off, msg) -> Fmt.pf ppf "not implemented at %d: %s" off msg
+    | `Notify_ack_answer_count an -> Fmt.pf ppf "notify ack answer count is %d" an
+    | `Notify_ack_authority_count au -> Fmt.pf ppf "notify ack authority count is %d" au
+    | `Notify_answer_count an -> Fmt.pf ppf "notify answer count is %d" an
+    | `Notify_authority_count au -> Fmt.pf ppf "notify authority count is %d" au
+    | `Partial -> Fmt.string ppf "partial"
+    | `Query_answer_count an -> Fmt.pf ppf "query answer count is %d" an
+    | `Query_authority_count au -> Fmt.pf ppf "query authority count is %d" au
+    | `Rcode_cant_change rc -> Fmt.pf ppf "edns tried to change rcode from noerror to %a" Rcode.pp rc
+    | `Rcode_error_cant_noerror rc -> Fmt.pf ppf "edns tried to change rcode from %a to noerror" Rcode.pp rc
+    | `Request_rcode rc -> Fmt.pf ppf "query with rcode %a (must be noerr)" Rcode.pp rc
+    | `Truncated_request -> Fmt.string ppf "truncated request"
+    | `Update_ack_answer_count an -> Fmt.pf ppf "update ack answer count is %d" an
+    | `Update_ack_authority_count au -> Fmt.pf ppf "update ack authority count is %d" au
+
   let decode_additional names buf off allow_trunc adcount =
     let open Rresult.R.Infix in
     decode_n_additional names buf off Domain_name.Map.empty None None adcount >>= function
@@ -2995,7 +2993,7 @@ module Packet = struct
         (* guard noerror - what's the point in handling error requests *)
         guard (rcode = Rcode.NoError) (`Request_rcode rcode) >>= fun () ->
         (* also guard for it not being truncated!? *)
-        guard (not (Header.FS.mem `Truncation (snd header)))
+        guard (not (Flags.mem `Truncation (snd header)))
           `Truncated_request >>= fun () ->
         begin match operation with
           | Opcode.Query ->

@@ -231,10 +231,10 @@ let find_glue trie typ name names =
 
 let authoritative =
   (* TODO should copy recursion desired *)
-  Packet.Header.FS.singleton `Authoritative
+  Packet.Flags.singleton `Authoritative
 
 let err_flags = function
-  | Rcode.NotAuth -> Packet.Header.FS.empty
+  | Rcode.NotAuth -> Packet.Flags.empty
   | _ -> authoritative
 
 let lookup trie (name, typ) =
@@ -272,7 +272,7 @@ let lookup trie (name, typ) =
         ns Domain_name.Map.empty
     in
     let authority = Domain_name.Map.singleton name Rr_map.(singleton Ns (ttl, ns)) in
-    Ok (Packet.Header.FS.empty, (Name_rr_map.empty, authority), Some additional)
+    Ok (Packet.Flags.empty, (Name_rr_map.empty, authority), Some additional)
   | Error (`EmptyNonTerminal (zname, soa)) ->
     let authority = Domain_name.Map.singleton zname Rr_map.(singleton Soa soa) in
     Ok (authoritative, (Name_rr_map.empty, authority), None)
@@ -883,7 +883,7 @@ module Secondary = struct
 
   let header rng () =
     let id = Randomconv.int ~bound:(1 lsl 16 - 1) rng in
-    id, Packet.Header.FS.empty
+    id, Packet.Flags.empty
 
   let axfr t proto now ts q_name name =
     let header = header t.rng ()

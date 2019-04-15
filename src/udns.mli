@@ -752,47 +752,25 @@ end
    operations.  *)
 module Packet : sig
 
-  type err = [
-    | `Bad_edns_version of int
-    | `Leftover of int * string
-    | `Malformed of int * string
-    | `Not_implemented of int * string
-    | `Notify_ack_answer_count of int
-    | `Notify_ack_authority_count of int
-    | `Notify_answer_count of int
-    | `Notify_authority_count of int
-    | `Partial
-    | `Query_answer_count of int
-    | `Query_authority_count of int
-    | `Rcode_cant_change of Rcode.t
-    | `Rcode_error_cant_noerror of Rcode.t
-    | `Request_rcode of Rcode.t
-    | `Truncated_request
-    | `Update_ack_answer_count of int
-    | `Update_ack_authority_count of int
-  ]
+  module Flag : sig
+    type t = [
+      | `Authoritative
+      | `Truncation
+      | `Recursion_desired
+      | `Recursion_available
+      | `Authentic_data
+      | `Checking_disabled
+    ]
 
-  val pp_err : err Fmt.t
+    val compare : t -> t -> int
+    val pp : t Fmt.t
+    val pp_short : t Fmt.t
+  end
+
+  module Flags : Set.S with type elt = Flag.t
 
   module Header : sig
-    module Flags : sig
-      type t = [
-        | `Authoritative
-        | `Truncation
-        | `Recursion_desired
-        | `Recursion_available
-        | `Authentic_data
-        | `Checking_disabled
-      ]
-
-      val compare : t -> t -> int
-      val pp : t Fmt.t
-      val pp_short : t Fmt.t
-    end
-
-    module FS : Set.S with type elt = Flags.t
-
-    type t = int * FS.t
+    type t = int * Flags.t
 
     val compare : t -> t -> int
   end
@@ -894,6 +872,28 @@ module Packet : sig
   val pp_header : t Fmt.t
 
   val equal : t -> t -> bool
+
+  type err = [
+    | `Bad_edns_version of int
+    | `Leftover of int * string
+    | `Malformed of int * string
+    | `Not_implemented of int * string
+    | `Notify_ack_answer_count of int
+    | `Notify_ack_authority_count of int
+    | `Notify_answer_count of int
+    | `Notify_authority_count of int
+    | `Partial
+    | `Query_answer_count of int
+    | `Query_authority_count of int
+    | `Rcode_cant_change of Rcode.t
+    | `Rcode_error_cant_noerror of Rcode.t
+    | `Request_rcode of Rcode.t
+    | `Truncated_request
+    | `Update_ack_answer_count of int
+    | `Update_ack_authority_count of int
+  ]
+
+  val pp_err : err Fmt.t
 
   val decode : Cstruct.t -> (t, err) result
 

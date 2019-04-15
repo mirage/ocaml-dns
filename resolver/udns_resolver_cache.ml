@@ -583,7 +583,7 @@ let answer t ts (name, typ) =
     (* TODO why was this RA + RD in here? should not be RD for recursive algorithm
        TODO should it be authoritative for recursive algorithm? *)
     let data = (answer, authority) in
-    let flags = Packet.Header.FS.singleton `Recursion_desired
+    let flags = Packet.Flags.singleton `Recursion_desired
     (* XXX: we should look for a fixpoint here ;) *)
     (*    and additional, t = if add then additionals t ts answer else [], t *)
     and data = match rcode with

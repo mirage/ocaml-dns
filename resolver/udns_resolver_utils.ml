@@ -41,7 +41,7 @@ let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional
            asking for AAAA coffee.soup.io, get empty answer + authority *)
         (* the "sub" should be relaxed - for dig ns mail.mehnert.org I get soa in mehnert.org!
            --> but how to discover SOA/zone boundaries? *)
-        let rank = if Packet.Header.FS.mem `Authoritative flags then AuthoritativeAuthority else Additional in
+        let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAuthority else Additional in
         match
           Domain_name.Map.fold (fun name rr_map acc ->
               if Domain_name.sub ~subdomain:q_name ~domain:name then
@@ -62,7 +62,7 @@ let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional
         | [] -> [] (* general case when we get an answer from root server *)
       end, Domain_name.Set.empty
     | Some rr_map ->
-      let rank = if Packet.Header.FS.mem `Authoritative flags then AuthoritativeAnswer else NonAuthoritativeAnswer in
+      let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAnswer else NonAuthoritativeAnswer in
       (* collect those rrsets which are of interest depending on q_type! *)
       if q_type = Rr.ANY then
         Rr_map.fold (fun b (acc, names) ->
@@ -103,7 +103,7 @@ let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional
         authority
         ([], Domain_name.Set.empty)
     in
-    let rank = if Packet.Header.FS.mem `Authoritative flags then AuthoritativeAuthority else Additional in
+    let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAuthority else Additional in
     List.fold_left (fun acc (name, ns) ->
         (Rr.NS, name, rank, `Entry Rr_map.(B (Ns, ns))) :: acc)
       [] nm, names
@@ -140,7 +140,7 @@ let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional
     not (Domain_name.Map.is_empty authority && Domain_name.Map.is_empty additional)
   in
   match answers, ns with
-  | [], [] when not answer_complete && Packet.Header.FS.mem `Truncation flags ->
+  | [], [] when not answer_complete && Packet.Flags.mem `Truncation flags ->
     (* special handling for truncated replies.. better not add anything *)
     Logs.warn (fun m -> m "truncated reply for %a, ignoring completely"
                   Packet.Question.pp (q_name, q_type));
@@ -183,7 +183,7 @@ let nxdomain (_, flags) (name, _typ) data =
   in
   let soa = find_soa name authority in
   (* since NXDomain have CNAME semantics, we store them as CNAME *)
-  let rank = if Packet.Header.FS.mem `Authoritative flags then AuthoritativeAnswer else NonAuthoritativeAnswer in
+  let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAnswer else NonAuthoritativeAnswer in
   (* we conclude NXDomain, there are 3 cases we care about:
      no soa in authority and no cname answer -> inject an invalid_soa (avoid loops)
      a matching soa, no cname -> NoDom q_name

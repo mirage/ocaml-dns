@@ -4,6 +4,6 @@
  (public_name udns)
  (wrapped false)
  (libraries rresult cstruct astring fmt ipaddr logs ptime gmap domain-name)
-; (preprocess (pps ppx_expect)) ; once https://github.com/ocaml/dune/issues/897 is resolved
-; (inline_tests)
+ (preprocess (pps ppx_expect)) ; once https://github.com/ocaml/dune/issues/897 is resolved
+ (inline_tests)
 )

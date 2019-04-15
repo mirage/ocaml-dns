@@ -51,7 +51,7 @@ val follow_cname : t -> int64 -> Rr.t -> name:Domain_name.t -> int32 -> alias:Do
   ]
 
 val answer : t -> int64 -> Packet.Question.t ->
-  [ `Query of Domain_name.t * t | `Packet of Packet.Header.FS.t * Packet.reply * t ]
+  [ `Query of Domain_name.t * t | `Packet of Packet.Flags.t * Packet.reply * t ]
 
 (*
 val resolve_ns : t -> int64 -> Domain_name.t ->
@@ -66,6 +66,6 @@ val resolve : t -> rng:(int -> Cstruct.t) ->  int64 -> Domain_name.t -> Rr.t ->
   Domain_name.t * Domain_name.t * Rr.t * Ipaddr.V4.t * t
 
 val handle_query : t -> rng:(int -> Cstruct.t) -> int64 -> Packet.Question.t ->
-  [ `Reply of Packet.Header.FS.t * Packet.reply
+  [ `Reply of Packet.Flags.t * Packet.reply
   | `Nothing
   | `Query of Domain_name.t * Domain_name.t * Rr.t * Ipaddr.V4.t ] * t

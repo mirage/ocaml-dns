@@ -13,7 +13,7 @@ let create_update zone hostname ip_address =
         ]
     in
     (Domain_name.Map.empty, up)
-  and header = Random.int 0xFFFF, Packet.Header.FS.empty
+  and header = Random.int 0xFFFF, Packet.Flags.empty
   in
   Packet.create header zone (`Update update)
 

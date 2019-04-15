@@ -80,7 +80,7 @@ module Packet = struct
              4d 41 49 4c c0 56 78 39 c3 d1 00 00 2a 30 00 00
              03 84 00 12 75 00 00 00 2a 30|___}
     in
-    let flags = Header.FS.(add `Authoritative (add `Recursion_desired (singleton `Recursion_available)))
+    let flags = Flags.(add `Authoritative (add `Recursion_desired (singleton `Recursion_available)))
     and content =
       let soa = {
       Soa.nameserver = n_of_s "CON1R.NIPR.MIL" ;
@@ -107,7 +107,7 @@ module Packet = struct
                            73 06 72 69 73 65 75 70 03 6e 65 74 00 00 1c 00
                            01|___}
     in
-    let flags = Header.FS.singleton `Recursion_desired in
+    let flags = Flags.singleton `Recursion_desired in
     let res =
       Packet.create (0x83D9, flags) (n_of_s "keys.riseup.net", Rr.AAAA) `Query
     in
@@ -123,7 +123,7 @@ module Packet = struct
                            02 63 6f 02 75 6b 00 59 5c bd ce 00 01 51 80 00
                            01 51 80 00 01 51 80 00 00 01 2c|___}
     in
-    let flags = Header.FS.singleton `Authoritative
+    let flags = Flags.singleton `Authoritative
     and content =
       let soa = {
         Soa.nameserver = n_of_s ~hostname:false "212.58.230.200" ;
@@ -147,7 +147,7 @@ module Packet = struct
         e801 3001 3001 3001 3000 0000 2901 c2 00
         0000 0000 00|___}
     in
-    let flags = Header.FS.(add `Recursion_desired (singleton `Recursion_available))
+    let flags = Flags.(add `Recursion_desired (singleton `Recursion_available))
     and question =
       (Domain_name.of_string_exn ~hostname:false "foo.com", Rr.MX)
     and answer =
@@ -189,7 +189,7 @@ module Packet = struct
     and edns = Edns.create ~payload_size:4096 ()
     in
     let res =
-      Packet.create ~edns (0x9FCA, Header.FS.empty) question
+      Packet.create ~edns (0x9FCA, Flags.empty) question
         (`Rcode_error (Rcode.NXDomain, Opcode.Query, Some (Name_rr_map.empty, authority)))
     in
     Alcotest.(check (result t_ok p_err) "regression 4 decodes"
@@ -201,7 +201,7 @@ module Packet = struct
                            03 62 62 63 03 6e 65 74  02 75 6b 00 00 02 00 01
                            00 00 29 05 cc 00 00 00  00 00 00|___}
     in
-    let flags = Header.FS.singleton `Authoritative
+    let flags = Flags.singleton `Authoritative
     and question = (Domain_name.of_string_exn "ns4.bbc.net.uk", Rr.NS)
     in
     let res = Packet.create (0x5B12, flags) question
@@ -434,7 +434,7 @@ module Packet = struct
 
   let regression7 () =
     (* encoding a remove_single in an update frame lead to wrong rdlength (off by 2) *)
-    let header = 0xAE00, Header.FS.empty
+    let header = 0xAE00, Flags.empty
     and update =
       let up =
         Domain_name.Map.singleton
@@ -453,7 +453,7 @@ module Packet = struct
 
   let regression8 () =
     (* encoding a exists_data in an update frame lead to wrong rdlength (off by 2) *)
-    let header = 0xAE00, Header.FS.empty
+    let header = 0xAE00, Flags.empty
     and prereq =
       let pre =
         Domain_name.Map.singleton (n_of_s "www.example.com")
@@ -476,7 +476,7 @@ a8 6c 00 00 00 01 00 00  00 00 00 01 04 6e 71 73
 00 0a 00 08 c8 9a 2a f8  aa 77 31 af 00 09 00 00
 |}
     in
-    let header = 0xa86c, Header.FS.empty
+    let header = 0xa86c, Flags.empty
     and question = (n_of_s "nqsb.io", Rr.A)
     and edns =
       let extensions = [
