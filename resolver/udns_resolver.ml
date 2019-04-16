@@ -60,13 +60,13 @@ let create ?(size = 10000) ?(mode = `Recursive) now rng primary =
   let cache =
     List.fold_left (fun cache (name, b) ->
         Udns_resolver_cache.maybe_insert
-          Rr.A name now Udns_resolver_cache.Additional
+          A name now Udns_resolver_cache.Additional
           (`Entry b) cache)
       cache Udns_resolver_root.a_records
   in
   let cache =
     Udns_resolver_cache.maybe_insert
-      Rr.NS Domain_name.root now Udns_resolver_cache.Additional
+      Ns Domain_name.root now Udns_resolver_cache.Additional
       (`Entry Udns_resolver_root.ns_records) cache
   in
   { rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty ; mode }
@@ -167,9 +167,9 @@ let handle_query t its out ?(retry = 0) proto edns from port ts q qid =
       s := { !s with drop_send = succ !s.drop_send } ;
       (* TODO reply with error! *)
       `Nothing, t
-    | `Query (zone, nam, typ, ip) ->
-      Logs.debug (fun m -> m "have to query (zone %a) %a (%a) using ip %a"
-                     Domain_name.pp zone Domain_name.pp nam Rr.pp typ Ipaddr.V4.pp ip);
+    | `Query (zone, (nam, typ), ip) ->
+      Logs.debug (fun m -> m "have to query (zone %a) %a using ip %a"
+                     Domain_name.pp zone Packet.Question.pp (nam, typ) Ipaddr.V4.pp ip);
       maybe_query t ts retry out ip nam typ (proto, zone, edns, from, port, q, qid)
     | `Reply (flags, a) ->
       let max_out = if !s.max_out < out then out else !s.max_out in
@@ -194,9 +194,9 @@ let scrub_it mode t proto zone edns ts p =
   | Ok xs, _ ->
     let cache =
       List.fold_left
-        (fun t (ty, n, r, e) ->
+        (fun t (Rr_map.K ty, n, r, e) ->
            Logs.debug (fun m -> m "maybe_insert %a %a %a"
-                            Rr.pp ty Domain_name.pp n Udns_resolver_cache.pp_res e) ;
+                            Rr_map.ppk (K ty) Domain_name.pp n Udns_resolver_cache.pp_res e) ;
            Udns_resolver_cache.maybe_insert ty n ts r e t)
         t xs
     in
@@ -256,9 +256,6 @@ let handle_primary t now ts proto sender sport packet _request buf =
     | `None -> `None
     | `Delegation x -> `Delegation x
 
-let supported = [ Rr.A ; Rr.NS ; Rr.CNAME ; Rr.SOA ; Rr.PTR ; Rr.MX ; Rr.TXT ;
-                  Rr.AAAA ; Rr.SRV ; Rr.SSHFP ; Rr.TLSA ; Rr.ANY ]
-
 let handle_awaiting_queries ?retry t ts q =
   let queried, values = find_queries t.queried q in
   let t = { t with queried } in
@@ -276,22 +273,12 @@ let resolve t ts proto sender sport req =
     Logs.info (fun m -> m "resolving %a" Packet.pp req) ;
     if not (Packet.Flags.mem `Recursion_desired (snd req.header)) then
       Logs.warn (fun m -> m "recursion not desired") ;
-    if List.mem (snd req.question) supported then begin
-      s := { !s with questions = succ !s.questions };
-      (* ask the cache *)
-      begin match handle_query t ts 0 proto req.edns sender sport ts req.question (fst req.header) with
-          | `Answer pkt, t -> t, [ (proto, sender, sport, pkt) ], []
-          | `Nothing, t -> t, [], [] (* TODO: send a reply!? *)
-          | `Query (packet, dst), t -> t, [], [ `Udp, dst, packet ]
-      end
-    end else begin
-      Logs.err (fun m -> m "unsupported query type %a" Rr.pp (snd req.question));
-      let pkt =
-        Packet.create (fst req.header, Packet.Flags.empty) req.question
-          (`Rcode_error (Rcode.NotImp, Opcode.Query, None))
-      in
-      let buf, _ = Packet.encode proto pkt in
-      t, [ proto, sender, sport, buf ], []
+    s := { !s with questions = succ !s.questions };
+    (* ask the cache *)
+    begin match handle_query t ts 0 proto req.edns sender sport ts req.question (fst req.header) with
+      | `Answer pkt, t -> t, [ (proto, sender, sport, pkt) ], []
+      | `Nothing, t -> t, [], [] (* TODO: send a reply!? *)
+      | `Query (packet, dst), t -> t, [], [ `Udp, dst, packet ]
     end
   | _ ->
     Logs.err (fun m -> m "ignoring %a" Packet.pp req);
@@ -368,8 +355,7 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
         let t = { t with cache } in
         (* we should look into delegation for the actual delegation name,
            but instead we're looking for any glue (A) in additional *)
-        let ips = Domain_name.Map.fold (fun n rrmap ips ->
-            Logs.debug (fun m -> m "%a maybe in %a" Domain_name.pp n Rr_map.pp rrmap) ;
+        let ips = Domain_name.Map.fold (fun _ rrmap ips ->
             match Rr_map.(find A rrmap) with
             | None -> ips
             | Some (_, ips') -> Rr_map.Ipv4_set.union ips ips')
@@ -380,8 +366,8 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
             Logs.err (fun m -> m "something is wrong, delegation but no IP");
             t, [], []
           | Some ip ->
-            Logs.debug (fun m -> m "found ip %a, maybe querying for %a %a"
-                           Ipaddr.V4.pp ip Rr.pp (snd req.question) Domain_name.pp name) ;
+            Logs.debug (fun m -> m "found ip %a, maybe querying %a"
+                           Ipaddr.V4.pp ip Packet.Question.pp (name, snd req.question)) ;
             (* TODO is Domain_name.root correct here? *)
             begin match maybe_query ~recursion_desired:true t ts 0 0 ip name (snd req.question) (proto, Domain_name.root, req.edns, sender, sport, req.question, fst req.header) with
               | `Nothing, t ->
@@ -455,11 +441,11 @@ let query_root t now proto =
     | Some x -> x
   in
   let ip =
-    match Udns_resolver_cache.cached t.cache now Rr.NS Domain_name.root with
+    match Udns_resolver_cache.cached t.cache now Ns Domain_name.root with
     | Ok (`Entry Rr_map.(B (Ns, (_, names))), _) ->
       let ips =
         Domain_name.Set.fold (fun name acc ->
-            match Udns_resolver_cache.cached t.cache now Rr.A name with
+            match Udns_resolver_cache.cached t.cache now A name with
             | Ok (`Entry Rr_map.(B (A, (_, ips))), _) ->
               Rr_map.Ipv4_set.union ips acc
             | _ -> acc)
@@ -471,7 +457,7 @@ let query_root t now proto =
       end
     | _ -> root_ip ()
   in
-  let q = (Domain_name.root, Rr.NS)
+  let q = Packet.Question.create Domain_name.root Ns
   and id = Randomconv.int16 t.rng
   in
   let edns = Some (Edns.create ()) in

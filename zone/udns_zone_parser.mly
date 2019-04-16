@@ -20,9 +20,9 @@
 %{
 
 open Udns_zone_state
+open Udns
 
-let parse_error s =
-  raise (Zone_parse_problem s)
+let parse_error s = raise (Zone_parse_problem s)
 
 (* Parsers for numbers *)
 let parse_uint8 s =
@@ -49,7 +49,7 @@ let parse_uint32 s =
 let parse_ipv6 s =
   Ipaddr.V6.of_string_exn s
 
-open Udns
+let add_to_map name (Rr_map.B (k, v)) = Name_rr_map.add name k v
 %}
 
 %token EOF
@@ -76,6 +76,7 @@ open Udns
 %token <string> TYPE_DNSKEY
 %token <string> TYPE_TLSA
 %token <string> TYPE_SSHFP
+%token <string> TYPE_GENERIC
 
 %token <string> CLASS_IN
 %token <string> CLASS_CS
@@ -103,11 +104,11 @@ origin: SORIGIN s domain { state.origin <- $3 }
 ttl: STTL s int32 { state.ttl <- $3 }
 
 rrline:
-   owner s int32 s rrclass s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $7 $3) state.zone }
- | owner s rrclass s int32 s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $7 $5) state.zone  }
- | owner s rrclass s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $5 state.ttl) state.zone }
- | owner s int32 s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $5 $3) state.zone }
- | owner s rr { state.zone <- Name_rr_map.add $1 (Rr_map.with_ttl $3 state.ttl) state.zone }
+   owner s int32 s rrclass s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $7 $3) state.zone }
+ | owner s rrclass s int32 s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $7 $5) state.zone  }
+ | owner s rrclass s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $5 state.ttl) state.zone }
+ | owner s int32 s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $5 $3) state.zone }
+ | owner s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $3 state.ttl) state.zone }
 
 rrclass:
    CLASS_IN {}
@@ -116,6 +117,11 @@ rrclass:
  | CLASS_HS { parse_error "class must be \"IN\"" }
 
 rr:
+generic_type s generic_rdata {
+  match Rr_map.I.of_int $1 with
+  | Ok i -> B (Unknown i, (0l, Rr_map.Txt_set.singleton $3))
+  | Error _ -> parse_error "type code reserved, not generic"
+}
      /* RFC 1035 */
  | TYPE_A s ipv4 { B (A, (0l, Rr_map.Ipv4_set.singleton $3)) }
  | TYPE_NS s domain { B (Ns, (0l, Domain_name.Set.singleton $3)) }
@@ -173,6 +179,25 @@ single_hex: charstring
 hex:
    single_hex { $1 }
  | hex s single_hex { Cstruct.append $1 $3 }
+
+generic_type: TYPE_GENERIC
+     { try parse_uint16 (String.sub $1 4 (String.length $1 - 4))
+       with Parsing.Parse_error -> parse_error ($1 ^ " is not a 16-bit number")
+     }
+
+generic_rdata: GENERIC s NUMBER s hex
+     { try
+         let len = int_of_string $3
+         and data = Cstruct.to_string $5
+         in
+         if not (String.length data = len) then
+           parse_error ("generic data length field is "
+			   ^ $3 ^ " but actual length is "
+			      ^ string_of_int (String.length data));
+	 data
+       with Failure _ ->
+	 parse_error ("\\# should be followed by a number")
+     }
 
 ipv4: NUMBER DOT NUMBER DOT NUMBER DOT NUMBER
      { try

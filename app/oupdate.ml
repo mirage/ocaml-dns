@@ -3,12 +3,12 @@
 open Udns
 
 let create_update zone hostname ip_address =
-  let zone = (zone, Rr.SOA)
+  let zone = Packet.Question.create zone Soa
   and update =
     let up =
       Domain_name.Map.singleton hostname
         [
-          Packet.Update.Remove Rr.A ;
+          Packet.Update.Remove (Rr_map.K A) ;
           Packet.Update.Add Rr_map.(B (A, (60l, Ipv4_set.singleton ip_address)))
         ]
     in

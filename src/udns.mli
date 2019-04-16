@@ -86,106 +86,6 @@ type proto = [ `Tcp | `Udp ]
 (** The type of supported protocols. Used by {!Packet.encode} to decide on
      maximum buffer length, etc. *)
 
-module Rr : sig
-  type t =
-    | A (* a host address [RFC1035] *)
-    | NS (* an authoritative name server,[RFC1035] *)
-    | MD (* a mail destination (OBSOLETE - use MX),[RFC1035] *)
-    | MF (* a mail forwarder (OBSOLETE - use MX),[RFC1035] *)
-    | CNAME (* the canonical name for an alias,[RFC1035] *)
-    | SOA (* marks the start of a zone of authority,[RFC1035] *)
-    | MB (* a mailbox domain name (EXPERIMENTAL),[RFC1035] *)
-    | MG (* a mail group member (EXPERIMENTAL),[RFC1035] *)
-    | MR (* a mail rename domain name (EXPERIMENTAL),[RFC1035] *)
-    | NULL (* a null RR (EXPERIMENTAL),[RFC1035] *)
-    | WKS (* a well known service description,[RFC1035] *)
-    | PTR (* a domain name pointer,[RFC1035] *)
-    | HINFO (* host information,[RFC1035] *)
-    | MINFO (* mailbox or mail list information,[RFC1035] *)
-    | MX (* mail exchange,[RFC1035] *)
-    | TXT (* text strings,[RFC1035] *)
-    | RP (* for Responsible Person,[RFC1183] *)
-    | AFSDB (* for AFS Data Base location,[RFC1183][RFC5864] *)
-    | X25 (* for X.25 PSDN address,[RFC1183] *)
-    | ISDN (* for ISDN address,[RFC1183] *)
-    | RT (* for Route Through,[RFC1183] *)
-    | NSAP (* "for NSAP address, NSAP style A record",[RFC1706] *)
-    | NSAP_PTR (* "for domain name pointer, NSAP style",[RFC1348][RFC1637][RFC1706] *)
-    | SIG (* for security signature,[RFC4034][RFC3755][RFC2535][RFC2536][RFC2537][RFC2931][RFC3110][RFC3008] *)
-    | KEY (* for security key,[RFC4034][RFC3755][RFC2535][RFC2536][RFC2537][RFC2539][RFC3008][RFC3110] *)
-    | PX (* X.400 mail mapping information,[RFC2163] *)
-    | GPOS (* Geographical Position,[RFC1712] *)
-    | AAAA (* IP6 Address,[RFC3596] *)
-    | LOC (* Location Information,[RFC1876] *)
-    | NXT (* Next Domain (OBSOLETE),[RFC3755][RFC2535] *)
-    | EID (* Endpoint Identifier,[Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt],,1995-06 *)
-    | NIMLOC (* Nimrod Locator,[1][Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt],,1995-06 *)
-    | SRV (* Server Selection,[1][RFC2782] *)
-    | ATMA (* ATM Address,"[ATM Forum Technical Committee, ""ATM Name System, V2.0"", Doc ID: AF-DANS-0152.000, July 2000. Available from and held in escrow by IANA.]" *)
-    | NAPTR (* Naming Authority Pointer,[RFC2915][RFC2168][RFC3403] *)
-    | KX (* Key Exchanger,[RFC2230] *)
-    | CERT (* CERT,[RFC4398] *)
-    | A6 (* A6 (OBSOLETE - use AAAA),[RFC3226][RFC2874][RFC6563] *)
-    | DNAME (* ,DNAME,[RFC6672] *)
-    | SINK (* SINK,[Donald_E_Eastlake][http://tools.ietf.org/html/draft-eastlake-kitchen-sink],,1997-11 *)
-    | OPT (* OPT,[RFC6891][RFC3225] *)
-    | APL (* APL,[RFC3123] *)
-    | DS (* Delegation Signer,[RFC4034][RFC3658] *)
-    | SSHFP (* SSH Key Fingerprint,[RFC4255] *)
-    | IPSECKEY (* IPSECKEY,[RFC4025] *)
-    | RRSIG (* RRSIG,[RFC4034][RFC3755] *)
-    | NSEC (* NSEC,[RFC4034][RFC3755] *)
-    | DNSKEY (* DNSKEY,[RFC4034][RFC3755] *)
-    | DHCID (* ,DHCID,[RFC4701] *)
-    | NSEC3 (* NSEC3,[RFC5155] *)
-    | NSEC3PARAM (* NSEC3PARAM,[RFC5155] *)
-    | TLSA (* TLSA,[RFC6698] *)
-    | SMIMEA (* S/MIME cert association,[RFC-ietf-dane-smime-16],SMIMEA/smimea-completed-template,2015-12-01 *)
-    (* Unassigned,54 *)
-    | HIP (* Host Identity Protocol,[RFC8005] *)
-    | NINFO (* NINFO,[Jim_Reid],NINFO/ninfo-completed-template,2008-01-21 *)
-    | RKEY (* RKEY,[Jim_Reid],RKEY/rkey-completed-template,2008-01-21 *)
-    | TALINK (* Trust Anchor LINK,[Wouter_Wijngaards],TALINK/talink-completed-template,2010-02-17 *)
-    | CDS (* Child DS,[RFC7344],CDS/cds-completed-template,2011-06-06 *)
-    | CDNSKEY (* DNSKEY(s) the Child wants reflected in DS,[RFC7344],,2014-06-16 *)
-    | OPENPGPKEY (* OpenPGP Key,[RFC7929],OPENPGPKEY/openpgpkey-completed-template,2014-08-12 *)
-    | CSYNC (* Child-To-Parent Synchronization,[RFC7477],,2015-01-27 *)
-    (* Unassigned,63-98 *)
-    | SPF (* [RFC7208] *)
-    | UINFO (* [IANA-Reserved] *)
-    | UID (* [IANA-Reserved] *)
-    | GID (* [IANA-Reserved] *)
-    | UNSPEC (* [IANA-Reserved] *)
-    | NID (* [RFC6742],ILNP/nid-completed-template *)
-    | L32 (* [RFC6742],ILNP/l32-completed-template *)
-    | L64 (* [RFC6742],ILNP/l64-completed-template *)
-    | LP (* [RFC6742],ILNP/lp-completed-template *)
-    | EUI48 (* an EUI-48 address,[RFC7043],EUI48/eui48-completed-template,2013-03-27 *)
-    | EUI64 (* an EUI-64 address,[RFC7043],EUI64/eui64-completed-template,2013-03-27 *)
-    (* Unassigned,110-248 *)
-    | TKEY (* Transaction Key,[RFC2930] *)
-    | TSIG (* Transaction Signature,[RFC2845] *)
-    | IXFR (* incremental transfer,[RFC1995] *)
-    | AXFR (* transfer of an entire zone,[RFC1035][RFC5936] *)
-    | MAILB (* "mailbox-related RRs (MB, MG or MR)",[RFC1035] *)
-    | MAILA (* mail agent RRs (OBSOLETE - see MX),[RFC1035] *)
-    | ANY (* A request for all records the server/cache has available,[RFC1035][RFC6895] *)
-    | URI (* URI,[RFC7553],URI/uri-completed-template,2011-02-22 *)
-    | CAA (* Certification Authority Restriction,[RFC6844],CAA/caa-completed-template,2011-04-07 *)
-    | AVC (* Application Visibility and Control,[Wolfgang_Riedel],AVC/avc-completed-template,2016-02-26 *)
-    (* Unassigned,259-32767 *)
-    | TA (* DNSSEC Trust Authorities,"[Sam_Weiler][http://cameo.library.cmu.edu/][
-            Deploying DNSSEC Without a Signed Root.  Technical Report 1999-19,
-                      Information Networking Institute, Carnegie Mellon University, April 2004.]",,2005-12-13 *)
-    | DLV (* DNSSEC Lookaside Validation,[RFC4431] *)
-  (* Unassigned,32770-65279 *)
-  (* Private use,65280-65534 *)
-  (* Reserved,65535 *)
-
-  val pp : t Fmt.t
-  val compare : t -> t -> int
-end
-
 module Clas : sig
   type t =
     (* Reserved0 [@id 0] RFC6895 *)
@@ -657,65 +557,65 @@ module Rr_map : sig
   module Tlsa_set : Set.S with type elt = Tlsa.t
   module Sshfp_set : Set.S with type elt = Sshfp.t
 
-  type _ k =
-    | Soa : Soa.t k
-    | Ns : (int32 * Domain_name.Set.t) k
-    | Mx : (int32 * Mx_set.t) k
-    | Cname : (int32 * Domain_name.t) k
-    | A : (int32 * Ipv4_set.t) k
-    | Aaaa : (int32 * Ipv6_set.t) k
-    | Ptr : (int32 * Domain_name.t) k
-    | Srv : (int32 * Srv_set.t) k
-    | Dnskey : (int32 * Dnskey_set.t) k
-    | Caa : (int32 * Caa_set.t) k
-    | Tlsa : (int32 * Tlsa_set.t) k
-    | Sshfp : (int32 * Sshfp_set.t) k
-    | Txt : (int32 * Txt_set.t) k
+  module I : sig
+    type t
+    val of_int : ?off:int -> int -> (t, [> `Malformed of int * string ]) result
+    val to_int : t -> int
+    val compare : t -> t -> int
+  end
 
-  val equal_k : 'a k -> 'a -> 'b k -> 'b -> bool
-  (** [equal_k k v k' v'] is [true] if [k = k'] and [v = v'], [false] otherwise. *)
+  type _ rr =
+    | Soa : Soa.t rr
+    | Ns : (int32 * Domain_name.Set.t) rr
+    | Mx : (int32 * Mx_set.t) rr
+    | Cname : (int32 * Domain_name.t) rr
+    | A : (int32 * Ipv4_set.t) rr
+    | Aaaa : (int32 * Ipv6_set.t) rr
+    | Ptr : (int32 * Domain_name.t) rr
+    | Srv : (int32 * Srv_set.t) rr
+    | Dnskey : (int32 * Dnskey_set.t) rr
+    | Caa : (int32 * Caa_set.t) rr
+    | Tlsa : (int32 * Tlsa_set.t) rr
+    | Sshfp : (int32 * Sshfp_set.t) rr
+    | Txt : (int32 * Txt_set.t) rr
+    | Unknown : I.t -> (int32 * Txt_set.t) rr
 
-  include Gmap.S with type 'a key = 'a k
+  include Gmap.S with type 'a key = 'a rr
 
-  val to_rr_typ : b -> Rr.t
-  (** [to_rr_typ b] is the resource record typ of [b]. *)
+  val equal_rr : 'a key -> 'a -> 'a -> bool
+  (** [equal_rr k v v'] is [true] if [v = v'], [false] otherwise. *)
 
-  val k_to_rr_typ : 'a k -> Rr.t
-  (** [k_to_rr_typ k] is the resource record typ of [k]. *)
+  val equalb : b -> b -> bool
+  (** [equalb b b'] is [true] if the bindings are equal. *)
 
-  val names : 'a k -> 'a -> Domain_name.Set.t
+  type k = K : 'a key -> k
+  (** The monomorphic type of keys. *)
+
+  val comparek : k -> k -> int
+  (** [comparek k k'] compares [k] with [k'] using the defined ordering. *)
+
+  val ppk : k Fmt.t
+  (** [ppk ppf k] pretty-prints [k]. *)
+
+  val names : 'a key -> 'a -> Domain_name.Set.t
   (** [names k v] are the referenced domain names in the given binding. *)
-
-  val names_b : b -> Domain_name.Set.t
-  (** [names_b binding] are the referenced domain names in the given binding. *)
-
-  val lookup_rr : Rr.t -> t -> b option
-  (** [lookup_rr typ t] looks up the [typ] in [t]. *)
-
-  val remove_rr : Rr.t -> t -> t
-  (** [remove_rr typ t] removes the [typ] in [t]. *)
 
   val pp_b : b Fmt.t
   (** [pp_b ppf b] pretty-prints the binding [b]. *)
 
-  val equal_b : b -> b -> bool
-  (** [equal_b b b'] is [true] if the bindings are equal. *)
-
   val text_b : ?origin:Domain_name.t -> ?default_ttl:int32 -> Domain_name.t -> b -> string
-  (** [text ~origin ~default_ttl domain-name binding] is the zone file format of [binding] using
+  (** [text_b ~origin ~default_ttl domain-name binding] is the zone file format of [binding] using
       [domain-name]. *)
 
-  val subtract_k : 'a k -> 'a -> 'a -> 'a option
-  (** [subtract_k k v rem] removes [rem] from [v]. If the result is an empty set,
-     [None] is returned. *)
+  val remove_rr : 'a key -> 'a -> 'a -> 'a option
+  (** [remove_rr k v rem] removes [rem] from [v]. If the result is an empty set,
+      [None] is returned. *)
 
-  val combine_k : 'a k -> 'a -> 'a -> 'a
-  (** [combine_k k old new] combines [old] with [new]. [new] always wins. *)
+  val union_rr : 'a key -> 'a -> 'a -> 'a
+  (** [combine_k k l r] combines [l] with [r]. A potential [r] Soa or Cname
+      overwrites its [l] counterpart. *)
 
-  val combine_opt : 'a k -> 'a -> 'a option -> 'a option
-  (** [combine_opt k new old] is [new] if [old] is [None], otherwise [combine_k k old v]. *)
-
-  val text : ?origin:Domain_name.t -> ?default_ttl:int32 -> Domain_name.t -> 'a k -> 'a -> string
+  val text : ?origin:Domain_name.t -> ?default_ttl:int32 -> Domain_name.t -> 'a rr -> 'a -> string
   (** [text ~origin ~default_ttl name k v] is the zone file data for [k, v]. *)
 
   val get_ttl : b -> int32
@@ -739,11 +639,15 @@ module Name_rr_map : sig
 
   val pp : t Fmt.t
 
-  val add : Domain_name.t -> Rr_map.b -> t -> t
+  val add : Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
 
-  val find : Domain_name.t -> 'a Rr_map.k -> t -> 'a option
+  val find : Domain_name.t -> 'a Rr_map.key -> t -> 'a option
 
   val remove_sub : t -> t -> t
+
+  val singleton : Domain_name.t -> 'a Rr_map.key -> 'a -> t
+
+  val union : t -> t -> t
 end
 
 (** The DNS packet.
@@ -776,7 +680,9 @@ module Packet : sig
   end
 
   module Question : sig
-    type t = Domain_name.t * Rr.t
+    type t = Domain_name.t * [ `Any | `Axfr | `K of Rr_map.k ]
+
+    val create : Domain_name.t -> 'a Rr_map.key -> t
 
     val pp : t Fmt.t
     val compare : t -> t -> int
@@ -798,16 +704,16 @@ module Packet : sig
 
   module Update : sig
     type prereq =
-      | Exists of Rr.t
+      | Exists of Rr_map.k
       | Exists_data of Rr_map.b
-      | Not_exists of Rr.t
+      | Not_exists of Rr_map.k
       | Name_inuse
       | Not_name_inuse
     val pp_prereq : prereq Fmt.t
     val equal_prereq : prereq -> prereq -> bool
 
     type update =
-      | Remove of Rr.t
+      | Remove of Rr_map.k
       | Remove_all
       | Remove_single of Rr_map.b
       | Add of Rr_map.b

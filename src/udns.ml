@@ -16,173 +16,6 @@ let guard p err = if p then Ok () else Error err
 let src = Logs.Src.create "udns" ~doc:"UDNS core"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Rr = struct
-  (* 16 bit *)
-  type t =
-    | A (* 1 a host address [RFC1035] *)
-    | NS (* 2 an authoritative name server,[RFC1035] *)
-    | MD (* 3 a mail destination (OBSOLETE - use MX),[RFC1035] *)
-    | MF (* 4 a mail forwarder (OBSOLETE - use MX),[RFC1035] *)
-    | CNAME (* 5 the canonical name for an alias,[RFC1035] *)
-    | SOA (* 6 marks the start of a zone of authority,[RFC1035] *)
-    | MB (* 7 a mailbox domain name (EXPERIMENTAL),[RFC1035] *)
-    | MG (* 8 a mail group member (EXPERIMENTAL),[RFC1035] *)
-    | MR (* 9 a mail rename domain name (EXPERIMENTAL),[RFC1035] *)
-    | NULL (* 10 a null RR (EXPERIMENTAL),[RFC1035] *)
-    | WKS (* 11 a well known service description,[RFC1035] *)
-    | PTR (* 12 a domain name pointer,[RFC1035] *)
-    | HINFO (* 13 host information,[RFC1035] *)
-    | MINFO (* 14 mailbox or mail list information,[RFC1035] *)
-    | MX (* 15 mail exchange,[RFC1035] *)
-    | TXT (* 16 text strings,[RFC1035] *)
-    | RP (* 17 for Responsible Person,[RFC1183] *)
-    | AFSDB (* 18 for AFS Data Base location,[RFC1183][RFC5864] *)
-    | X25 (* 19 for X.25 PSDN address,[RFC1183] *)
-    | ISDN (* 20 for ISDN address,[RFC1183] *)
-    | RT (* 21 for Route Through,[RFC1183] *)
-    | NSAP (* 22 "for NSAP address, NSAP style A record",[RFC1706] *)
-    | NSAP_PTR (* 23 "for domain name pointer, NSAP style",[RFC1348][RFC1637][RFC1706] *)
-    | SIG (* 24 for security signature,[RFC4034][RFC3755][RFC2535][RFC2536][RFC2537][RFC2931][RFC3110][RFC3008] *)
-    | KEY (* 25 for security key,[RFC4034][RFC3755][RFC2535][RFC2536][RFC2537][RFC2539][RFC3008][RFC3110] *)
-    | PX (* 26 X.400 mail mapping information,[RFC2163] *)
-    | GPOS (* 27 Geographical Position,[RFC1712] *)
-    | AAAA (* 28 IP6 Address,[RFC3596] *)
-    | LOC (* 29 Location Information,[RFC1876] *)
-    | NXT (* 30 Next Domain (OBSOLETE),[RFC3755][RFC2535] *)
-    | EID (* 31 Endpoint Identifier,[Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt],,1995-06 *)
-    | NIMLOC (* 32 Nimrod Locator,[1][Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt],,1995-06 *)
-    | SRV (* 33 Server Selection,[1][RFC2782] *)
-    | ATMA (* 34 ATM Address,"[ATM Forum Technical Committee, ""ATM Name System, V2.0"", Doc ID: AF-DANS-0152.000, July 2000. Available from and held in escrow by IANA.]" *)
-    | NAPTR (* 35 Naming Authority Pointer,[RFC2915][RFC2168][RFC3403] *)
-    | KX (* 36 Key Exchanger,[RFC2230] *)
-    | CERT (* 37 CERT,[RFC4398] *)
-    | A6 (* 38 A6 (OBSOLETE - use AAAA),[RFC3226][RFC2874][RFC6563] *)
-    | DNAME (* 39 ,DNAME,[RFC6672] *)
-    | SINK (* 40 SINK,[Donald_E_Eastlake][http://tools.ietf.org/html/draft-eastlake-kitchen-sink],,1997-11 *)
-    | OPT (* 41 OPT,[RFC6891][RFC3225] *)
-    | APL (* 42 APL,[RFC3123] *)
-    | DS (* 43 Delegation Signer,[RFC4034][RFC3658] *)
-    | SSHFP (* 44 SSH Key Fingerprint,[RFC4255] *)
-    | IPSECKEY (* 45 IPSECKEY,[RFC4025] *)
-    | RRSIG (* 46 RRSIG,[RFC4034][RFC3755] *)
-    | NSEC (* 47 NSEC,[RFC4034][RFC3755] *)
-    | DNSKEY (* 48 DNSKEY,[RFC4034][RFC3755] *)
-    | DHCID (* 49 ,DHCID,[RFC4701] *)
-    | NSEC3 (* 50 NSEC3,[RFC5155] *)
-    | NSEC3PARAM (* 51 NSEC3PARAM,[RFC5155] *)
-    | TLSA (* 52 TLSA,[RFC6698] *)
-    | SMIMEA (* 53 S/MIME cert association,[RFC-ietf-dane-smime-16],SMIMEA/smimea-completed-template,2015-12-01 *)
-    (* Unassigned,54 *)
-    | HIP (* 55 Host Identity Protocol,[RFC8005] *)
-    | NINFO (* 56 NINFO,[Jim_Reid],NINFO/ninfo-completed-template,2008-01-21 *)
-    | RKEY (* 57 RKEY,[Jim_Reid],RKEY/rkey-completed-template,2008-01-21 *)
-    | TALINK (* 58 Trust Anchor LINK,[Wouter_Wijngaards],TALINK/talink-completed-template,2010-02-17 *)
-    | CDS (* 59 Child DS,[RFC7344],CDS/cds-completed-template,2011-06-06 *)
-    | CDNSKEY (* 60 DNSKEY(s) the Child wants reflected in DS,[RFC7344],,2014-06-16 *)
-    | OPENPGPKEY (* 61 OpenPGP Key,[RFC7929],OPENPGPKEY/openpgpkey-completed-template,2014-08-12 *)
-    | CSYNC (* 62 Child-To-Parent Synchronization,[RFC7477],,2015-01-27 *)
-    (* Unassigned,63-98 *)
-    | SPF (* 99 [RFC7208] *)
-    | UINFO (* 100 [IANA-Reserved] *)
-    | UID (* 101 [IANA-Reserved] *)
-    | GID (* 102 [IANA-Reserved] *)
-    | UNSPEC (* 103 [IANA-Reserved] *)
-    | NID (* 104 [RFC6742],ILNP/nid-completed-template *)
-    | L32 (* 105 [RFC6742],ILNP/l32-completed-template *)
-    | L64 (* 106 [RFC6742],ILNP/l64-completed-template *)
-    | LP (* 107 [RFC6742],ILNP/lp-completed-template *)
-    | EUI48 (* 108 an EUI-48 address,[RFC7043],EUI48/eui48-completed-template,2013-03-27 *)
-    | EUI64 (* 109 an EUI-64 address,[RFC7043],EUI64/eui64-completed-template,2013-03-27 *)
-    (* Unassigned,110-248 *)
-    | TKEY (* 249 Transaction Key,[RFC2930] *)
-    | TSIG (* 250 Transaction Signature,[RFC2845] *)
-    | IXFR (* 251 incremental transfer,[RFC1995] *)
-    | AXFR (* 252 transfer of an entire zone,[RFC1035][RFC5936] *)
-    | MAILB (* 253 "mailbox-related RRs (MB, MG or MR)",[RFC1035] *)
-    | MAILA (* 254 mail agent RRs (OBSOLETE - see MX),[RFC1035] *)
-    | ANY (* 255 A request for all records the server/cache has available,[RFC1035][RFC6895] *)
-    | URI (* 256 URI,[RFC7553],URI/uri-completed-template,2011-02-22 *)
-    | CAA (* 257 Certification Authority Restriction,[RFC6844],CAA/caa-completed-template,2011-04-07 *)
-    | AVC (* 258 Application Visibility and Control,[Wolfgang_Riedel],AVC/avc-completed-template,2016-02-26 *)
-    (* Unassigned,259-32767 *)
-    | TA (* 32768 DNSSEC Trust Authorities,"[Sam_Weiler][http://cameo.library.cmu.edu/][
-            Deploying DNSSEC Without a Signed Root.  Technical Report 1999-19,
-            Information Networking Institute, Carnegie Mellon University, April 2004.]",,2005-12-13 *)
-    | DLV (* 32769 DNSSEC Lookaside Validation,[RFC4431] *)
-  (* Unassigned,32770-65279 *)
-  (* Private use,65280-65534 *)
-  (* Reserved,65535 *)
-
-  let to_int = function
-    | A -> 1 | NS -> 2 | MD -> 3 | MF -> 4 | CNAME -> 5 | SOA -> 6 | MB -> 7
-    | MG -> 8 | MR -> 9 | NULL -> 10 | WKS -> 11 | PTR -> 12 | HINFO -> 13
-    | MINFO -> 14 | MX -> 15 | TXT -> 16 | RP -> 17 | AFSDB -> 18 | X25 -> 19
-    | ISDN -> 20 | RT -> 21 | NSAP -> 22 | NSAP_PTR -> 23 | SIG -> 24 | KEY -> 25
-    | PX -> 26 | GPOS -> 27 | AAAA -> 28 | LOC -> 29 | NXT -> 30 | EID -> 31
-    | NIMLOC -> 32 | SRV -> 33 | ATMA -> 34 | NAPTR -> 35 | KX -> 36 | CERT -> 37
-    | A6 -> 38 | DNAME -> 39 | SINK -> 40 | OPT -> 41 | APL -> 42 | DS -> 43
-    | SSHFP -> 44 | IPSECKEY -> 45 | RRSIG -> 46 | NSEC -> 47 | DNSKEY -> 48
-    | DHCID -> 49 | NSEC3 -> 50 | NSEC3PARAM -> 51 | TLSA -> 52 | SMIMEA -> 53
-    | HIP -> 55 | NINFO -> 56 | RKEY -> 57 | TALINK -> 58 | CDS -> 59
-    | CDNSKEY -> 60 | OPENPGPKEY -> 61 | CSYNC -> 62 | SPF -> 99 | UINFO -> 100
-    | UID -> 101 | GID -> 102 | UNSPEC -> 103 | NID -> 104 | L32 -> 105
-    | L64 -> 106 | LP -> 107 | EUI48 -> 108 | EUI64 -> 109 | TKEY -> 249
-    | TSIG -> 250 | IXFR -> 251 | AXFR -> 252 | MAILB -> 253 | MAILA -> 254
-    | ANY -> 255 | URI -> 256 | CAA -> 257 | AVC -> 258 | TA -> 32768
-    | DLV -> 32769
-
-  let of_int ?(off = 0) = function
-    | 1 -> Ok A | 2 -> Ok NS | 3 -> Ok MD | 4 -> Ok MF | 5 -> Ok CNAME
-    | 6 -> Ok SOA | 7 -> Ok MB | 8 -> Ok MG | 9 -> Ok MR | 10 -> Ok NULL
-    | 11 -> Ok WKS | 12 -> Ok PTR | 13 -> Ok HINFO | 14 -> Ok MINFO
-    | 15 -> Ok MX | 16 -> Ok TXT | 17 -> Ok RP | 18 -> Ok AFSDB
-    | 19 -> Ok X25 | 20 -> Ok ISDN | 21 -> Ok RT | 22 -> Ok NSAP
-    | 23 -> Ok NSAP_PTR | 24 -> Ok SIG | 25 -> Ok KEY | 26 -> Ok PX
-    | 27 -> Ok GPOS | 28 -> Ok AAAA | 29 -> Ok LOC | 30 -> Ok NXT
-    | 31 -> Ok EID | 32 -> Ok NIMLOC | 33 -> Ok SRV | 34 -> Ok ATMA
-    | 35 -> Ok NAPTR | 36 -> Ok KX | 37 -> Ok CERT | 38 -> Ok A6
-    | 39 -> Ok DNAME | 40 -> Ok SINK | 41 -> Ok OPT | 42 -> Ok APL
-    | 43 -> Ok DS | 44 -> Ok SSHFP | 45 -> Ok IPSECKEY | 46 -> Ok RRSIG
-    | 47 -> Ok NSEC | 48 -> Ok DNSKEY | 49 -> Ok DHCID | 50 -> Ok NSEC3
-    | 51 -> Ok NSEC3PARAM | 52 -> Ok TLSA | 53 -> Ok SMIMEA | 55 -> Ok HIP
-    | 56 -> Ok NINFO | 57 -> Ok RKEY | 58 -> Ok TALINK | 59 -> Ok CDS
-    | 60 -> Ok CDNSKEY | 61 -> Ok OPENPGPKEY | 62 -> Ok CSYNC
-    | 99 -> Ok SPF | 100 -> Ok UINFO | 101 -> Ok UID | 102 -> Ok GID
-    | 103 -> Ok UNSPEC | 104 -> Ok NID | 105 -> Ok L32 | 106 -> Ok L64
-    | 107 -> Ok LP | 108 -> Ok EUI48 | 109 -> Ok EUI64 | 249 -> Ok TKEY
-    | 250 -> Ok TSIG | 251 -> Ok IXFR | 252 -> Ok AXFR | 253 -> Ok MAILB
-    | 254 -> Ok MAILA | 255 -> Ok ANY | 256 -> Ok URI | 257 -> Ok CAA
-    | 258 -> Ok AVC | 32768 -> Ok TA | 32769 -> Ok DLV
-    | x -> Error (`Not_implemented (off, Fmt.strf "rrtype 0x%02X" x))
-
-  let compare a b = int_compare (to_int a) (to_int b)
-
-  let to_string = function
-    | A -> "A" | NS -> "NS" | MD -> "MD" | MF -> "MF" | CNAME -> "CNAME"
-    | SOA -> "SOA" | MB -> "MB" | MG -> "MG" | MR -> "MR" | NULL -> "NULL"
-    | WKS -> "WKS" | PTR -> "PTR" | HINFO -> "HINFO" | MINFO -> "MINFO"
-    | MX -> "MX" | TXT -> "TXT" | RP -> "RP" | AFSDB -> "AFSDB" | X25 -> "X25"
-    | ISDN -> "ISDN" | RT -> "RT" | NSAP -> "NSAP" | NSAP_PTR -> "NSAP_PTR"
-    | SIG -> "SIG" | KEY -> "KEY" | PX -> "PX" | GPOS -> "GPOS" | AAAA -> "AAAA"
-    | LOC -> "LOC" | NXT -> "NXT" | EID -> "EID" | NIMLOC -> "NIMLOC"
-    | SRV -> "SRV" | ATMA -> "ATMA" | NAPTR -> "NAPTR" | KX -> "KX"
-    | CERT -> "CERT" | A6 -> "A6" | DNAME -> "DNAME" | SINK -> "SINK"
-    | OPT -> "OPT" | APL -> "APL" | DS -> "DS" | SSHFP -> "SSHFP"
-    | IPSECKEY -> "IPSECKEY" | RRSIG -> "RRSIG" | NSEC -> "NSEC"
-    | DNSKEY -> "DNSKEY" | DHCID -> "DHCID" | NSEC3 -> "NSEC3"
-    | NSEC3PARAM -> "NSEC3PARAM" | TLSA -> "TLSA" | SMIMEA -> "SMIMEA"
-    | HIP -> "HIP" | NINFO -> "NINFO" | RKEY -> "RKEY" | TALINK -> "TALINK"
-    | CDS -> "CDS" | CDNSKEY -> "CDNSKEY" | OPENPGPKEY -> "OPENPGPKEY"
-    | CSYNC -> "CSYNC" | SPF -> "SPF" | UINFO -> "UINFO" | UID -> "UID"
-    | GID -> "GID" | UNSPEC -> "UNSPEC" | NID -> "NID" | L32 -> "L32"
-    | L64 -> "L64" | LP -> "LP" | EUI48 -> "EUI48" | EUI64 -> "EUI64"
-    | TKEY -> "TKEY" | TSIG -> "TSIG" | IXFR -> "IXFR" | AXFR -> "AXFR"
-    | MAILB -> "MAILB" | MAILA -> "MAILA" | ANY -> "ANY" | URI -> "URI"
-    | CAA -> "CAA" | AVC -> "AVC" | TA -> "TA" | DLV -> "TLV"
-
-  let pp ppf t = Fmt.string ppf (to_string t)
-end
-
 module Clas = struct
   (* 16 bit *)
   type t =
@@ -1187,6 +1020,8 @@ module Tsig = struct
     other : Ptime.t option
   }
 
+  let rtyp = 250
+
   let equal a b =
     a.algorithm = b.algorithm &&
     Ptime.equal a.signed b.signed &&
@@ -1427,7 +1262,7 @@ module Tsig = struct
     let name, clttl, mid, fin = encode_raw_tsig_base name t in
     let typ =
       let typ = Cstruct.create 2 in
-      Cstruct.BE.set_uint16 typ 0 Rr.(to_int TSIG) ;
+      Cstruct.BE.set_uint16 typ 0 rtyp ;
       typ
     and mac =
       let len = Cstruct.len t.mac in
@@ -1549,6 +1384,8 @@ module Edns = struct
     extensions : extension list ;
   }
 
+  let rtyp = 41
+
   let min_payload_size = 512 (* from RFC 6891 Section 6.2.3 *)
 
   let create ?(extended_rcode = 0) ?(version = 0) ?(dnssec_ok = false)
@@ -1633,7 +1470,7 @@ module Edns = struct
     (* name is . *)
     Cstruct.set_uint8 buf off 0 ;
     (* type *)
-    Cstruct.BE.set_uint16 buf (off + 1) Rr.(to_int OPT) ;
+    Cstruct.BE.set_uint16 buf (off + 1) rtyp ;
     (* class is payload size! *)
     Cstruct.BE.set_uint16 buf (off + 3) t.payload_size ;
     (* it continues: the ttl is split into: 8bit extended rcode, 8bit version, 1bit dnssec_ok, 7bit 0 *)
@@ -1652,12 +1489,6 @@ module Edns = struct
     Cstruct.sub buf 0 off
 end
 
-let encode_ntc names buf off (n, t, c) =
-  let names, off = Name.encode n names buf off in
-  Cstruct.BE.set_uint16 buf off (Rr.to_int t) ;
-  Cstruct.BE.set_uint16 buf (off + 2) c ;
-  names, off + 4
-
 (* resource record map *)
 module Rr_map = struct
   module Mx_set = Set.Make(Mx)
@@ -1670,60 +1501,151 @@ module Rr_map = struct
   module Tlsa_set = Set.Make(Tlsa)
   module Sshfp_set = Set.Make(Sshfp)
 
-  type _ k =
-    | Soa : Soa.t k
-    | Ns : (int32 * Domain_name.Set.t) k
-    | Mx : (int32 * Mx_set.t) k
-    | Cname : (int32 * Domain_name.t) k
-    | A : (int32 * Ipv4_set.t) k
-    | Aaaa : (int32 * Ipv6_set.t) k
-    | Ptr : (int32 * Domain_name.t) k
-    | Srv : (int32 * Srv_set.t) k
-    | Dnskey : (int32 * Dnskey_set.t) k
-    | Caa : (int32 * Caa_set.t) k
-    | Tlsa : (int32 * Tlsa_set.t) k
-    | Sshfp : (int32 * Sshfp_set.t) k
-    | Txt : (int32 * Txt_set.t) k
+  module I : sig
+    type t
+    val of_int : ?off:int -> int -> (t, [> `Malformed of int * string ]) result
+    val to_int : t -> int
+    val compare : t -> t -> int
+  end = struct
+    type t = int
+    let of_int ?(off = 0) i = match i with
+      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 44 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
+        Error (`Malformed (off, "reserved and supported RTYPE not Unknown"))
+      | x -> if x < 1 lsl 15 then Ok x else Error (`Malformed (off, "RTYPE exceeds 16 bit"))
+    let to_int t = t
+    let compare = int_compare
+  end
 
-  let equal_k : type a b . a k -> a -> b k -> b -> bool = fun k v k' v' ->
-    match k, v, k', v' with
-    | Cname, (_, alias), Cname, (_, alias') -> Domain_name.equal alias alias'
-    | Mx, (_, mxs), Mx, (_, mxs') -> Mx_set.equal mxs mxs'
-    | Ns, (_, ns), Ns, (_, ns') -> Domain_name.Set.equal ns ns'
-    | Ptr, (_, name), Ptr, (_, name') -> Domain_name.equal name name'
-    | Soa, soa, Soa, soa' -> Soa.compare soa soa' = 0
-    | Txt, (_, txts), Txt, (_, txts') -> Txt_set.equal txts txts'
-    | A, (_, aas), A, (_, aas') -> Ipv4_set.equal aas aas'
-    | Aaaa, (_, aaaas), Aaaa, (_, aaaas') -> Ipv6_set.equal aaaas aaaas'
-    | Srv, (_, srvs), Srv, (_, srvs') -> Srv_set.equal srvs srvs'
-    | Dnskey, (_, keys), Dnskey, (_, keys') -> Dnskey_set.equal keys keys'
-    | Caa, (_, caas), Caa, (_, caas') -> Caa_set.equal caas caas'
-    | Tlsa, (_, tlsas), Tlsa, (_, tlsas') -> Tlsa_set.equal tlsas tlsas'
-    | Sshfp, (_, sshfps), Sshfp, (_, sshfps') -> Sshfp_set.equal sshfps sshfps'
-    | _, _, _, _ -> false
+  type _ rr =
+    | Soa : Soa.t rr
+    | Ns : (int32 * Domain_name.Set.t) rr
+    | Mx : (int32 * Mx_set.t) rr
+    | Cname : (int32 * Domain_name.t) rr
+    | A : (int32 * Ipv4_set.t) rr
+    | Aaaa : (int32 * Ipv6_set.t) rr
+    | Ptr : (int32 * Domain_name.t) rr
+    | Srv : (int32 * Srv_set.t) rr
+    | Dnskey : (int32 * Dnskey_set.t) rr
+    | Caa : (int32 * Caa_set.t) rr
+    | Tlsa : (int32 * Tlsa_set.t) rr
+    | Sshfp : (int32 * Sshfp_set.t) rr
+    | Txt : (int32 * Txt_set.t) rr
+    | Unknown : I.t -> (int32 * Txt_set.t) rr
 
-  let k_to_rr_typ : type a. a k -> Rr.t = function
-    | Cname -> Rr.CNAME
-    | Mx -> Rr.MX
-    | Ns -> Rr.NS
-    | Ptr -> Rr.PTR
-    | Soa -> Rr.SOA
-    | Txt -> Rr.TXT
-    | A -> Rr.A
-    | Aaaa -> Rr.AAAA
-    | Srv -> Rr.SRV
-    | Dnskey -> Rr.DNSKEY
-    | Caa -> Rr.CAA
-    | Tlsa -> Rr.TLSA
-    | Sshfp -> Rr.SSHFP
+  module K = struct
+    type 'a t = 'a rr
 
-  let encode : type a. ?clas:Clas.t -> Domain_name.t -> a k -> a -> Name.name_offset_map -> Cstruct.t -> int ->
+    let compare : type a b. a t -> b t -> (a, b) Gmap.Order.t = fun t t' ->
+      let open Gmap.Order in
+      match t, t' with
+      | Soa, Soa -> Eq | Soa, _ -> Lt | _, Soa -> Gt
+      | Ns, Ns -> Eq | Ns, _ -> Lt | _, Ns -> Gt
+      | Mx, Mx -> Eq | Mx, _ -> Lt | _, Mx -> Gt
+      | Cname, Cname -> Eq | Cname, _ -> Lt | _, Cname -> Gt
+      | A, A -> Eq | A, _ -> Lt | _, A -> Gt
+      | Aaaa, Aaaa -> Eq | Aaaa, _ -> Lt | _, Aaaa -> Gt
+      | Ptr, Ptr -> Eq | Ptr, _ -> Lt | _, Ptr -> Gt
+      | Srv, Srv -> Eq | Srv, _ -> Lt | _, Srv -> Gt
+      | Dnskey, Dnskey -> Eq | Dnskey, _ -> Lt | _, Dnskey -> Gt
+      | Caa, Caa -> Eq | Caa, _ -> Lt | _, Caa -> Gt
+      | Tlsa, Tlsa -> Eq | Tlsa, _ -> Lt | _, Tlsa -> Gt
+      | Sshfp, Sshfp -> Eq | Sshfp, _ -> Lt | _, Sshfp -> Gt
+      | Txt, Txt -> Eq | Txt, _ -> Lt | _, Txt -> Gt
+      | Unknown a, Unknown b ->
+        let r = I.compare a b in
+        if r = 0 then Eq else if r < 0 then Lt else Gt
+  end
+
+  include Gmap.Make(K)
+
+  type k = K : 'a key -> k
+
+  let comparek (K k) (K k') = match K.compare k k' with
+    | Gmap.Order.Eq -> 0 | Gmap.Order.Gt -> 1 | Gmap.Order.Lt -> -1
+
+  let equal_rr : type a. a key -> a -> a -> bool = fun k v v' ->
+    match k, v, v' with
+    | Cname, (_, alias), (_, alias') -> Domain_name.equal alias alias'
+    | Mx, (_, mxs), (_, mxs') -> Mx_set.equal mxs mxs'
+    | Ns, (_, ns), (_, ns') -> Domain_name.Set.equal ns ns'
+    | Ptr, (_, name), (_, name') -> Domain_name.equal name name'
+    | Soa, soa, soa' -> Soa.compare soa soa' = 0
+    | Txt, (_, txts), (_, txts') -> Txt_set.equal txts txts'
+    | A, (_, aas), (_, aas') -> Ipv4_set.equal aas aas'
+    | Aaaa, (_, aaaas), (_, aaaas') -> Ipv6_set.equal aaaas aaaas'
+    | Srv, (_, srvs), (_, srvs') -> Srv_set.equal srvs srvs'
+    | Dnskey, (_, keys), (_, keys') -> Dnskey_set.equal keys keys'
+    | Caa, (_, caas), (_, caas') -> Caa_set.equal caas caas'
+    | Tlsa, (_, tlsas), (_, tlsas') -> Tlsa_set.equal tlsas tlsas'
+    | Sshfp, (_, sshfps), (_, sshfps') -> Sshfp_set.equal sshfps sshfps'
+    | Unknown _, (_, data), (_, data') -> Txt_set.equal data data'
+
+  let equalb (B (k, v)) (B (k', v')) = match K.compare k k' with
+    | Gmap.Order.Eq -> equal_rr k v v'
+    | _ -> false
+
+  let to_int : type a. a key -> int = function
+    | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Ptr -> 12 | Mx -> 15
+    | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Sshfp -> 44 | Dnskey -> 48
+    | Tlsa -> 52 | Caa -> 257 | Unknown x -> I.to_int x
+
+  let any_rtyp = 255 and axfr_rtyp = 252 and ixfr_rtyp = 251
+
+  let of_int ?(off = 0) = function
+    | 1 -> Ok (K A) | 2 -> Ok (K Ns) | 5 -> Ok (K Cname) | 6 -> Ok (K Soa)
+    | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
+    | 33 -> Ok (K Srv) | 44 -> Ok (K Sshfp) | 48 -> Ok (K Dnskey)
+    | 52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
+    | x ->
+      let open Rresult.R.Infix in
+      I.of_int ~off x >>| fun i ->
+      K (Unknown i)
+
+  let ppk ppf (K k) = match k with
+    | Cname -> Fmt.string ppf "CNAME"
+    | Mx -> Fmt.string ppf "MX"
+    | Ns -> Fmt.string ppf "NS"
+    | Ptr -> Fmt.string ppf "PTR"
+    | Soa -> Fmt.string ppf "SOA"
+    | Txt -> Fmt.string ppf "TXT"
+    | A -> Fmt.string ppf "A"
+    | Aaaa -> Fmt.string ppf "AAAA"
+    | Srv -> Fmt.string ppf "SRV"
+    | Dnskey -> Fmt.string ppf "DNSKEY"
+    | Caa -> Fmt.string ppf "CAA"
+    | Tlsa -> Fmt.string ppf "TLSA"
+    | Sshfp -> Fmt.string ppf "SSHFP"
+    | Unknown x -> Fmt.pf ppf "TYPE%d" (I.to_int x)
+
+  type rrtyp = [ `Any | `Tsig | `Edns | `Ixfr | `Axfr | `K of k ]
+
+  let pp_rr ppf = function
+    | `Any -> Fmt.string ppf "ANY"
+    | `Tsig -> Fmt.string ppf "TSIG"
+    | `Edns -> Fmt.string ppf "EDNS"
+    | `Ixfr -> Fmt.string ppf "IXFR"
+    | `Axfr -> Fmt.string ppf "AXFR"
+    | `K k -> ppk ppf k
+
+  let rr_to_int : rrtyp -> int = function
+    | `Any -> any_rtyp
+    | `Tsig -> Tsig.rtyp
+    | `Edns -> Edns.rtyp
+    | `Ixfr -> ixfr_rtyp
+    | `Axfr -> axfr_rtyp
+    | `K (K k) -> to_int k
+
+  let encode_ntc names buf off (n, t, c) =
+    let names, off = Name.encode n names buf off in
+    Cstruct.BE.set_uint16 buf off (rr_to_int t) ;
+    Cstruct.BE.set_uint16 buf (off + 2) c ;
+    names, off + 4
+
+  let encode : type a. ?clas:Clas.t -> Domain_name.t -> a key -> a -> Name.name_offset_map -> Cstruct.t -> int ->
     (Name.name_offset_map * int) * int = fun ?(clas = Clas.IN) name k v names buf off ->
-    let typ = k_to_rr_typ k
-    and clas = Clas.to_int clas
-    in
+    let clas = Clas.to_int clas in
     let rr names f off ttl =
-      let names, off' = encode_ntc names buf off (name, typ, clas) in
+      let names, off' = encode_ntc names buf off (name, `K (K k), clas) in
       (* leave 6 bytes space for TTL and length *)
       let rdata_start = off' + 6 in
       let names, rdata_end = f names buf rdata_start in
@@ -1776,9 +1698,18 @@ module Rr_map = struct
       Txt_set.fold (fun txt ((names, off), count) ->
           rr names (Txt.encode txt) off ttl, succ count)
         txts ((names, off), 0)
+    | Unknown _, (ttl, datas) ->
+      let encode data names buf off =
+        let l = String.length data in
+        Cstruct.blit_from_string data 0 buf off l;
+        names, off + l
+      in
+      Txt_set.fold (fun data ((names, off), count) ->
+          rr names (encode data) off ttl, succ count)
+        datas ((names, off), 0)
 
-  let combine_k : type a. a k -> a -> a -> a = fun k old v ->
-    match k, old, v with
+  let union_rr : type a. a key -> a -> a -> a = fun k l r ->
+    match k, l, r with
     | Cname, _, cname -> cname
     | Mx, (_, mxs), (ttl, mxs') -> (ttl, Mx_set.union mxs mxs')
     | Ns, (_, ns), (ttl, ns') -> (ttl, Domain_name.Set.union ns ns')
@@ -1792,13 +1723,17 @@ module Rr_map = struct
     | Caa, (_, caas), (ttl, caas') -> (ttl, Caa_set.union caas caas')
     | Tlsa, (_, tlsas), (ttl, tlsas') -> (ttl, Tlsa_set.union tlsas tlsas')
     | Sshfp, (_, sshfps), (ttl, sshfps') -> (ttl, Sshfp_set.union sshfps sshfps')
+    | Unknown _, (_, data), (ttl, data') -> (ttl, Txt_set.union data data')
 
-  let combine_opt : type a. a k -> a -> a option -> a option = fun k v old ->
-    match v, old with
-    | v, None -> Some v
-    | v, Some old -> Some (combine_k k old v)
+  let unionee : type a. a key -> a -> a -> a option =
+    fun k v v' -> Some (union_rr k v v')
 
-  let subtract_k : type a. a k -> a -> a -> a option = fun k v rem ->
+  let combine_opt : type a. a key -> a -> a option -> a option = fun k l r ->
+    match r with
+    | None -> Some l
+    | Some r -> Some (union_rr k l r)
+
+  let remove_rr : type a. a key -> a -> a -> a option = fun k v rem ->
     match k, v, rem with
     | Cname, _, _ -> None
     | Mx, (ttl, mxs), (_, rm) ->
@@ -1833,9 +1768,12 @@ module Rr_map = struct
     | Sshfp, (ttl, sshfps), (_, rm) ->
       let s = Sshfp_set.diff sshfps rm in
       if Sshfp_set.is_empty s then None else Some (ttl, s)
+    | Unknown _, (ttl, datas), (_, rm) ->
+      let data = Txt_set.diff datas rm in
+      if Txt_set.is_empty data then None else Some (ttl, data)
 
   let text : type a. ?origin:Domain_name.t -> ?default_ttl:int32 ->
-    Domain_name.t -> a k -> a -> string = fun ?origin ?default_ttl n t v ->
+    Domain_name.t -> a key -> a -> string = fun ?origin ?default_ttl n t v ->
     let hex cs =
       let buf = Bytes.create (Cstruct.len cs * 2) in
       for i = 0 to pred (Cstruct.len cs) do
@@ -1937,67 +1875,13 @@ module Rr_map = struct
               (Sshfp.typ_to_int sshfp.typ)
               (hex sshfp.fingerprint) :: acc)
           sshfps []
+      | Unknown x, (ttl, datas) ->
+        Txt_set.fold (fun data acc ->
+            Fmt.strf "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
+              (I.to_int x) (String.length data) (hex (Cstruct.of_string data)) :: acc)
+          datas []
     in
     String.concat "\n" strs
-
-  module K = struct
-    type 'a t = 'a k
-
-    let compare : type a b. a t -> b t -> (a, b) Gmap.Order.t = fun t t' ->
-      let open Gmap.Order in
-      match t, t' with
-      | Soa, Soa -> Eq | Soa, _ -> Lt | _, Soa -> Gt
-      | Ns, Ns -> Eq | Ns, _ -> Lt | _, Ns -> Gt
-      | Mx, Mx -> Eq | Mx, _ -> Lt | _, Mx -> Gt
-      | Cname, Cname -> Eq | Cname, _ -> Lt | _, Cname -> Gt
-      | A, A -> Eq | A, _ -> Lt | _, A -> Gt
-      | Aaaa, Aaaa -> Eq | Aaaa, _ -> Lt | _, Aaaa -> Gt
-      | Ptr, Ptr -> Eq | Ptr, _ -> Lt | _, Ptr -> Gt
-      | Srv, Srv -> Eq | Srv, _ -> Lt | _, Srv -> Gt
-      | Dnskey, Dnskey -> Eq | Dnskey, _ -> Lt | _, Dnskey -> Gt
-      | Caa, Caa -> Eq | Caa, _ -> Lt | _, Caa -> Gt
-      | Tlsa, Tlsa -> Eq | Tlsa, _ -> Lt | _, Tlsa -> Gt
-      | Sshfp, Sshfp -> Eq | Sshfp, _ -> Lt | _, Sshfp -> Gt
-      | Txt, Txt -> Eq (* | Txt, _ -> Lt | _, Txt -> Gt *)
-
-    let pp : type a. Format.formatter -> a t -> a -> unit = fun ppf t v ->
-      match t, v with
-      | Cname, (ttl, cname) -> Fmt.pf ppf "ttl %lu %a" ttl Cname.pp cname
-      | Mx, (ttl, mxs) ->
-        Fmt.pf ppf "ttl %lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") Mx.pp) (Mx_set.elements mxs)
-      | Ns, (ttl, names) ->
-        Fmt.pf ppf "ttl %lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") Ns.pp) (Domain_name.Set.elements names)
-      | Ptr, (ttl, name) -> Fmt.pf ppf "ttl %lu %a" ttl Ptr.pp name
-      | Soa, soa -> Fmt.pf ppf "%a" Soa.pp soa
-      | Txt, (ttl, txts) ->
-        Fmt.pf ppf "ttl %lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") Txt.pp) (Txt_set.elements txts)
-      | A, (ttl, a) ->
-        Fmt.pf ppf "ttl %lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") A.pp) (Ipv4_set.elements a)
-      | Aaaa, (ttl, aaaas) ->
-        Fmt.pf ppf "ttl %lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") Aaaa.pp) (Ipv6_set.elements aaaas)
-      | Srv, (ttl, srvs) ->
-        Fmt.pf ppf "ttl %lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") Srv.pp) (Srv_set.elements srvs)
-      | Dnskey, (ttl, keys) ->
-        Fmt.pf ppf "%lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") Dnskey.pp) (Dnskey_set.elements keys)
-      | Caa, (ttl, caas) ->
-        Fmt.pf ppf "ttl %lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") Caa.pp) (Caa_set.elements caas)
-      | Tlsa, (ttl, tlsas) ->
-        Fmt.pf ppf "ttl %lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") Tlsa.pp) (Tlsa_set.elements tlsas)
-      | Sshfp, (ttl, sshfps) ->
-        Fmt.pf ppf "ttl %lu %a" ttl
-          Fmt.(list ~sep:(unit ";@,") Sshfp.pp) (Sshfp_set.elements sshfps)
-  end
-
-  include Gmap.Make(K)
 
   let get_ttl : b -> int32 = fun (B (k, v)) ->
     match k, v with
@@ -2014,6 +1898,7 @@ module Rr_map = struct
     | Caa, (ttl, _) -> ttl
     | Tlsa, (ttl, _) -> ttl
     | Sshfp, (ttl, _) -> ttl
+    | Unknown _, (ttl, _) -> ttl
 
   let with_ttl : b -> int32 -> b = fun (B (k, v)) ttl ->
     match k, v with
@@ -2030,12 +1915,11 @@ module Rr_map = struct
     | Caa, (_, caas) -> B (k, (ttl, caas))
     | Tlsa, (_, tlsas) -> B (k, (ttl, tlsas))
     | Sshfp, (_, sshfps) -> B (k, (ttl, sshfps))
+    | Unknown _, (_, datas) -> B (k, (ttl, datas))
 
-  let pp_b ppf (B (k, v)) = K.pp ppf k v
+  let pp_b ppf (B (k, _)) = ppk ppf (K k)
 
-  let equal_b (B (k, v)) (B (k', v')) = equal_k k v k' v'
-
-  let names : type a. a k -> a -> Domain_name.Set.t = fun k v ->
+  let names : type a. a key -> a -> Domain_name.Set.t = fun k v ->
     match k, v with
     | Cname, (_, alias) -> Domain_name.Set.singleton alias
     | Mx, (_, mxs) ->
@@ -2048,43 +1932,7 @@ module Rr_map = struct
         srvs Domain_name.Set.empty
     | _ -> Domain_name.Set.empty
 
-  let names_b (B (k, v)) = names k v
-
-  let to_rr_typ (B (k, _)) = k_to_rr_typ k
-
-  let lookup_rr : Rr.t -> t -> b option = fun rr t ->
-    match rr with
-    | Rr.MX -> findb Mx t
-    | Rr.NS -> findb Ns t
-    | Rr.PTR -> findb Ptr t
-    | Rr.SOA -> findb Soa t
-    | Rr.TXT -> findb Txt t
-    | Rr.A -> findb A t
-    | Rr.AAAA -> findb Aaaa t
-    | Rr.SRV -> findb Srv t
-    | Rr.DNSKEY -> findb Dnskey t
-    | Rr.CAA -> findb Caa t
-    | Rr.TLSA -> findb Tlsa t
-    | Rr.SSHFP -> findb Sshfp t
-    | _ -> None
-
-  let remove_rr : Rr.t -> t -> t = fun rr t ->
-    match rr with
-    | Rr.MX -> remove Mx t
-    | Rr.NS -> remove Ns t
-    | Rr.PTR -> remove Ptr t
-    | Rr.SOA -> remove Soa t
-    | Rr.TXT -> remove Txt t
-    | Rr.A -> remove A t
-    | Rr.AAAA -> remove Aaaa t
-    | Rr.SRV -> remove Srv t
-    | Rr.DNSKEY -> remove Dnskey t
-    | Rr.CAA -> remove Caa t
-    | Rr.TLSA -> remove Tlsa t
-    | Rr.SSHFP -> remove Sshfp t
-    | _ -> t
-
-  let decode names buf off typ =
+  let decode names buf off (K typ) =
     let open Rresult.R.Infix in
     guard (Cstruct.len buf - off >= 6) `Partial >>= fun () ->
     let ttl = Cstruct.BE.get_uint32 buf off
@@ -2095,46 +1943,49 @@ module Rr_map = struct
       (`Malformed (off, Fmt.strf "bad TTL (high bit set) %lu" ttl)) >>= fun () ->
     guard (Cstruct.len buf - rdata_start >= len) `Partial >>= fun () ->
     (match typ with
-     | Rr.SOA ->
+     | Soa ->
        Soa.decode names buf ~off:rdata_start ~len >>| fun (soa, names, off) ->
        (B (Soa, soa), names, off)
-     | Rr.NS ->
+     | Ns ->
        Ns.decode names buf ~off:rdata_start ~len >>| fun (ns, names, off) ->
        (B (Ns, (ttl, Domain_name.Set.singleton ns)), names, off)
-     | Rr.MX ->
+     | Mx ->
        Mx.decode names buf ~off:rdata_start ~len >>| fun (mx, names, off) ->
        (B (Mx, (ttl, Mx_set.singleton mx)), names, off)
-     | Rr.CNAME ->
+     | Cname ->
        Cname.decode names buf ~off:rdata_start ~len >>| fun (alias, names, off) ->
        (B (Cname, (ttl, alias)), names, off)
-     | Rr.A ->
+     | A ->
        A.decode names buf ~off:rdata_start ~len >>| fun (address, names, off) ->
        (B (A, (ttl, Ipv4_set.singleton address)), names, off)
-     | Rr.AAAA ->
+     | Aaaa ->
        Aaaa.decode names buf ~off:rdata_start ~len >>| fun (address, names, off) ->
        (B (Aaaa, (ttl, Ipv6_set.singleton address)), names, off)
-     | Rr.PTR ->
+     | Ptr ->
        Ptr.decode names buf ~off:rdata_start ~len >>| fun (rev, names, off) ->
        (B (Ptr, (ttl, rev)), names, off)
-     | Rr.SRV ->
+     | Srv ->
        Srv.decode names buf ~off:rdata_start ~len >>| fun (srv, names, off) ->
        (B (Srv, (ttl, Srv_set.singleton srv)), names, off)
-     | Rr.DNSKEY ->
+     | Dnskey ->
        Dnskey.decode names buf ~off:rdata_start ~len >>| fun (dnskey, names, off) ->
        (B (Dnskey, (ttl, Dnskey_set.singleton dnskey)), names, off)
-     | Rr.CAA ->
+     | Caa ->
        Caa.decode names buf ~off:rdata_start ~len >>| fun (caa, names, off) ->
        (B (Caa, (ttl, Caa_set.singleton caa)), names, off)
-     | Rr.TLSA ->
+     | Tlsa ->
        Tlsa.decode names buf ~off:rdata_start ~len >>| fun (tlsa, names, off) ->
        (B (Tlsa, (ttl, Tlsa_set.singleton tlsa)), names, off)
-     | Rr.SSHFP ->
+     | Sshfp ->
        Sshfp.decode names buf ~off:rdata_start ~len >>| fun (sshfp, names, off) ->
        (B (Sshfp, (ttl, Sshfp_set.singleton sshfp)), names, off)
-     | Rr.TXT ->
+     | Txt ->
        Txt.decode names buf ~off:rdata_start ~len >>| fun (txt, names, off) ->
        (B (Txt, (ttl, Txt_set.of_list txt)), names, off)
-     | other -> Error (`Not_implemented (off, Fmt.strf "unsupported RR typ %a" Rr.pp other))) >>= fun (b, names, rdata_end) ->
+     | Unknown x ->
+       let data = Cstruct.sub buf rdata_start len in
+       Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)
+    ) >>= fun (b, names, rdata_end) ->
     guard (len = rdata_end - rdata_start) (`Leftover (rdata_end, "rdata")) >>| fun () ->
     (b, names, rdata_end)
 
@@ -2148,13 +1999,15 @@ module Name_rr_map = struct
   let empty = Domain_name.Map.empty
 
   let equal a b =
-    Domain_name.Map.equal (Rr_map.equal Rr_map.equal_b) a b
+    Domain_name.Map.equal (Rr_map.equal { f = Rr_map.equal_rr }) a b
 
   let pp ppf map =
-    Fmt.(list ~sep:(unit ";@ ") (pair ~sep:(unit " ") Domain_name.pp Rr_map.pp))
-      ppf (Domain_name.Map.bindings map)
+    List.iter (fun (name, rr_map) ->
+        Fmt.(list ~sep:(unit "@.") string) ppf
+          (List.map (Rr_map.text_b name) (Rr_map.bindings rr_map)))
+      (Domain_name.Map.bindings map)
 
-  let add name (Rr_map.B (k, v)) dmap =
+  let add name k v dmap =
     let m = match Domain_name.Map.find name dmap with
       | None -> Rr_map.empty
       | Some map -> map
@@ -2162,7 +2015,7 @@ module Name_rr_map = struct
     let m' = Rr_map.update k (Rr_map.combine_opt k v) m in
     Domain_name.Map.add name m' dmap
 
-  let find : type a . Domain_name.t -> a Rr_map.k -> t -> a option =
+  let find : type a . Domain_name.t -> a Rr_map.rr -> t -> a option =
     fun name k dmap ->
     match Domain_name.Map.find name dmap with
     | None -> None
@@ -2178,6 +2031,14 @@ module Name_rr_map = struct
           let rrs' = Rr_map.fold (fun (B (k, _)) map -> Rr_map.remove k map) rrmap rrs in
           Domain_name.Map.add name rrs' map)
       sub map
+
+  let singleton name k v =
+    Domain_name.Map.singleton name (Rr_map.singleton k v)
+
+  let union t t' =
+    Domain_name.Map.union (fun _ rr rr' ->
+        Some (Rr_map.union { f = Rr_map.unionee } rr rr'))
+      t t'
 end
 
 module Packet = struct
@@ -2303,7 +2164,8 @@ module Packet = struct
       Cstruct.BE.set_uint16 buf 0 id ;
       Cstruct.BE.set_uint16 buf 2 header
 
-(*    let%expect_test "encode_decode_header" =
+    (*
+    let%expect_test "encode_decode_header" =
       let eq (hdr, query, op, rc) (hdr', query', op', rc') =
         compare hdr hdr' = 0 && rc = rc' && query = query' && op = op'
       and cs = Cstruct.create 12
@@ -2392,35 +2254,59 @@ module Packet = struct
     and cls = Cstruct.BE.get_uint16 buf (off + 2)
     (* CLS is interpreted differently by OPT, thus no int_to_clas called here *)
     in
-    Rr.of_int ~off typ >>= function
-    | Rr.(DNSKEY | TSIG | TXT | CNAME as t) -> Ok ((name, t, cls), names, off + 4)
-    | Rr.(TLSA | SRV as t) when Domain_name.is_service name -> Ok ((name, t, cls), names, off + 4)
-    | Rr.SRV -> (* MUST be service name *)
-      Error (`Malformed (off, Fmt.strf "SRV must be a service name %a"
-                           Domain_name.pp name))
-    | t when Domain_name.is_hostname name -> Ok ((name, t, cls), names, off + 4)
-    | t -> Error (`Malformed (off, Fmt.strf "record %a must be a hostname %a"
-                                Rr.pp t Domain_name.pp name))
+    match typ with
+    | x when x = Edns.rtyp -> Ok ((name, `Edns, cls), names, off + 4)
+    | x when x = Tsig.rtyp -> Ok ((name, `Tsig, cls), names, off + 4)
+    | x when x = Rr_map.ixfr_rtyp -> Ok ((name, `Ixfr, cls), names, off + 4)
+    | x when x = Rr_map.axfr_rtyp -> Ok ((name, `Axfr, cls), names, off + 4)
+    | x when x = Rr_map.any_rtyp -> Ok ((name, `Any, cls), names, off + 4)
+    | x -> Rr_map.of_int x >>= fun (K k) ->
+      match k with
+      | Rr_map.Dnskey -> Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
+      | Rr_map.Txt -> Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
+      | Rr_map.Cname -> Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
+      | Rr_map.Tlsa when Domain_name.is_service name ->
+        Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
+      | Rr_map.Srv ->
+        if Domain_name.is_service name then
+          Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
+        else
+          Error (`Malformed (off, Fmt.strf "SRV must be a service name %a"
+                               Domain_name.pp name))
+      | _ ->
+        if Domain_name.is_hostname name then
+          Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
+        else
+          Error (`Malformed (off, Fmt.strf "record %a must be a hostname %a"
+                               Rr_map.ppk (K k) Domain_name.pp name))
 
   module Question = struct
-    type t = Domain_name.t * Rr.t
+    type t = Domain_name.t * [ `Any | `Axfr | `K of Rr_map.k ]
+
+    let create : type a. Domain_name.t -> a Rr_map.key -> t =
+      fun name k -> name, `K (K k)
 
     let pp ppf (name, typ) =
-      Fmt.pf ppf "%a %a?" Domain_name.pp name Rr.pp typ
+      Fmt.pf ppf "%a %a?" Domain_name.pp name Rr_map.pp_rr typ
 
     let compare (name, typ) (name', typ') =
       andThen (Domain_name.compare name name')
-        (Rr.compare typ typ')
+        (match typ, typ' with
+         | `Any, `Any -> 0 | `Any, _ -> 1 | _, `Any -> -1
+         | `Axfr, `Axfr -> 0 | `Axfr, _ -> 1 | _, `Axfr -> -1
+         | `K k, `K k' -> Rr_map.comparek k k')
 
     let decode ?(names = Name.Int_map.empty) ?(off = Header.len) buf =
       let open Rresult.R.Infix in
       decode_ntc names buf off >>= fun ((name, typ, c), names, off) ->
-      Clas.of_int ~off c >>= function
-      | Clas.IN -> Ok ((name, typ), names, off)
+      Clas.of_int ~off c >>= fun clas ->
+      match typ with
+      | `Edns | `Tsig -> Error (`Malformed (off, Fmt.strf "bad RRTYp in question %a" Rr_map.pp_rr typ))
+      | (`Axfr | `Any | `K _ as t) when clas = Clas.IN -> Ok ((name, t), names, off)
       | _ -> Error (`Not_implemented (off, Fmt.strf "bad class in question 0x%x" c))
 
     let encode names buf off (name, typ) =
-      encode_ntc names buf off (name, typ, Clas.to_int Clas.IN)
+      Rr_map.encode_ntc names buf off (name, (typ :> Rr_map.rrtyp), Clas.to_int Clas.IN)
   end
 
 
@@ -2437,8 +2323,13 @@ module Packet = struct
     decode_ntc names buf off >>= fun ((name, typ, clas), names, off) ->
     guard (clas = Clas.(to_int IN))
       (`Not_implemented (off, Fmt.strf "rr class not IN 0x%x" clas)) >>= fun () ->
-    Rr_map.decode names buf off typ >>| fun (b, names, off) ->
-    (name, b, names, off)
+    match typ with
+    | `K k ->
+      Rr_map.decode names buf off k >>| fun (b, names, off) ->
+      (name, b, names, off)
+    | _ ->
+      Error (`Not_implemented (off, Fmt.strf "unexpected RR typ %a"
+                                 Rr_map.pp_rr typ))
 
   let rec decode_n_aux add f names buf off acc = function
     | 0 -> acc, Ok (names, off)
@@ -2454,8 +2345,9 @@ module Packet = struct
     | Ok (names, off) -> Ok (names, off, acc)
     | Error e -> Error e
 
-  let decode_n_partial add f names buf off acc c =
-    let acc, r = decode_n_aux add f names buf off acc c in
+  let decode_n_partial names buf off acc c =
+    let add name (Rr_map.B (k, v)) map = Name_rr_map.add name k v map in
+    let acc, r = decode_n_aux add decode_rr names buf off acc c in
     match r with
     | Ok (names, off) -> Ok (`Full (names, off, acc))
     | Error `Partial -> Ok (`Partial acc)
@@ -2465,20 +2357,22 @@ module Packet = struct
     let open Rresult.R.Infix in
     decode_ntc names buf off >>= fun ((name, typ, clas), names, off') ->
     match typ with
-    | Rr.OPT when edns = None ->
+    | `Edns when edns = None ->
       (* OPT is special and needs class! (also, name is guarded to be .) *)
       Edns.decode buf ~off >>| fun (edns, off') ->
       (map, Some edns, None), names, off'
-    | Rr.TSIG when tsig ->
+    | `Tsig when tsig ->
       guard (clas = Clas.(to_int ANY_CLASS))
         (`Malformed (off, Fmt.strf "tsig class must be ANY 0x%x" clas)) >>= fun () ->
       Tsig.decode names buf ~off:off' >>| fun (tsig, names, off') ->
       (map, edns, Some (name, tsig, off)), names, off'
-    | _ ->
+    | `K t ->
       guard (clas = Clas.(to_int IN))
         (`Malformed (off, Fmt.strf "additional class must be IN 0x%x" clas)) >>= fun () ->
-      Rr_map.decode names buf off' typ >>| fun (b, names, off') ->
-      (Name_rr_map.add name b map, edns, None), names, off'
+      Rr_map.decode names buf off' t >>| fun (B (k, v), names, off') ->
+      (Name_rr_map.add name k v map, edns, None), names, off'
+    | _ -> Error (`Malformed (off, Fmt.strf "decode additional, unexpected rr %a"
+                                Rr_map.pp_rr typ))
 
   let rec decode_n_additional names buf off map edns tsig = function
     | 0 -> Ok (`Full (off, map, edns, tsig))
@@ -2512,10 +2406,10 @@ module Packet = struct
       and aucount = Cstruct.BE.get_uint16 buf 8
       in
       let empty = Domain_name.Map.empty in
-      decode_n_partial Name_rr_map.add decode_rr names buf off empty ancount >>= function
+      decode_n_partial names buf off empty ancount >>= function
       | `Partial answer -> guard truncated `Partial >>| fun () -> (answer, empty), names, off, false, truncated
       | `Full (names, off, answer) ->
-        decode_n_partial Name_rr_map.add decode_rr names buf off empty aucount >>= function
+        decode_n_partial names buf off empty aucount >>= function
         | `Partial authority -> guard truncated `Partial >>| fun () -> (answer, authority), names, off, false, truncated
         | `Full (names, off, authority) -> Ok ((answer, authority), names, off, true, truncated)
 
@@ -2575,7 +2469,8 @@ module Packet = struct
       (* TODO: verify name == zname in question, also all RR sub of zname *)
       match k, v with
       | Soa, soa ->
-        decode_n Name_rr_map.add decode_rr names buf off empty (ancount - 2) >>= fun (names, off, answer) ->
+        let add name (Rr_map.B (k, v)) map = Name_rr_map.add name k v map in
+        decode_n add decode_rr names buf off empty (ancount - 2) >>= fun (names, off, answer) ->
         decode_rr names buf off >>= fun (name', B (k', v'), names, off) ->
         begin
           match k', v' with
@@ -2604,24 +2499,24 @@ module Packet = struct
   module Update = struct
 
     type prereq =
-      | Exists of Rr.t
+      | Exists of Rr_map.k
       | Exists_data of Rr_map.b
-      | Not_exists of Rr.t
+      | Not_exists of Rr_map.k
       | Name_inuse
       | Not_name_inuse
 
     let equal_prereq a b = match a, b with
-      | Exists t, Exists t' -> Rr.compare t t' = 0
-      | Exists_data b, Exists_data b' -> Rr_map.equal_b b b'
-      | Not_exists t, Not_exists t' -> Rr.compare t t' = 0
+      | Exists t, Exists t' -> Rr_map.comparek t t' = 0
+      | Exists_data b, Exists_data b' -> Rr_map.equalb b b'
+      | Not_exists t, Not_exists t' -> Rr_map.comparek t t' = 0
       | Name_inuse, Name_inuse -> true
       | Not_name_inuse, Not_name_inuse -> true
       | _ -> false
 
     let pp_prereq ppf = function
-      | Exists typ -> Fmt.pf ppf "exists? %a" Rr.pp typ
+      | Exists typ -> Fmt.pf ppf "exists? %a" Rr_map.ppk typ
       | Exists_data rd -> Fmt.pf ppf "exists data? %a" Rr_map.pp_b rd
-      | Not_exists typ -> Fmt.pf ppf "doesn't exists? %a" Rr.pp typ
+      | Not_exists typ -> Fmt.pf ppf "doesn't exists? %a" Rr_map.ppk typ
       | Name_inuse -> Fmt.string ppf "name inuse?"
       | Not_name_inuse -> Fmt.string ppf "name not inuse?"
 
@@ -2634,20 +2529,22 @@ module Packet = struct
       guard (ttl = 0l) (`Malformed (off, Fmt.strf "prereq TTL not zero %lu" ttl)) >>= fun () ->
       let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
       let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.strf "prereq rdlength must be zero %d" rlen)) in
-      Clas.of_int cls >>= function
-      | ANY_CLASS when typ = ANY -> r0 >>= fun () -> Ok (name, Name_inuse, names, off')
-      | NONE when typ = ANY -> r0 >>= fun () -> Ok (name, Not_name_inuse, names, off')
-      | ANY_CLASS -> r0 >>= fun () -> Ok (name, Exists typ, names, off')
-      | NONE -> r0 >>= fun () -> Ok (name, Not_exists typ, names, off')
-      | IN->
-        Rr_map.decode names buf off typ >>= fun (rdata, names, off'') ->
+      Clas.of_int cls >>= fun c ->
+      match c, typ with
+      | ANY_CLASS, `Any -> r0 >>= fun () -> Ok (name, Name_inuse, names, off')
+      | NONE, `Any -> r0 >>= fun () -> Ok (name, Not_name_inuse, names, off')
+      | ANY_CLASS, `K k -> r0 >>= fun () -> Ok (name, Exists k, names, off')
+      | NONE, `K k -> r0 >>= fun () -> Ok (name, Not_exists k, names, off')
+      | IN, `K k->
+        Rr_map.decode names buf off k >>= fun (rdata, names, off'') ->
         Ok (name, Exists_data rdata, names, off'')
-      | _ -> Error (`Malformed (off, Fmt.strf "prereq bad class 0x%x" cls))
+      | _ -> Error (`Malformed (off, Fmt.strf "prereq bad class 0x%x or typ %a"
+                                  cls Rr_map.pp_rr typ))
 
     let encode_prereq names buf off count name = function
       | Exists typ ->
         let names, off =
-          encode_ntc names buf off (name, typ, Clas.(to_int ANY_CLASS))
+          Rr_map.encode_ntc names buf off (name, `K typ, Clas.(to_int ANY_CLASS))
         in
         (* ttl + rdlen, both 0 *)
         (names, off + 6), succ count
@@ -2656,38 +2553,38 @@ module Packet = struct
         ret, count' + count
       | Not_exists typ ->
         let names, off =
-          encode_ntc names buf off (name, typ, Clas.(to_int NONE))
+          Rr_map.encode_ntc names buf off (name, `K typ, Clas.(to_int NONE))
         in
         (* ttl + rdlen, both 0 *)
         (names, off + 6), succ count
       | Name_inuse ->
         let names, off =
-          encode_ntc names buf off (name, Rr.ANY, Clas.(to_int ANY_CLASS))
+          Rr_map.encode_ntc names buf off (name, `Any, Clas.(to_int ANY_CLASS))
         in
         (* ttl + rdlen, both 0 *)
         (names, off + 6), succ count
       | Not_name_inuse ->
         let names, off =
-          encode_ntc names buf off (name, Rr.ANY, Clas.(to_int NONE))
+          Rr_map.encode_ntc names buf off (name, `Any, Clas.(to_int NONE))
         in
         (* ttl + rdlen, both 0 *)
         (names, off + 6), succ count
 
     type update =
-      | Remove of Rr.t
+      | Remove of Rr_map.k
       | Remove_all
       | Remove_single of Rr_map.b
       | Add of Rr_map.b
 
     let equal_update a b = match a, b with
-      | Remove t, Remove t' -> Rr.compare t t' = 0
+      | Remove t, Remove t' -> Rr_map.comparek t t' = 0
       | Remove_all, Remove_all -> true
-      | Remove_single b, Remove_single b' -> Rr_map.equal_b b b'
-      | Add b, Add b' -> Rr_map.equal_b b b'
+      | Remove_single b, Remove_single b' -> Rr_map.equalb b b'
+      | Add b, Add b' -> Rr_map.equalb b b'
       | _ -> false
 
     let pp_update ppf = function
-      | Remove typ -> Fmt.pf ppf "remove! %a" Rr.pp typ
+      | Remove typ -> Fmt.pf ppf "remove! %a" Rr_map.ppk typ
       | Remove_all -> Fmt.string ppf "remove all!"
       | Remove_single rd -> Fmt.pf ppf "remove single! %a" Rr_map.pp_b rd
       | Add rr -> Fmt.pf ppf "add! %a" Rr_map.pp_b rr
@@ -2701,34 +2598,35 @@ module Packet = struct
       let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
       let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.strf "update rdlength must be zero %d" rlen)) in
       let ttl0 = guard (ttl = 0l) (`Malformed (off, Fmt.strf "update ttl must be zero %lu" ttl)) in
-      Clas.of_int cls >>= function
-      | ANY_CLASS when typ = ANY ->
+      Clas.of_int cls >>= fun c ->
+      match c, typ with
+      | ANY_CLASS, `Any ->
         ttl0 >>= fun () ->
         r0 >>= fun () ->
         Ok (name, Remove_all, names, off')
-      | ANY_CLASS ->
+      | ANY_CLASS, `K k ->
         ttl0 >>= fun () ->
         r0 >>= fun () ->
-        Ok (name, Remove typ, names, off')
-      | NONE ->
+        Ok (name, Remove k, names, off')
+      | NONE, `K k ->
         ttl0 >>= fun () ->
-        Rr_map.decode names buf off typ >>= fun (rdata, names, off) ->
+        Rr_map.decode names buf off k >>= fun (rdata, names, off) ->
         Ok (name, Remove_single rdata, names, off)
-      | IN ->
-        Rr_map.decode names buf off typ >>= fun (rdata, names, off) ->
+      | IN, `K k ->
+        Rr_map.decode names buf off k >>= fun (rdata, names, off) ->
         Ok (name, Add rdata, names, off)
       | _ -> Error (`Malformed (off, Fmt.strf "bad update class 0x%x" cls))
 
     let encode_update names buf off count name = function
       | Remove typ ->
         let names, off =
-          encode_ntc names buf off (name, typ, Clas.(to_int ANY_CLASS))
+          Rr_map.encode_ntc names buf off (name, `K typ, Clas.(to_int ANY_CLASS))
         in
         (* ttl + rdlen, both 0 *)
         (names, off + 6), succ count
       | Remove_all ->
         let names, off =
-          encode_ntc names buf off (name, Rr.ANY, Clas.(to_int ANY_CLASS))
+          Rr_map.encode_ntc names buf off (name, `Any, Clas.(to_int ANY_CLASS))
         in
         (* ttl + rdlen, both 0 *)
         (names, off + 6), succ count
@@ -2771,7 +2669,8 @@ module Packet = struct
         let base = match Domain_name.Map.find name map with None -> [] | Some x -> x in
         Domain_name.Map.add name (base @ [a]) map
       in
-      guard (snd question = Rr.SOA) (`Malformed (off, Fmt.strf "update question not SOA %a" Rr.pp (snd question))) >>= fun () ->
+      guard (snd question = `K Rr_map.(K Soa))
+        (`Malformed (off, Fmt.strf "update question not SOA %a" Rr_map.pp_rr (snd question))) >>= fun () ->
       decode_n add_to_list decode_prereq names buf off Domain_name.Map.empty prcount >>= fun (names, off, prereq) ->
       decode_n add_to_list decode_update names buf off Domain_name.Map.empty upcount >>= fun (names, off, update) ->
       Ok ((prereq, update), names, off)
@@ -3000,7 +2899,7 @@ module Packet = struct
             guard (an_count = 0) (`Query_answer_count an_count) >>= fun () ->
             guard (au_count = 0) (`Query_authority_count au_count) >>| fun () ->
             begin match snd question with
-             | Rr.AXFR -> `Axfr_request, names, off
+             | `Axfr -> `Axfr_request, names, off
              | _ -> `Query, names, off
             end
           | Opcode.Notify ->
@@ -3019,7 +2918,7 @@ module Packet = struct
       end else begin match rcode with
         | Rcode.NoError -> begin match operation with
             | Opcode.Query -> begin match snd question with
-                | Rr.AXFR ->
+                | `Axfr ->
                   guard (au_count = 0) (`Malformed (8, Fmt.strf "AXFR with aucount %d > 0" au_count)) >>= fun () ->
                   Axfr.decode header buf names off an_count >>| fun (axfr, names, off) ->
                   `Axfr_reply axfr, names, off, true, false
@@ -3124,7 +3023,7 @@ module Packet = struct
         | None -> names, off
         | Some soa ->
           Cstruct.BE.set_uint16 buf 6 1;
-          let query = Domain_name.Map.singleton (fst question) Rr_map.(singleton Soa soa) in
+          let query = Name_rr_map.singleton (fst question) Soa soa in
           Query.encode names buf off question (query, Name_rr_map.empty)
       end
     | `Update u -> Update.encode names buf off question u

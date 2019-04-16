@@ -26,7 +26,7 @@ struct
 
   let nameserver t = Uflow.nameserver t
 
-  let getaddrinfo (type requested) t ?nameserver (query_type:requested Udns.Rr_map.k) name
+  let getaddrinfo (type requested) t ?nameserver (query_type:requested Udns.Rr_map.key) name
     : (requested, [> `Msg of string]) Uflow.io =
     let proto, _ = match nameserver with None -> Uflow.nameserver t | Some x -> x in
     let tx, state =

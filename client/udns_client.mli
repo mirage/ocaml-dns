@@ -7,7 +7,7 @@
     of {!Udns_client_flow}.
 *)
 
-type 'key query_state constraint 'key = 'a Udns.Rr_map.k
+type 'key query_state constraint 'key = 'a Udns.Rr_map.key
 (** [query_state] is parameterized over the query type, so the type of
     the representation of the answer depends on what the name server
     was asked to provide. See {!Udns_map.k} for a list of response types.
@@ -19,8 +19,8 @@ type 'key query_state constraint 'key = 'a Udns.Rr_map.k
 
 val make_query :
   Udns.proto -> Domain_name.t ->
-  'query_type Udns.Rr_map.k->
-  Cstruct.t * 'query_type Udns.Rr_map.k query_state
+  'query_type Udns.Rr_map.key ->
+  Cstruct.t * 'query_type Udns.Rr_map.key query_state
 (** [make_query protocol name query_type] is [query, query_state]
     where [query] is the serialized DNS query to send to the name server,
     and [query_state] is the information required to validate the response.
@@ -31,7 +31,7 @@ val make_query :
     labels prefixed with underscores.
 *)
 
-val parse_response : 'query_type Udns.Rr_map.k query_state -> Cstruct.t ->
+val parse_response : 'query_type Udns.Rr_map.key query_state -> Cstruct.t ->
   ('query_type, [`Msg of string | `Partial]) result
 (** [parse_response query_state response] is the information contained in
     [response] parsed using [query_state] when the query was successful, or

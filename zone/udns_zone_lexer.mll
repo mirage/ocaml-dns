@@ -62,6 +62,7 @@ let label = (([^'\\'' ''\t''\n''.''('')']|octet|escape)*) as contents
 let number = (['0'-'9']+) as contents
 let openpar = [' ''\t']* '(' ([' ''\t''\n'] | eol)*
 let closepar = (eol | [' ''\t''\n'])* ')' [' ''\t']*
+let typefoo = (['T''t']['Y''y']['P''p']['E''e'] number) as contents
 
 rule token = parse
   eol           { state.lineno <- state.lineno + 1;
@@ -78,6 +79,7 @@ rule token = parse
 | '.'           { DOT }
 | '@'           { AT }
 | number        { NUMBER contents }
+| typefoo       { TYPE_GENERIC contents }
 | qstring       { count_linebreaks contents; CHARSTRING contents }
 | label         { count_linebreaks contents; kw_or_cs contents }
 | [' ''\t']+    { SPACE }

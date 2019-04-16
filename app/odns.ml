@@ -44,7 +44,7 @@ let do_a nameserver domains _ =
           (* handle empty response? *)
           Logs.app (fun m -> m ";%a. IN %a"
                        Domain_name.pp domain
-                       Udns.Rr.pp (Udns.Rr_map.k_to_rr_typ A))
+                       Udns.Rr_map.ppk (Udns.Rr_map.K A))
         | Ok resp ->
           Logs.app (fun m -> m "%a" pp_zone (domain, A, resp))
         | Error (`Msg msg) ->
@@ -71,7 +71,7 @@ let for_all_domains nameserver ~domains typ f =
                   (function `Msg msg as res ->
                      Logs.err (fun m ->
                          m "Failed to lookup %a for %a: %s\n%!"
-                           Udns.Rr.pp (Udns.Rr_map.k_to_rr_typ typ)
+                           Udns.Rr_map.ppk (Udns.Rr_map.K typ)
                            Domain_name.pp domain msg) ;
                      res)
                 >|= f domain)

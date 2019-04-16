@@ -3,7 +3,7 @@
 open Udns
 
 val scrub : ?mode:[ `Recursive | `Stub ] -> Domain_name.t -> Packet.t ->
-  ((Rr.t * Domain_name.t * Udns_resolver_cache.rank * Udns_resolver_cache.res) list,
+  ((Rr_map.k * Domain_name.t * Udns_resolver_cache.rank * Udns_resolver_cache.res) list,
    Rcode.t) result
 (** [scrub ~mode bailiwick packet] returns a list of entries to-be-added to the
     cache. This respects only in-bailiwick resources records, and qualifies the

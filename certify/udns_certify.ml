@@ -27,13 +27,13 @@ let nsupdate rng now ~host ~keyname ~zone dnskey csr =
         data = X509.Encoding.cs_of_signing_request csr ;
       }
     in
-    let zone = (zone, Rr.SOA)
+    let zone = Packet.Question.create zone Soa
     and update =
       let up =
         Domain_name.Map.singleton host
           [
-            Packet.Update.Remove Rr.TLSA ;
-            Packet.Update.Add Rr_map.(B (Tlsa, (3600l, Tlsa_set.singleton tlsa)))
+            Packet.Update.Remove (K Tlsa) ;
+            Packet.Update.Add (B (Tlsa, (3600l, Rr_map.Tlsa_set.singleton tlsa)))
           ]
       in
       (Domain_name.Map.empty, up)
@@ -86,7 +86,7 @@ let query rng public_key host =
       | _ -> None
     in
     let header = dns_header rng
-    and question = (host, Rr.TLSA)
+    and question = Packet.Question.create host Tlsa
     in
     let request = Packet.create header question `Query in
     let out, _ = Packet.encode `Tcp request

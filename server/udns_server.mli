@@ -45,9 +45,8 @@ val text : Domain_name.t -> Udns_trie.t -> (string, [> `Msg of string ]) result
 val handle_question : t -> Packet.Question.t ->
   (Packet.Flags.t * Packet.Query.t * Name_rr_map.t option,
    Rcode.t * Packet.Query.t option) result
-(** [handle_question t question] handles the DNS query [question] using the data
-    of [t]: a whitelist of record types are looked up: A | NS | CNAME | SOA |
-    PTR | MX | TXT | AAAA | SRV | ANY | CAA | SSHFP | TLSA | DNSKEY. *)
+(** [handle_question t question] handles the DNS query [question] by looking
+    it up in the trie of [t]. *)
 
 val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.t ->
   Cstruct.t -> ((Domain_name.t * Tsig.t * Cstruct.t * Dnskey.t) option,

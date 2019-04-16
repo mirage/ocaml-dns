@@ -3,7 +3,7 @@
 open Udns
 
 let notify zone serial key now =
-  let question = (zone, Rr.SOA)
+  let question = Packet.Question.create zone Soa
   and soa =
     { Soa.nameserver = zone ; hostmaster = zone ; serial ;
       refresh = 0l; retry = 0l ; expiry = 0l ; minimum = 0l }

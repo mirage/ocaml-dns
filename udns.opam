@@ -12,7 +12,7 @@ depends: [
   "ocaml" {>= "4.07.0"}
   "rresult" "astring" "fmt" "logs" "ptime"
   "domain-name" {>= "0.1.1"}
-  "gmap" {>= "0.2.0"}
+  "gmap" {>= "0.3.0"}
   "cstruct" {>= "2.2.0"}
   "ipaddr" {>= "3.0.0"}
   "ppx_expect"
