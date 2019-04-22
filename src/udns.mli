@@ -842,6 +842,12 @@ module Tsig_op : sig
     Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> Cstruct.t ->
     (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
 
+  val no_verify : verify
+  (** [no_verify] always returns an error. *)
+
   type sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> Tsig.t ->
     key:Dnskey.t -> Packet.t -> Cstruct.t -> (Cstruct.t * Cstruct.t) option
+
+  val no_sign : sign
+  (** [no_sign] always returns [None]. *)
 end

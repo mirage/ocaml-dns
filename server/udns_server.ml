@@ -199,7 +199,7 @@ let text name data =
     out service ;
     Ok (Buffer.contents buf)
 
-let create data auth rng tsig_verify tsig_sign =
+let create ?(tsig_verify = Tsig_op.no_verify) ?(tsig_sign = Tsig_op.no_sign) data auth rng =
   { data ; auth ; rng ; tsig_verify ; tsig_sign }
 
 let find_glue trie names =
@@ -646,9 +646,9 @@ module Primary = struct
     in
     ({ t with data }, l, n'), out
 
-  let create ?(keys = []) ?(a = []) ~tsig_verify ~tsig_sign ~rng data =
+  let create ?(keys = []) ?(a = []) ?tsig_verify ?tsig_sign ~rng data =
     let keys = Authentication.of_keys keys in
-    let t = create data (keys, a) rng tsig_verify tsig_sign in
+    let t = create ?tsig_verify ?tsig_sign data (keys, a) rng in
     let notifications =
       let f name soa ns =
         Log.debug (fun m -> m "soa found for %a" Domain_name.pp name) ;
@@ -835,7 +835,7 @@ module Secondary = struct
       in
       Udns_trie.fold Rr_map.Soa keys f Domain_name.Map.empty
     in
-    (create Udns_trie.empty (keys, a) rng tsig_verify tsig_sign, zones)
+    (create ~tsig_verify ~tsig_sign Udns_trie.empty (keys, a) rng, zones)
 
   let maybe_sign ?max_size t name signed original_id packet buf =
     match Authentication.find_key t.auth name with

@@ -3125,6 +3125,11 @@ module Tsig_op = struct
     Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> Cstruct.t ->
     (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
 
+  let no_verify ?mac:_ _ _ _ ?key:_ tsig _ =
+    Error (`Bad_key (Domain_name.of_string_exn "no.verification", tsig), None)
+
   type sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> Tsig.t ->
     key:Dnskey.t -> Packet.t -> Cstruct.t -> (Cstruct.t * Cstruct.t) option
+
+  let no_sign ?mac:_ ?max_size:_ _ _ ~key:_ _ _ = None
 end

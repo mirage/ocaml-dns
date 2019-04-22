@@ -35,10 +35,6 @@ type t = private {
 }
 (** The state of a DNS server. *)
 
-val create : Udns_trie.t -> Authentication.t -> (int -> Cstruct.t) ->
-  Tsig_op.verify -> Tsig_op.sign -> t
-(** [create trie auth rng verify sign] creates a state record. *)
-
 val text : Domain_name.t -> Udns_trie.t -> (string, [> `Msg of string ]) result
 (** [text name trie] results in a string representation (zonefile) of the trie. *)
 
@@ -70,8 +66,8 @@ module Primary : sig
       The returned notifications should be send out. *)
 
   val create : ?keys:(Domain_name.t * Dnskey.t) list ->
-    ?a:Authentication.a list -> tsig_verify:Tsig_op.verify ->
-    tsig_sign:Tsig_op.sign -> rng:(int -> Cstruct.t) -> Udns_trie.t -> s
+    ?a:Authentication.a list -> ?tsig_verify:Tsig_op.verify ->
+    ?tsig_sign:Tsig_op.sign -> rng:(int -> Cstruct.t) -> Udns_trie.t -> s
   (** [create ~keys ~a ~tsig_verify ~tsig_sign ~rng data] creates a primary server. *)
 
   val handle_packet : s -> int64 -> proto -> Ipaddr.V4.t -> int ->
