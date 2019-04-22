@@ -70,12 +70,15 @@ let reserved_zone_records =
     zones nets
 (* XXX V6 reserved nets (also RFC6890) *)
 
+let stub_soa s = { Soa.nameserver = s ; hostmaster = s ;
+                   serial = 0l ; refresh = 300l ; retry = 300l ;
+                   expiry = 300l ; minimum = 300l }
+
 let reserved_zones =
-  let inv s =
-    let soa = { Soa.nameserver = s ; hostmaster = s ;
-                serial = 0l ; refresh = 300l ; retry = 300l ;
-                expiry = 300l ; minimum = 300l }
-    in
-    Rr_map.(B (Soa, soa))
-  in
+  let inv s = Rr_map.(B (Soa, stub_soa s)) in
   Domain_name.Set.fold (fun n acc -> (n, inv n) :: acc) reserved_zone_records []
+
+let reserved =
+  Domain_name.Set.fold (fun name trie ->
+      Udns_trie.insert name Rr_map.Soa (stub_soa name) trie)
+    reserved_zone_records Udns_trie.empty
