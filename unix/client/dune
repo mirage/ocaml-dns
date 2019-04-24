@@ -1,5 +1,4 @@
 (library
-  (flags      (:standard -safe-string))
   (name        udns_client_unix)
   (modules     udns_client_unix)
   (public_name udns-client-unix)
@@ -12,6 +11,5 @@
   (modules      ohost)
   (package      udns-client-unix)
   (public_name  udns-client-unix)
-  (flags       (:standard -safe-string))
   (libraries    fmt udns-client-unix)
 )

@@ -2,6 +2,5 @@
   (name        udns_mirage_client)
   (public_name udns-mirage-client)
   (libraries   domain-name ipaddr mirage-stack-lwt udns-client)
-  (flags      (:standard -safe-string))
   (wrapped     false)
 )
