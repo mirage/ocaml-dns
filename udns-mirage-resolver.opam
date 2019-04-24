@@ -10,10 +10,10 @@ license: "BSD2"
 depends: [
   "dune" {build & >= "1.2.0"}
   "ocaml" {>= "4.07.0"}
-  "udns"
-  "udns-mirage"
-  "udns-server"
-  "udns-resolver"
+  "udns" {= version}
+  "udns-mirage" {= version}
+  "udns-server" {= version}
+  "udns-resolver" {= version}
   "mirage-time-lwt"
   "mirage-clock-lwt"
   "mirage-random"

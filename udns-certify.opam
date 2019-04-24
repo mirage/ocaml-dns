@@ -10,8 +10,8 @@ license: "BSD2"
 depends: [
   "dune" {build & >= "1.2.0"}
   "ocaml" {>= "4.07.0"}
-  "udns"
-  "udns-tsig"
+  "udns" {= version}
+  "udns-tsig" {= version}
   "randomconv"
   "duration"
   "x509"

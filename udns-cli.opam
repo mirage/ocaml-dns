@@ -10,12 +10,12 @@ license: "BSD2"
 depends: [
   "dune" {build & >= "1.2.0"}
   "ocaml" {>= "4.07.0"}
-  "udns"
-  "udns-tsig"
-  "udns-client-lwt"
-  "udns-zone"
-  "udns-server"
-  "udns-certify"
+  "udns" {= version}
+  "udns-tsig" {= version}
+  "udns-client-lwt" {= version}
+  "udns-zone" {= version}
+  "udns-server" {= version}
+  "udns-certify" {= version}
   "rresult"
   "bos"
   "cmdliner" {>= "1.0.0"}

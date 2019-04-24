@@ -17,8 +17,7 @@ depends: [
   "domain-name" {>= "0.1.2"}
   "fmt" {>= "0.8.4"}
   "ipaddr" {>= "3.0.0"}
-  "udns"
-  "udns-client"
+  "udns-client" {= version}
   "fmt" {>= "0.8.4"}
   "rresult" {>= "0.6.0"}
 ]
