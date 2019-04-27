@@ -411,21 +411,21 @@ module Notification = struct
     List.fold_left (fun acc (_, ip) -> ip :: acc)
       [] name_ip
 
-  let insert data keys conn name ip =
+  let insert data keys conn ~zone ip =
     let ips =
-      Rr_map.Ipv4_set.(union (secondaries data name) (of_list (key_ips keys name)))
+      Rr_map.Ipv4_set.(union (secondaries data zone) (of_list (key_ips keys zone)))
     in
     if Rr_map.Ipv4_set.mem ip ips then begin
       Log.warn (fun m -> m "IP %a already in notification list" Ipaddr.V4.pp ip);
       conn
     end else begin
       Log.info (fun m -> m "inserting notifications for %a %a"
-                   Domain_name.pp name Ipaddr.V4.pp ip);
-      let cur = match Domain_name.Map.find name conn with
+                   Domain_name.pp zone Ipaddr.V4.pp ip);
+      let cur = match Domain_name.Map.find zone conn with
         | None -> []
         | Some xs -> xs
       in
-      Domain_name.Map.add name (ip::cur) conn
+      Domain_name.Map.add zone (ip::cur) conn
     end
 
   let remove conn ip =
@@ -674,7 +674,7 @@ module Primary = struct
       (* if there was a (transfer-key) signed SOA, and tcp, we add to notification list! *)
       let l' = match tcp_soa_query proto p.question, key with
         | Ok zone, Some key when Authentication.is_op `Transfer key ->
-          Notification.insert t.data t.auth l zone ip
+          Notification.insert t.data t.auth l ~zone ip
         | _ -> l
       in
       let answer =
