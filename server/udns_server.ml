@@ -61,14 +61,12 @@ module Authentication = struct
 
   let find_ns s (trie, _) zone =
     let accumulate name _ acc =
-      if Domain_name.sub ~domain:zone ~subdomain:name && is_op `Transfer name then
-        match find_zone_ips name, s with
-        | None, _ -> acc
-        | Some (_, prim, _), `P -> (name, prim) :: acc
-        | Some (_, _, Some sec), `S -> (name, sec) :: acc
-        | Some (_, _, None), `S -> acc
-      else
-        acc
+      let matches_zone z = Domain_name.(equal z root || equal z zone) in
+      match find_zone_ips name, s with
+      | None, _ -> acc
+      | Some (z, prim, _), `P when matches_zone z-> (name, prim) :: acc
+      | Some (z, _, Some sec), `S when matches_zone z -> (name, sec) :: acc
+      | Some _, _ -> acc
     in
     Udns_trie.fold Rr_map.Dnskey trie accumulate []
 
