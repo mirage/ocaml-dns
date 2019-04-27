@@ -20,13 +20,31 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       state := Udns_server.Primary.closed !state ip
     in
     let send_notify (ip, data) =
-      match Dns.IM.find ip !tcp_out with
-      | None -> Dns.send_udp stack port ip 53 data
-      | Some f -> Dns.send_tcp f data >>= function
-        | Ok () -> Lwt.return_unit
-        | Error () ->
-          drop ip ;
-          Dns.send_udp stack port ip 53 data
+      let dport = 53 in
+      let connect ip =
+        Log.info (fun m -> m "creating connection to %a:%d" Ipaddr.V4.pp ip dport) ;
+        T.create_connection (S.tcpv4 stack) (ip, dport) >>= function
+        | Error e ->
+          Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
+                      T.pp_error e Ipaddr.V4.pp ip port) ;
+          Lwt.return (Error ())
+        | Ok flow ->
+          tcp_out := Dns.IM.add ip flow !tcp_out;
+          Lwt.return (Ok flow)
+      in
+      let connect_and_send ip =
+        connect ip >>= function
+        | Ok flow -> Dns.send_tcp flow data
+        | Error () -> Lwt.return (Error ())
+      in
+      (match Dns.IM.find ip !tcp_out with
+       | None -> connect_and_send ip
+       | Some f -> Dns.send_tcp f data >>= function
+         | Ok () -> Lwt.return (Ok ())
+         | Error () -> drop ip ; connect_and_send ip) >>= function
+      | Ok () -> Lwt.return_unit
+      | Error () ->
+        drop ip ; Dns.send_udp stack port ip dport data
     in
 
     let maybe_update_state t =
