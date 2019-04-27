@@ -13,20 +13,20 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
 
   let primary ?(on_update = fun ~old:_ _ -> Lwt.return_unit) ?(on_notify = fun _ _ -> Lwt.return None) ?(timer = 2) ?(port = 53) stack t =
     let state = ref t in
-    let tcp_out = ref Dns.IPM.empty in
+    let tcp_out = ref Dns.IM.empty in
 
-    let drop ip port =
-      tcp_out := Dns.IPM.remove (ip, port) !tcp_out ;
-      state := Udns_server.Primary.closed !state ip port
+    let drop ip =
+      tcp_out := Dns.IM.remove ip !tcp_out ;
+      state := Udns_server.Primary.closed !state ip
     in
-    let send_notify (ip, dport, data) =
-      match Dns.IPM.find (ip, dport) !tcp_out with
-      | None -> Dns.send_udp stack port ip dport data
+    let send_notify (ip, data) =
+      match Dns.IM.find ip !tcp_out with
+      | None -> Dns.send_udp stack port ip 53 data
       | Some f -> Dns.send_tcp f data >>= function
         | Ok () -> Lwt.return_unit
         | Error () ->
-          drop ip dport ;
-          Dns.send_udp stack port ip dport data
+          drop ip ;
+          Dns.send_udp stack port ip 53 data
     in
 
     let maybe_update_state t =
@@ -65,10 +65,10 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       let dst_ip, dst_port = T.dst flow in
       Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp dst_ip dst_port) ;
       let f = Dns.of_flow flow in
-      tcp_out := Dns.IPM.add (dst_ip, dst_port) flow !tcp_out ;
+      tcp_out := Dns.IM.add dst_ip flow !tcp_out ;
       let rec loop () =
         Dns.read_tcp f >>= function
-        | Error () -> drop dst_ip dst_port ; Lwt.return_unit
+        | Error () -> drop dst_ip ; Lwt.return_unit
         | Ok data ->
           let now = Ptime.v (P.now_d_ps ()) in
           let elapsed = M.elapsed_ns () in
@@ -81,7 +81,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
           | Some answer ->
             Dns.send_tcp flow answer >>= function
             | Ok () -> loop ()
-            | Error () -> drop dst_ip dst_port ; Lwt.return_unit
+            | Error () -> drop dst_ip ; Lwt.return_unit
       in
       loop ()
     in

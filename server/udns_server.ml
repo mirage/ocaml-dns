@@ -391,7 +391,7 @@ module Notification = struct
   (* needed for passive secondaries (behind NAT etc.) such as let's encrypt,
      which initiated a signed! TCP session *)
 
-  type connections = (Ipaddr.V4.t * int) list Domain_name.Map.t
+  type connections = Ipaddr.V4.t list Domain_name.Map.t
 
   let secondaries trie zone =
     match Udns_trie.lookup_with_cname zone Rr_map.Soa trie with
@@ -409,11 +409,11 @@ module Notification = struct
     | _ -> Rr_map.Ipv4_set.empty
 
   let key_ips auth zone =
-    let name_ip_ports = Authentication.secondaries auth zone in
+    let name_ip = Authentication.secondaries auth zone in
     List.fold_left (fun acc (_, ip) -> ip :: acc)
-      [] name_ip_ports
+      [] name_ip
 
-  let insert data keys conn name ip port =
+  let insert data keys conn name ip =
     let ips =
       Rr_map.Ipv4_set.(union (secondaries data name) (of_list (key_ips keys name)))
     in
@@ -421,20 +421,20 @@ module Notification = struct
       Log.warn (fun m -> m "IP %a already in notification list" Ipaddr.V4.pp ip);
       conn
     end else begin
-      Log.info (fun m -> m "inserting notifications for %a %a:%d"
-                   Domain_name.pp name Ipaddr.V4.pp ip port);
+      Log.info (fun m -> m "inserting notifications for %a %a"
+                   Domain_name.pp name Ipaddr.V4.pp ip);
       let cur = match Domain_name.Map.find name conn with
         | None -> []
         | Some xs -> xs
       in
-      Domain_name.Map.add name ((ip, port)::cur) conn
+      Domain_name.Map.add name (ip::cur) conn
     end
 
-  let remove conn ip port =
-    let is_not_it name (ip', port') =
-      if Ipaddr.V4.compare ip ip' = 0 && port = port' then begin
-        Log.info (fun m -> m "removing notification for %a %a:%d"
-                     Domain_name.pp name Ipaddr.V4.pp ip port);
+  let remove conn ip =
+    let is_not_it name ip' =
+      if Ipaddr.V4.compare ip ip' = 0 then begin
+        Log.info (fun m -> m "removing notification for %a %a"
+                     Domain_name.pp name Ipaddr.V4.pp ip);
         false
       end else true
     in
@@ -444,19 +444,8 @@ module Notification = struct
       | xs -> Domain_name.Map.add name xs new_map)
       conn Domain_name.Map.empty
 
-  (* that's udp only *)
-  module IPM = struct
-    include Map.Make(struct
-        type t = Ipaddr.V4.t * int
-        let compare (ip, p) (ip', p') = match Ipaddr.V4.compare ip ip' with
-          | 0 -> compare p p'
-          | x -> x
-      end)
-    let find k t = try Some (find k t) with Not_found -> None
-  end
-
   (* outstanding notifications, with timestamp and retry count
-     (at most one per zone per ip*port) *)
+     (at most one per zone per ip) *)
   type outstanding = (int64 * int * Packet.t) Domain_name.Map.t IPM.t
 
   (* operations:
@@ -468,23 +457,23 @@ module Notification = struct
 
   let retransmit ns now =
     let max = pred (Array.length retransmit) in
-    IPM.fold (fun (ip, port) map (new_ns, out) ->
+    IPM.fold (fun ip map (new_ns, out) ->
         let new_map, out =
           Domain_name.Map.fold
             (fun name (ts, count, packet) (new_map, out) ->
                if Int64.add ts retransmit.(count) < now then
                  (if count = max then begin
-                     Log.warn (fun m -> m "retransmitting notify to %a:%d the last time %a"
-                                 Ipaddr.V4.pp ip port Packet.pp packet) ;
+                     Log.warn (fun m -> m "retransmitting notify to %a the last time %a"
+                                 Ipaddr.V4.pp ip Packet.pp packet) ;
                     new_map
                    end else
                     (Domain_name.Map.add name (ts, succ count, packet) new_map)),
-                 (ip, port, fst (Packet.encode `Udp packet)) :: out
+                 (ip, fst (Packet.encode `Udp packet)) :: out
                else
                  (Domain_name.Map.add name (ts, count, packet) new_map, out))
             map (Domain_name.Map.empty, out)
         in
-        (if Domain_name.Map.is_empty new_map then new_ns else IPM.add (ip, port) new_map new_ns),
+        (if Domain_name.Map.is_empty new_map then new_ns else IPM.add ip new_map new_ns),
         out)
       ns (IPM.empty, [])
 
@@ -493,17 +482,18 @@ module Notification = struct
        1. the NS records of the zone (port 53 as default)
        2. the IP addresses of secondary servers which have transfer keys (port encoded in name)
        3. the TCP connections which requested (signed) SOA in l *)
-    let ips = Rr_map.Ipv4_set.(elements (union (secondaries server.data zone)
-                                           (of_list (key_ips server.auth zone))))
+    let ips =
+      Rr_map.Ipv4_set.(elements
+                         (union (secondaries server.data zone)
+                            (of_list (key_ips server.auth zone))))
     in
-    let tcp_ip_ports = match Domain_name.Map.find zone conn with
+    let tcp_ip = match Domain_name.Map.find zone conn with
       | None -> []
       | Some conns -> conns
     in
     Log.debug (fun m -> m "notifying %a %a (and tcp %a)" Domain_name.pp zone
                   Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp) ips
-                  Fmt.(list ~sep:(unit ", ") (pair ~sep:(unit ":") Ipaddr.V4.pp int))
-                  tcp_ip_ports) ;
+                  Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp) tcp_ip) ;
     let packet =
       let question = Packet.Question.create zone Soa
       and header =
@@ -512,30 +502,29 @@ module Notification = struct
       in
       Packet.create header question (`Notify (Some soa))
     in
-    let add_to_ns ns ip port =
+    let add_to_ns ns ip =
       let data = (now, 0, packet) in
-      let map = match IPM.find (ip, port) ns with
+      let map = match IPM.find_opt ip ns with
         | None -> Domain_name.Map.empty
         | Some map -> map
       in
       let map' = Domain_name.Map.add zone data map in
-      IPM.add (ip, port) map' ns
+      IPM.add ip map' ns
     in
     let ns', outs =
-      let port = 53 in
       List.fold_left (fun (ns, outs) ip ->
-          let ns = add_to_ns ns ip port in
-          ns, (ip, port, fst (Packet.encode `Udp packet)) :: outs)
+          let ns = add_to_ns ns ip in
+          ns, (ip, fst (Packet.encode `Udp packet)) :: outs)
         (ns, []) ips
     in
     let tcp_outs =
-      List.fold_left (fun acc (ip, port) ->
-          (ip, port, fst (Packet.encode `Udp packet)) :: acc) [] tcp_ip_ports
+      List.fold_left (fun acc ip ->
+          (ip, fst (Packet.encode `Udp packet)) :: acc) [] tcp_ip
     in
     ns', outs @ tcp_outs
 
-  let received_reply ns ip port reply =
-    match IPM.find (ip, port) ns with
+  let received_reply ns ip reply =
+    match IPM.find_opt ip ns with
     | None -> ns
     | Some map ->
       let map' = match Domain_name.Map.find (fst reply.Packet.question) map with
@@ -553,9 +542,9 @@ module Notification = struct
         | _ -> map
       in
       if Domain_name.Map.is_empty map' then
-        IPM.remove (ip, port) ns
+        IPM.remove ip ns
       else
-        IPM.add (ip, port) map' ns
+        IPM.add ip map' ns
 end
 
 let in_zone zone name = Domain_name.sub ~subdomain:name ~domain:zone
@@ -672,7 +661,7 @@ module Primary = struct
         (* we drop notifications, the first call to timer will solve this :) *)
         fst (Notification.notify Domain_name.Map.empty ns t 0L name soa)
       in
-      Udns_trie.fold Rr_map.Soa data f Notification.IPM.empty
+      Udns_trie.fold Rr_map.Soa data f IPM.empty
     in
     t, Domain_name.Map.empty, notifications
 
@@ -681,13 +670,13 @@ module Primary = struct
     | `Tcp, `K (Rr_map.K Soa) -> Ok name
     | _ -> Error ()
 
-  let handle_packet (t, l, ns) ts proto ip port p key =
+  let handle_packet (t, l, ns) ts proto ip _port p key =
     match p.Packet.data with
     | `Query ->
       (* if there was a (transfer-key) signed SOA, and tcp, we add to notification list! *)
       let l' = match tcp_soa_query proto p.question, key with
         | Ok zone, Some key when Authentication.is_op `Transfer key ->
-          Notification.insert t.data t.auth l zone ip port
+          Notification.insert t.data t.auth l zone ip
         | _ -> l
       in
       let answer =
@@ -721,7 +710,7 @@ module Primary = struct
       Logs.warn (fun m -> m "unsolicited AXFR reply %a, ignoring" Packet.Axfr.pp data);
       (t, l, ns), None, [], None
     | `Notify_ack ->
-      let ns' = Notification.received_reply ns ip port p in
+      let ns' = Notification.received_reply ns ip p in
       (t, l, ns'), None, [], None
     | `Notify soa ->
       Log.warn (fun m -> m "unsolicited notify request %a (replying anyways)"
@@ -787,8 +776,8 @@ module Primary = struct
         in
         (t', answer', out, n notify)
 
-  let closed (t, l, ns) ip port =
-    let l' = Notification.remove l ip port in
+  let closed (t, l, ns) ip =
+    let l' = Notification.remove l ip in
     (t, l', ns)
 
   let timer (t, l, ns) now =

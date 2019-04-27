@@ -61,7 +61,7 @@ module Primary : sig
   val data : s -> Udns_trie.t
   (** [data s] is the data store of [s]. *)
 
-  val with_data : s -> int64 -> Udns_trie.t -> s * (Ipaddr.V4.t * int * Cstruct.t) list
+  val with_data : s -> int64 -> Udns_trie.t -> s * (Ipaddr.V4.t * Cstruct.t) list
   (** [with_data s ts trie] replaces the current data with [trie] in [s].
       The returned notifications should be send out. *)
 
@@ -72,21 +72,21 @@ module Primary : sig
 
   val handle_packet : s -> int64 -> proto -> Ipaddr.V4.t -> int ->
     Packet.t -> Domain_name.t option ->
-    s * Packet.t option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
+    s * Packet.t option * (Ipaddr.V4.t * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
   (** [handle_packet s now src src_port proto key packet] handles the given
      [packet], returning new state, an answer, and potentially notify packets to
      secondary name servers. *)
 
   val handle_buf : s -> Ptime.t -> int64 -> proto ->
     Ipaddr.V4.t -> int -> Cstruct.t ->
-    s * Cstruct.t option * (Ipaddr.V4.t * int * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
+    s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
   (** [handle_buf s now ts proto src src_port buffer] decodes the [buffer],
      processes the DNS frame using {!handle_packet}, and encodes the reply. *)
 
-  val closed : s -> Ipaddr.V4.t -> int -> s
-  (** [closed s ip port] marks the connection to [ip, port] closed. *)
+  val closed : s -> Ipaddr.V4.t -> s
+  (** [closed s ip] marks the connection to [ip] closed. *)
 
-  val timer : s -> int64 -> s * (Ipaddr.V4.t * int * Cstruct.t) list
+  val timer : s -> int64 -> s * (Ipaddr.V4.t * Cstruct.t) list
   (** [timer s now] may encode some notify if they were not acknowledget by the
      other side. *)
 
