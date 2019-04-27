@@ -144,7 +144,9 @@ let zone name t =
   | Ok (zone, _, _) ->
     match check_zone zone with
     | Error e -> Error e
-    | Ok (name, map) -> Ok (name, Rr_map.get Soa map) (* we ended with `Soa, which checked that map contains a Soa *)
+    | Ok (name, map) ->
+      (* we ended with `Soa, which checked that map contains a Soa *)
+      Ok (name, Rr_map.get Soa map)
 
 let fold key (N (sub, map)) f s =
   let get name map acc =
