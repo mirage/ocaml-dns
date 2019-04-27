@@ -53,6 +53,7 @@ let guard p err = if p then Ok () else Error err
 let ent name map =
   let soa = Rr_map.get Soa map in
   `EmptyNonTerminal (name, soa)
+
 let to_ns name map =
   let ttl, ns =
     match Rr_map.find Ns map with
@@ -99,9 +100,9 @@ let lookup_aux name t =
       else match M.find (Array.get k idx) sub with
         | exception Not_found ->
           begin match zone with
+            | None -> Error `NotAuthoritative
             | Some (`Delegation (name, (ttl, ns))) ->
               Error (`Delegation (name, (ttl, ns)))
-            | None -> Error `NotAuthoritative
             | Some (`Soa (name, map)) ->
               let soa = Rr_map.get Soa map in
               Error (`NotFound (name, soa))
@@ -117,12 +118,13 @@ let lookup_with_cname name ty t =
 let lookup name key t =
   match lookup_aux name t with
   | Error e -> Error e
-  | Ok (_zone, _sub, map) ->
+  | Ok (zone, _sub, map) ->
     match Rr_map.find key map with
     | Some v -> Ok v
-    | None -> match Rr_map.find Soa map with
+    | None -> match zone with
       | None -> Error `NotAuthoritative
-      | Some soa -> Error (`NotFound (name, soa))
+      | Some (`Delegation (name, (ttl, ns))) -> Error (`Delegation (name, (ttl, ns)))
+      | Some (`Soa (z, zmap)) -> Error (ent z zmap)
 
 let lookup_any name t =
   match lookup_aux name t with

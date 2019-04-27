@@ -83,11 +83,12 @@ module Authentication = struct
     let arr = Domain_name.to_array name in
     let len = Array.length arr in
     let rec go idx =
-      if idx = len
-      then len
-      else if List.exists (String.equal (Array.get arr idx)) all_operations
-      then idx
-      else go (succ idx)
+      if idx = len then
+        len
+      else if List.exists (String.equal (Array.get arr idx)) all_operations then
+        idx
+      else
+        go (succ idx)
     in
     let zidx = go 0 in
     Domain_name.of_array (Array.sub arr 0 zidx)
@@ -97,26 +98,26 @@ module Authentication = struct
       serial = 0l ; refresh = 16384l ; retry = 2048l ;
       expiry = 1048576l ; minimum = 300l }
 
-  let add_keys trie name keys' =
+  let add_keys trie name keys =
     let zone = zone name in
     let soa =
       match Udns_trie.lookup zone Rr_map.Soa trie with
       | Ok soa -> { soa with Soa.serial = Int32.succ soa.Soa.serial }
       | Error _ -> soa name
     in
-    let keys = match Udns_trie.lookup name Rr_map.Dnskey trie with
-      | Error _ -> keys'
-      | Ok (_, keys) ->
-        Log.warn (fun m -> m "replacing unexpected Dnskeys (name %a, have %a, got %a)"
+    let keys' = match Udns_trie.lookup name Rr_map.Dnskey trie with
+      | Error _ -> keys
+      | Ok (_, dnskeys) ->
+        Log.warn (fun m -> m "replacing Dnskeys (name %a, present %a, add %a)"
                      Domain_name.pp name
                      Fmt.(list ~sep:(unit ",") Dnskey.pp)
-                     (Rr_map.Dnskey_set.elements keys)
+                     (Rr_map.Dnskey_set.elements dnskeys)
                      Fmt.(list ~sep:(unit ";") Dnskey.pp)
                      (Rr_map.Dnskey_set.elements keys) ) ;
-        keys'
+        keys
     in
     let trie' = Udns_trie.insert zone Rr_map.Soa soa trie in
-    Udns_trie.insert name Rr_map.Dnskey (0l, keys) trie'
+    Udns_trie.insert name Rr_map.Dnskey (0l, keys') trie'
 
   let of_keys keys =
     List.fold_left (fun trie (name, key) ->
@@ -1049,10 +1050,7 @@ module Secondary = struct
     | Requested_soa (_, _, retry, _) ->
       Log.debug (fun m -> m "received SOA after %d retries" retry) ;
       (* request AXFR now in case of serial is higher! *)
-      begin match
-          Udns_trie.lookup zone Rr_map.Soa t.data,
-          Name_rr_map.find zone Soa answer
-        with
+      begin match Udns_trie.lookup zone Rr_map.Soa t.data, Name_rr_map.find zone Soa answer with
         | _, None ->
           Log.err (fun m -> m "didn't receive SOA for %a from %a (answer %a)"
                       Domain_name.pp zone Ipaddr.V4.pp ip Name_rr_map.pp answer) ;
