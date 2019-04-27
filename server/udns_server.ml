@@ -453,7 +453,7 @@ module Notification = struct
      - send out notification for a given zone
      - a (signed?) notify response came in, drop it from outstanding
   *)
-  let retransmit = Array.map Duration.of_sec [| 5 ; 12 ; 25 ; 40 ; 60 |]
+  let retransmit = Array.map Duration.of_sec [| 1 ; 3 ; 7 ; 20 ; 40 ; 60 ; 180 |]
 
   let retransmit ns now =
     let max = pred (Array.length retransmit) in
