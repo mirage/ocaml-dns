@@ -216,7 +216,6 @@ let entries name t =
 
 type zone_check = [ `Missing_soa of Domain_name.t
                   | `Cname_other of Domain_name.t
-                  | `Any_not_allowed of Domain_name.t
                   | `Bad_ttl of Domain_name.t * Rr_map.b
                   | `Empty of Domain_name.t * Rr_map.k
                   | `Missing_address of Domain_name.t
@@ -225,7 +224,6 @@ type zone_check = [ `Missing_soa of Domain_name.t
 let pp_zone_check ppf = function
   | `Missing_soa name -> Fmt.pf ppf "missing soa for %a" Domain_name.pp name
   | `Cname_other name -> Fmt.pf ppf "%a contains a cname record, and also other entries" Domain_name.pp name
-  | `Any_not_allowed name -> Fmt.pf ppf "resource type ANY is not allowed, but present for %a" Domain_name.pp name
   | `Bad_ttl (name, v) -> Fmt.pf ppf "bad TTL for %a %a" Domain_name.pp name Rr_map.pp_b v
   | `Empty (name, typ) -> Fmt.pf ppf "%a empty %a" Domain_name.pp name Rr_map.ppk typ
   | `Missing_address name -> Fmt.pf ppf "missing address record for %a" Domain_name.pp name

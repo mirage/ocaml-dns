@@ -61,7 +61,6 @@ val remove_zone : Domain_name.t -> t -> t
 
 type zone_check = [ `Missing_soa of Domain_name.t
                   | `Cname_other of Domain_name.t
-                  | `Any_not_allowed of Domain_name.t
                   | `Bad_ttl of Domain_name.t * Rr_map.b
                   | `Empty of Domain_name.t * Rr_map.k
                   | `Missing_address of Domain_name.t
