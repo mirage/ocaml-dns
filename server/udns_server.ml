@@ -591,7 +591,13 @@ let update_data trie zone (prereq, update) =
       let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
       let trie'' = Udns_trie.insert zone Soa soa trie' in
       Ok (trie'', Some (zone, soa))
-    | _, _ -> Ok (trie', None)
+    | Ok oldsoa, Error _ ->
+      (* zone removal!? *)
+      Ok (trie', Some (zone, { oldsoa with Soa.serial = Int32.succ oldsoa.Soa.serial }))
+    | Error o, Error n ->
+      Log.warn (fun m -> m "should not happen: soa lookup for %a failed in old %a and new %a"
+                   Domain_name.pp zone Udns_trie.pp_e o Udns_trie.pp_e n);
+      Ok (trie', None)
 
 let handle_update t proto key (zone, _) u =
   if Authentication.authorise t.auth proto ?key ~zone `Update then begin
@@ -645,7 +651,17 @@ module Primary = struct
            | Ok _ -> (n, outs))
         (n, [])
     in
-    ({ t with data }, l, n'), out
+    let n'', out' =
+      Udns_trie.fold Soa t.data (fun name soa (n, outs) ->
+          match Udns_trie.lookup name Soa data with
+          | Error _ ->
+            let soa' = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
+            let n', outs' = Notification.notify l n t now name soa' in
+            (n', outs @ outs')
+          | Ok _ -> (n, outs))
+        (n', [])
+    in
+    ({ t with data }, l, n''), out @ out'
 
   let create ?(keys = []) ?(a = []) ?tsig_verify ?tsig_sign ~rng data =
     let keys = Authentication.of_keys keys in
