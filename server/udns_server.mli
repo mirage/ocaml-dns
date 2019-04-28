@@ -61,8 +61,8 @@ module Primary : sig
   val data : s -> Udns_trie.t
   (** [data s] is the data store of [s]. *)
 
-  val with_data : s -> int64 -> Udns_trie.t -> s * (Ipaddr.V4.t * Cstruct.t) list
-  (** [with_data s ts trie] replaces the current data with [trie] in [s].
+  val with_data : s -> Ptime.t -> int64 -> Udns_trie.t -> s * (Ipaddr.V4.t * Cstruct.t) list
+  (** [with_data s now ts trie] replaces the current data with [trie] in [s].
       The returned notifications should be send out. *)
 
   val create : ?keys:(Domain_name.t * Dnskey.t) list ->
@@ -70,10 +70,10 @@ module Primary : sig
     ?tsig_sign:Tsig_op.sign -> rng:(int -> Cstruct.t) -> Udns_trie.t -> s
   (** [create ~keys ~a ~tsig_verify ~tsig_sign ~rng data] creates a primary server. *)
 
-  val handle_packet : s -> int64 -> proto -> Ipaddr.V4.t -> int ->
+  val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> int ->
     Packet.t -> Domain_name.t option ->
     s * Packet.t option * (Ipaddr.V4.t * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
-  (** [handle_packet s now src src_port proto key packet] handles the given
+  (** [handle_packet s now ts src src_port proto key packet] handles the given
      [packet], returning new state, an answer, and potentially notify packets to
      secondary name servers. *)
 
@@ -86,8 +86,8 @@ module Primary : sig
   val closed : s -> Ipaddr.V4.t -> s
   (** [closed s ip] marks the connection to [ip] closed. *)
 
-  val timer : s -> int64 -> s * (Ipaddr.V4.t * Cstruct.t) list
-  (** [timer s now] may encode some notify if they were not acknowledget by the
+  val timer : s -> Ptime.t -> int64 -> s * (Ipaddr.V4.t * Cstruct.t) list
+  (** [timer s now ts] may encode some notify if they were not acknowledget by the
      other side. *)
 
 end

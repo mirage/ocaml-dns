@@ -1172,7 +1172,7 @@ module Tsig = struct
     let fudge = Ptime.Span.of_int_s fudge in
     { algorithm ; signed ; fudge ; mac ; original_id ; error ; other },
     names,
-    off + 16 + mac_len + other_len
+    off' + 16 + mac_len + other_len
 
   let encode_48bit_time buf ?(off = 0) ts =
     match ptime_span_to_int64 (Ptime.to_span ts) with

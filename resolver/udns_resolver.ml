@@ -215,7 +215,7 @@ let scrub_it mode t proto zone edns ts p =
 let handle_primary t now ts proto sender sport packet _request buf =
   (* makes only sense to ask primary for query=true since we'll never issue questions from primary *)
   let handle_inner name =
-    let t, answer, _, _ = Udns_server.Primary.handle_packet t ts proto sender sport packet name in
+    let t, answer, _, _ = Udns_server.Primary.handle_packet t now ts proto sender sport packet name in
     match answer with
     | None -> `None (* TODO incoming ??? are never replied to - should be revised!? *)
     | Some reply ->
