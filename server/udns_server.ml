@@ -1244,6 +1244,20 @@ module Secondary = struct
       (* we don't reply to axfr requests *)
       let answer = Packet.create p.header p.question (`Rcode_error (Rcode.Refused, Opcode.Query, None)) in
       (t, zones), Some answer, []
+    | `Rcode_error (Rcode.NotAuth, Opcode.Query, _) ->
+      (* notauth axfr and SOA replies (and drop the resp. zone) *)
+      let zone = fst p.Packet.question in
+      begin match authorise_zone zones keyname p.Packet.header zone with
+        | Ok (Requested_axfr (_, _, _), _, _ | Requested_soa (_, _, _, _), _, _) ->
+          Log.warn (fun m -> m "received notauth reply, requested axfr or soa, dropping zone %a"
+                       Domain_name.pp zone);
+          let trie = Udns_trie.remove_zone zone t.data in
+          let zones' = Domain_name.Map.remove zone zones in
+          ({ t with data = trie }, zones'), None, []
+        | _ ->
+          Log.warn (fun m -> m "ignoring unsolicited notauth error");
+          (t, zones), None, []
+      end
     | `Axfr_reply data ->
       let r, out = match handle_axfr t zones ts keyname p.header p.question data with
         | Ok (t, zones, out) -> (t, zones), out
