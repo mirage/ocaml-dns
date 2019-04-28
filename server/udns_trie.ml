@@ -342,9 +342,7 @@ let check trie =
           if ttl < 0l then Error (`Bad_ttl (name, v))
           else if Rr_map.Txt_set.is_empty datas then
             Error (`Empty (name, K (Unknown x)))
-          else Ok ()
-
-      )
+          else Ok ())
       map (Ok ()) >>= fun () ->
     M.fold (fun lbl (N (sub, map)) r ->
         r >>= fun () ->

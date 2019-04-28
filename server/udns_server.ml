@@ -614,10 +614,7 @@ let handle_tsig ?mac t now p buf =
 
 module Primary = struct
 
-  (* TODO: there's likely a better data structure for outstanding notifications *)
-  (* the list of zone, ip, port, keyname is whom to notify *)
-  type s =
-    t * Notification.connections * Notification.outstanding
+  type s = t * Notification.connections * Notification.outstanding
 
   let server (t, _, _) = t
 
