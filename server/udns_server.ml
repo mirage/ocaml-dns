@@ -793,7 +793,7 @@ module Secondary = struct
     | Requested_axfr (_, id, _) -> Some id
 
   (* TODO undefined what happens if there are multiple transfer keys for zone x *)
-  type s = t * (state * Ipaddr.V4.t * int * Domain_name.t) Domain_name.Map.t
+  type s = t * (state * Ipaddr.V4.t * Domain_name.t) Domain_name.Map.t
 
   let data (t, _) = t.data
 
@@ -819,7 +819,7 @@ module Secondary = struct
                     Log.app (fun m -> m "adding zone %a with key %a and ip %a"
                                 Domain_name.pp name Domain_name.pp keyname
                                 Ipaddr.V4.pp ip) ;
-                    let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, 53, keyname in
+                    let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, keyname in
                     Domain_name.Map.add name v zones
                   end else begin
                     Log.warn (fun m -> m "no transfer key found for %a" Domain_name.pp name) ;
@@ -830,7 +830,7 @@ module Secondary = struct
           List.fold_left (fun zones (keyname, ip) ->
               Log.app (fun m -> m "adding transfer key %a for zone %a"
                           Domain_name.pp keyname Domain_name.pp name) ;
-              let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, 53, keyname in
+              let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, keyname in
               Domain_name.Map.add name v zones)
             zones primaries
       in
@@ -887,13 +887,13 @@ module Secondary = struct
        - if we don't have a soa yet for the zone, retry every 5 seconds as well
     *)
     let t, out =
-      Domain_name.Map.fold (fun zone (st, ip, port, name) ((t, zones), acc) ->
+      Domain_name.Map.fold (fun zone (st, ip, name) ((t, zones), acc) ->
           let maybe_out data =
             let st, out = match data with
               | None -> st, acc
-              | Some (st, out) -> st, (`Tcp, ip, port, out) :: acc
+              | Some (st, out) -> st, (`Tcp, ip, out) :: acc
             in
-            ((t, Domain_name.Map.add zone (st, ip, port, name) zones), out)
+            ((t, Domain_name.Map.add zone (st, ip, name) zones), out)
           in
 
           match Udns_trie.lookup zone Rr_map.Soa t.data, st with
@@ -951,7 +951,7 @@ module Secondary = struct
           Log.warn (fun m -> m "ignoring notify for %a, no such zone"
                        Domain_name.pp zone) ;
           Error Rcode.Refused
-        | Some (_, ip', port', name) when Ipaddr.V4.compare ip ip' = 0 ->
+        | Some (_, ip', name) when Ipaddr.V4.compare ip ip' = 0 ->
           Log.debug (fun m -> m "received notify for %a, replying and requesting SOA"
                         Domain_name.pp zone) ;
           (* TODO should we look in zones and if there's a fresh Requested_soa, leave it as is? *)
@@ -959,11 +959,11 @@ module Secondary = struct
             match query_soa t `Tcp now ts zone name with
             | None -> zones, []
             | Some (st, buf) ->
-              Domain_name.Map.add zone (st, ip, port', name) zones,
-              [ (`Tcp, ip, port', buf) ]
+              Domain_name.Map.add zone (st, ip, name) zones,
+              [ (`Tcp, ip, buf) ]
           in
           Ok (zones, out)
-        | Some (_, ip', _, _) ->
+        | Some (_, ip', _) ->
           Log.warn (fun m -> m "ignoring notify for %a from %a (%a is primary)"
                        Domain_name.pp zone Ipaddr.V4.pp ip Ipaddr.V4.pp ip') ;
           Error Rcode.Refused
@@ -988,17 +988,17 @@ module Secondary = struct
     | None ->
       Log.warn (fun m -> m "ignoring %a, unknown zone" Domain_name.pp zone) ;
       Error Rcode.Refused
-    | Some (st, ip, port, name) ->
+    | Some (st, ip, name) ->
       (* TODO use NotAuth instead of Refused here? *)
       guard (match id st with None -> true | Some id' -> fst header = id')
         Rcode.Refused >>= fun () ->
       guard (authorise name keyname) Rcode.Refused >>| fun () ->
       Log.debug (fun m -> m "authorized access to zone %a (with key %a)"
                     Domain_name.pp zone Domain_name.pp name) ;
-      (st, ip, port, name)
+      (st, ip, name)
 
   let handle_axfr t zones ts keyname header (zone, _) ((fresh_soa, fresh_zone) as axfr) =
-    authorise_zone zones keyname header zone >>= fun (st, ip, port, name) ->
+    authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
     match st with
     | Requested_axfr (_, _, _) ->
       (* TODO partial AXFR, but decoder already rejects them *)
@@ -1038,14 +1038,14 @@ module Secondary = struct
         | Error err ->
           Log.warn (fun m -> m "check on transferred zone %a failed: %a"
                        Domain_name.pp zone Udns_trie.pp_zone_check err)) ;
-      let zones = Domain_name.Map.add zone (Transferred ts, ip, port, name) zones in
+      let zones = Domain_name.Map.add zone (Transferred ts, ip, name) zones in
       Ok ({ t with data = trie' }, zones, [])
     | _ ->
       Log.warn (fun m -> m "ignoring AXFR %a unmatched state" Domain_name.pp zone) ;
       Error Rcode.Refused
 
   let handle_answer t zones now ts keyname header (zone, typ) (answer, _) =
-    authorise_zone zones keyname header zone >>= fun (st, ip, port, name) ->
+    authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
     match st with
     | Requested_soa (_, _, retry, _) ->
       Log.debug (fun m -> m "received SOA after %d retries" retry) ;
@@ -1066,12 +1066,12 @@ module Secondary = struct
               Ok (t, zones, [])
             | Some (st, buf) ->
               Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone) ;
-              let zones = Domain_name.Map.add zone (st, ip, port, name) zones in
-              Ok (t, zones, [ (`Tcp, ip, port, buf) ])
+              let zones = Domain_name.Map.add zone (st, ip, name) zones in
+              Ok (t, zones, [ (`Tcp, ip, buf) ])
           else begin
             Log.info (fun m -> m "received soa (%a) for %a is not newer than cached (%a), moving on"
                          Soa.pp fresh Domain_name.pp zone Soa.pp cached_soa) ;
-            let zones = Domain_name.Map.add zone (Transferred ts, ip, port, name) zones in
+            let zones = Domain_name.Map.add zone (Transferred ts, ip, name) zones in
             Ok (t, zones, [])
           end
         | Error _, _ ->
@@ -1080,8 +1080,8 @@ module Secondary = struct
             | None -> Log.warn (fun m -> m "trouble building axfr") ; Ok (t, zones, [])
             | Some (st, buf) ->
               Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone) ;
-              let zones = Domain_name.Map.add zone (st, ip, port, name) zones in
-              Ok (t, zones, [ (`Tcp, ip, port, buf) ])
+              let zones = Domain_name.Map.add zone (st, ip, name) zones in
+              Ok (t, zones, [ (`Tcp, ip, buf) ])
           end
       end
     | _ ->
@@ -1144,8 +1144,8 @@ module Secondary = struct
   let find_mac zones (name, _) =
     match Domain_name.Map.find name zones with
     | None -> None
-    | Some (Requested_axfr (_, _, mac), _, _, _) -> Some mac
-    | Some (Requested_soa (_, _, _, mac), _, _, _) -> Some mac
+    | Some (Requested_axfr (_, _, mac), _, _) -> Some mac
+    | Some (Requested_soa (_, _, _, mac), _, _) -> Some mac
     | _ -> None
 
   let handle_buf t now ts proto ip buf =
@@ -1197,18 +1197,18 @@ module Secondary = struct
         in
         t, answer', out
 
-  let closed (t, zones) now ts ip' port' =
+  let closed (t, zones) now ts ip' =
     (* if this ip and port was registered for zone(s), we re-open connections to the remote servers*)
     let xs =
-      Domain_name.Map.fold (fun zone (_, ip, port, keyname) acc ->
-          if Ipaddr.V4.compare ip ip' = 0 && port = port' then
+      Domain_name.Map.fold (fun zone (_, ip, keyname) acc ->
+          if Ipaddr.V4.compare ip ip' = 0 then
             match Authentication.find_zone_ips keyname with
             (* returns zone primary_ip secondary_ip -- for the hidden secondary the latter is None *)
             | Some (_, _, None) ->
               begin match query_soa t `Tcp now ts zone keyname with
                 | None -> acc
                 | Some (st, data) ->
-                  ((zone, (st, ip, port, keyname)), (`Tcp, ip, port, data)) :: acc
+                  ((zone, (st, ip, keyname)), (`Tcp, ip, data)) :: acc
               end
             | _ -> acc
           else acc)

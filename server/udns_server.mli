@@ -111,20 +111,19 @@ module Secondary : sig
 
   val handle_packet : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
     Packet.t -> Domain_name.t option ->
-    s * Packet.t option * (proto * Ipaddr.V4.t * int * Cstruct.t) list
+    s * Packet.t option * (proto * Ipaddr.V4.t * Cstruct.t) list
   (** [handle_packet s now ts ip proto key t] handles the incoming packet. *)
 
   val handle_buf : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> Cstruct.t ->
-    s * Cstruct.t option * (proto * Ipaddr.V4.t * int * Cstruct.t) list
+    s * Cstruct.t option * (proto * Ipaddr.V4.t * Cstruct.t) list
   (** [handle_buf s now ts proto src buf] decodes [buf], processes with
       {!handle_packet}, and encodes the results. *)
 
-  val timer : s -> Ptime.t -> int64 ->
-    s * (proto * Ipaddr.V4.t * int * Cstruct.t) list
+  val timer : s -> Ptime.t -> int64 -> s * (proto * Ipaddr.V4.t * Cstruct.t) list
   (** [timer s now ts] may request SOA or retransmit AXFR. *)
 
-  val closed : s -> Ptime.t -> int64 -> Ipaddr.V4.t -> int ->
-    s * (proto * Ipaddr.V4.t * int * Cstruct.t) list
-    (** [closed s now ts ip port] marks [ip, port] as closed. *)
+  val closed : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
+    s * (proto * Ipaddr.V4.t * Cstruct.t) list
+  (** [closed s now ts ip] marks [ip] as closed. *)
 
 end

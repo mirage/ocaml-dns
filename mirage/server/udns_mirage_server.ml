@@ -130,21 +130,21 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
         on_update ~old:(trie old) t
     in
 
-    let rec close ip port =
+    let rec close ip =
       (match Dns.IM.find ip !tcp_out with
        | None -> Lwt.return_unit
        | Some f -> T.close f) >>= fun () ->
       tcp_out := Dns.IM.remove ip !tcp_out ;
       let now = Ptime.v (P.now_d_ps ()) in
       let elapsed = M.elapsed_ns () in
-      let state', out = Udns_server.Secondary.closed !state now elapsed ip port in
+      let state', out = Udns_server.Secondary.closed !state now elapsed ip in
       state := state' ;
       Lwt_list.iter_s request out
-    and read_and_handle ip port f =
+    and read_and_handle ip f =
       Dns.read_tcp f >>= function
       | Error () ->
         Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
-        close ip port >>= fun () ->
+        close ip >>= fun () ->
         (* re-send once *)
         begin match Dns.IM.find ip !tcp_packet_transit with
           | None -> Lwt.return_unit
@@ -159,40 +159,41 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
         maybe_update_state t >>= fun () ->
         Lwt_list.iter_s request out >>= fun () ->
         match answer with
-        | None -> read_and_handle ip port f
+        | None -> read_and_handle ip f
         | Some x ->
           Dns.send_tcp (Dns.flow f) x >>= function
           | Error () ->
             Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
-            close ip port
-          | Ok () -> read_and_handle ip port f
-    and request ?(record = true) (proto, ip, port, data) =
+            close ip
+          | Ok () -> read_and_handle ip f
+    and request ?(record = true) (proto, ip, data) =
+      let dport = 53 in
       if record then
-        tcp_packet_transit := Dns.IM.add ip (proto, ip, port, data) !tcp_packet_transit;
+        tcp_packet_transit := Dns.IM.add ip (proto, ip, data) !tcp_packet_transit;
       match Dns.IM.find ip !tcp_out with
       | None ->
         begin
           if Dns.IS.mem ip !in_flight then
             Lwt.return_unit
           else begin
-            Log.info (fun m -> m "creating connection to %a:%d" Ipaddr.V4.pp ip port) ;
+            Log.info (fun m -> m "creating connection to %a:%d" Ipaddr.V4.pp ip dport) ;
             in_flight := Dns.IS.add ip !in_flight ;
-            T.create_connection (S.tcpv4 stack) (ip, port) >>= function
+            T.create_connection (S.tcpv4 stack) (ip, dport) >>= function
             | Error e ->
               Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
-                          T.pp_error e Ipaddr.V4.pp ip port) ;
+                          T.pp_error e Ipaddr.V4.pp ip dport) ;
               in_flight := Dns.IS.remove ip !in_flight ;
               Lwt.async (fun () ->
                   TIME.sleep_ns (Duration.of_sec 5) >>= fun () ->
-                  close ip port) ;
+                  close ip) ;
               Lwt.return_unit
             | Ok flow ->
               Dns.send_tcp flow data >>= function
-              | Error () -> close ip port
+              | Error () -> close ip
               | Ok () ->
                 tcp_out := Dns.IM.add ip flow !tcp_out ;
                 in_flight := Dns.IS.remove ip !in_flight ;
-                Lwt.async (fun () -> read_and_handle ip port (Dns.of_flow flow)) ;
+                Lwt.async (fun () -> read_and_handle ip (Dns.of_flow flow)) ;
                 Lwt.return_unit
           end
         end
@@ -201,10 +202,10 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
         | Ok () -> Lwt.return_unit
         | Error () ->
           Log.warn (fun m -> m "closing tcp flow to %a:%d, retrying request"
-                       Ipaddr.V4.pp ip port) ;
+                       Ipaddr.V4.pp ip dport) ;
           T.close flow >>= fun () ->
           tcp_out := Dns.IM.remove ip !tcp_out ;
-          request (proto, ip, port, data)
+          request (proto, ip, data)
     in
 
     let udp_cb ~src ~dst:_ ~src_port buf =
