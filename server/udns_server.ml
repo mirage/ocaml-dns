@@ -525,17 +525,10 @@ module Notification = struct
         out)
       ns (IPM.empty, [])
 
-  let notify conn ns server now ts zone soa =
-    let remotes = to_notify conn ~data:server.data ~auth:server.auth zone in
-    Log.debug (fun m -> m "notifying %a: %a" Domain_name.pp zone
-                  Fmt.(list ~sep:(unit ",@ ")
-                         (pair ~sep:(unit ", key ") Ipaddr.V4.pp
-                            (option ~none:(unit "none") Domain_name.pp)))
-                  (IPM.bindings remotes));
+  let notify_one ns server now ts zone soa ip key =
     let packet =
       let question = Packet.Question.create zone Soa
       and header =
-        (* TODO: all are getting the same ID *)
         let id = Randomconv.int ~bound:(1 lsl 16 - 1) server.rng in
         (id, authoritative)
       in
@@ -550,10 +543,20 @@ module Notification = struct
       let map' = Domain_name.Map.add zone data map in
       IPM.add ip map' ns
     in
+    let out, mac = encode_and_sign key server now packet in
+    let ns = add_to_ns ns ip key mac in
+    (ns, (ip, out))
+
+  let notify conn ns server now ts zone soa =
+    let remotes = to_notify conn ~data:server.data ~auth:server.auth zone in
+    Log.debug (fun m -> m "notifying %a: %a" Domain_name.pp zone
+                  Fmt.(list ~sep:(unit ",@ ")
+                         (pair ~sep:(unit ", key ") Ipaddr.V4.pp
+                            (option ~none:(unit "none") Domain_name.pp)))
+                  (IPM.bindings remotes));
     IPM.fold (fun ip key (ns, outs) ->
-        let out, mac = encode_and_sign key server now packet in
-        let ns = add_to_ns ns ip key mac in
-        ns, (ip, out) :: outs)
+        let ns, out = notify_one ns server now ts zone soa ip key in
+        ns, out :: outs)
       remotes (ns, [])
 
   let received_reply ns ip reply =
@@ -712,10 +715,28 @@ module Primary = struct
     match p.Packet.data with
     | `Query ->
       (* if there was a (transfer-key) signed SOA, and tcp, we add to notification list! *)
-      let l' = match tcp_soa_query proto p.question, key with
+      let l', ns', outs = match tcp_soa_query proto p.question, key with
         | Ok zone, Some key when Authentication.is_op `Transfer key ->
-          Notification.insert ~data:t.data ~auth:t.auth l ~zone ~key ip
-        | _ -> l
+          let zones, notify =
+            if Domain_name.(equal root zone) then
+              Udns_trie.fold Soa t.data (fun name soa (zs, n) ->
+                  Domain_name.Set.add name zs, (name, soa)::n)
+                (Domain_name.Set.empty, [])
+            else
+              Domain_name.Set.singleton zone, []
+          in
+          let l' = Domain_name.Set.fold (fun zone l ->
+              Notification.insert ~data:t.data ~auth:t.auth l ~zone ~key ip)
+              zones l
+          in
+          let ns, outs =
+            List.fold_left (fun (ns, outs) (name, soa) ->
+                let ns, out = Notification.notify_one ns t now ts name soa ip (Some key) in
+                ns, out :: outs)
+                (ns, []) notify
+          in
+          l', ns, outs
+        | _ -> l, ns, []
       in
       let answer =
         let flags, data, additional = match handle_question t p.question with
@@ -724,7 +745,7 @@ module Primary = struct
         in
         Packet.create ?additional (fst p.header, flags) p.question data
       in
-      (t, l', ns), Some answer, [], None
+      (t, l', ns'), Some answer, outs, None
     | `Update u ->
       let t', (flags, answer), stuff =
         match handle_update t proto key p.question u with
