@@ -1,6 +1,6 @@
 (library
-  (name        udns_mirage_client)
-  (public_name udns-mirage-client)
-  (libraries   domain-name ipaddr mirage-stack-lwt udns-client)
+  (name        dns_mirage_client)
+  (public_name dns-mirage-client)
+  (libraries   domain-name ipaddr mirage-stack-lwt dns-client)
   (wrapped     false)
 )

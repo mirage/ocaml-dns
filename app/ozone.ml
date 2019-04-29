@@ -3,38 +3,38 @@
 (* goal is to check a given zonefile whether it is valid (and to-be-uesd
    by an authoritative NS - i.e. there must be a SOA record, TTL are good)
    if a NS/MX name is within the zone, it needs an address record *)
-open Udns
+open Dns
 open Rresult.R.Infix
 
 let load_zone zone =
   Bos.OS.File.read Fpath.(v zone) >>= fun data ->
-  Udns_zone.parse data >>= fun rrs ->
+  Dns_zone.parse data >>= fun rrs ->
   let domain = Domain_name.of_string_exn Fpath.(basename (v zone)) in
   (if not (Domain_name.Map.for_all (fun name _ -> Domain_name.sub ~domain ~subdomain:name) rrs) then
      Error (`Msg (Fmt.strf "an entry of %a is not in its zone, won't handle this@.%a"
-                    Domain_name.pp domain Udns.Name_rr_map.pp rrs))
+                    Domain_name.pp domain Dns.Name_rr_map.pp rrs))
    else
      Ok ()) >>| fun () ->
-  Udns_trie.insert_map rrs Udns_trie.empty
+  Dns_trie.insert_map rrs Dns_trie.empty
 
 let jump _ zone old =
   load_zone zone >>= fun trie ->
-  Rresult.R.error_to_msg ~pp_error:Udns_trie.pp_zone_check (Udns_trie.check trie) >>= fun () ->
+  Rresult.R.error_to_msg ~pp_error:Dns_trie.pp_zone_check (Dns_trie.check trie) >>= fun () ->
   Logs.app (fun m -> m "successfully checked zone") ;
   let zones =
-    Udns_trie.fold Soa trie
+    Dns_trie.fold Soa trie
       (fun name _ acc -> Domain_name.Set.add name acc)
       Domain_name.Set.empty
   in
   if Domain_name.Set.cardinal zones = 1 then
     let zone = Domain_name.Set.choose zones in
-    Udns_server.text zone trie >>= fun zone_data ->
+    Dns_server.text zone trie >>= fun zone_data ->
     Logs.debug (fun m -> m "assembled zone data %s" zone_data) ;
     (match old with
      | None -> Ok ()
      | Some fn ->
        load_zone fn >>= fun old ->
-       match Udns_trie.lookup zone Soa trie, Udns_trie.lookup zone Soa old with
+       match Dns_trie.lookup zone Soa trie, Dns_trie.lookup zone Soa old with
        | Ok fresh, Ok old when Soa.newer ~old fresh ->
          Logs.debug (fun m -> m "zone %a newer than old" Domain_name.pp zone) ;
          Ok ()
@@ -54,7 +54,7 @@ let oldzone =
   Arg.(value & opt (some file) None & info [ "old" ] ~doc ~docv:"ZONE")
 
 let cmd =
-  Term.(term_result (const jump $ Udns_cli.setup_log $ newzone $ oldzone)),
+  Term.(term_result (const jump $ Dns_cli.setup_log $ newzone $ oldzone)),
   Term.info "ozone" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1

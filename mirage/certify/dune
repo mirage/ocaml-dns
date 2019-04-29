@@ -1,6 +1,6 @@
 (library
- (name udns_mirage_certify)
+ (name dns_mirage_certify)
  (synopsis "A Domain Name system (DNS) library, MirageOS let's encrypt integration")
- (public_name udns-mirage-certify)
+ (public_name dns-mirage-certify)
  (wrapped false)
- (libraries udns udns-mirage udns-certify tls lwt duration mirage-random mirage-time-lwt mirage-clock-lwt mirage-stack-lwt))
+ (libraries dns dns-mirage dns-certify tls lwt duration mirage-random mirage-time-lwt mirage-clock-lwt mirage-stack-lwt))

@@ -1,6 +1,6 @@
 (library
- (name udns_mirage)
+ (name dns_mirage)
  (synopsis "A Domain Name system (DNS) library, MirageOS integration")
- (public_name udns-mirage)
+ (public_name dns-mirage)
  (wrapped false)
- (libraries udns mirage-stack-lwt ipaddr lwt))
+ (libraries dns mirage-stack-lwt ipaddr lwt))

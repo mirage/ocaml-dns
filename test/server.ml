@@ -1,16 +1,16 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
 
-open Udns
+open Dns
 
 let n_of_s = Domain_name.of_string_exn
 
 module Trie = struct
-  open Udns_trie
+  open Dns_trie
 
   let e =
     let module M = struct
       type t = e
-      let pp = Udns_trie.pp_e
+      let pp = Dns_trie.pp_e
       let equal a b = match a, b with
         | `Delegation (na, (ttl, n)), `Delegation (na', (ttl', n')) ->
           Domain_name.equal na na' && ttl = ttl' && Domain_name.Set.equal n n'

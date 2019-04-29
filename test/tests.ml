@@ -1,5 +1,5 @@
 (* (c) 2017 Hannes Mehnert, all rights reserved *)
-open Udns
+open Dns
 open Astring
 
 open Packet

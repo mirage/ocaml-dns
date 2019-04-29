@@ -78,7 +78,7 @@ instructions](https://mirage.io/wiki/install) to get `mirage` installed on your
 computer.
 
 µDNS is not released yet, but you can install it and its dependencies via opam:
-`opam pin add udns https://github.com/roburio/udns.git`
+`opam pin add dns https://github.com/roburio/udns.git`
 
 Now the µDNS library is installed, and you can try out the examples.  Find some
 examples at the [unikernel repository](https://github.com/roburio/unikernels).

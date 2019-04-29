@@ -1,6 +1,6 @@
 (library
-  (name        udns_client)
-  (public_name udns-client)
-  (modules     udns_client udns_client_flow)
-  (libraries   domain-name mirage-flow udns randomconv rresult)
+  (name        dns_client)
+  (public_name dns-client)
+  (modules     dns_client dns_client_flow)
+  (libraries   domain-name mirage-flow dns randomconv rresult)
   (wrapped     false))

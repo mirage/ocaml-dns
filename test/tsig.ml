@@ -35,7 +35,7 @@ let tsig ?(fudge = 300) algorithm signed =
     | None -> assert false
     | Some x -> x
   in
-  match Udns.Tsig.tsig ~algorithm ~signed ~fudge () with
+  match Dns.Tsig.tsig ~algorithm ~signed ~fudge () with
   | None -> assert false
   | Some x -> x
 
@@ -50,7 +50,7 @@ let example0 () =
                      95 bf 24 15 3b 9d a2 1b  bf 6f ae 61 9d 0f 28 a1|__}
   in
   Alcotest.(check cs "tsig is the same" mac
-              (Udns_tsig.compute_tsig key_name (tsig Udns.Tsig.SHA256 now) ~key buf))
+              (Dns_tsig.compute_tsig key_name (tsig Dns.Tsig.SHA256 now) ~key buf))
 
 let example1 () =
   let buf = of_h {__|4c 56 28 00 00 01 00 00  00 01 00 00 07 45 78 41
@@ -62,7 +62,7 @@ let example1 () =
                      10 95 80 89 a7 ee 4f bb  13 81 e7 38 e3 a0 78 80|__}
   in
   Alcotest.(check cs "tsig is the same" mac
-              (Udns_tsig.compute_tsig key_name (tsig Udns.Tsig.SHA256 now) ~key buf))
+              (Dns_tsig.compute_tsig key_name (tsig Dns.Tsig.SHA256 now) ~key buf))
 
 let example2 () =
   let buf = of_h {__|76 8a 28 00 00 01 00 00  00 01 00 00 07 65 78 61
@@ -73,7 +73,7 @@ let example2 () =
                      a7 df 6d de 47 b6 fa cc  81 c8 47 29 20 77 40 44|__}
   in
   Alcotest.(check cs "tsig is the same" mac
-              (Udns_tsig.compute_tsig key_name (tsig Udns.Tsig.SHA256 now) ~key buf))
+              (Dns_tsig.compute_tsig key_name (tsig Dns.Tsig.SHA256 now) ~key buf))
 
 
 let tsig_tests = [

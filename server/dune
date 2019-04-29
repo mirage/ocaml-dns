@@ -1,6 +1,6 @@
 (library
- (name udns_server)
+ (name dns_server)
  (synopsis "A Domain Name system (DNS) server library")
- (public_name udns-server)
+ (public_name dns-server)
  (wrapped false)
- (libraries udns randomconv duration))
+ (libraries dns randomconv duration))

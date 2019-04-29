@@ -23,22 +23,22 @@ let find_or_generate_key key_filename bits seed =
     Ok key
 
 let query_certificate sock public_key fqdn =
-  match Udns_certify.query Nocrypto.Rng.generate public_key fqdn with
+  match Dns_certify.query Nocrypto.Rng.generate public_key fqdn with
   | Error e -> Error e
   | Ok (out, cb) ->
-    Udns_cli.send_tcp sock out;
-    let data = Udns_cli.recv_tcp sock in
+    Dns_cli.send_tcp sock out;
+    let data = Dns_cli.recv_tcp sock in
     cb data
 
 let nsupdate_csr sock host keyname zone dnskey csr =
-  match Udns_certify.nsupdate Nocrypto.Rng.generate Ptime_clock.now ~host ~keyname ~zone dnskey csr with
+  match Dns_certify.nsupdate Nocrypto.Rng.generate Ptime_clock.now ~host ~keyname ~zone dnskey csr with
   | Error s -> Error s
   | Ok (out, cb) ->
-    Udns_cli.send_tcp sock out;
-    let data = Udns_cli.recv_tcp sock in
+    Dns_cli.send_tcp sock out;
+    let data = Dns_cli.recv_tcp sock in
     match cb data with
     | Ok () -> Ok ()
-    | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Udns_certify.pp_u_err e))
+    | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Dns_certify.pp_u_err e))
 
 let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert force =
   Nocrypto_entropy_unix.initialize ();
@@ -85,7 +85,7 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
     Bos.OS.File.delete cert_filename >>= fun () ->
     Bos.OS.File.write cert_filename (Cstruct.to_string cert)
   in
-  let sock = Udns_cli.connect_tcp server_ip port in
+  let sock = Dns_cli.connect_tcp server_ip port in
   (if force then
      Ok true
    else match query_certificate sock public_key hostname with
@@ -98,7 +98,7 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
        Ok true
      | Error (`Msg m) -> Error (`Msg m)
      | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
-       Error (`Msg (Fmt.strf "error %a while parsing TLSA reply" Udns_certify.pp_q_err e)))
+       Error (`Msg (Fmt.strf "error %a while parsing TLSA reply" Dns_certify.pp_q_err e)))
   >>= fun send_update ->
   if send_update then
     nsupdate_csr sock hostname keyname zone dnskey req >>= fun () ->
@@ -115,7 +115,7 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
           Logs.err (fun m -> m "error %s" msg);
           Error (`Msg msg)
         | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
-          Logs.err (fun m -> m "error %a while handling TLSA reply (retrying anyways)" Udns_certify.pp_q_err e);
+          Logs.err (fun m -> m "error %a while handling TLSA reply (retrying anyways)" Dns_certify.pp_q_err e);
           request (pred retries)
         | Ok x -> write_certificate x
     in
@@ -127,7 +127,7 @@ open Cmdliner
 
 let dns_server =
   let doc = "DNS server IP" in
-  Arg.(required & pos 0 (some Udns_cli.ip_c) None & info [] ~doc ~docv:"IP")
+  Arg.(required & pos 0 (some Dns_cli.ip_c) None & info [] ~doc ~docv:"IP")
 
 let port =
   let doc = "Port to connect to" in
@@ -135,11 +135,11 @@ let port =
 
 let dns_key =
   let doc = "nsupdate key (name:alg:b64key, where name is YYY._update.zone)" in
-  Arg.(required & pos 1 (some Udns_cli.namekey_c) None & info [] ~doc ~docv:"KEY")
+  Arg.(required & pos 1 (some Dns_cli.namekey_c) None & info [] ~doc ~docv:"KEY")
 
 let hostname =
   let doc = "Hostname (FQDN) to issue a certificate for" in
-  Arg.(required & pos 2 (some Udns_cli.name_c) None & info [] ~doc ~docv:"HOSTNAME")
+  Arg.(required & pos 2 (some Dns_cli.name_c) None & info [] ~doc ~docv:"HOSTNAME")
 
 let csr =
   let doc = "certificate signing request filename (defaults to hostname.req)" in
@@ -168,7 +168,7 @@ let force =
 let ocertify =
   let doc = "ocertify requests a signed certificate" in
   let man = [ `S "BUGS"; `P "Submit bugs to me";] in
-  Term.(term_result (const jump $ Udns_cli.setup_log $ dns_server $ port $ dns_key $ hostname $ csr $ key $ seed $ bits $ cert $ force)),
+  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ dns_key $ hostname $ csr $ key $ seed $ bits $ cert $ force)),
   Term.info "ocertify" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () = match Term.eval ocertify with `Ok () -> exit 0 | _ -> exit 1
