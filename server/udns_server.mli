@@ -72,14 +72,16 @@ module Primary : sig
 
   val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> int ->
     Packet.t -> Domain_name.t option ->
-    s * Packet.t option * (Ipaddr.V4.t * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
+    s * Packet.t option * (Ipaddr.V4.t * Cstruct.t) list *
+    [ `Notify of Soa.t option | `Signed_notify of Soa.t option | `Keep ] option
   (** [handle_packet s now ts src src_port proto key packet] handles the given
      [packet], returning new state, an answer, and potentially notify packets to
      secondary name servers. *)
 
   val handle_buf : s -> Ptime.t -> int64 -> proto ->
     Ipaddr.V4.t -> int -> Cstruct.t ->
-    s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t) list * [ `Notify of Soa.t option | `Signed_notify of Soa.t option ] option
+    s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t) list *
+    [ `Notify of Soa.t option | `Signed_notify of Soa.t option | `Keep ] option
   (** [handle_buf s now ts proto src src_port buffer] decodes the [buffer],
      processes the DNS frame using {!handle_packet}, and encodes the reply. *)
 

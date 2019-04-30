@@ -29,6 +29,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
                     T.pp_error e Ipaddr.V4.pp ip port) ;
         Lwt.return (Error ())
       | Ok flow ->
+        tcp_out := Dns.IM.add ip flow !tcp_out ;
         Lwt.async (recv_task ip dport flow);
         Lwt.return (Ok flow)
     in
@@ -69,7 +70,6 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
 
     let rec recv_task ip port flow () =
       let f = Dns.of_flow flow in
-      tcp_out := Dns.IM.add ip flow !tcp_out ;
       let rec loop () =
         Dns.read_tcp f >>= function
         | Error () -> drop ip ; Lwt.return_unit
@@ -77,8 +77,14 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
           let now = Ptime.v (P.now_d_ps ()) in
           let elapsed = M.elapsed_ns () in
           let t, answer, notify, n = Udns_server.Primary.handle_buf !state now elapsed `Tcp ip port data in
+          let n' = match n with
+            | Some `Keep -> tcp_out := Dns.IM.add ip flow !tcp_out ; None
+            | Some `Notify soa -> Some (`Notify soa)
+            | Some `Signed_notify soa -> Some (`Signed_notify soa)
+            | None -> None
+          in
           maybe_update_state t >>= fun () ->
-          maybe_notify recv_task t now elapsed n >>= fun () ->
+          maybe_notify recv_task t now elapsed n' >>= fun () ->
           (match answer with
            | None -> Log.warn (fun m -> m "empty answer") ; Lwt.return_unit
            | Some answer ->
@@ -104,8 +110,13 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       let now = Ptime.v (P.now_d_ps ()) in
       let elapsed = M.elapsed_ns () in
       let t, answer, notify, n = Udns_server.Primary.handle_buf !state now elapsed `Udp src src_port buf in
+      let n' = match n with
+        | None | Some `Keep -> None
+        | Some `Notify soa -> Some (`Notify soa)
+        | Some `Signed_notify soa -> Some (`Signed_notify soa)
+      in
       maybe_update_state t >>= fun () ->
-      maybe_notify recv_task t now elapsed n >>= fun () ->
+      maybe_notify recv_task t now elapsed n' >>= fun () ->
       (match answer with
        | None -> Log.warn (fun m -> m "empty answer") ; Lwt.return_unit
        | Some answer -> Dns.send_udp stack port src src_port answer) >>= fun () ->

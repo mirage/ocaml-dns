@@ -715,7 +715,7 @@ module Primary = struct
     match p.Packet.data with
     | `Query ->
       (* if there was a (transfer-key) signed SOA, and tcp, we add to notification list! *)
-      let l', ns', outs = match tcp_soa_query proto p.question, key with
+      let l', ns', outs, keep = match tcp_soa_query proto p.question, key with
         | Ok zone, Some key when Authentication.is_op `Transfer key ->
           let zones, notify =
             if Domain_name.(equal root zone) then
@@ -735,8 +735,8 @@ module Primary = struct
                 ns, out :: outs)
                 (ns, []) notify
           in
-          l', ns, outs
-        | _ -> l, ns, []
+          l', ns, outs, Some `Keep
+        | _ -> l, ns, [], None
       in
       let answer =
         let flags, data, additional = match handle_question t p.question with
@@ -745,7 +745,7 @@ module Primary = struct
         in
         Packet.create ?additional (fst p.header, flags) p.question data
       in
-      (t, l', ns'), Some answer, outs, None
+      (t, l', ns'), Some answer, outs, keep
     | `Update u ->
       let t', (flags, answer), stuff =
         match handle_update t proto key p.question u with
@@ -825,7 +825,7 @@ module Primary = struct
         in
         (t, answer', out, notify)
       | Ok (Some (name, tsig, mac, key)) ->
-        let n = function Some (`Notify n) -> Some (`Signed_notify n) | None -> None in
+        let n = function Some (`Notify n) -> Some (`Signed_notify n) | Some `Keep -> Some `Keep | None -> None in
         let t', answer, out, notify = handle_inner (Some name) in
         let answer' = match answer with
           | None -> None
