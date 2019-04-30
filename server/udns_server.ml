@@ -939,8 +939,11 @@ module Secondary = struct
        - axfr (once soa is through and we know we have stale data) is retried every 5 seconds
        - if we don't have a soa yet for the zone, retry every 5 seconds as well
     *)
+    Log.debug (fun m -> m "secondary timer");
     let t, out =
       Domain_name.Map.fold (fun zone (st, ip, name) ((t, zones), acc) ->
+          Log.debug (fun m -> m "secondary timer zone %a ip %a name %a"
+                        Domain_name.pp zone Ipaddr.V4.pp ip Domain_name.pp name);
           let maybe_out data =
             let st, out = match data with
               | None -> st, acc
