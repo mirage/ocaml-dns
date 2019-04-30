@@ -749,7 +749,7 @@ module Primary = struct
     | `Update u ->
       let t', (flags, answer), stuff =
         match handle_update t proto key p.question u with
-        | Ok (t', stuff) -> t', (authoritative, `Notify_ack), stuff
+        | Ok (t', stuff) -> t', (authoritative, `Update_ack), stuff
         | Error rcode -> t, (err_flags rcode, `Rcode_error (rcode, Opcode.Update, None)), None
       in
       let ns, out = match stuff with
