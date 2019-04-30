@@ -79,13 +79,14 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
           let t, answer, notify, n = Udns_server.Primary.handle_buf !state now elapsed `Tcp ip port data in
           maybe_update_state t >>= fun () ->
           maybe_notify recv_task t now elapsed n >>= fun () ->
+          (match answer with
+           | None -> Log.warn (fun m -> m "empty answer") ; Lwt.return_unit
+           | Some answer ->
+             Dns.send_tcp flow answer >|= function
+             | Ok () -> ()
+             | Error () -> drop ip) >>= fun () ->
           Lwt_list.iter_p (send_notify recv_task) notify >>= fun () ->
-          match answer with
-          | None -> Log.warn (fun m -> m "empty answer") ; loop ()
-          | Some answer ->
-            Dns.send_tcp flow answer >>= function
-            | Ok () -> loop ()
-            | Error () -> drop ip ; Lwt.return_unit
+          loop ()
       in
       loop ()
     in
@@ -165,15 +166,18 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
           Udns_server.Secondary.handle_buf !state now elapsed `Tcp ip data
         in
         maybe_update_state t >>= fun () ->
+        (match answer with
+         | None -> Lwt.return (Ok ())
+         | Some x ->
+           Dns.send_tcp (Dns.flow f) x >>= function
+           | Error () ->
+             Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
+             close ip >|= fun () -> Error ()
+           | Ok () -> Lwt.return (Ok ())) >>= fun r ->
         Lwt_list.iter_s request out >>= fun () ->
-        match answer with
-        | None -> read_and_handle ip f
-        | Some x ->
-          Dns.send_tcp (Dns.flow f) x >>= function
-          | Error () ->
-            Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
-            close ip
-          | Ok () -> read_and_handle ip f
+        match r with
+        | Ok () -> read_and_handle ip f
+        | Error () -> Lwt.return_unit
     and request ?(record = true) (proto, ip, data) =
       let dport = 53 in
       if record then
