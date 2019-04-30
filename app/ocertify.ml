@@ -134,7 +134,7 @@ let port =
   Arg.(value & opt int 53 & info [ "port" ] ~doc)
 
 let dns_key =
-  let doc = "nsupdate key (name[:alg]:value, where name is YYY._update.zone)" in
+  let doc = "nsupdate key (name:alg:b64key, where name is YYY._update.zone)" in
   Arg.(required & pos 1 (some Udns_cli.namekey_c) None & info [] ~doc ~docv:"KEY")
 
 let hostname =

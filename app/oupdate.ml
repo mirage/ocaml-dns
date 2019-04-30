@@ -62,7 +62,7 @@ let port =
   Arg.(value & opt int 53 & info [ "port" ] ~doc)
 
 let key =
-  let doc = "DNS HMAC secret (name:[alg:]b64key where name is yyy._update.zone)" in
+  let doc = "DNS HMAC secret (name:alg:b64key where name is yyy._update.zone)" in
   Arg.(required & pos 1 (some Udns_cli.namekey_c) None & info [] ~doc ~docv:"KEY")
 
 let hostname =

@@ -77,7 +77,7 @@ let serial =
   Arg.(value & opt int32 1l & info [ "serial" ] ~doc)
 
 let key =
-  let doc = "DNS HMAC secret (name:[alg:]b64key)" in
+  let doc = "DNS HMAC secret (name:alg:b64key)" in
   Arg.(value & opt (some Udns_cli.namekey_c) None & info [ "key" ] ~doc ~docv:"KEY")
 
 let zone =
