@@ -1004,9 +1004,7 @@ module Secondary = struct
     | `K (Rr_map.K Soa) ->
       let kzone = match keyname with
         | None -> None
-        | Some key -> match Authentication.find_zone_ips key with
-          | Some (z, _, _) -> Some (key, z)
-          | None -> None
+        | Some key -> Some (key, Authentication.zone key)
       in
       begin match Domain_name.Map.find zone zones, kzone with
         | None, None ->
