@@ -37,16 +37,31 @@ val equal : t -> t -> bool
 
 val insert_map : Rr_map.t Domain_name.Map.t -> t -> t
 (** [insert_map m t] inserts all elements of the domain name map [m] into
+    [t], potentially existing are unioned with {!Rr_map.unionee}. *)
+
+val replace_map : Rr_map.t Domain_name.Map.t -> t -> t
+(** [replace_map m t] replaces in the trie [t] all existing bindings of the
+    domain name map [m] with the provided map. *)
+
+val remove_map : Rr_map.t Domain_name.Map.t -> t -> t
+(** [remove_map m t] removes all elements of the domain name map [m] from
     [t]. *)
 
 val insert : Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
-(** [insert n k v t] insert [k, v] under [n] in [t].  Existing entries are
+(** [insert n k v t] inserts [k, v] under [n] in [t].  Existing entries are
+    unioneed with {!Rr_map.union_rr}. *)
+
+val replace : Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
+(** [replace n k v t] inserts [k, v] under [n] in [t].  Existing entries are
     replaced. *)
 
-val remove : Domain_name.t -> 'a Rr_map.key -> t -> t
-(** [remove k ty t] removes [k, ty] from [t].  If [ty] is {!Dns_enum.ANY}, all
-    entries of [k] are removed.  Beware, this may lead to a [t] where the
-    initially mentioned invariants are violated. *)
+val remove : Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
+(** [remove k ty v t] removes [ty, v] from [t] at [k].  Beware, this may lead
+    to a [t] where the initially mentioned invariants are violated. *)
+
+val remove_ty : Domain_name.t -> 'a Rr_map.key -> t -> t
+(** [remove_ty k ty t] removes [ty] from [t] at [k]. Beware, this may lead to a
+    [t] where the initially mentioned invariants are violated. *)
 
 val remove_all : Domain_name.t -> t -> t
 (** [remove_all k t] removes all entries of [k] in [t]. Beware, this may lead to
@@ -113,3 +128,12 @@ val entries : Domain_name.t -> t ->
 
 val fold : 'a Rr_map.key -> t -> (Domain_name.t -> 'a -> 'b -> 'b) -> 'b -> 'b
 (** [fold key t f acc] calls [f] with [dname value acc] element in [t]. *)
+
+val diff : Domain_name.t -> Soa.t -> old:t -> t ->
+  (Soa.t * [ `Empty | `Full of Name_rr_map.t | `Difference of Soa.t * Name_rr_map.t * Name_rr_map.t ],
+   [> `Msg of string ]) result
+(** [diff zone soa ~old trie] computes the difference of [zone] in [old] and
+   [trie], and returns either [`Empty] if [soa] is equal or newer than the one
+   in [trie], [`Full] (the same as [entries]) if [zone] is not present in [old],
+   or [`Difference (old_soa, deleted, added)]. Best used with IXFR. An error
+   occurs if [zone] is not present in [trie]. *)

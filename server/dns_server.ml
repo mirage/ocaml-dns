@@ -11,6 +11,8 @@ module IPM = Map.Make(Ipaddr.V4)
 
 let guard p err = if p then Ok () else Error err
 
+let guardf p err = if p then Ok () else Error (err ())
+
 type proto = [ `Tcp | `Udp ]
 
 module Authentication = struct
@@ -256,25 +258,48 @@ let lookup trie (name, typ) =
     Error (Rcode.NXDomain, Some (Name_rr_map.empty, authority))
   | Error `NotAuthoritative -> Error (Rcode.NotAuth, None)
 
-let axfr trie proto (zone, _) =
-  if proto = `Udp then begin
-    Log.err (fun m -> m "refusing AXFR query via UDP") ;
-    Error Rcode.Refused
-  end else
-    match Dns_trie.entries zone trie with
-    | Ok (soa, entries) -> Ok (soa, entries)
-    | Error e ->
-      Log.err (fun m -> m "AXFR attempted on %a, where we're not authoritative %a"
-                  Domain_name.pp zone Dns_trie.pp_e e) ;
-      Error Rcode.NXDomain
+let authorise_zone_transfer auth proto key zone =
+  guardf (proto = `Tcp) (fun () ->
+      Log.err (fun m -> m "refusing zone transfer of %a via UDP" Domain_name.pp zone);
+      Rcode.Refused) >>= fun () ->
+  guardf (Authentication.authorise auth proto ?key ~zone `Transfer) (fun () ->
+      Log.err (fun m -> m "refusing unauthorised zone transfer of %a" Domain_name.pp zone) ;
+      Rcode.NotAuth)
 
 let axfr t proto key ((zone, _) as question) =
-  if Authentication.authorise t.auth proto ?key ~zone `Transfer then begin
+  authorise_zone_transfer t.auth proto key zone >>= fun () ->
+  match Dns_trie.entries zone t.data with
+  | Ok (soa, entries) ->
     Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
                  Fmt.(option ~none:(unit "none") Domain_name.pp) key
-                 Packet.Question.pp question) ;
-    axfr t.data proto question
-  end else
+                 Packet.Question.pp question);
+    Ok (soa, entries)
+  | Error e ->
+    Log.err (fun m -> m "AXFR attempted on %a, where we're not authoritative %a"
+                Domain_name.pp zone Dns_trie.pp_e e);
+    Error Rcode.NotAuth
+
+module IM = Map.Make(Int32)
+
+let find_trie m name serial =
+  match Domain_name.Map.find name m with
+  | None -> None
+  | Some m' -> IM.find_opt serial m'
+
+let ixfr t m proto key ((zone, _) as question) soa =
+  authorise_zone_transfer t.auth proto key zone >>= fun () ->
+  Log.info (fun m -> m "transfer key %a authorised for IXFR %a"
+               Fmt.(option ~none:(unit "none") Domain_name.pp) key
+               Packet.Question.pp question);
+  let old = match find_trie m zone soa.Soa.serial with
+    | None -> Dns_trie.empty
+    | Some old -> old
+  in
+  match Dns_trie.diff zone soa ~old t.data with
+  | Ok ixfr -> Ok ixfr
+  | Error (`Msg msg) ->
+    Log.err (fun m -> m "IXFR attempted on %a, where diff failed with %s"
+                Domain_name.pp zone msg);
     Error Rcode.NotAuth
 
 let safe_decode buf =
@@ -302,14 +327,14 @@ let safe_decode buf =
 let handle_question t (name, typ) =
   (* TODO white/blacklist of allowed qtypes? what about ANY and UDP? *)
   match typ with
-  | `Axfr -> assert false (* this won't happen, decoder constructs `Axfr -- but we need some evidence... *)
+  | `Axfr | `Ixfr -> assert false (* this won't happen, decoder constructs `Axfr -- but we need some evidence... *)
   | (`K _ | `Any) as k -> lookup t.data (name, k)
 (*  | r ->
     Log.err (fun m -> m "refusing query type %a" Rr.pp r) ;
     Error (Rcode.Refused, None) *)
 
 (* this implements RFC 2136 Section 2.4 + 3.2 *)
-let handle_rr_prereq trie name = function
+let handle_rr_prereq name trie = function
   | Packet.Update.Name_inuse ->
     begin match Dns_trie.lookup name A trie with
       | Ok _ | Error (`EmptyNonTerminal _) -> Ok ()
@@ -337,51 +362,23 @@ let handle_rr_prereq trie name = function
 
 (* RFC 2136 Section 2.5 + 3.4.2 *)
 (* we partially ignore 3.4.2.3 and 3.4.2.4 by not special-handling of NS, SOA *)
-let handle_rr_update trie name = function
+let handle_rr_update name trie = function
   | Packet.Update.Remove (K typ) ->
     begin match typ with
       | Soa ->
         (* this does not follow 2136, but we want to be able to remove a zone *)
         Dns_trie.remove_zone name trie
-      | _ -> Dns_trie.remove name typ trie
+      | _ -> Dns_trie.remove_ty name typ trie
     end
   | Packet.Update.Remove_all -> Dns_trie.remove_all name trie
-  | Packet.Update.Remove_single Rr_map.(B (k, rem) as b) ->
-    begin match Dns_trie.lookup name k trie with
-      | Error e ->
-        Log.warn (fun m -> m "error %a while looking up %a %a for removal"
-                     Dns_trie.pp_e e Domain_name.pp name Rr_map.pp_b b) ;
-        trie
-      | Ok v ->
-        match Rr_map.remove_rr k v rem with
-        | None ->
-          Log.info (fun m -> m "removed single %a entry %a (stored %a) none leftover"
-                       Domain_name.pp name Rr_map.pp_b b Rr_map.pp_b Rr_map.(B (k, v)));
-          Dns_trie.remove name k trie
-        | Some v' ->
-          Log.info (fun m -> m "removed single %a entry %a (stored %a), now %a"
-                       Domain_name.pp name Rr_map.pp_b b Rr_map.pp_b Rr_map.(B (k, v))
-                       Rr_map.pp_b Rr_map.(B (k, v')) );
-          Dns_trie.insert name k v' trie
-    end
-  | Packet.Update.Add Rr_map.(B (k, add) as b) ->
+  | Packet.Update.Remove_single Rr_map.(B (k, v)) -> Dns_trie.remove name k v trie
+  | Packet.Update.Add Rr_map.(B (k, add)) ->
     (* turns out, RFC 2136, 3.4.2.2 says "SOA with smaller or equal serial is silently ignored" *)
-    begin match Dns_trie.lookup name k trie with
-      | Ok old ->
-        let newval = Rr_map.union_rr k old add in
-        Log.info (fun m -> m "added %a: %a (stored %a), now %a"
-                     Domain_name.pp name Rr_map.pp_b b Rr_map.pp_b (Rr_map.B (k, old))
-                     Rr_map.pp_b (Rr_map.B (k, newval))) ;
-        Dns_trie.insert name k newval trie
-      | Error _ ->
-        (* here we allow arbitrary, even out-of-zone updates.  this is
-           crucial for the resolver operation as we have it right now:
-           add . 300 NS resolver ; add resolver . 300 A 141.1.1.1 would
-           otherwise fail (no SOA for . / delegation for resolver) *)
-        Log.info (fun m -> m "inserting %a (stored nothing), now %a"
-                     Domain_name.pp name Rr_map.pp_b b) ;
-        Dns_trie.insert name k add trie
-    end
+    (* here we allow arbitrary, even out-of-zone updates.  this is
+       crucial for the resolver operation as we have it right now:
+       add . 300 NS resolver ; add resolver . 300 A 141.1.1.1 would
+       otherwise fail (no SOA for . / delegation for resolver) *)
+    Dns_trie.insert name k add trie
 
 let sign_outgoing ~max_size server keyname signed packet buf =
   match Authentication.find_key server.auth keyname with
@@ -600,15 +597,13 @@ let update_data trie zone (prereq, update) =
       guard (in_zone name) Rcode.NotZone >>= fun () ->
       List.fold_left (fun acc prereq ->
           acc >>= fun () ->
-          handle_rr_prereq trie name prereq)
+          handle_rr_prereq name trie prereq)
         (Ok ()) prereqs)
     prereq (Ok ()) >>= fun () ->
   Domain_name.Map.fold (fun name updates acc ->
       acc >>= fun trie ->
       guard (in_zone name) Rcode.NotZone >>| fun () ->
-      List.fold_left (fun trie update ->
-          handle_rr_update trie name update)
-        trie updates)
+      List.fold_left (handle_rr_update name) trie updates)
     update (Ok trie) >>= fun trie' ->
   (match Dns_trie.check trie' with
    | Ok () -> Ok ()
@@ -638,7 +633,7 @@ let handle_update t proto key (zone, _) u =
                  Fmt.(option ~none:(unit "none") Domain_name.pp) key
                  Packet.Update.pp u) ;
     update_data t.data zone u >>| fun (data', stuff) ->
-    { t with data = data' }, stuff
+    data', stuff
   end else
     Error Rcode.NotAuth
 
@@ -660,13 +655,34 @@ let handle_tsig ?mac t now p buf =
 
 module Primary = struct
 
-  type s = t * Notification.connections * Notification.outstanding
+  type s =
+    t * Dns_trie.t IM.t Domain_name.Map.t * Notification.connections * Notification.outstanding
 
-  let server (t, _, _) = t
+  let server (t, _, _, _) = t
 
-  let data (t, _, _) = t.data
+  let data (t, _, _, _) = t.data
 
-  let with_data (t, l, n) now ts data =
+  (* TODO: not entirely sure how many old ones to keep. This keeps for each
+     zone the most recent 5 serials. It does _not_ remove removed zones.
+     since it updates all zones with the new trie, there should be at most
+     5 (well, 6) tries alive in memory *)
+  (* TODO use LRU here! *)
+  let update_trie_cache m trie =
+    Dns_trie.fold Soa trie (fun name soa acc ->
+        let recorded = match Domain_name.Map.find name m with
+          | None -> IM.empty
+          | Some xs ->
+            (* keep last 5 references around *)
+            if IM.cardinal xs >= 5 then
+              IM.remove (fst (IM.min_binding xs)) xs
+            else
+              xs
+        in
+        let m' = IM.add soa.Soa.serial trie recorded in
+        Domain_name.Map.add name m' acc)
+        Domain_name.Map.empty
+
+  let with_data (t, m, l, n) now ts data =
     (* we're the primary and need to notify our friends! *)
     let n', out =
       Dns_trie.fold Soa data
@@ -691,7 +707,8 @@ module Primary = struct
           | Ok _ -> (n, outs))
         (n', [])
     in
-    ({ t with data }, l, n''), out @ out'
+    let m' = update_trie_cache m t.data in
+    ({ t with data }, m', l, n''), out @ out'
 
   let create ?(keys = []) ?(a = []) ?tsig_verify ?tsig_sign ~rng data =
     let keys = Authentication.of_keys keys in
@@ -704,14 +721,14 @@ module Primary = struct
       in
       Dns_trie.fold Rr_map.Soa data f IPM.empty
     in
-    t, Domain_name.Map.empty, notifications
+    t, update_trie_cache Domain_name.Map.empty data, Domain_name.Map.empty, notifications
 
   let tcp_soa_query proto (name, typ) =
     match proto, typ with
     | `Tcp, `K (Rr_map.K Soa) -> Ok name
     | _ -> Error ()
 
-  let handle_packet (t, l, ns) now ts proto ip _port p key =
+  let handle_packet (t, m, l, ns) now ts proto ip _port p key =
     match p.Packet.data with
     | `Query ->
       (* if there was a (transfer-key) signed SOA, and tcp, we add to notification list! *)
@@ -745,40 +762,47 @@ module Primary = struct
         in
         Packet.create ?additional (fst p.header, flags) p.question data
       in
-      (t, l', ns'), Some answer, outs, keep
+      (t, m, l', ns'), Some answer, outs, keep
     | `Update u ->
-      let t', (flags, answer), stuff =
+      let data, (flags, answer), stuff =
         match handle_update t proto key p.question u with
-        | Ok (t', stuff) -> t', (authoritative, `Update_ack), stuff
-        | Error rcode -> t, (err_flags rcode, `Rcode_error (rcode, Opcode.Update, None)), None
+        | Ok (data, stuff) -> data, (authoritative, `Update_ack), stuff
+        | Error rcode -> t.data, (err_flags rcode, `Rcode_error (rcode, Opcode.Update, None)), None
+      in
+      let t' = { t with data }
+      and m' = update_trie_cache m data
       in
       let ns, out = match stuff with
         | None -> ns, []
         | Some (zone, soa) -> Notification.notify l ns t' now ts zone soa
       in
       let answer' = Packet.create (fst p.header, flags) p.question answer in
-      (t', l, ns), Some answer', out, None
+      (t', m', l, ns), Some answer', out, None
     | `Axfr_request ->
       let flags, answer = match axfr t proto key p.question with
         | Ok data -> authoritative, `Axfr_reply data
         | Error rcode -> err_flags rcode, `Rcode_error (rcode, Opcode.Query, None)
       in
       let answer = Packet.create (fst p.header, flags) p.question answer in
-      (t, l, ns), Some answer, [], None
-    | `Axfr_reply data ->
-      Logs.warn (fun m -> m "unsolicited AXFR reply %a, ignoring" Packet.Axfr.pp data);
-      (t, l, ns), None, [], None
+      (t, m, l, ns), Some answer, [], None
+    | `Ixfr_request soa ->
+      let flags, answer = match ixfr t m proto key p.question soa with
+        | Ok data -> authoritative, `Ixfr_reply data
+        | Error rcode -> err_flags rcode, `Rcode_error (rcode, Opcode.Query, None)
+      in
+      let answer = Packet.create (fst p.header, flags) p.question answer in
+      (t, m, l, ns), Some answer, [], None
     | `Notify_ack | `Rcode_error (Rcode.NotAuth, Opcode.Notify, _) ->
       let ns' = Notification.received_reply ns ip p in
-      (t, l, ns'), None, [], None
+      (t, m, l, ns'), None, [], None
     | `Notify soa ->
       Log.warn (fun m -> m "unsolicited notify request %a (replying anyways)"
                    Fmt.(option ~none:(unit "no") Soa.pp) soa) ;
       let reply = Packet.create (fst p.header, authoritative) p.question `Notify_ack in
-      (t, l, ns), Some reply, [], Some (`Notify soa)
+      (t, m, l, ns), Some reply, [], Some (`Notify soa)
     | p ->
       Log.err (fun m -> m "ignoring unsolicited %a" Packet.pp_data p) ;
-      (t, l, ns), None, [], None
+      (t, m, l, ns), None, [], None
 
   let handle_buf t now ts proto ip port buf =
     match
@@ -808,7 +832,7 @@ module Primary = struct
         in
         t, answer, out, notify
       in
-      let server, _, ns = t in
+      let server, _, _, ns = t in
       let mac = match p.Packet.data with
         | `Notify_ack | `Rcode_error _ -> Notification.mac ns ip p
         | _ -> None
@@ -839,15 +863,15 @@ module Primary = struct
         in
         (t', answer', out, n notify)
 
-  let closed (t, l, ns) ip =
+  let closed (t, m, l, ns) ip =
     let l' = Notification.remove l ip in
-    (t, l', ns)
+    (t, m, l', ns)
 
-  let timer (t, l, ns) now ts =
+  let timer (t, m, l, ns) now ts =
     let ns', out = Notification.retransmit t ns now ts in
-    (t, l, ns'), out
+    (t, m, l, ns'), out
 
-  let to_be_notified (t, l, _) zone =
+  let to_be_notified (t, _, l, _) zone =
     IPM.bindings (Notification.to_notify l ~data:t.data ~auth:t.auth zone)
 end
 
@@ -857,11 +881,13 @@ module Secondary = struct
     | Transferred of int64
     | Requested_soa of int64 * int * int * Cstruct.t
     | Requested_axfr of int64 * int * Cstruct.t
+    | Requested_ixfr of int64 * int * Soa.t * Cstruct.t
 
   let id = function
     | Transferred _ -> None
     | Requested_soa (_, id, _, _) -> Some id
     | Requested_axfr (_, id, _) -> Some id
+    | Requested_ixfr (_, id, _, _) -> Some id
 
   (* TODO undefined what happens if there are multiple transfer keys for zone x *)
   type s = t * (state * Ipaddr.V4.t * Domain_name.t) Domain_name.Map.t
@@ -923,6 +949,16 @@ module Secondary = struct
     | None -> None
     | Some (buf, mac) -> Some (Requested_axfr (ts, fst header, mac), buf)
 
+  let ixfr t proto now ts q_name soa name =
+    let header = header t.rng ()
+    and question = (q_name, `Ixfr)
+    in
+    let p = Packet.create header question (`Ixfr_request soa) in
+    let buf, max_size = Packet.encode proto p in
+    match sign_outgoing ~max_size t name now p buf with
+    | None -> None
+    | Some (buf, mac) -> Some (Requested_ixfr (ts, fst header, soa, mac), buf)
+
   let query_soa ?(retry = 0) t proto now ts q_name name =
     let header = header t.rng ()
     and question = Packet.Question.create q_name Soa
@@ -954,7 +990,6 @@ module Secondary = struct
             in
             ((t, Domain_name.Map.add zone (st, ip, name) zones), out)
           in
-
           match Dns_trie.lookup zone Rr_map.Soa t.data, st with
           | Ok soa, Transferred ts ->
             (* TODO: integer overflows (Int64.add) *)
@@ -992,6 +1027,13 @@ module Secondary = struct
             maybe_out
               (if Int64.add ts e < now then
                  axfr t `Tcp p_now ts zone name
+               else
+                 None)
+          | _, Requested_ixfr (ts, _, soa, _) ->
+            let e = Duration.of_sec 5 in
+            maybe_out
+              (if Int64.add ts e < now then
+                 ixfr t `Tcp p_now ts zone soa name
                else
                  None)
           | Error e, _ ->
@@ -1084,12 +1126,12 @@ module Secondary = struct
               end
             | _, Some soa, Ok old ->
               if Soa.newer ~old soa then
-                match axfr t `Tcp now ts zone name with
+                match ixfr t `Tcp now ts zone old name with
                   | None ->
-                    Log.warn (fun m -> m "received signed notify for %a, but couldn't sign axfr" Domain_name.pp zone);
+                    Log.warn (fun m -> m "received signed notify for %a, but couldn't sign ixfr" Domain_name.pp zone);
                     Ok (zones, [])
                   | Some (st, buf) ->
-                    Log.info (fun m -> m "received signed notify for %a, axfr" Domain_name.pp zone);
+                    Log.info (fun m -> m "received signed notify for %a, ixfr" Domain_name.pp zone);
                     Ok (Domain_name.Map.add zone (st, ip, name) zones,
                         [ `Tcp, ip, buf ])
               else begin
@@ -1131,6 +1173,11 @@ module Secondary = struct
                     Domain_name.pp zone Domain_name.pp name) ;
       (st, ip, name)
 
+  let rrs_in_zone zone rr_map =
+    Domain_name.Map.filter
+      (fun name _ -> Domain_name.sub ~subdomain:name ~domain:zone)
+      rr_map
+
   let handle_axfr t zones ts keyname header (zone, _) ((fresh_soa, fresh_zone) as axfr) =
     authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
     match st with
@@ -1153,11 +1200,7 @@ module Secondary = struct
            Error Rcode.ServFail
          end) >>= fun () ->
       (* filter map to ensure that all entries are in the zone! *)
-      let fresh_zone =
-        Domain_name.Map.filter
-          (fun name _ -> Domain_name.sub ~subdomain:name ~domain:zone)
-          fresh_zone
-      in
+      let fresh_zone = rrs_in_zone zone fresh_zone in
       let trie' =
         let trie = Dns_trie.remove_zone zone t.data in
         (* insert SOA explicitly - it's not part of entries (should it be?) *)
@@ -1178,6 +1221,42 @@ module Secondary = struct
       Log.warn (fun m -> m "ignoring AXFR %a unmatched state" Domain_name.pp zone) ;
       Error Rcode.Refused
 
+  let handle_ixfr t zones ts keyname header (zone, _) (fresh_soa, data) =
+    authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
+    match st with
+    | Requested_ixfr (_, _, soa, _) ->
+      if Soa.newer ~old:soa fresh_soa then
+        let trie' = match data with
+          | `Empty -> t.data
+          | `Full entries ->
+            let fresh_zone = rrs_in_zone zone entries in
+            let trie = Dns_trie.remove_zone zone t.data in
+            Dns_trie.insert_map fresh_zone trie
+          | `Difference (_, del, add) ->
+            let del = rrs_in_zone zone del
+            and add = rrs_in_zone zone add
+            in
+            Dns_trie.insert_map add (Dns_trie.remove_map del t.data)
+        in
+        let trie' = Dns_trie.insert zone Rr_map.Soa fresh_soa trie' in
+        (match Dns_trie.check trie' with
+         | Ok () ->
+           Log.info (fun m -> m "zone %a transferred, and life %a"
+                        Domain_name.pp zone Soa.pp fresh_soa)
+         | Error err ->
+           Log.warn (fun m -> m "check on incrementally transferred zone %a failed: %a"
+                        Domain_name.pp zone Dns_trie.pp_zone_check err)) ;
+        let zones = Domain_name.Map.add zone (Transferred ts, ip, name) zones in
+        Ok ({ t with data = trie' }, zones, [])
+      else begin
+        Log.warn (fun m -> m "requested zone %a soa %a, got %a as fresh soa"
+                     Domain_name.pp zone Soa.pp soa Soa.pp fresh_soa);
+        Error Rcode.ServFail
+      end
+    | _ ->
+      Log.warn (fun m -> m "ignoring IXFR %a unmatched state" Domain_name.pp zone) ;
+      Error Rcode.Refused
+
   let handle_answer t zones now ts keyname header (zone, typ) (answer, _) =
     authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
     match st with
@@ -1192,14 +1271,14 @@ module Secondary = struct
         | Ok cached_soa, Some fresh ->
           (* TODO: > with wraparound in mind *)
           if Soa.newer ~old:cached_soa fresh then
-            match axfr t `Tcp now ts zone name with
+            match ixfr t `Tcp now ts zone cached_soa name with
             | None ->
-              Log.warn (fun m -> m "trouble creating axfr for %a (using %a)"
+              Log.warn (fun m -> m "trouble creating ixfr for %a (using %a)"
                            Domain_name.pp zone Domain_name.pp name) ;
               (* TODO: reset state? *)
               Ok (t, zones, [])
             | Some (st, buf) ->
-              Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone) ;
+              Log.debug (fun m -> m "requesting IXFR for %a now!" Domain_name.pp zone) ;
               let zones = Domain_name.Map.add zone (st, ip, name) zones in
               Ok (t, zones, [ (`Tcp, ip, buf) ])
           else begin
@@ -1245,16 +1324,16 @@ module Secondary = struct
       (* we don't deal with updates *)
       let answer = Packet.create p.header p.question (`Rcode_error (Rcode.Refused, Opcode.Update, None)) in
       (t, zones), Some answer, []
-    | `Axfr_request ->
-      (* we don't reply to axfr requests *)
+    | `Axfr_request | `Ixfr_request _ ->
+      (* we don't reply to axfr/ixfr requests *)
       let answer = Packet.create p.header p.question (`Rcode_error (Rcode.Refused, Opcode.Query, None)) in
       (t, zones), Some answer, []
     | `Rcode_error (Rcode.NotAuth, Opcode.Query, _) ->
       (* notauth axfr and SOA replies (and drop the resp. zone) *)
       let zone = fst p.Packet.question in
       begin match authorise_zone zones keyname p.Packet.header zone with
-        | Ok (Requested_axfr (_, _, _), _, _ | Requested_soa (_, _, _, _), _, _) ->
-          Log.warn (fun m -> m "received notauth reply, requested axfr or soa, dropping zone %a"
+        | Ok (Requested_axfr (_, _, _), _, _ | Requested_ixfr (_, _, _, _), _, _ | Requested_soa (_, _, _, _), _, _) ->
+          Log.warn (fun m -> m "received notauth reply, requested axfr, ixfr or soa, dropping zone %a"
                        Domain_name.pp zone);
           let trie = Dns_trie.remove_zone zone t.data in
           let zones' = Domain_name.Map.remove zone zones in
@@ -1263,8 +1342,34 @@ module Secondary = struct
           Log.warn (fun m -> m "ignoring unsolicited notauth error");
           (t, zones), None, []
       end
+    | `Rcode_error (rc, Opcode.Query, _) ->
+      (* errors with IXFR: try AXFR *)
+      let zone = fst p.Packet.question in
+      begin match authorise_zone zones keyname p.Packet.header zone with
+        | Ok (Requested_ixfr (_, _, _, _), _, name) ->
+          Log.warn (fun m -> m "received %a reply for %a, requested ixfr, trying with AXFR"
+                       Rcode.pp rc Domain_name.pp zone);
+          begin match axfr t `Tcp now ts zone name with
+            | None -> Log.err (fun m -> m "failed to construct AXFR"); (t, zones), None, []
+            | Some (st, buf) ->
+              Log.debug (fun m -> m "requesting AXFR for %a now!" Domain_name.pp zone);
+              let zones' = Domain_name.Map.add zone (st, ip, name) zones in
+              (t, zones'), None, [ `Tcp, ip, buf ]
+          end
+        | _ ->
+          Log.warn (fun m -> m "ignoring unsolicited notauth error");
+          (t, zones), None, []
+      end
     | `Axfr_reply data ->
       let r, out = match handle_axfr t zones ts keyname p.header p.question data with
+        | Ok (t, zones, out) -> (t, zones), out
+        | Error rcode ->
+          Log.warn (fun m -> m "error %a while processing axfr %a" Rcode.pp rcode Packet.pp p);
+          (t, zones), []
+      in
+      r, None, out
+    | `Ixfr_reply data ->
+      let r, out = match handle_ixfr t zones ts keyname p.header p.question data with
         | Ok (t, zones, out) -> (t, zones), out
         | Error rcode ->
           Log.warn (fun m -> m "error %a while processing axfr %a" Rcode.pp rcode Packet.pp p);
@@ -1296,6 +1401,7 @@ module Secondary = struct
       match Domain_name.Map.find (fst p.question) zones with
       | None -> None
       | Some (Requested_axfr (_, _, mac), _, _) -> Some mac
+      | Some (Requested_ixfr (_, _, _, mac), _, _) -> Some mac
       | Some (Requested_soa (_, _, _, mac), _, _) -> Some mac
       | _ -> None
 

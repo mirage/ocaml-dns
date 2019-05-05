@@ -1772,6 +1772,29 @@ module Rr_map = struct
       let data = Txt_set.diff datas rm in
       if Txt_set.is_empty data then None else Some (ttl, data)
 
+  let diff ~old map =
+    let deleted, added = ref empty, ref empty in
+    let merger : type a . a key -> a option -> a option -> a option =
+      fun k a b ->
+        (match k, a, b with
+         | Soa, _, _ -> () (* SOA is special anyways *)
+         | _, None, Some data -> added := add k data !added
+         | _, Some data, None -> deleted := add k data !deleted
+         | _, None, None -> ()
+         | _, Some old, Some n ->
+           (* TODO should handle TTL-only changes as well! *)
+           (match remove_rr k old n with
+            | None -> (* there isn't any change *) ()
+            | Some tbr -> deleted := add k tbr !deleted);
+           match remove_rr k n old with
+           | None -> (* there's nothing more *) ()
+           | Some tba -> added := add k tba !added);
+        None
+    in
+    ignore (merge { f = merger } old map);
+    (if is_empty !deleted then None else Some !deleted),
+    (if is_empty !added then None else Some !added)
+
   let text : type a. ?origin:Domain_name.t -> ?default_ttl:int32 ->
     Domain_name.t -> a key -> a -> string = fun ?origin ?default_ttl n t v ->
     let hex cs =
@@ -2289,7 +2312,7 @@ module Packet = struct
       | `Any, `Any -> 0 | `Any, _ -> 1 | _, `Any -> -1
       | `K k, `K k' -> Rr_map.comparek k k'
 
-    type t = Domain_name.t * [ qtype | `Axfr ]
+    type t = Domain_name.t * [ qtype | `Axfr | `Ixfr ]
 
     let qtype (_, t) = match t with
       | `K k -> Some (`K k)
@@ -2309,11 +2332,12 @@ module Packet = struct
            (match typ' with
             | #qtype as b -> compare_qtype a b
             | _ -> 1)
-         | (`Axfr as x) ->
+         | (`Axfr | `Ixfr as x) ->
            match typ' with
            | #qtype -> -1
-           | (`Axfr as y) -> match x, y with
-             | `Axfr, `Axfr -> 0 (* | `Axfr, _ -> 1 | _, `Axfr -> -1 *) )
+           | (`Axfr | `Ixfr as y) -> match x, y with
+             | `Axfr, `Axfr -> 0 | `Axfr, _ -> 1 | _, `Axfr -> -1
+             | `Ixfr, `Ixfr -> 0 (* | `Ixfr, _ -> 1 | _, `Ixfr -> -1 *))
 
     let decode ?(names = Name.Int_map.empty) ?(off = Header.len) buf =
       let open Rresult.R.Infix in
@@ -2321,7 +2345,7 @@ module Packet = struct
       Clas.of_int ~off c >>= fun clas ->
       match typ with
       | `Edns | `Tsig -> Error (`Malformed (off, Fmt.strf "bad RRTYp in question %a" Rr_map.pp_rr typ))
-      | (`Axfr | `Any | `K _ as t) when clas = Clas.IN -> Ok ((name, t), names, off)
+      | (`Axfr | `Ixfr | `Any | `K _ as t) when clas = Clas.IN -> Ok ((name, t), names, off)
       | _ -> Error (`Not_implemented (off, Fmt.strf "bad class in question 0x%x" c))
 
     let encode names buf off (name, typ) =
@@ -2512,6 +2536,142 @@ module Packet = struct
       let (names, off), count = encode_data entries names buf off in
       let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
       Cstruct.BE.set_uint16 buf 6 (count + 2) ;
+      names, off
+  end
+
+  module Ixfr = struct
+    (* accoring to RFC 1995 there can be three formats, but in the errata
+       there's a hint it's actually four:
+       - full zone, as in AXFR (SOA .. RRs .. SOA)
+       - difference lists (SOA DIFFS SOA) where DIFFS is of the form:
+          OLD_SOA DEL_RRs NEW_SOA ADD_RRs
+       - condensed lists (SOA OLD_SOA DEL_RRs NEW_SOA ADD_RRs SOA)
+       - empty: a single SOA (request contained a SOA >= server's SOA)
+
+       we support all four of them, but represent the second using the third
+       (throwing away during parsing, no need to retain that information) *)
+    type t = Soa.t *
+             [ `Empty
+             | `Full of Name_rr_map.t
+             | `Difference of Soa.t * Name_rr_map.t * Name_rr_map.t ]
+
+    let equal (soa, data) (soa', data') =
+      Soa.compare soa soa' = 0 && match data, data' with
+      | `Empty, `Empty -> true
+      | `Full rrs, `Full rrs' -> Name_rr_map.equal rrs rrs'
+      | `Difference (oldsoa, del, add), `Difference (oldsoa', del', add') ->
+        Soa.compare oldsoa oldsoa' = 0 && Name_rr_map.equal del del' && Name_rr_map.equal add add'
+      | _ -> false
+
+    let pp ppf (soa, data) =
+      match data with
+      | `Empty -> Fmt.pf ppf "IXFR %a empty" Soa.pp soa
+      | `Full data ->
+        Fmt.pf ppf "IXFR %a full@ %a" Soa.pp soa Name_rr_map.pp data
+      | `Difference (oldsoa, del, add) ->
+        Fmt.pf ppf "IXFR %a difference oldsoa %a@ delete %a@ add %a"
+          Soa.pp soa Soa.pp oldsoa Name_rr_map.pp del Name_rr_map.pp add
+
+    let ensure_soa : Rr_map.b -> (Soa.t, unit) result = fun (Rr_map.B (k, v)) ->
+      match k, v with
+      | Soa, soa -> Ok soa
+      | _ -> Error ()
+
+    let soa_ok f off name soa name' soa' =
+      let open Rresult.R.Infix in
+      guard (Domain_name.equal name name')
+        (`Malformed (off, "IXFR SOA RRs do not use the same name")) >>= fun () ->
+      guard (f soa soa') (`Malformed (off, "IXFR SOA RRs are not equal"))
+
+    (* parses up to count RRs until a SOA is found *)
+    let rec rrs_and_soa buf names off count acc =
+      let open Rresult.R.Infix in
+      match count with
+      | 0 -> Ok (acc, None, 0, names, off)
+      | n ->
+        decode_rr names buf off >>= fun (name, Rr_map.(B (k, v)), names, off) ->
+        match k, v with
+        | Rr_map.Soa, soa -> Ok (acc, (Some (name, soa) : (Domain_name.t * Soa.t) option), pred n, names, off)
+        | _ ->
+          let acc = Name_rr_map.add name k v acc in
+          rrs_and_soa buf names off (pred n) acc
+
+    let decode (_, flags) buf names off ancount =
+      let open Rresult.R.Infix in
+      guard (not (Flags.mem `Truncation flags)) `Partial >>= fun () ->
+      guard (ancount >= 1)
+        (`Malformed (6, Fmt.strf "IXFR needs at least one RRs in answer %d" ancount)) >>= fun () ->
+      decode_rr names buf off >>= fun (name, b, names, off) ->
+      match ensure_soa b with
+      | Error () -> Error (`Malformed (off, "IXFR first RR not a SOA"))
+      | Ok soa ->
+        (if ancount = 1 then
+           Ok (`Empty, names, off)
+         else if ancount = 2 then
+           Ok (`Full Name_rr_map.empty, names, off)
+         else
+           decode_rr names buf off >>= fun (name', b, names, off) ->
+           match ensure_soa b with
+           | Error () ->
+             (* this is a full AXFR *)
+             let add name (Rr_map.B (k, v)) map = Name_rr_map.add name k v map in
+             let map = add name' b Name_rr_map.empty in
+             decode_n add decode_rr names buf off map (ancount - 3) >>| fun (names, off, answer) ->
+             `Full answer, names, off
+           | Ok oldsoa ->
+             let rec diff_list dele add names off count oldname oldsoa =
+               (* actual form is: curr_SOA [SOA0 .. DELE .. SOA1 .. ADD] curr_SOA'
+                  - we need to ensure: curr_SOA = curr_SOA' (below)
+                  - SOA0 < curr_SOA
+                  - SOA1 < SOA0 *)
+               soa_ok (fun old soa -> Soa.newer ~old soa) off oldname oldsoa name soa >>= fun () ->
+               rrs_and_soa buf names off count dele >>= fun (dele', soa', count', names, off) ->
+               match soa' with
+               | None -> (* this is the end *)
+                 guard (count' = 0) (`Malformed (off, "IXFR expected SOA, found end")) >>| fun () ->
+                 dele', add, names, off
+               | Some (name', soa') ->
+                 soa_ok (fun old soa -> Soa.newer ~old soa) off oldname oldsoa name' soa' >>= fun () ->
+                 rrs_and_soa buf names off count' add >>= fun (add', soa'', count'', names, off) ->
+                 match soa'' with
+                 | None -> (* this is the actual end! *)
+                   guard (count'' = 0) (`Malformed (off, "IXFR expected SOA after adds, found end")) >>| fun () ->
+                   dele', add', names, off
+                 | Some (name'', soa'') ->
+                   diff_list dele' add' names off count'' name'' soa''
+             in
+             diff_list Name_rr_map.empty Name_rr_map.empty names off (ancount - 3) name' oldsoa >>| fun (dele, add, names, off) ->
+             `Difference (oldsoa, dele, add), names, off) >>= fun (content, names, off) ->
+        if ancount > 1 then
+          decode_rr names buf off >>= fun (name', b, names, off) ->
+          match ensure_soa b with
+          | Ok soa' ->
+            soa_ok (fun s s' -> Soa.compare s s' = 0) off name soa name' soa' >>| fun () ->
+            ((soa, content), names, off)
+          | Error () ->
+            Error (`Malformed (off, "IXFR last RR not a SOA"))
+        else
+          Ok ((soa, content), names, off)
+
+    let encode names buf off question (soa, data) =
+      let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
+      let ((names, off), count), second = match data with
+        | `Empty -> ((names, off), 0), false
+        | `Full data -> encode_data data names buf off, true
+        | `Difference (oldsoa, del, add) ->
+          let (names, off), _ = Rr_map.encode (fst question) Soa oldsoa names buf off in
+          let (names, off), count = encode_data del names buf off in
+          let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
+          let (names, off), count' = encode_data add names buf off in
+          ((names, off), count + count' + 2), true
+      in
+      let (names, off), count' =
+        if second then
+          Rr_map.encode (fst question) Soa soa names buf off
+        else
+          (names, off), 0
+      in
+      Cstruct.BE.set_uint16 buf 6 (count + count' + 1) ;
       names, off
   end
 
@@ -2712,6 +2872,7 @@ module Packet = struct
     | `Query
     | `Notify of Soa.t option
     | `Axfr_request
+    | `Ixfr_request of Soa.t
     | `Update of Update.t
   ]
 
@@ -2719,6 +2880,7 @@ module Packet = struct
     | `Query, `Query -> true
     | `Notify soa, `Notify soa' -> opt_eq (fun a b -> Soa.compare a b = 0) soa soa'
     | `Axfr_request, `Axfr_request -> true
+    | `Ixfr_request soa, `Ixfr_request soa' -> Soa.compare soa soa' = 0
     | `Update u, `Update u' -> Update.equal u u'
     | _ -> false
 
@@ -2726,12 +2888,14 @@ module Packet = struct
     | `Query -> Fmt.string ppf "query"
     | `Notify soa -> Fmt.pf ppf "notify %a" Fmt.(option ~none:(unit "no") Soa.pp) soa
     | `Axfr_request -> Fmt.string ppf "axfr request"
+    | `Ixfr_request soa -> Fmt.pf ppf "ixfr request %a" Soa.pp soa
     | `Update u -> Fmt.pf ppf "update %a" Update.pp u
 
   type reply = [
     | `Answer of Query.t
     | `Notify_ack
     | `Axfr_reply of Axfr.t
+    | `Ixfr_reply of Ixfr.t
     | `Update_ack
     | `Rcode_error of Rcode.t * Opcode.t * Query.t option
   ]
@@ -2740,6 +2904,7 @@ module Packet = struct
     | `Answer q, `Answer q' -> Query.equal q q'
     | `Notify_ack, `Notify_ack -> true
     | `Axfr_reply a, `Axfr_reply b -> Axfr.equal a b
+    | `Ixfr_reply a, `Ixfr_reply b -> Ixfr.equal a b
     | `Update_ack, `Update_ack -> true
     | `Rcode_error (rc, op, q), `Rcode_error (rc', op', q') ->
       Rcode.compare rc rc' = 0 && Opcode.compare op op' = 0 && opt_eq Query.equal q q'
@@ -2749,6 +2914,7 @@ module Packet = struct
     | `Answer a -> Fmt.pf ppf "answer %a" Query.pp a
     | `Notify_ack -> Fmt.string ppf "notify ack"
     | `Axfr_reply a -> Fmt.pf ppf "AXFR %a" Axfr.pp a
+    | `Ixfr_reply a -> Fmt.pf ppf "IXFR %a" Ixfr.pp a
     | `Update_ack -> Fmt.string ppf "update ack"
     | `Rcode_error (rc, op, q) ->
       Fmt.pf ppf "rcode %a op %a q %a" Rcode.pp rc Opcode.pp op
@@ -2757,7 +2923,9 @@ module Packet = struct
   type data = [ request | reply ]
 
   let opcode_data = function
-    | `Query | `Axfr_request | `Answer _ | `Axfr_reply _ -> Opcode.Query
+    | `Query | `Answer _
+    | `Axfr_request | `Axfr_reply _
+    | `Ixfr_request _ | `Ixfr_reply _ -> Opcode.Query
     | `Notify _ | `Notify_ack -> Notify
     | `Update _ | `Update_ack -> Update
     | `Rcode_error (_, op, _) -> op
@@ -2831,7 +2999,6 @@ module Packet = struct
     opt_eq (fun a b -> Edns.compare a b = 0) a.edns b.edns &&
     opt_eq eq_tsig a.tsig b.tsig &&
     equal_data a.data b.data
-
 
   type err = [
     | `Bad_edns_version of int
@@ -2916,10 +3083,20 @@ module Packet = struct
         begin match operation with
           | Opcode.Query ->
             guard (an_count = 0) (`Query_answer_count an_count) >>= fun () ->
-            guard (au_count = 0) (`Query_authority_count au_count) >>| fun () ->
             begin match snd question with
-             | `Axfr -> `Axfr_request, names, off
-             | _ -> `Query, names, off
+              | `Axfr ->
+                guard (au_count = 0) (`Query_authority_count au_count) >>| fun () ->
+                `Axfr_request, names, off
+              | `Ixfr ->
+                guard (au_count = 1) (`Query_authority_count au_count) >>= fun () ->
+                Query.decode header buf names off >>= fun ((_, au), names, off, _, _) ->
+                begin match Name_rr_map.find (fst question) Rr_map.Soa au with
+                  | None -> Error (`Malformed (off, "ixfr request without soa"))
+                  | Some soa -> Ok (`Ixfr_request soa, names, off)
+                end
+              | _ ->
+                guard (au_count = 0) (`Query_authority_count au_count) >>| fun () ->
+                `Query, names, off
             end
           | Opcode.Notify ->
             (* TODO notify has some restrictions: Q=1, AN>=0 (must be SOA) *)
@@ -2941,6 +3118,10 @@ module Packet = struct
                   guard (au_count = 0) (`Malformed (8, Fmt.strf "AXFR with aucount %d > 0" au_count)) >>= fun () ->
                   Axfr.decode header buf names off an_count >>| fun (axfr, names, off) ->
                   `Axfr_reply axfr, names, off, true, false
+                | `Ixfr ->
+                  guard (au_count = 0) (`Malformed (8, Fmt.strf "IXFR with aucount %d > 0" au_count)) >>= fun () ->
+                  Ixfr.decode header buf names off an_count >>| fun (ixfr, names, off) ->
+                  `Ixfr_reply ixfr, names, off, true, false
                 | _ ->
                   Query.decode header buf names off >>| fun (answer, names, off, cont, allow_trunc) ->
                   `Answer answer, names, off, cont, allow_trunc
@@ -3041,13 +3222,16 @@ module Packet = struct
       begin match soa with
         | None -> names, off
         | Some soa ->
-          Cstruct.BE.set_uint16 buf 6 1;
-          let query = Name_rr_map.singleton (fst question) Soa soa in
-          Query.encode names buf off question (query, Name_rr_map.empty)
+          let soa = Name_rr_map.singleton (fst question) Soa soa in
+          Query.encode names buf off question (soa, Name_rr_map.empty)
       end
+    | `Ixfr_request soa ->
+      let soa = Name_rr_map.singleton (fst question) Soa soa in
+      Query.encode names buf off question (Name_rr_map.empty, soa)
     | `Update u -> Update.encode names buf off question u
     | `Answer q -> Query.encode names buf off question q
     | `Axfr_reply data -> Axfr.encode names buf off question data
+    | `Ixfr_reply data -> Ixfr.encode names buf off question data
     | `Rcode_error (_, _, Some q) -> Query.encode names buf off question q
 
   let encode_edns rcode edns buf off = match edns with

@@ -612,8 +612,16 @@ module Rr_map : sig
       [None] is returned. *)
 
   val union_rr : 'a key -> 'a -> 'a -> 'a
-  (** [combine_k k l r] combines [l] with [r]. A potential [r] Soa or Cname
-      overwrites its [l] counterpart. *)
+  (** [union_rr k l r] builds the union of [l] with [r]. A potential [r] Soa or
+      Cname overwrites its [l] counterpart. *)
+
+  val unionee : 'a key -> 'a -> 'a -> 'a option
+  (** [unionee k l r] unions [l] with [r] using [union_rr]. *)
+
+  val diff : old:t -> t -> (t option * t option)
+  (** [diff ~old m] computes the difference between [old] and [m]. The left
+      projection are the deleted entries, the right projection are the added
+      entries. [Soa] entries are ignored. *)
 
   val text : ?origin:Domain_name.t -> ?default_ttl:int32 -> Domain_name.t -> 'a rr -> 'a -> string
   (** [text ~origin ~default_ttl name k v] is the zone file data for [k, v]. *)
@@ -686,7 +694,7 @@ module Packet : sig
 
     val compare_qtype : qtype -> qtype -> int
 
-    type t = Domain_name.t * [ qtype | `Axfr ]
+    type t = Domain_name.t * [ qtype | `Axfr | `Ixfr ]
 
     val qtype : t -> qtype option
 
@@ -706,6 +714,15 @@ module Packet : sig
 
   module Axfr : sig
     type t = Soa.t * Name_rr_map.t
+    val pp : t Fmt.t
+    val equal : t -> t -> bool
+  end
+
+  module Ixfr : sig
+    type t = Soa.t *
+             [ `Empty
+             | `Full of Name_rr_map.t
+             | `Difference of Soa.t * Name_rr_map.t * Name_rr_map.t ]
     val pp : t Fmt.t
     val equal : t -> t -> bool
   end
@@ -738,6 +755,7 @@ module Packet : sig
     | `Query
     | `Notify of Soa.t option
     | `Axfr_request
+    | `Ixfr_request of Soa.t
     | `Update of Update.t
   ]
 
@@ -749,6 +767,7 @@ module Packet : sig
     | `Answer of Query.t
     | `Notify_ack
     | `Axfr_reply of Axfr.t
+    | `Ixfr_reply of Ixfr.t
     | `Update_ack
     | `Rcode_error of Rcode.t * Opcode.t * Query.t option
   ]

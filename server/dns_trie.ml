@@ -12,6 +12,8 @@ type t = N of t M.t * Rr_map.t
 
 let empty = N (M.empty, Rr_map.empty)
 
+let is_empty (N (sub, map)) = M.is_empty sub && Rr_map.is_empty map
+
 let bindings t =
   let rec go pre (N (sub, e)) =
     let subs = M.bindings sub in
@@ -351,12 +353,13 @@ let check trie =
   let (N (sub, map)) = trie in
   check_sub [] `None sub map
 
-let insert name k v t =
+let find f name t =
   let lbls = Domain_name.to_array name in
   let l = Array.length lbls in
   let rec go idx (N (sub, map)) =
     if idx = l then
-      N (sub, Rr_map.add k v map)
+      let sub', map' = f sub map in
+      N (sub', map')
     else
       let lbl = Array.get lbls idx in
       let node = match M.find lbl sub with
@@ -364,55 +367,123 @@ let insert name k v t =
         | x -> x
       in
       let node' = go (succ idx) node in
-      N (M.add lbl node' sub, map)
+      if is_empty node' then
+        N (M.remove lbl sub, map)
+      else
+        N (M.add lbl node' sub, map)
   in
   go 0 t
+
+let replace name k v t =
+  find (fun sub map -> sub, Rr_map.add k v map) name t
+
+let insert name k v t =
+  let merge sub map =
+    let new_v = match Rr_map.find k map with
+      | None -> v
+      | Some v' -> Rr_map.union_rr k v' v
+    in
+    sub, Rr_map.add k new_v map
+  in
+  find merge name t
+
+let replace_map m t =
+  Domain_name.Map.fold (fun name map trie ->
+      find (fun sub _ -> sub, map) name trie) m t
 
 let insert_map m t =
   Domain_name.Map.fold (fun name map trie ->
-      Rr_map.fold (fun (B (k, v)) trie -> insert name k v trie) map trie)
+      let union sub old = sub, Rr_map.union { f = Rr_map.unionee } old map in
+      find union name trie)
     m t
 
-let remove_aux k t a =
-  let k = Domain_name.to_array k in
-  let l = Array.length k in
-  let rec go idx (N (sub, map)) =
-    if idx = l then a sub map
-    else
-      let lbl = Array.get k idx in
-      match M.find lbl sub with
-      | exception Not_found -> N (sub, map)
-      | x ->
-        let N (sub', map') = go (succ idx) x in
-        if M.is_empty sub' && Rr_map.is_empty map' then
-          N (M.remove lbl sub, map)
-        else
-          N (M.add lbl (N (sub', map')) sub, map)
-  in
-  go 0 t
-
-let remove k ty t =
+let remove k ty v t =
   let remove sub map =
-    let map' = Rr_map.remove ty map in
-    N (sub, map')
+    let map' = match Rr_map.find ty map with
+      | None -> map
+      | Some old -> match Rr_map.remove_rr ty old v with
+        | None -> Rr_map.remove ty map
+        | Some v' -> Rr_map.add ty v' map
+    in
+    sub, map'
   in
-  remove_aux k t remove
+  find remove k t
+
+let remove_ty k ty t =
+  let remove sub map = sub, Rr_map.remove ty map in
+  find remove k t
 
 let remove_all k t =
-  let remove sub _ = N (sub, Rr_map.empty) in
-  remove_aux k t remove
+  let remove sub _ = sub, Rr_map.empty in
+  find remove k t
+
+let remove_map m t =
+  let merge k present remove = match present, remove with
+    | None, None -> None
+    | Some x, None -> Some x
+    | None, Some _ -> None
+    | Some x, Some y -> Rr_map.remove_rr k x y
+  in
+  Domain_name.Map.fold (fun name map trie ->
+      let remove sub old = sub, Rr_map.merge { f = merge } old map in
+      find remove name trie)
+    m t
 
 let remove_zone name t =
   let remove sub _ =
-    let rec go sub =
-      M.fold (fun lbl (N (sub, map)) s ->
-          if Rr_map.mem Soa map then
-            M.add lbl (N (sub, map)) s
-          else
-            let sub' = go sub in
-            if sub' = M.empty then s else M.add lbl (N (sub', Rr_map.empty)) s)
+    (* go through all of sub, and retain those subtrees with Soa *)
+    let rec fold_sub sub =
+      M.fold (fun lbl node acc ->
+          match go node with None -> acc | Some n -> M.add lbl n acc)
         sub M.empty
+    and go (N (sub, map)) =
+      match Rr_map.find Soa map with
+      | None ->
+        (* no SOA, continue search *)
+        let sub' = fold_sub sub in
+        if M.is_empty sub' then None else Some (N (sub', Rr_map.empty))
+      | Some _ ->
+        (* SOA, retain this submap *)
+        Some (N (sub, map))
     in
-    N (go sub, Rr_map.empty)
+    fold_sub sub, Rr_map.empty (* drop the initial RRmap in any case! *)
   in
-  remove_aux name t remove
+  find remove name t
+
+let diff zone req_soa ~old current =
+  match entries zone current with
+  | Error _ -> Error (`Msg "couldn't find zone in current trie")
+  | Ok (soa, map) ->
+    if not (Soa.newer ~old:req_soa soa) then
+      Ok (soa, `Empty)
+    else
+      match entries zone old with
+      | Error _ -> Ok (soa, `Full map)
+      | Ok (oldsoa, oldmap) ->
+        (* first, we fold over old map and collect the differences in two maps *)
+        let (to_remove, to_add), names =
+          Domain_name.Map.fold (fun name old ((to_remove, to_add), names) ->
+              let newmap =
+                match Domain_name.Map.find name map with
+                | None -> Rr_map.empty | Some x -> x
+              in
+              (match Rr_map.diff ~old newmap with
+               | None, None -> to_remove, to_add
+               | Some rm, None -> Domain_name.Map.add name rm to_remove, to_add
+               | None, Some add -> to_remove, Domain_name.Map.add name add to_add
+               | Some rm, Some add ->
+                 Domain_name.Map.add name rm to_remove,
+                 Domain_name.Map.add name add to_add),
+              Domain_name.Set.add name names)
+            oldmap Domain_name.((Map.empty, Map.empty), Set.empty)
+        in
+        (* now we fold over newmap and add then unless already handled *)
+        let to_add =
+          Domain_name.Map.fold (fun name newmap to_add ->
+              if Domain_name.Set.mem name names then
+                to_add
+              else
+                Domain_name.Map.add name newmap to_add)
+            map to_add
+        in
+        Ok (soa, `Difference (oldsoa, to_remove, to_add))

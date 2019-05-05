@@ -192,7 +192,7 @@ module Trie = struct
                 "lookup_b for MX foo.com (after insert) is NoData"
                 (Error (`EmptyNonTerminal (n_of_s "foo.com", soa)))
                 (lookup_b (n_of_s "foo.com") Mx t)) ;
-    let t = remove (n_of_s "foo.com") A t in
+    let t = remove_ty (n_of_s "foo.com") A t in
     Alcotest.(check (result l_ok e)
                 "lookup_with_cname for A foo.com (after insert and remove) is NoData"
                 (Error (`EmptyNonTerminal (n_of_s "foo.com", soa)))
