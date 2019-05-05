@@ -30,6 +30,8 @@ val capacity : t -> int
 
 val pp : t Fmt.t
 
+val pp_question : (Domain_name.t * Packet.Question.qtype) Fmt.t
+
 type res = [
   | `Alias of int32 * Domain_name.t
   | `Entry of Rr_map.b
@@ -51,7 +53,7 @@ val follow_cname : t -> int64 -> 'a Rr_map.key -> name:Domain_name.t -> int32 ->
   | `Query of Domain_name.t * t
   ]
 
-val answer : t -> int64 -> Packet.Question.t ->
+val answer : t -> int64 -> Domain_name.t -> Packet.Question.qtype ->
   [ `Query of Domain_name.t * t | `Packet of Packet.Flags.t * Packet.reply * t ]
 
 (*
@@ -66,7 +68,8 @@ val resolve_ns : t -> int64 -> Domain_name.t ->
 val resolve : t -> rng:(int -> Cstruct.t) ->  int64 -> Domain_name.t ->
   Rr_map.k -> Domain_name.t * Domain_name.t * Rr_map.k * Ipaddr.V4.t * t
 
-val handle_query : t -> rng:(int -> Cstruct.t) -> int64 -> Packet.Question.t ->
+val handle_query : t -> rng:(int -> Cstruct.t) -> int64 -> Domain_name.t ->
+  Packet.Question.qtype ->
   [ `Reply of Packet.Flags.t * Packet.reply
   | `Nothing
-  | `Query of Domain_name.t * Packet.Question.t * Ipaddr.V4.t ] * t
+  | `Query of Domain_name.t * (Domain_name.t * Packet.Question.qtype) * Ipaddr.V4.t ] * t

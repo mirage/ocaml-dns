@@ -680,7 +680,15 @@ module Packet : sig
   end
 
   module Question : sig
-    type t = Domain_name.t * [ `Any | `Axfr | `K of Rr_map.k ]
+    type qtype = [ `Any | `K of Rr_map.k ]
+
+    val pp_qtype : qtype Fmt.t
+
+    val compare_qtype : qtype -> qtype -> int
+
+    type t = Domain_name.t * [ qtype | `Axfr ]
+
+    val qtype : t -> qtype option
 
     val create : Domain_name.t -> 'a Rr_map.key -> t
 

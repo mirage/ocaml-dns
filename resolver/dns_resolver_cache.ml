@@ -95,6 +95,9 @@ module LRU = Lru.F.Make(Domain_name)(V)
 
 type t = LRU.t
 
+let pp_question ppf (name, typ) =
+  Fmt.pf ppf "%a (%a)" Domain_name.pp name Packet.Question.pp_qtype typ
+
 type stats = {
   hit : int ;
   miss : int ;
@@ -272,11 +275,11 @@ let maybe_insert typ nam ts rank e t =
   match find_lru t nam typ with
   | map, Error _ ->
     Logs.debug (fun m -> m "maybe_insert: %a nothing found, adding: %a"
-                   Packet.Question.pp (nam, `K (K typ)) pp_res entry);
+                   pp_question (nam, `K (K typ)) pp_res entry);
     insert_lru ?map t nam typ ts rank entry
   | map, Ok ((_, rank'), entry) ->
     Logs.debug (fun m -> m "maybe_insert: %a found rank %a insert rank %a: %d"
-                   Packet.Question.pp (nam, `K (K typ)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
+                   pp_question (nam, `K (K typ)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
     match compare_rank rank' rank with
     | 1 -> t
     | _ -> insert_lru ?map t nam typ ts rank entry
@@ -588,7 +591,7 @@ let additionals t ts rrs =
     ([], t)
 *)
 
-let answer t ts (name, typ) =
+let answer t ts name typ =
   let packet t _add rcode answer authority =
     (* TODO why was this RA + RD in here? should not be RD for recursive algorithm
        TODO should it be authoritative for recursive algorithm? *)
@@ -607,34 +610,33 @@ let answer t ts (name, typ) =
   let r = match typ with
     | `Any -> cached_any t ts name
     | `K (Rr_map.K ty) -> cached t ts ty name
-    | `Axfr -> assert false
   in
   match r with
   | Error e ->
     Logs.warn (fun m -> m "error %a while looking up %a, query"
-                  pp_err e Packet.Question.pp (name, typ));
+                  pp_err e pp_question (name, typ));
     `Query (name, t)
   | Ok (`No_domain res, t) ->
-    Logs.debug (fun m -> m "no domain while looking up %a, query" Packet.Question.pp (name, typ));
+    Logs.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
     `Packet (packet t false Rcode.NXDomain Domain_name.Map.empty (to_map res))
   | Ok (`No_data res, t) ->
-    Logs.debug (fun m -> m "no data while looking up %a" Packet.Question.pp (name, typ));
+    Logs.debug (fun m -> m "no data while looking up %a" pp_question (name, typ));
     `Packet (packet t false Rcode.NoError Domain_name.Map.empty (to_map res))
   | Ok (`Serv_fail res, t) ->
-    Logs.debug (fun m -> m "serv fail while looking up %a" Packet.Question.pp (name, typ));
+    Logs.debug (fun m -> m "serv fail while looking up %a" pp_question (name, typ));
     `Packet (packet t false Rcode.ServFail Domain_name.Map.empty (to_map res))
   | Ok (`Entry (Rr_map.B (k, v)), t) ->
-    Logs.debug (fun m -> m "entry while looking up %a" Packet.Question.pp (name, typ));
+    Logs.debug (fun m -> m "entry while looking up %a" pp_question (name, typ));
     let data = Name_rr_map.singleton name k v in
     `Packet (packet t true Rcode.NoError data Domain_name.Map.empty)
   | Ok (`Entries rr_map, t) ->
-    Logs.debug (fun m -> m "entries while looking up %a" Packet.Question.pp (name, typ));
+    Logs.debug (fun m -> m "entries while looking up %a" pp_question (name, typ));
     let data = Domain_name.Map.singleton name rr_map in
     `Packet (packet t true Rcode.NoError data Domain_name.Map.empty)
   | Ok (`Alias (ttl, alias), t) ->
-    Logs.debug (fun m -> m "alias while looking up %a" Packet.Question.pp (name, typ));
+    Logs.debug (fun m -> m "alias while looking up %a" pp_question (name, typ));
     match typ with
-    | `Any | `Axfr ->
+    | `Any ->
       let data = Name_rr_map.singleton name Cname (ttl, alias) in
       `Packet (packet t false Rcode.NoError data Domain_name.Map.empty)
     | `K (K Cname) ->
@@ -645,25 +647,25 @@ let answer t ts (name, typ) =
       | `Out (rcode, an, au, t) -> `Packet (packet t true rcode an au)
       | `Query (n, t) -> `Query (n, t)
 
-let handle_query t ~rng ts q =
-  match answer t ts q with
+let handle_query t ~rng ts qname qtype =
+  match answer t ts qname qtype with
   | `Packet (flags, data, t) -> `Reply (flags, data), t
   | `Query (name, t) ->
     (* similar for TLSA, which uses _443._tcp.<name> (a service name!) *)
     (* TODO unclear why it's here... *)
-    let qname, ty =
+    let qname', qtype' =
       if Domain_name.is_service name then
         Domain_name.drop_labels_exn ~amount:2 name, Rr_map.K Ns
       else
-        name, (match snd q with `Any -> Rr_map.K Ns | `K k -> k | `Axfr -> assert false)
+        name, (match qtype with `Any -> Rr_map.K Ns | `K k -> k)
     in
-    let zone, name', typ, ip, t = resolve t ~rng ts qname ty in
+    let zone, name', typ, ip, t = resolve t ~rng ts qname' qtype' in
     let name, typ =
-      if Domain_name.equal name' qname then
-        name, snd q
+      if Domain_name.equal name' qname' then
+        qname, qtype
       else
         name', `K typ
     in
     Logs.debug (fun m -> m "resolve returned zone %a query %a, ip %a"
-                   Domain_name.pp zone Packet.Question.pp (name, typ) Ipaddr.V4.pp ip);
+                   Domain_name.pp zone pp_question (name, typ) Ipaddr.V4.pp ip);
     `Query (zone, (name, typ), ip), t

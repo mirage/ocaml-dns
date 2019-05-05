@@ -23,7 +23,7 @@ let _invalid_soa_map name =
   let soa = invalid_soa name in
   soa_map name soa
 
-let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional =
+let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
   (* maybe should be passed explicitly (when we don't do qname minimisation) *)
   let in_bailiwick name = Domain_name.sub ~domain:bailiwick ~subdomain:name in
   (* ANSWER *)
@@ -53,13 +53,13 @@ let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional
         with
         | (name, soa)::_ ->
           begin match q_type with
-            | `Any | `Axfr -> [] (* i really don't know how to handle ANY NoDATA*)
+            | `Any -> [] (* i really don't know how to handle ANY NoDATA*)
             | `K k -> [ k, q_name, rank, `No_data (name, soa) ]
         (* this is wrong for the normal iterative algorithm:
             it asks for foo.com @root, and get .com NS in AU and A in AD
         | [] when not (Packet.Header.FS.mem `Truncation flags) ->
           Logs.warn (fun m -> m "noerror answer, but nothing in authority whose sub is %a in %a, invalid_soa!"
-                        Packet.Question.pp (q_name, q_type) Name_rr_map.pp authority) ;
+                        pp_question (q_name, q_type) Name_rr_map.pp authority) ;
           [ q_type, q_name, Additional, `No_data (q_name, invalid_soa q_name) ] *)
           end
         | [] -> [] (* general case when we get an answer from root server *)
@@ -68,7 +68,6 @@ let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional
       let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAnswer else NonAuthoritativeAnswer in
       (* collect those rrsets which are of interest depending on q_type! *)
       match q_type with
-      | `Axfr -> assert false
       | `Any ->
         Rr_map.fold (fun (B (k, v)) (acc, names) ->
             (Rr_map.K k, q_name, rank, `Entry (Rr_map.B (k, v))) :: acc,
@@ -80,7 +79,7 @@ let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional
           | None ->
             (* case no cname *)
             Logs.warn (fun m -> m "noerror answer with right name, but no cname in %a, invalid soa for %a"
-                          Name_rr_map.pp answer Packet.Question.pp (q_name, q_type));
+                          Name_rr_map.pp answer pp_question (q_name, q_type));
             [ Rr_map.K Cname, q_name, rank, `No_data (q_name, invalid_soa q_name) ],
             Domain_name.Set.empty
         end
@@ -91,7 +90,7 @@ let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional
           | None ->
             (* case neither TYP nor cname *)
             Logs.warn (fun m -> m "noerror answer with right name, but not TYP nor cname in %a, invalid soa for %a"
-                          Name_rr_map.pp answer Packet.Question.pp (q_name, q_type));
+                          Name_rr_map.pp answer pp_question (q_name, q_type));
             [ Rr_map.K k, q_name, rank, `No_data (q_name, invalid_soa q_name) ],
             Domain_name.Set.empty
           | Some cname ->
@@ -158,14 +157,14 @@ let noerror bailiwick (_, flags) (q_name, q_type) (answer, authority) additional
   | [], [] when not answer_complete && Packet.Flags.mem `Truncation flags ->
     (* special handling for truncated replies.. better not add anything *)
     Logs.warn (fun m -> m "truncated reply for %a, ignoring completely"
-                  Packet.Question.pp (q_name, q_type));
+                  pp_question (q_name, q_type));
     []
   | [], [] ->
     (* not sure if this can happen, maybe discard everything? *)
     Logs.warn (fun m -> m "reply without answers or ns invalid so for %a"
-                  Packet.Question.pp (q_name, q_type));
+                  pp_question (q_name, q_type));
     begin match q_type with
-      | `Any | `Axfr -> []
+      | `Any -> []
       | `K k -> [ k, q_name, Additional, `No_data (q_name, invalid_soa q_name) ]
     end
   | _, _ -> answers @ ns @ glues
@@ -180,7 +179,7 @@ let find_soa name authority =
   in
   try Some (go name) with Invalid_argument _ -> None
 
-let nxdomain (_, flags) (name, _typ) data =
+let nxdomain (_, flags) name data =
   (* we can't do much if authoritiative is not set (some auth dns do so) *)
   (* There are cases where answer is non-empty, but contains a CNAME *)
   (* RFC 2308 Sec 1 + 2.1 show that NXDomain is for the last QNAME! *)
@@ -219,13 +218,12 @@ let nxdomain (_, flags) (name, _typ) data =
   (* the cname does not matter *)
   List.map (fun (name, res) -> Rr_map.K Cname, name, rank, res) entries
 
-let noerror_stub (name, typ) (answer, authority) =
+let noerror_stub name typ (answer, authority) =
   (* no glue, just answers - but get all the cnames *)
   let find_entry_or_cname name =
     match Domain_name.Map.find name answer with
     | None -> None
     | Some rrmap -> match typ with
-      | `Axfr -> assert false
       | `Any -> Some (`Entries rrmap)
       | `K (Rr_map.K k) -> match Rr_map.find k rrmap with
         | Some v -> Some (`Entry (Rr_map.B (k, v)))
@@ -240,7 +238,7 @@ let noerror_stub (name, typ) (answer, authority) =
         | None -> name, invalid_soa name
       in
       (* TODO unclear what to do here *)
-      let typ = match typ with `Axfr | `Any -> Rr_map.K A | `K k -> k in
+      let typ = match typ with `Any -> Rr_map.K A | `K k -> k in
       (typ, name, NonAuthoritativeAnswer, `No_data (name, soa)) :: acc
     | Some (`Cname (ttl, alias)) ->
       go ((Rr_map.K Cname, name, NonAuthoritativeAnswer, `Alias (ttl, alias)) :: acc) alias
@@ -254,15 +252,15 @@ let noerror_stub (name, typ) (answer, authority) =
   go [] name
 
 (* stub vs recursive: maybe sufficient to look into *)
-let scrub ?(mode = `Recursive) zone p =
+let scrub ?(mode = `Recursive) zone qtype p =
   Logs.debug (fun m -> m "scrubbing (bailiwick %a) data %a"
                  Domain_name.pp zone Packet.pp p);
+  let qname = fst p.question in
   match mode, p.Packet.data with
-  | `Recursive, `Answer data -> Ok (noerror zone p.header p.question data p.additional)
-  | `Stub, `Answer data -> Ok (noerror_stub p.question data)
-  | _, `Rcode_error (Rcode.NXDomain, _, data) -> Ok (nxdomain p.Packet.header p.Packet.question data)
+  | `Recursive, `Answer data -> Ok (noerror zone p.header qname qtype data p.additional)
+  | `Stub, `Answer data -> Ok (noerror_stub qname qtype data)
+  | _, `Rcode_error (Rcode.NXDomain, _, data) -> Ok (nxdomain p.Packet.header qname data)
   | `Stub, `Rcode_error (Rcode.ServFail, _, _) ->
-    let name = fst p.question in
-    let soa = invalid_soa name in
-    Ok [ Rr_map.K Cname, name, NonAuthoritativeAnswer, `Serv_fail (name, soa) ]
+    let soa = invalid_soa qname in
+    Ok [ Rr_map.K Cname, qname, NonAuthoritativeAnswer, `Serv_fail (qname, soa) ]
   | _, e -> Error (Packet.rcode_data e)

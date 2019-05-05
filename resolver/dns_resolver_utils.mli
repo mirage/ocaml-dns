@@ -2,7 +2,7 @@
 
 open Dns
 
-val scrub : ?mode:[ `Recursive | `Stub ] -> Domain_name.t -> Packet.t ->
+val scrub : ?mode:[ `Recursive | `Stub ] -> Domain_name.t -> Packet.Question.qtype -> Packet.t ->
   ((Rr_map.k * Domain_name.t * Dns_resolver_cache.rank * Dns_resolver_cache.res) list,
    Rcode.t) result
 (** [scrub ~mode bailiwick packet] returns a list of entries to-be-added to the

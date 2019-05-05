@@ -2281,7 +2281,20 @@ module Packet = struct
                                Rr_map.ppk (K k) Domain_name.pp name))
 
   module Question = struct
-    type t = Domain_name.t * [ `Any | `Axfr | `K of Rr_map.k ]
+    type qtype = [ `Any | `K of Rr_map.k ]
+
+    let pp_qtype = Rr_map.pp_rr
+
+    let compare_qtype a b = match a, b with
+      | `Any, `Any -> 0 | `Any, _ -> 1 | _, `Any -> -1
+      | `K k, `K k' -> Rr_map.comparek k k'
+
+    type t = Domain_name.t * [ qtype | `Axfr ]
+
+    let qtype (_, t) = match t with
+      | `K k -> Some (`K k)
+      | `Any -> Some `Any
+      | _ -> None
 
     let create : type a. Domain_name.t -> a Rr_map.key -> t =
       fun name k -> name, `K (K k)
@@ -2291,10 +2304,16 @@ module Packet = struct
 
     let compare (name, typ) (name', typ') =
       andThen (Domain_name.compare name name')
-        (match typ, typ' with
-         | `Any, `Any -> 0 | `Any, _ -> 1 | _, `Any -> -1
-         | `Axfr, `Axfr -> 0 | `Axfr, _ -> 1 | _, `Axfr -> -1
-         | `K k, `K k' -> Rr_map.comparek k k')
+        (match typ with
+         | #qtype as a ->
+           (match typ' with
+            | #qtype as b -> compare_qtype a b
+            | _ -> 1)
+         | (`Axfr as x) ->
+           match typ' with
+           | #qtype -> -1
+           | (`Axfr as y) -> match x, y with
+             | `Axfr, `Axfr -> 0 (* | `Axfr, _ -> 1 | _, `Axfr -> -1 *) )
 
     let decode ?(names = Name.Int_map.empty) ?(off = Header.len) buf =
       let open Rresult.R.Infix in
