@@ -376,8 +376,248 @@ module Trie = struct
   ]
 end
 
+module S = struct
+
+  let ip =
+    let module M = struct
+      type t = Ipaddr.V4.t
+      let pp = Ipaddr.V4.pp
+      let equal a b = Ipaddr.V4.compare a b = 0
+    end in
+    (module M : Alcotest.TESTABLE with type t = M.t)
+
+  let ipset = Alcotest.(slist ip Ipaddr.V4.compare)
+
+  let ip_of_s = Ipaddr.V4.of_string_exn
+
+  let ts = Duration.of_sec 5
+
+  let data =
+    let ns = n_of_s "ns.one.com" in
+    let soa = Soa.create ~serial:1l ns in
+    Dns_trie.insert (n_of_s "one.com") Rr_map.Soa soa
+      (Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, Domain_name.Set.singleton ns)
+         (Dns_trie.insert ns Rr_map.A (300l, Rr_map.Ipv4_set.singleton Ipaddr.V4.localhost)
+            Dns_trie.empty))
+
+  let simple () =
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 0 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 0 (List.length tbn));
+    let tbn = Dns_server.Primary.to_be_notified server Domain_name.root in
+    Alcotest.(check int __LOC__ 0 (List.length tbn))
+
+  let secondary () =
+    let data =
+      let ns =
+        Domain_name.Set.(add (n_of_s "ns.one.com") (singleton (n_of_s "ns2.one.com")))
+      in
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
+        (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
+           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2")) data)
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 1 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 1 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "10.0.0.2"] (List.map fst tbn)
+
+  let multiple_ips_secondary () =
+    let data =
+      let ns =
+        Domain_name.Set.(add (n_of_s "ns.one.com") (singleton (n_of_s "ns2.one.com")))
+      and ips =
+        Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.2") (singleton (ip_of_s "1.2.3.4")))
+      in
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
+        (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A (300l, ips) data)
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 2 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 2 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "10.0.0.2" ; ip_of_s "1.2.3.4"] (List.map fst tbn)
+
+  let multiple_secondaries () =
+    let data' =
+      let ns =
+        Domain_name.Set.(add (n_of_s "ns.one.com")
+                           (add (n_of_s "ns2.one.com")
+                              (singleton (n_of_s "ns3.one.com"))))
+      in
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
+        (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
+           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2"))
+           (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
+              (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.3"))
+              data))
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data' in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 2 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 2 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "10.0.0.2";ip_of_s "10.0.0.3"]
+      (List.map fst tbn)
+
+  let multiple_secondaries_dups () =
+    let data' =
+      let ns =
+        Domain_name.Set.(add (n_of_s "ns.one.com")
+                           (add (n_of_s "ns2.one.com")
+                              (singleton (n_of_s "ns3.one.com"))))
+      in
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
+        (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
+           (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.2") (singleton (ip_of_s "10.0.0.3"))))
+           (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
+              (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.3") (singleton (ip_of_s "10.0.0.4"))))
+              data))
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data' in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 3 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 3 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "10.0.0.2";ip_of_s "10.0.0.3";ip_of_s "10.0.0.4"]
+      (List.map fst tbn)
+
+  let secondaries_in_other_zone () =
+    let data =
+      let ns =
+        Domain_name.Set.(add (n_of_s "ns.one.com")
+                           (add (n_of_s "ns.foo.com")
+                              (singleton (n_of_s "ns.bar.com"))))
+      in
+      let soa = Soa.create (n_of_s "ns.one.com")
+      and soa' = Soa.create (n_of_s "ns.foo.com")
+      and soa'' = Soa.create (n_of_s "ns.bar.com")
+      in
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
+        (Dns_trie.insert (n_of_s "one.com") Rr_map.Soa soa
+           (Dns_trie.insert (n_of_s "foo.com") Rr_map.Soa soa'
+              (Dns_trie.insert (n_of_s "bar.com") Rr_map.Soa soa''
+                 (Dns_trie.insert (n_of_s "ns.foo.com") Rr_map.A
+                    (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2"))
+                    (Dns_trie.insert (n_of_s "ns.bar.com") Rr_map.A
+                       (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.3"))
+                       (Dns_trie.insert (n_of_s "ns.one.com") Rr_map.A
+                          (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.4"))
+                          Dns_trie.empty))))))
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 2 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 2 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "10.0.0.2";ip_of_s "10.0.0.3"]
+      (List.map fst tbn)
+
+  let secondary_via_key () =
+    let keys =
+      [ n_of_s ~hostname:false "1.2.3.4.5.6.7.8._transfer.one.com",
+        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 1 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 1 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "5.6.7.8"] (List.map fst tbn)
+
+  let secondary_via_root_key () =
+    let keys =
+      [ n_of_s ~hostname:false "1.2.3.4.5.6.7.8._transfer",
+        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 1 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 1 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "5.6.7.8"] (List.map fst tbn)
+
+  let secondaries_and_keys () =
+    let keys =
+      [ n_of_s ~hostname:false "1.2.3.4.5.6.7.8._transfer.one.com",
+        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+    in
+    let data' =
+      let ns =
+        Domain_name.Set.(add (n_of_s "ns3.one.com")
+                           (add (n_of_s "ns2.one.com")
+                              (singleton (n_of_s "ns.one.com"))))
+      in
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
+        (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
+           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "1.1.1.1"))
+           (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
+              (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.1") (singleton (ip_of_s "192.168.1.1"))))
+              data))
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data' in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 4 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 4 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "1.1.1.1" ; ip_of_s "5.6.7.8" ; ip_of_s "10.0.0.1" ; ip_of_s "192.168.1.1"]
+      (List.map fst tbn)
+
+  let secondaries_and_keys_dups () =
+    let keys =
+      [ n_of_s ~hostname:false "1.2.3.4.5.6.7.8._transfer.one.com",
+        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+    in
+    let data' =
+      let ns =
+        Domain_name.Set.(add (n_of_s "ns3.one.com")
+                           (add (n_of_s "ns2.one.com")
+                              (singleton (n_of_s "ns.one.com"))))
+      in
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
+        (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
+           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "5.6.7.8"))
+           (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
+              (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.1") (singleton (ip_of_s "192.168.1.1"))))
+              data))
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data' in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 3 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (n_of_s "one.com") in
+    Alcotest.(check int __LOC__ 3 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "5.6.7.8" ; ip_of_s "10.0.0.1" ; ip_of_s "192.168.1.1"]
+      (List.map fst tbn)
+
+  (* TODO more testing:
+     - passive secondaries (tsig-signed SOA request)
+     - ensure that with_data and update (handle_packet) actually notifies the to-be-notified
+     - interaction of/with secondary (bootup, IXFR/AXFR, add/remove zone for root transfer keys, ...)
+  *)
+
+  let tests = [
+    "simple", `Quick, simple ;
+    "secondary", `Quick, secondary ;
+    "multiple IPs of secondary", `Quick, multiple_ips_secondary ;
+    "multiple secondaries", `Quick, multiple_secondaries ;
+    "multiple secondaries with duplicates", `Quick, multiple_secondaries_dups ;
+    "secondaries in other zone", `Quick, secondaries_in_other_zone ;
+    "secondary via key", `Quick, secondary_via_key ;
+    "secondary via root key", `Quick, secondary_via_root_key ;
+    "secondaries and keys", `Quick, secondaries_and_keys ;
+    "secondaries and keys dups", `Quick, secondaries_and_keys_dups ;
+  ]
+end
+
 let tests = [
   "Trie", Trie.tests ;
+  "Server", S.tests ;
 ]
 
-let () = Alcotest.run "DNS server tests" tests
+let () =
+  Nocrypto_entropy_unix.initialize ();
+  Alcotest.run "DNS server tests" tests

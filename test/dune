@@ -7,7 +7,7 @@
 (test
  (name server)
  (package dns-server)
- (libraries dns-server alcotest)
+ (libraries dns-server alcotest nocrypto.unix)
  (modules server))
 
 (test
