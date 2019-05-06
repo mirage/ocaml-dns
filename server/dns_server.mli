@@ -92,6 +92,12 @@ module Primary : sig
   (** [timer s now ts] may encode some notify if they were not acknowledget by the
      other side. *)
 
+  val to_be_notified : s -> Domain_name.t -> (Ipaddr.V4.t * Domain_name.t option) list
+  (** [to_be_notified s zone] returns a list of pairs of IP address and optional
+     tsig key name of the servers to be notified for a zone change.  This list
+     is based on (a) NS entries for the zone, (b) registered TSIG transfer keys,
+     and (c) active connection (which transmitted a signed SOA). *)
+
 end
 
 module Secondary : sig

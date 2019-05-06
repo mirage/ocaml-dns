@@ -411,7 +411,7 @@ module Notification = struct
       (* TODO AAAA records / use lookup_glue? *)
       Domain_name.Set.fold (fun ns acc ->
           match Dns_trie.lookup ns Rr_map.A trie with
-          | Ok (_, ips) -> ips
+          | Ok (_, ips) -> Rr_map.Ipv4_set.union ips acc
           | _ ->
             Log.err (fun m -> m "lookup for A %a returned nothing as well"
                         Domain_name.pp ns) ;
@@ -846,6 +846,9 @@ module Primary = struct
   let timer (t, l, ns) now ts =
     let ns', out = Notification.retransmit t ns now ts in
     (t, l, ns'), out
+
+  let to_be_notified (t, l, _) zone =
+    IPM.bindings (Notification.to_notify l ~data:t.data ~auth:t.auth zone)
 end
 
 module Secondary = struct
