@@ -1013,8 +1013,9 @@ module Secondary = struct
                        Domain_name.pp zone);
           Error Rcode.Refused
         | None, Some (kname, kzone) ->
-          if Domain_name.(equal root kzone) then
+          if Domain_name.(equal root kzone || equal zone kzone) then
             (* new zone, let's AXFR directly! *)
+            (* or old (forgotten) zone, but key zone matches *)
             let r = match axfr t `Tcp now ts zone kname with
               | None ->
                 Log.warn (fun m -> m "new zone %a, couldn't AXFR" Domain_name.pp zone);
