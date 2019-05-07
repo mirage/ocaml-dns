@@ -2496,7 +2496,7 @@ module Packet = struct
       Soa.compare soa soa' = 0 && Name_rr_map.equal entries entries'
 
     let pp ppf (soa, entries) =
-        Fmt.pf ppf "soa %a data %a" Soa.pp soa Name_rr_map.pp entries
+        Fmt.pf ppf "AXFR soa %a data %a" Soa.pp soa Name_rr_map.pp entries
 
     let decode (_, flags) buf names off ancount =
       let open Rresult.R.Infix in
@@ -2911,10 +2911,10 @@ module Packet = struct
     | _ -> false
 
   let pp_reply ppf = function
-    | `Answer a -> Fmt.pf ppf "answer %a" Query.pp a
+    | `Answer a -> Query.pp ppf a
+    | `Axfr_reply a -> Axfr.pp ppf a
+    | `Ixfr_reply a -> Ixfr.pp ppf a
     | `Notify_ack -> Fmt.string ppf "notify ack"
-    | `Axfr_reply a -> Fmt.pf ppf "AXFR %a" Axfr.pp a
-    | `Ixfr_reply a -> Fmt.pf ppf "IXFR %a" Ixfr.pp a
     | `Update_ack -> Fmt.string ppf "update ack"
     | `Rcode_error (rc, op, q) ->
       Fmt.pf ppf "rcode %a op %a q %a" Rcode.pp rc Opcode.pp op
