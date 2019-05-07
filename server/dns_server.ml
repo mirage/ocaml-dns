@@ -793,7 +793,7 @@ module Primary = struct
       in
       let answer = Packet.create (fst p.header, flags) p.question answer in
       (t, m, l, ns), Some answer, [], None
-    | `Notify_ack | `Rcode_error (Rcode.NotAuth, Opcode.Notify, _) ->
+    | `Notify_ack | `Rcode_error (_, Opcode.Notify, _) ->
       let ns' = Notification.received_reply ns ip p in
       (t, m, l, ns'), None, [], None
     | `Notify soa ->
