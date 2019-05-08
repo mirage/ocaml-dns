@@ -6,9 +6,10 @@
 
 %%VERSION%%
 
-µDNS supports most of the domain name system used in the wild.  It adheres to
-strict conventions.  Failing early and hard.  It is mostly implemented in the
-pure fragment of OCaml (no mutation, isolated IO, no exceptions).
+This library supports most of the domain name system used in the wild.  It
+adheres to strict conventions.  Failing early and hard.  It is mostly
+implemented in the pure fragment of OCaml (no mutation, isolated IO, no
+exceptions).
 
 It all started out as an experiment to run a recursive resolver, but after
 initial prototypes it turned out that every configurable recursive resolver
@@ -26,7 +27,7 @@ used).
 Please read [the blog article](https://hannes.nqsb.io/Posts/DNS) for a more
 detailed overview.
 
-The µDNS library is published under the 2 clause BSD license.
+This library is published under the 2 clause BSD license.
 
 ## Supported RFCs
 
@@ -72,15 +73,15 @@ The µDNS library is published under the 2 clause BSD license.
 
 ## Installation
 
-You first need to install [OCaml](https://ocaml.org) (at least 4.04.0) and
+You first need to install [OCaml](https://ocaml.org) (at least 4.07.0) and
 [opam](https://opam.ocaml.org), the OCaml package manager (at least 2.0.0) on
 your machine (you can use opam to install an up-to-date OCaml (`opam switch
 4.07.1`)).  You may want to follow the [mirage installation
 instructions](https://mirage.io/wiki/install) to get `mirage` installed on your
 computer.
 
-µDNS is not released yet, but you can install it and its dependencies via opam:
-`opam pin add dns https://github.com/roburio/udns.git`
+You can install it and its dependencies via opam:
+`opam pin add dns --dev`
 
 Now the µDNS library is installed, and you can try out the examples.  Find some
 examples at the [unikernel repository](https://github.com/roburio/unikernels).
@@ -99,7 +100,8 @@ from 1.x to the 2.x series are:
 - data (rrset) is defined in a single GADT in `Rr_map`
 - add support for: notify, dynamic update, zone transfer, tsig (hmac authentication), edns
 - no mutable datastructures to make reasoning about library state easier
-- switches to an independent `domain_name` library which uses a faster and more compact `string array` instead of `string list` for storing domain names
+- switches to an independent `domain_name` library which uses a faster and more
+  compact `string array` instead of `string list` for storing domain names
 - integration with LetsEncrypt for provisioning valid X.509 certificates
 - more strict hostname validation
 - no use of exceptions, instead preferring explicit result values from API functions
