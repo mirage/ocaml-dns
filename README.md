@@ -16,11 +16,12 @@ needs a fully-fledged authoritative nameserver as well (for overriding various
 zones such as `.localhost` and reverse lookups of RFC 1918 IP ranges).
 
 Legacy resource record types are not dealt with, and there is no plan to support
-`ISDN`, `MAILA`, `MAILB`, `WKS`, `MB`, `NULL`, `HINFO`, ... .  `AXFR` is only
-handled via TCP connections.  The only resource class supported is `IN` (the
-Internet).  In a similar vein, wildcard records are _not_ supported, and it is
-unlikely they'll ever be in this library.  Truncated hmac in `TSIG` are not
-supported (always the full length of the hash algorithm is used).
+`ISDN`, `MAILA`, `MAILB`, `WKS`, `MB`, `NULL`, `HINFO`, ... .  `AXFR`, `IXFR`,
+and `UPDATE` is only handled via TCP connections.  The only resource class
+supported is `IN` (the Internet).  In a similar vein, wildcard records are _not_
+supported, and it is unlikely they'll ever be in this library.  Truncated hmac
+in `TSIG` are not supported (always the full length of the hash algorithm is
+used).
 
 Please read [the blog article](https://hannes.nqsb.io/Posts/DNS) for a more
 detailed overview.
@@ -32,6 +33,7 @@ The µDNS library is published under the 2 clause BSD license.
 * [RFC 1034](https://tools.ietf.org/html/rfc1034) Domain Names - Concepts and Facilities
 * [RFC 1035](https://tools.ietf.org/html/rfc1035) Domain Names - Implementation and Specification
 * [RFC 1912](https://tools.ietf.org/html/rfc1912) Common DNS Operational and Configuration Errors
+* [RFC 1995](https://tools.ietf.org/html/rfc1995) Incremental Zone Transfer in DNS
 * [RFC 1996](https://tools.ietf.org/html/rfc1996) A Mechanism for Prompt Notification of Zone Changes (DNS NOTIFY)
 * [RFC 2136](https://tools.ietf.org/html/rfc2136) Dynamic Updates in the domain name system (DNS UPDATE)
 * [RFC 2181](https://tools.ietf.org/html/rfc2181) Clarifications to the DNS Specification
@@ -78,7 +80,7 @@ instructions](https://mirage.io/wiki/install) to get `mirage` installed on your
 computer.
 
 µDNS is not released yet, but you can install it and its dependencies via opam:
-`opam pin add udns https://github.com/roburio/udns.git`
+`opam pin add dns https://github.com/roburio/udns.git`
 
 Now the µDNS library is installed, and you can try out the examples.  Find some
 examples at the [unikernel repository](https://github.com/roburio/unikernels).

@@ -1,3 +1,3 @@
 (lang dune 1.2)
-(name udns)
+(name dns)
 (using menhir 2.0)
