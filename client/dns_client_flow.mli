@@ -27,7 +27,7 @@ module type S = sig
       TODO*)
 
   type stack
-  (** A stack with which to connect, e.g. {IPv4.tcpv4}*)
+  (** A stack with which to connect, e.g. {!IPv4.tcpv4}*)
 
   type t
   (** The abstract state of a DNS client. *)
