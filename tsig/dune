@@ -1,0 +1,6 @@
+(library
+ (name dns_tsig)
+ (synopsis "A Domain Name system (DNS) library, TSIG (HMAC) part")
+ (public_name dns-tsig)
+ (wrapped false)
+ (libraries dns nocrypto))

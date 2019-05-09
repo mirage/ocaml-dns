@@ -1,6 +1,0 @@
-(test
-  (name       test)
-  (libraries  dns oUnit pcap-format)
-  (package    dns)
-  (deps       (glob_files *.pcap) (glob_files *.zone))
-  (preprocess (pps ppx_cstruct)))

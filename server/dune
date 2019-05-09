@@ -1,0 +1,6 @@
+(library
+ (name dns_server)
+ (synopsis "A Domain Name system (DNS) server library")
+ (public_name dns-server)
+ (wrapped false)
+ (libraries dns randomconv duration))

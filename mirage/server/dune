@@ -1,0 +1,6 @@
+(library
+ (name dns_mirage_server)
+ (synopsis "A Domain Name system (DNS) library, MirageOS server integration")
+ (public_name dns-mirage-server)
+ (wrapped false)
+ (libraries dns dns-server dns-mirage lwt duration randomconv mirage-time-lwt mirage-clock-lwt mirage-stack-lwt))

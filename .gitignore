@@ -1,5 +1,11 @@
-*.swp
 _build/
 *.install
 .merlin
-_opam
+
+*pcap
+*out
+coverage/
+*req
+*key
+*private
+*pem

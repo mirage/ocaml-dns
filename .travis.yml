@@ -1,17 +1,27 @@
 language: c
-sudo: false
+install: wget https://raw.githubusercontent.com/ocaml/ocaml-ci-scripts/master/.travis-docker.sh
+script: bash -ex .travis-docker.sh
 services:
   - docker
-install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/master/.travis-docker.sh
-script: bash ./.travis-docker.sh
+sudo: false
 env:
- global:
-   - PINS="mirage-dns:. dns-async:. dns-lwt:. dns-lwt-unix:."
-   - PACKAGE="dns"
-   - DEPOPTS="dns-async dns-lwt dns-lwt-unix"
- matrix:
-   - DISTRO=debian-stable OCAML_VERSION=4.03
-   - DISTRO=debian-testing OCAML_VERSION=4.04
-   - DISTRO=ubuntu-lts OCAML_VERSION=4.05 DEPOPTS="mirage-dns dns-async dns-lwt dns-lwt-unix"
-   - DISTRO=alpine OCAML_VERSION=4.06 DEPOPTS="mirage-dns dns-async dns-lwt dns-lwt-unix"
-   - DISTRO=fedora OCAML_VERSION=4.07 DEPOPTS="mirage-dns dns-async dns-lwt dns-lwt-unix"
+  global:
+    - PINS="dns.dev:. dns-certify.dev:. dns-client.dev:. dns-client-lwt.dev:. dns-mirage-client.dev:. dns-client-unix.dev:. dns-resolver.dev:. dns-server.dev:. dns-tsig.dev:. dns-zone.dev:. dns-cli.dev:. dns-mirage.dev:. dns-mirage-resolver.dev:. dns-mirage-server.dev:. dns-mirage-certify.dev:."
+  matrix:
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-zone"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-resolver"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage-resolver"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage-server"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-certify"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-client"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-server"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-client-lwt"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-tsig"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage-certify"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-cli"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-client-unix"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage-client"
+notifications:
+  email: false
