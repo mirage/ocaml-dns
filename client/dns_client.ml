@@ -8,7 +8,7 @@ module Pure = struct
       query : Packet.t ;
     } constraint 'key = 'a Rr_map.key
 
-  let make_query rng protocol edns hostname
+  let make_query rng protocol ?(dnssec = false) edns hostname
       : 'xy  ->
         Cstruct.t * 'xy query_state =
     (* SRV records: Service + Protocol are case-insensitive, see RFC2728 pg2. *)
@@ -21,9 +21,15 @@ module Pure = struct
         | `Tcp -> Some (Edns.create ~extensions:[Edns.Tcp_keepalive (Some 1200)] ())
     in
     let question = Packet.Question.create hostname record_type in
-    let header = Randomconv.int16 rng, Packet.Flags.singleton `Recursion_desired in
+    let header =
+      let flags = Packet.Flags.singleton `Recursion_desired in
+      let flags =
+        if dnssec then Packet.Flags.add `Authentic_data flags else flags
+      in
+      Randomconv.int16 rng, flags
+    in
     let query = Packet.create ?edns header question `Query in
-    Logs.debug (fun m -> m "sending %a" Dns.Packet.pp query);
+    Logs.info (fun m -> m "sending %a" Dns.Packet.pp query);
     let cs , _ = Packet.encode protocol query in
     begin match protocol with
       | `Udp -> cs
@@ -80,6 +86,11 @@ module Pure = struct
         | None -> acc)
       authority None
 
+  let find_rrsig name answer =
+    match Domain_name.Map.find_opt name answer with
+    | None -> None
+    | Some relevant_map -> Rr_map.find Rrsig relevant_map
+
   let consume_rest_of_buffer state buf =
     let ( let* ) = Result.bind in
     let to_msg t = function
@@ -99,34 +110,35 @@ module Pure = struct
                     Packet.pp_mismatch e))
     in
     match Packet.decode buf with
-    | Error `Partial -> Ok `Partial
+    | Error `Partial -> Ok (`Partial, None)
     | Error err ->
       Error (`Msg (Fmt.str "Error parsing response: %a" Packet.pp_err err))
     | Ok t ->
-      Logs.debug (fun m -> m "received %a" Dns.Packet.pp t);
+      Logs.info (fun m -> m "received %a" Dns.Packet.pp t);
       let* a = to_msg t (Packet.reply_matches_request ~request:state.query t) in
       match a with
       | `Answer (answer, authority) when not (Domain_name.Map.is_empty answer) ->
         begin
           let q = fst state.query.question in
           let* o = follow_cname q ~iterations:20 ~answer ~state in
+          let rrsig = find_rrsig q answer in
           match o with
-          | `Data x -> Ok (`Data x)
+          | `Data x -> Ok (`Data x, rrsig)
           | `Need_soa _name ->
             (* should we retain CNAMEs (and send them to the client)? *)
             (* should we 'adjust' the SOA name to be _name? *)
             match find_soa authority with
-            | Some soa -> Ok (`No_data soa)
+            | Some soa -> Ok (`No_data soa, rrsig)
             | None -> Error (`Msg "invalid reply, couldn't find SOA")
         end
       | `Answer (_, authority) ->
         begin match find_soa authority with
-          | Some soa -> Ok (`No_data soa)
+          | Some soa -> Ok (`No_data soa, None)
           | None -> Error (`Msg "invalid reply, no SOA in no data")
         end
       | `Rcode_error (NXDomain, Query, Some (_answer, authority)) ->
         begin match find_soa authority with
-          | Some soa -> Ok (`No_domain soa)
+          | Some soa -> Ok (`No_domain soa, None)
           | None -> Error (`Msg "invalid reply, no SOA in nodomain")
         end
       | r ->
@@ -136,12 +148,12 @@ module Pure = struct
     : requested Rr_map.key query_state -> Cstruct.t ->
       ( [ `Data of requested | `Partial
         | `No_data of [`raw] Domain_name.t * Soa.t
-        | `No_domain of [`raw] Domain_name.t * Soa.t ],
+        | `No_domain of [`raw] Domain_name.t * Soa.t ] * Rr_map.Rrsig_set.t Rr_map.with_ttl option,
         [`Msg of string]) result =
     fun state buf ->
     match consume_protocol_prefix buf state.protocol with
     | Ok buf -> consume_rest_of_buffer state buf
-    | Error () -> Ok `Partial
+    | Error () -> Ok (`Partial, None)
 
 end
 
@@ -232,6 +244,28 @@ struct
       | Ok (`Serv_fail _)
       | Error _ -> Error (`Msg "")
 
+  let get_rr_with_rrsig (type requested) t (query_type:requested Dns.Rr_map.key) name
+    : (requested * Rr_map.Rrsig_set.t Rr_map.with_ttl option, [> `Msg of string
+                  | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+                  | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result Transport.io =
+    let proto, _ = Transport.nameservers t.transport in
+    let tx, state =
+      Pure.make_query Transport.rng proto ~dnssec:true t.edns name query_type
+    in
+    Transport.connect t.transport >>| fun socket ->
+    Logs.debug (fun m -> m "Connected to NS.");
+    (Transport.send_recv socket tx >>| fun recv_buffer ->
+     Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
+                    (Cstruct.length recv_buffer)) ;
+     Transport.lift
+       (match Pure.parse_response state recv_buffer with
+        | Ok (`Data x, rrsig) -> Ok (x, rrsig)
+        | Ok ((`No_data _ | `No_domain _) as nodom, _) -> Error nodom
+        | Error `Msg xxx -> Error (`Msg xxx)
+        | Ok (`Partial, _) -> Error (`Msg "Truncated UDP response"))) >>= fun r ->
+    Transport.close socket >>= fun () ->
+    Transport.lift r
+
   let get_resource_record (type requested) t (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string
                   | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
@@ -267,14 +301,14 @@ struct
          in
          Transport.lift
            (match Pure.parse_response state recv_buffer with
-            | Ok `Data x ->
+            | Ok (`Data x, _) ->
               update_cache (`Entry x);
               Ok x
-            | Ok ((`No_data _ | `No_domain _) as nodom) ->
+            | Ok ((`No_data _ | `No_domain _) as nodom, _) ->
               update_cache nodom;
               Error nodom
             | Error `Msg xxx -> Error (`Msg xxx)
-            | Ok `Partial -> Error (`Msg "Truncated UDP response"))) >>= fun r ->
+            | Ok (`Partial, _) -> Error (`Msg "Truncated UDP response"))) >>= fun r ->
         Transport.close socket >>= fun () ->
         Transport.lift r
 

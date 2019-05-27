@@ -309,6 +309,12 @@ end
 module Dnskey : sig
 
   type algorithm =
+    | RSA_SHA1
+    | RSA_SHA256
+    | RSA_SHA512
+    | P256_SHA256
+    | P384_SHA384
+    | ED25519
     | MD5
     | SHA1
     | SHA224
@@ -330,8 +336,14 @@ module Dnskey : sig
   val pp_algorithm : algorithm Fmt.t
   (** [pp_algorithm ppf a] pretty-prints the algorithm. *)
 
+  type flag = [ `Zone | `Revoke | `Secure_entry_point ]
+
+  module F : Set.S with type elt = flag
+
+  val decode_flags : int -> F.t
+
   type t = {
-    flags : int ; (* uint16 *)
+    flags : F.t ;
     algorithm :  algorithm ; (* u_int8_t *)
     key : Cstruct.t ;
   }
@@ -341,12 +353,12 @@ module Dnskey : sig
   (** [pp ppf t] pretty-prints the DNSKEY. *)
 
   val compare : t -> t -> int
-  (** [comapre a b] compares the DNSKEY [a] with [b]. *)
+  (** [compare a b] compares the DNSKEY [a] with [b]. *)
 
   val of_string : string -> (t, [> `Msg of string ]) result
   (** [of_string str] attempts to parse [str] to a dnskey. The colon character
-      ([:]) is used as separator, supported formats are: [algo:keydata] and
-      [flags:algo:keydata], where keydata is a base64 string. *)
+      ([:]) is used as separator, supported format is: [algo:keydata] where
+      keydata is a base64 string. *)
 
   val name_key_of_string : string -> ([ `raw ] Domain_name.t * t, [> `Msg of string ]) result
   (** [name_key_of_string str] attempts to parse [str] to a domain name and a
@@ -354,6 +366,61 @@ module Dnskey : sig
 
   val pp_name_key : ([ `raw ] Domain_name.t * t) Fmt.t
   (** [pp_name_key (name, key)] pretty-prints the dnskey and name pair. *)
+
+  val digest_prep : [ `raw ] Domain_name.t -> t -> Cstruct.t
+
+  val key_tag : t -> int
+end
+
+(** RRSIG *)
+module Rrsig : sig
+
+  type t = {
+    type_covered : int ;
+    algorithm : Dnskey.algorithm ;
+    label_count : int ;
+    original_ttl : int32 ;
+    signature_expiration : Ptime.t ;
+    signature_inception : Ptime.t ;
+    key_tag : int ;
+    signer_name : [ `raw ] Domain_name.t ;
+    signature : Cstruct.t
+  }
+  (** The type of a RRSIG. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the RRSIG. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the RRSIG [a] with [b]. *)
+end
+
+(** DS *)
+module Ds : sig
+  type digest_type =
+    | SHA1
+    | SHA256
+    | SHA384
+    | Unknown of int
+
+  val digest_type_to_int : digest_type -> int
+
+  val int_to_digest_type : int -> digest_type
+
+  val pp_digest_type : digest_type Fmt.t
+
+  type t = {
+    key_tag : int ;
+    algorithm : Dnskey.algorithm ;
+    digest_type : digest_type ;
+    digest : Cstruct.t
+  }
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the DS. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the DS [a] with [b]. *)
 end
 
 (** Certificate authority authorization
@@ -672,6 +739,8 @@ module Rr_map : sig
   module Caa_set : Set.S with type elt = Caa.t
   module Tlsa_set : Set.S with type elt = Tlsa.t
   module Sshfp_set : Set.S with type elt = Sshfp.t
+  module Ds_set : Set.S with type elt = Ds.t
+  module Rrsig_set : Set.S with type elt = Rrsig.t
 
   module I : sig
     type t
@@ -697,6 +766,8 @@ module Rr_map : sig
     | Tlsa : Tlsa_set.t with_ttl rr
     | Sshfp : Sshfp_set.t with_ttl rr
     | Txt : Txt_set.t with_ttl rr
+    | Ds : Ds_set.t with_ttl rr
+    | Rrsig : Rrsig_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
   (** The type of resource record sets, as GADT: the value depends on the
      specific constructor. There may only be a single SOA and Cname and Ptr
@@ -764,6 +835,8 @@ module Rr_map : sig
 
   val with_ttl : 'a key -> 'a -> int32 -> 'a
   (** [with_ttl k v ttl] updates [ttl] in [v]. *)
+
+  val prep_for_sig : [`raw] Domain_name.t -> Rrsig.t -> t -> (Cstruct.t, [ `Msg of string ]) result
 
 end
 

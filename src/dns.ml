@@ -38,6 +38,41 @@ let guard p err = if p then Ok () else Error err
 let src = Logs.Src.create "dns" ~doc:"DNS core"
 module Log = (val Logs.src_log src : Logs.LOG)
 
+module Ptime_extra = struct
+  (* this is here because I don't like float, and rather convert Ptime.t to int64 *)
+  let s_in_d = 86_400L
+  let ps_in_s = 1_000_000_000_000L
+
+  let span_to_int64 ts =
+    let d_min, d_max = Int64.(div min_int s_in_d, div max_int s_in_d) in
+    let d, ps = Ptime.Span.to_d_ps ts in
+    let d = Int64.of_int d in
+    if d < d_min || d > d_max then
+      None
+    else
+      let s = Int64.mul d s_in_d in
+      let s' = Int64.(add s (div ps ps_in_s)) in
+      if s' < s then
+        None
+      else
+        Some s'
+
+  let to_int64 t = span_to_int64 (Ptime.to_span t)
+
+  let of_int64 ?(off = 0) s =
+    let d, ps = Int64.(div s s_in_d, mul (rem s s_in_d) ps_in_s) in
+    if d < Int64.of_int min_int || d > Int64.of_int max_int then
+      Error (`Malformed (off, Fmt.str "timestamp does not fit in time range %Ld" s))
+    else
+      match Ptime.Span.of_d_ps (Int64.to_int d, ps) with
+      | Some span ->
+        begin match Ptime.of_span span with
+          | Some ts -> Ok ts
+          | None -> Error (`Malformed (off, Fmt.str "span does not fit into timestamp %Ld" s))
+        end
+      | None -> Error (`Malformed (off, Fmt.str "timestamp does not fit %Ld" s))
+end
+
 module Class = struct
   (* 16 bit *)
   type t =
@@ -482,6 +517,10 @@ module Soa = struct
     in
     { nameserver ; hostmaster ; serial ; refresh ; retry ; expiry ; minimum }
 
+  let canonical t =
+    { t with nameserver = Domain_name.canonical t.nameserver ;
+             hostmaster = Domain_name.canonical t.hostmaster }
+
   let pp ppf soa =
     Fmt.pf ppf "SOA %a %a %lu %lu %lu %lu %lu"
       Domain_name.pp soa.nameserver Domain_name.pp soa.hostmaster
@@ -511,9 +550,9 @@ module Soa = struct
     in
     Ok (soa, names, off + 20)
 
-  let encode soa names buf off =
-    let names, off = Name.encode soa.nameserver names buf off in
-    let names, off = Name.encode soa.hostmaster names buf off in
+  let encode ?compress soa names buf off =
+    let names, off = Name.encode ?compress soa.nameserver names buf off in
+    let names, off = Name.encode ?compress soa.hostmaster names buf off in
     Cstruct.BE.set_uint32 buf off soa.serial ;
     Cstruct.BE.set_uint32 buf (off + 4) soa.refresh ;
     Cstruct.BE.set_uint32 buf (off + 8) soa.retry ;
@@ -525,6 +564,8 @@ end
 (* name server *)
 module Ns = struct
   type t = [ `host ] Domain_name.t
+
+  let canonical t = Domain_name.canonical t
 
   let pp ppf ns = Fmt.pf ppf "NS %a" Domain_name.pp ns
 
@@ -545,6 +586,9 @@ module Mx = struct
     mail_exchange : [ `host ] Domain_name.t ;
   }
 
+  let canonical t =
+    { t with mail_exchange = Domain_name.canonical t.mail_exchange }
+
   let pp ppf { preference ; mail_exchange } =
     Fmt.pf ppf "MX %u %a" preference Domain_name.pp mail_exchange
 
@@ -559,14 +603,16 @@ module Mx = struct
     let* mail_exchange = Name.host off mx in
     Ok ({ preference ; mail_exchange }, names, off')
 
-  let encode { preference ; mail_exchange } names buf off =
+  let encode ?compress { preference ; mail_exchange } names buf off =
     Cstruct.BE.set_uint16 buf off preference ;
-    Name.encode mail_exchange names buf (off + 2)
+    Name.encode ?compress mail_exchange names buf (off + 2)
 end
 
 (* canonical name *)
 module Cname = struct
   type t = [ `raw ] Domain_name.t
+
+  let canonical t = Domain_name.canonical t
 
   let pp ppf alias = Fmt.pf ppf "CNAME %a" Domain_name.pp alias
 
@@ -620,6 +666,8 @@ end
 module Ptr = struct
   type t = [ `host ] Domain_name.t
 
+  let canonical t = Domain_name.canonical t
+
   let pp ppf rev = Fmt.pf ppf "PTR %a" Domain_name.pp rev
 
   let compare = Domain_name.compare
@@ -640,6 +688,9 @@ module Srv = struct
     port : int ;
     target : [ `host ] Domain_name.t
   }
+
+  let canonical t =
+    { t with target = Domain_name.canonical t.target }
 
   let pp ppf t =
     Fmt.pf ppf
@@ -675,9 +726,17 @@ module Dnskey = struct
 
   (* 8 bit *)
   type algorithm =
+    | RSA_SHA1 | RSA_SHA256 | RSA_SHA512
+    | P256_SHA256 | P384_SHA384 | ED25519
     | MD5 | SHA1 | SHA224 | SHA256 | SHA384 | SHA512 | Unknown of int
 
   let algorithm_to_int = function
+    | RSA_SHA1 -> 5
+    | RSA_SHA256 -> 8
+    | RSA_SHA512 -> 10
+    | P256_SHA256 -> 13
+    | P384_SHA384 -> 14
+    | ED25519 -> 15
     | MD5 -> 157
     | SHA1 -> 161
     | SHA224 -> 162
@@ -686,6 +745,12 @@ module Dnskey = struct
     | SHA512 -> 165
     | Unknown x -> x
   let int_to_algorithm = function
+    | 5 -> RSA_SHA1
+    | 8 -> RSA_SHA256
+    | 10 -> RSA_SHA512
+    | 13 -> P256_SHA256
+    | 14 -> P384_SHA384
+    | 15 -> ED25519
     | 157 -> MD5
     | 161 -> SHA1
     | 162 -> SHA224
@@ -693,11 +758,17 @@ module Dnskey = struct
     | 164 -> SHA384
     | 165 -> SHA512
     | x ->
-      if x >= 0 && x < 255 then
+      if x >= 0 && x < 256 then
         Unknown x
       else
         invalid_arg ("invalid DNSKEY algorithm " ^ string_of_int x)
   let algorithm_to_string = function
+    | RSA_SHA1 -> "RSASHA1"
+    | RSA_SHA256 -> "RSASHA256"
+    | RSA_SHA512 -> "RSASHA512"
+    | P256_SHA256 -> "ECDSAP256SHA256"
+    | P384_SHA384 -> "ECDSAP384SHA384"
+    | ED25519 -> "ED25519"
     | MD5 -> "MD5"
     | SHA1 -> "SHA1"
     | SHA224 -> "SHA224"
@@ -706,6 +777,12 @@ module Dnskey = struct
     | SHA512 -> "SHA512"
     | Unknown x -> string_of_int x
   let string_to_algorithm = function
+    | "RSASHA1" -> Ok RSA_SHA1
+    | "RSASHA256" -> Ok RSA_SHA256
+    | "RSASHA512" -> Ok RSA_SHA512
+    | "ECDSAP256SHA256" -> Ok P256_SHA256
+    | "ECDSAP384SHA384" -> Ok P384_SHA384
+    | "ED25519" -> Ok ED25519
     | "MD5" -> Ok MD5
     | "SHA1" -> Ok SHA1
     | "SHA224" -> Ok SHA224
@@ -717,20 +794,53 @@ module Dnskey = struct
 
   let pp_algorithm ppf k = Fmt.string ppf (algorithm_to_string k)
 
+  type flag = [ `Zone | `Revoke | `Secure_entry_point ]
+
+  let bit = function
+    | `Zone -> 7
+    | `Revoke -> 8
+    | `Secure_entry_point -> 15
+
+  let all = [ `Zone ; `Revoke ; `Secure_entry_point ]
+
+  let compare_flag a b = match a, b with
+    | `Zone, `Zone -> 0 | `Zone, _ -> 1 | _, `Zone -> -1
+    | `Revoke, `Revoke -> 0 | `Revoke, _ -> 1 | _, `Revoke -> -1
+    | `Secure_entry_point, `Secure_entry_point -> 0
+
+  module F = Set.Make(struct type t = flag let compare = compare_flag end)
+
+  let pp_flag ppf = function
+    | `Zone -> Fmt.string ppf "zone"
+    | `Revoke -> Fmt.string ppf "revoke"
+    | `Secure_entry_point -> Fmt.string ppf "secure entry point"
+
+  let number f = 1 lsl (15 - bit f)
+
+  let decode_flags i =
+    List.fold_left (fun flags f ->
+        if number f land i > 0 then F.add f flags else flags)
+      F.empty all
+
+  let encode_flags f =
+    F.fold (fun f acc -> acc + number f) f 0
+
   type t = {
-    flags : int ; (* uint16 *)
+    flags : F.t ;
     algorithm : algorithm ; (* u_int8_t *)
     key : Cstruct.t ;
   }
 
   let pp ppf t =
-    Fmt.pf ppf "DNSKEY flags %u algo %a key %a"
-      t.flags pp_algorithm t.algorithm
+    Fmt.pf ppf "DNSKEY flags %a algo %a key %a"
+      Fmt.(list ~sep:(any ", ") pp_flag) (F.elements t.flags)
+      pp_algorithm t.algorithm
       Cstruct.hexdump_pp t.key
 
   let compare a b =
-    andThen (compare a.algorithm b.algorithm)
-      (Cstruct.compare a.key b.key)
+    andThen (F.compare b.flags a.flags)
+      (andThen (compare b.algorithm a.algorithm)
+         (Cstruct.compare b.key a.key))
 
   let decode_exn names buf ~off ~len =
     let flags = Cstruct.BE.get_uint16 buf off
@@ -743,30 +853,48 @@ module Dnskey = struct
     in
     let algorithm = int_to_algorithm algo in
     let key = Cstruct.sub buf (off + 4) (len - 4) in
+    let flags = decode_flags flags in
     Ok ({ flags ; algorithm ; key }, names, off + len)
 
   let encode t names buf off =
-    Cstruct.BE.set_uint16 buf off t.flags ;
+    let flags = encode_flags t.flags in
+    Cstruct.BE.set_uint16 buf off flags ;
     Cstruct.set_uint8 buf (off + 2) 3 ;
     Cstruct.set_uint8 buf (off + 3) (algorithm_to_int t.algorithm) ;
     let kl = Cstruct.length t.key in
     Cstruct.blit t.key 0 buf (off + 4) kl ;
     names, off + 4 + kl
 
+  let key_tag t =
+    let data = Cstruct.create (4 + Cstruct.length t.key) in
+    let _names, _off = encode t Domain_name.Map.empty data 0 in
+    let rec go idx ac =
+      if idx >= Cstruct.length data then
+        (ac + (ac lsr 16) land 0xFFFF) land 0xFFFF
+      else
+        let b = Cstruct.get_uint8 data idx in
+        let lowest_bit_set = idx land 1 <> 0 in
+        let ac = ac + if lowest_bit_set then b else b lsl 8 in
+        go (succ idx) ac
+    in
+    go 0 0
+
+  let digest_prep owner t =
+    let kl = Cstruct.length t.key in
+    let buf = Cstruct.create (kl + 255 + 4) in (* key length + max name + 4 *)
+    let names = Domain_name.Map.empty in
+    let _, off = Name.encode ~compress:false owner names buf 0 in
+    let _, off' = encode t names buf off in
+    Cstruct.sub buf 0 off'
+
   let of_string key =
-    let parse flags algo key =
+    let parse algo key =
       let key = Cstruct.of_string key in
       let* algorithm = string_to_algorithm algo in
-      Ok { flags ; algorithm ; key }
+      Ok { flags = F.empty ; algorithm ; key }
     in
     match String.split_on_char ':' key with
-    | [ flags ; algo ; key ] ->
-      let* flags =
-        try Ok (int_of_string flags) with Failure _ ->
-          Error (`Msg ("couldn't parse flags " ^ flags))
-      in
-      parse flags algo key
-    | [ algo ; key ] -> parse 0 algo key
+    | [ algo ; key ] -> parse algo key
     | _ -> Error (`Msg ("invalid DNSKEY string " ^ key))
 
   let name_key_of_string str =
@@ -779,6 +907,183 @@ module Dnskey = struct
 
   let pp_name_key ppf (name, key) =
     Fmt.pf ppf "%a %a" Domain_name.pp name pp key
+end
+
+(** RRSIG *)
+module Rrsig = struct
+
+  type t = {
+    type_covered : int ;
+    algorithm : Dnskey.algorithm ;
+    label_count : int ;
+    original_ttl : int32 ;
+    signature_expiration : Ptime.t ;
+    signature_inception : Ptime.t ;
+    key_tag : int ;
+    signer_name : [ `raw ] Domain_name.t ;
+    signature : Cstruct.t
+  }
+
+  let canonical t =
+    { t with signer_name = Domain_name.canonical t.signer_name }
+
+  let pp ppf t =
+    Fmt.pf ppf "RRSIG type covered %u algo %a labels %u original ttl %lu signature expiration %a signature inception %a key tag %u signer name %a signature %a"
+      t.type_covered
+      Dnskey.pp_algorithm t.algorithm
+      t.label_count t.original_ttl
+      (Ptime.pp_rfc3339 ()) t.signature_expiration
+      (Ptime.pp_rfc3339 ()) t.signature_inception
+      t.key_tag Domain_name.pp t.signer_name
+      Cstruct.hexdump_pp t.signature
+
+  let compare a b =
+    andThen (compare a.type_covered b.type_covered)
+      (andThen (compare a.algorithm b.algorithm)
+         (andThen (compare a.label_count b.label_count)
+            (andThen (compare a.original_ttl b.original_ttl)
+               (andThen (Ptime.compare a.signature_expiration b.signature_expiration)
+                  (andThen (Ptime.compare a.signature_inception b.signature_inception)
+                     (andThen (compare a.key_tag b.key_tag)
+                        (andThen (Domain_name.compare a.signer_name b.signer_name)
+                           (Cstruct.compare a.signature b.signature))))))))
+
+  let decode names buf ~off ~len =
+    let type_covered = Cstruct.BE.get_uint16 buf off
+    and algo = Cstruct.get_uint8 buf (off + 2)
+    and label_count = Cstruct.get_uint8 buf (off + 3)
+    and original_ttl = Cstruct.BE.get_uint32 buf (off + 4)
+    and sig_exp = Cstruct.BE.get_uint32 buf (off + 8)
+    and sig_inc = Cstruct.BE.get_uint32 buf (off + 12)
+    and key_tag = Cstruct.BE.get_uint16 buf (off + 16)
+    in
+    let* signer_name, names, off' = Name.decode names buf ~off:(off + 18) in
+    let signature = Cstruct.sub buf off' (len - (off' - off)) in
+    let algorithm = Dnskey.int_to_algorithm algo in
+    (* sig_exp and sig_inc are supposed seconds since UNIX epoch (1970-01-01),
+       TODO but may only be +68years and -68years in respect to current timestamp *)
+    let* signature_expiration =
+      Ptime_extra.of_int64 ~off:(off + 8) (Int64.of_int32 sig_exp)
+    in
+    let* signature_inception =
+      Ptime_extra.of_int64 ~off:(off + 12) (Int64.of_int32 sig_inc)
+    in
+    Ok ({ type_covered ; algorithm ; label_count ; original_ttl ;
+          signature_expiration ; signature_inception ; key_tag ; signer_name ;
+          signature },
+        names, off + len)
+
+  let encode t names buf off =
+    Cstruct.BE.set_uint16 buf off t.type_covered ;
+    Cstruct.set_uint8 buf (off + 2) (Dnskey.algorithm_to_int t.algorithm) ;
+    Cstruct.set_uint8 buf (off + 3) t.label_count ;
+    Cstruct.BE.set_uint32 buf (off + 4) t.original_ttl ;
+    (* TODO +-68 years in respect to current timestamp *)
+    let int_s ts =
+      match Ptime_extra.to_int64 ts with
+      | None -> 0l
+      | Some s ->
+        if Int64.(s > of_int32 Int32.min_int && s < of_int32 Int32.max_int) then
+          Int64.to_int32 s
+        else
+          0l
+    in
+    Cstruct.BE.set_uint32 buf (off + 8) (int_s t.signature_expiration) ;
+    Cstruct.BE.set_uint32 buf (off + 12) (int_s t.signature_inception) ;
+    Cstruct.BE.set_uint16 buf (off + 16) t.key_tag ;
+    let names, off = Name.encode ~compress:false t.signer_name names buf (off + 18) in
+    let slen = Cstruct.length t.signature in
+    Cstruct.blit t.signature 0 buf off slen ;
+    names, off + slen
+
+  (* RFC 4035 section 5.3.2 *)
+  let used_name rrsig name =
+    let rrsig_labels = rrsig.label_count
+    and fqdn_labels = Domain_name.count_labels name
+    in
+    if rrsig_labels = fqdn_labels then
+      Ok name
+    else if rrsig_labels < fqdn_labels then
+      let amount = fqdn_labels - rrsig_labels in
+      Ok Domain_name.(prepend_label_exn (drop_label_exn ~amount name) "*")
+    else (* rrsig_labels > fqdn_labels *)
+      Error (`Msg "rrsig_labels is greater than fqdn_labels: name is too short")
+
+  let prep_rrsig rrsig =
+    (* from RFC 4034 section 3.1.8.1 *)
+    (* this buffer may be too small... *)
+    let tbs = Cstruct.create 4096 in
+    let rrsig_raw = canonical { rrsig with signature = Cstruct.empty } in
+    let _, off = encode rrsig_raw Domain_name.Map.empty tbs 0 in
+    tbs, off
+end
+
+module Ds = struct
+  type digest_type =
+    | SHA1
+    | SHA256
+    | SHA384
+    | Unknown of int
+
+  let digest_type_to_int = function
+    | SHA1 -> 1
+    | SHA256 -> 2
+    | SHA384 -> 4
+    | Unknown i -> i
+  let int_to_digest_type = function
+    | 1 -> SHA1
+    | 2 -> SHA256
+    | 4 -> SHA384
+    | x ->
+      if x >= 0 && x < 256 then
+        Unknown x
+      else
+        invalid_arg ("invalid DS digest type " ^ string_of_int x)
+  let digest_type_to_string = function
+    | SHA1 -> "SHA1"
+    | SHA256 -> "SHA256"
+    | SHA384 -> "SHA384"
+    | Unknown i -> string_of_int i
+
+  let pp_digest_type ppf k = Fmt.string ppf (digest_type_to_string k)
+
+  type t = {
+    key_tag : int ;
+    algorithm : Dnskey.algorithm ;
+    digest_type : digest_type ;
+    digest : Cstruct.t
+  }
+
+  let pp ppf t =
+    Fmt.pf ppf "DS key_tag %u algo %a digest type %a digest %a"
+      t.key_tag
+      Dnskey.pp_algorithm t.algorithm
+      pp_digest_type t.digest_type
+      Cstruct.hexdump_pp t.digest
+
+  let compare a b =
+    andThen (compare a.key_tag b.key_tag)
+      (andThen (compare a.algorithm b.algorithm)
+         (andThen (compare a.digest_type b.digest_type)
+            (Cstruct.compare a.digest b.digest)))
+
+  let decode names buf ~off ~len =
+    let key_tag = Cstruct.BE.get_uint16 buf off
+    and algo = Cstruct.get_uint8 buf (off + 2)
+    and dt = Cstruct.get_uint8 buf (off + 3)
+    and digest = Cstruct.sub buf (off + 4) (len - 4)
+    in
+    let algorithm = Dnskey.int_to_algorithm algo
+    and digest_type = int_to_digest_type dt
+    in
+    Ok ({ key_tag ; algorithm ; digest_type ; digest }, names, off + len)
+
+  let encode t names buf off =
+    Cstruct.BE.set_uint16 buf off t.key_tag ;
+    Cstruct.set_uint8 buf (off + 2) (Dnskey.algorithm_to_int t.algorithm) ;
+    Cstruct.set_uint8 buf (off + 3) (digest_type_to_int t.digest_type) ;
+    Cstruct.blit t.digest 0 buf (off + 4) (Cstruct.length t.digest) ;
+    names, off + Cstruct.length t.digest + 4
 end
 
 (* certificate authority authorization *)
@@ -1086,14 +1391,15 @@ module Txt = struct
     Ok (String.concat "" txts, names, off + len)
 
   let encode txt names buf off =
+    let max_len = 255 in
     let rec more off txt =
       if txt = "" then
         off
       else
         let len = String.length txt in
         let len, rest =
-          if len > 255 then
-            255, String.(sub txt 255 (len - 255))
+          if len > max_len then
+            max_len, String.(sub txt max_len (len - max_len))
           else
             len, ""
         in
@@ -1153,37 +1459,6 @@ module Tsig = struct
 
   let pp_algorithm ppf a = Domain_name.pp ppf (algorithm_to_name a)
 
-  (* this is here because I don't like float, and rather convert Ptime.t to int64 *)
-  let s_in_d = 86_400L
-  let ps_in_s = 1_000_000_000_000L
-
-  let ptime_span_to_int64 ts =
-    let d_min, d_max = Int64.(div min_int s_in_d, div max_int s_in_d) in
-    let d, ps = Ptime.Span.to_d_ps ts in
-    let d = Int64.of_int d in
-    if d < d_min || d > d_max then
-      None
-    else
-      let s = Int64.mul d s_in_d in
-      let s' = Int64.(add s (div ps ps_in_s)) in
-      if s' < s then
-        None
-      else
-        Some s'
-
-  let ptime_of_int64 ?(off = 0) s =
-    let d, ps = Int64.(div s s_in_d, mul (rem s s_in_d) ps_in_s) in
-    if d < Int64.of_int min_int || d > Int64.of_int max_int then
-      Error (`Malformed (off, Fmt.str "timestamp does not fit in time range %Ld" s))
-    else
-      match Ptime.Span.of_d_ps (Int64.to_int d, ps) with
-      | Some span ->
-        begin match Ptime.of_span span with
-          | Some ts -> Ok ts
-          | None -> Error (`Malformed (off, Fmt.str "span does not fit into timestamp %Ld" s))
-        end
-      | None -> Error (`Malformed (off, Fmt.str "timestamp does not fit %Ld" s))
-
   let valid_time now tsig =
     let ts = tsig.signed
     and fudge = tsig.fudge
@@ -1194,16 +1469,19 @@ module Tsig = struct
     | Some late, Some early ->
       Ptime.is_earlier ts ~than:late && Ptime.is_later ts ~than:early
 
+  let ptime_to_bits ts =
+    match Ptime_extra.to_int64 ts with
+    | None -> None
+    | Some x ->
+      if Int64.logand 0xffff_0000_0000_0000L x = 0L then Some x else None
+
   let tsig ~algorithm ~signed ?(fudge = Ptime.Span.of_int_s 300)
       ?(mac = Cstruct.create 0) ?(original_id = 0) ?(error = Rcode.NoError)
       ?other () =
-    match ptime_span_to_int64 (Ptime.to_span signed), ptime_span_to_int64 fudge with
+    match ptime_to_bits signed, Ptime_extra.span_to_int64 fudge with
     | None, _ | _, None -> None
-    | Some ts, Some fu ->
-      if
-        Int64.logand 0xffff_0000_0000_0000L ts = 0L &&
-        Int64.logand 0xffff_ffff_ffff_0000L fu = 0L
-      then
+    | Some _, Some fu ->
+      if Int64.logand 0xffff_ffff_ffff_0000L fu = 0L then
         Some { algorithm ; signed ; fudge ; mac ; original_id ; error ; other }
       else
         None
@@ -1213,19 +1491,17 @@ module Tsig = struct
   let with_error tsig error = { tsig with error }
 
   let with_signed tsig signed =
-    match ptime_span_to_int64 (Ptime.to_span signed) with
-    | Some x when Int64.logand 0xffff_0000_0000_0000L x = 0L ->
-      Some { tsig with signed }
-    | _ -> None
+    match ptime_to_bits signed with
+    | Some _ -> Some { tsig with signed }
+    | None -> None
 
   let with_other tsig other =
     match other with
     | None -> Some { tsig with other }
     | Some ts ->
-      match ptime_span_to_int64 (Ptime.to_span ts) with
-      | Some x when Int64.logand 0xffff_0000_0000_0000L x = 0L ->
-        Some { tsig with other }
-      | _ -> None
+      match ptime_to_bits ts with
+      | Some _ -> Some { tsig with other }
+      | None -> None
 
   let pp ppf t =
     Fmt.pf ppf
@@ -1273,14 +1549,14 @@ module Tsig = struct
         (`Malformed (off' + 14 + mac_len, "other timestamp should be 0 or 6 bytes!"))
     in
     let* algorithm = algorithm_of_name ~off:rdata_start algorithm in
-    let* signed = ptime_of_int64 ~off:off' signed in
+    let* signed = Ptime_extra.of_int64 ~off:off' signed in
     let* error = Rcode.of_int ~off:(off' + 12 + mac_len) error in
     let* other =
       if other_len = 0 then
         Ok None
       else
         let other = decode_48bit_time buf (off' + 16 + mac_len) in
-        let* x = ptime_of_int64 ~off:(off' + 14 + mac_len + 2) other in
+        let* x = Ptime_extra.of_int64 ~off:(off' + 14 + mac_len + 2) other in
         Ok (Some x)
     in
     let fudge = Ptime.Span.of_int_s fudge in
@@ -1289,23 +1565,20 @@ module Tsig = struct
         off' + 16 + mac_len + other_len)
 
   let encode_48bit_time buf ?(off = 0) ts =
-    match ptime_span_to_int64 (Ptime.to_span ts) with
+    match ptime_to_bits ts with
     | None ->
       Log.warn (fun m -> m "couldn't convert (to_span %a) to int64" Ptime.pp ts)
     | Some secs ->
-      if Int64.logand secs 0xffff_0000_0000_0000L > 0L then
-        Log.warn (fun m -> m "secs %Lu > 48 bit" secs)
-      else
-        let a, b, c =
-          let f s = Int64.(to_int (logand 0xffffL (shift_right secs s))) in
-          f 32, f 16, f 0
-        in
-        Cstruct.BE.set_uint16 buf off a ;
-        Cstruct.BE.set_uint16 buf (off + 2) b ;
-        Cstruct.BE.set_uint16 buf (off + 4) c
+      let a, b, c =
+        let f s = Int64.(to_int (logand 0xffffL (shift_right secs s))) in
+        f 32, f 16, f 0
+      in
+      Cstruct.BE.set_uint16 buf off a ;
+      Cstruct.BE.set_uint16 buf (off + 2) b ;
+      Cstruct.BE.set_uint16 buf (off + 4) c
 
   let encode_16bit_time buf ?(off = 0) ts =
-    match ptime_span_to_int64 ts with
+    match Ptime_extra.span_to_int64 ts with
     | None ->
       Log.warn (fun m -> m "couldn't convert span %a to int64" Ptime.Span.pp ts)
     | Some secs ->
@@ -1333,17 +1606,16 @@ module Tsig = struct
      | Some t -> encode_48bit_time buf ~off:(off + 16 + mac_len) t) ;
     names, off + 16 + mac_len + other_len
 
-  let canonical_name name =
+  let name_to_buf name =
     let buf = Cstruct.create 255
     and emp = Domain_name.Map.empty
-    and nam = Domain_name.canonical name
     in
-    let _, off = Name.encode ~compress:false nam emp buf 0 in
+    let _, off = Name.encode ~compress:false name emp buf 0 in
     Cstruct.sub buf 0 off
 
   let encode_raw_tsig_base name t =
-    let name = canonical_name name
-    and aname = canonical_name (algorithm_to_name t.algorithm)
+    let name = name_to_buf (Domain_name.canonical name)
+    and aname = name_to_buf (algorithm_to_name t.algorithm)
     in
     let clttl = Cstruct.create 6 in
     Cstruct.BE.set_uint16 clttl 0 Class.(to_int ANY_CLASS) ;
@@ -1396,6 +1668,8 @@ module Tsig = struct
 
   let dnskey_to_tsig_algo key =
     match key.Dnskey.algorithm with
+    | Dnskey.RSA_SHA1 | Dnskey.RSA_SHA256 | Dnskey.RSA_SHA512 -> Error (`Msg "TSIG with RSA is not supported")
+    | Dnskey.P256_SHA256 | Dnskey.P384_SHA384 | Dnskey.ED25519 -> Error (`Msg "TSIG with EC is not supported")
     | Dnskey.MD5 -> Error (`Msg "TSIG algorithm MD5 is not supported")
     | Dnskey.SHA1 -> Ok SHA1
     | Dnskey.SHA224 -> Ok SHA224
@@ -1609,6 +1883,8 @@ module Rr_map = struct
   module Caa_set = Set.Make(Caa)
   module Tlsa_set = Set.Make(Tlsa)
   module Sshfp_set = Set.Make(Sshfp)
+  module Ds_set = Set.Make(Ds)
+  module Rrsig_set = Set.Make(Rrsig)
 
   module I : sig
     type t
@@ -1618,7 +1894,7 @@ module Rr_map = struct
   end = struct
     type t = int
     let of_int ?(off = 0) i = match i with
-      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 44 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
+      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 46 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
         Error (`Malformed (off, "reserved and supported RTYPE not Unknown"))
       | x -> if x < 1 lsl 15 then Ok x else Error (`Malformed (off, "RTYPE exceeds 16 bit"))
     let to_int t = t
@@ -1641,6 +1917,8 @@ module Rr_map = struct
     | Tlsa : Tlsa_set.t with_ttl rr
     | Sshfp : Sshfp_set.t with_ttl rr
     | Txt : Txt_set.t with_ttl rr
+    | Ds : Ds_set.t with_ttl rr
+    | Rrsig : Rrsig_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
 
   module K = struct
@@ -1662,6 +1940,8 @@ module Rr_map = struct
       | Tlsa, Tlsa -> Eq | Tlsa, _ -> Lt | _, Tlsa -> Gt
       | Sshfp, Sshfp -> Eq | Sshfp, _ -> Lt | _, Sshfp -> Gt
       | Txt, Txt -> Eq | Txt, _ -> Lt | _, Txt -> Gt
+      | Ds, Ds -> Eq | Ds, _ -> Lt | _, Ds -> Gt
+      | Rrsig, Rrsig -> Eq | Rrsig, _ -> Lt | _, Rrsig -> Gt
       | Unknown a, Unknown b ->
         let r = I.compare a b in
         if r = 0 then Eq else if r < 0 then Lt else Gt
@@ -1689,6 +1969,8 @@ module Rr_map = struct
     | Caa, (_, caas), (_, caas') -> Caa_set.equal caas caas'
     | Tlsa, (_, tlsas), (_, tlsas') -> Tlsa_set.equal tlsas tlsas'
     | Sshfp, (_, sshfps), (_, sshfps') -> Sshfp_set.equal sshfps sshfps'
+    | Ds, (_, ds), (_, ds') -> Ds_set.equal ds ds'
+    | Rrsig, (_, rrs), (_, rrs') -> Rrsig_set.equal rrs rrs'
     | Unknown _, (_, data), (_, data') -> Txt_set.equal data data'
 
   let equalb (B (k, v)) (B (k', v')) = match K.compare k k' with
@@ -1697,16 +1979,18 @@ module Rr_map = struct
 
   let to_int : type a. a key -> int = function
     | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Ptr -> 12 | Mx -> 15
-    | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Sshfp -> 44 | Dnskey -> 48
-    | Tlsa -> 52 | Caa -> 257 | Unknown x -> I.to_int x
+    | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Ds -> 43 | Sshfp -> 44
+    | Rrsig -> 46 | Dnskey -> 48 | Tlsa -> 52 | Caa -> 257
+    | Unknown x -> I.to_int x
 
   let any_rtyp = 255 and axfr_rtyp = 252 and ixfr_rtyp = 251
 
   let of_int ?(off = 0) = function
     | 1 -> Ok (K A) | 2 -> Ok (K Ns) | 5 -> Ok (K Cname) | 6 -> Ok (K Soa)
     | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
-    | 33 -> Ok (K Srv) | 44 -> Ok (K Sshfp) | 48 -> Ok (K Dnskey)
-    | 52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
+    | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
+    | 46 -> Ok (K Rrsig) | 48 -> Ok (K Dnskey) | 52 -> Ok (K Tlsa)
+    | 257 -> Ok (K Caa)
     | x ->
       let* i = I.of_int ~off x in
       Ok (K (Unknown i))
@@ -1725,6 +2009,8 @@ module Rr_map = struct
     | Caa -> Fmt.string ppf "CAA"
     | Tlsa -> Fmt.string ppf "TLSA"
     | Sshfp -> Fmt.string ppf "SSHFP"
+    | Ds -> Fmt.string ppf "DS"
+    | Rrsig -> Fmt.string ppf "RRSIG"
     | Unknown x -> Fmt.pf ppf "TYPE%d" (I.to_int x)
 
   type rrtyp = [ `Any | `Tsig | `Edns | `Ixfr | `Axfr | `K of k ]
@@ -1745,17 +2031,18 @@ module Rr_map = struct
     | `Axfr -> axfr_rtyp
     | `K (K k) -> to_int k
 
-  let encode_ntc names buf off (n, t, c) =
-    let names, off = Name.encode n names buf off in
+  let encode_ntc ?compress names buf off (n, t, c) =
+    let names, off = Name.encode ?compress n names buf off in
     Cstruct.BE.set_uint16 buf off (rr_to_int t) ;
     Cstruct.BE.set_uint16 buf (off + 2) c ;
     names, off + 4
 
-  let encode : type a. ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Name.name_offset_map -> Cstruct.t -> int ->
-    (Name.name_offset_map * int) * int = fun ?(clas = Class.IN) name k v names buf off ->
+  let encode : type a. ?compress:bool -> ?ttl:int32 -> ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Name.name_offset_map -> Cstruct.t -> int ->
+    (Name.name_offset_map * int) * int = fun ?compress ?ttl ?(clas = Class.IN) name k v names buf off ->
     let clas = Class.to_int clas in
-    let rr names f off ttl =
-      let names, off' = encode_ntc names buf off (name, `K (K k), clas) in
+    let rr names f off rr_ttl =
+      let ttl = match ttl with None -> rr_ttl | Some x -> x in
+      let names, off' = encode_ntc ?compress names buf off (name, `K (K k), clas) in
       (* leave 6 bytes space for TTL and length *)
       let rdata_start = off' + 6 in
       let names, rdata_end = f names buf rdata_start in
@@ -1765,16 +2052,16 @@ module Rr_map = struct
       names, rdata_end
     in
     match k, v with
-    | Soa, soa -> rr names (Soa.encode soa) off soa.minimum, 1
+    | Soa, soa -> rr names (Soa.encode ?compress soa) off soa.minimum, 1
     | Ns, (ttl, ns) ->
       Domain_name.Host_set.fold (fun name ((names, off), count) ->
-          rr names (Ns.encode name) off ttl, succ count)
+          rr names (Ns.encode ?compress name) off ttl, succ count)
         ns ((names, off), 0)
     | Mx, (ttl, mx) ->
       Mx_set.fold (fun mx ((names, off), count) ->
-          rr names (Mx.encode mx) off ttl, succ count)
+          rr names (Mx.encode ?compress mx) off ttl, succ count)
         mx ((names, off), 0)
-    | Cname, (ttl, alias) -> rr names (Cname.encode alias) off ttl, 1
+    | Cname, (ttl, alias) -> rr names (Cname.encode ?compress alias) off ttl, 1
     | A, (ttl, addresses) ->
       Ipaddr.V4.Set.fold (fun address ((names, off), count) ->
         rr names (A.encode address) off ttl, succ count)
@@ -1783,7 +2070,7 @@ module Rr_map = struct
       Ipaddr.V6.Set.fold (fun address ((names, off), count) ->
           rr names (Aaaa.encode address) off ttl, succ count)
         aaaas ((names, off), 0)
-    | Ptr, (ttl, rev) -> rr names (Ptr.encode rev) off ttl, 1
+    | Ptr, (ttl, rev) -> rr names (Ptr.encode ?compress rev) off ttl, 1
     | Srv, (ttl, srvs) ->
       Srv_set.fold (fun srv ((names, off), count) ->
           rr names (Srv.encode srv) off ttl, succ count)
@@ -1808,6 +2095,14 @@ module Rr_map = struct
       Txt_set.fold (fun txt ((names, off), count) ->
           rr names (Txt.encode txt) off ttl, succ count)
         txts ((names, off), 0)
+    | Ds, (ttl, ds) ->
+      Ds_set.fold (fun ds ((names, off), count) ->
+          rr names (Ds.encode ds) off ttl, succ count)
+        ds ((names, off), 0)
+    | Rrsig, (ttl, rrs) ->
+      Rrsig_set.fold (fun rrsig ((names, off), count) ->
+          rr names (Rrsig.encode rrsig) off ttl, succ count)
+        rrs ((names, off), 0)
     | Unknown _, (ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -1817,6 +2112,41 @@ module Rr_map = struct
       Txt_set.fold (fun data ((names, off), count) ->
           rr names (encode data) off ttl, succ count)
         datas ((names, off), 0)
+
+  let canonical : type a. a key -> a -> a = fun k v ->
+    match k, v with
+    | Soa, s -> Soa.canonical s
+    | Ns, (ttl, ns) -> ttl, Domain_name.Host_set.map Ns.canonical ns
+    | Mx, (ttl, mx) -> ttl, Mx_set.map Mx.canonical mx
+    | Cname, (ttl, cn) -> ttl, Cname.canonical cn
+    | Ptr, (ttl, ptr) -> ttl, Ptr.canonical ptr
+    | Srv, (ttl, srv) -> ttl, Srv_set.map Srv.canonical srv
+    | Rrsig, (ttl, rrsig) -> ttl, Rrsig_set.map Rrsig.canonical rrsig
+    | _, v -> v
+
+  (* RFC 4034, section 3.1.8.1 *)
+  let prep_for_sig name rrsig rrmap =
+    let buf, off = Rrsig.prep_rrsig rrsig in
+    let* name =
+      let* used_name = Rrsig.used_name rrsig name in
+      Ok (Domain_name.canonical used_name)
+    in
+    let* (K typ) =
+      Result.map_error
+        (function `Malformed (_, txt) -> `Msg txt)
+        (of_int rrsig.Rrsig.type_covered)
+    in
+    let* () = guard (K typ <> K Rrsig) (`Msg "RRSIG records are never signed") in
+    let* () = guard (cardinal rrmap = 1) (`Msg "multiple entries in rrmap") in
+    let v = get typ rrmap in
+    (* TODO: canonical rr ordering (smallest first - maybe adapt compare in all RRs) *)
+    (* TODO buf may be too small *)
+    let v = canonical typ v in
+    let ttl = rrsig.Rrsig.original_ttl in
+    let (_, off), _ =
+      encode ~compress:false ~ttl name typ v Domain_name.Map.empty buf off
+    in
+    Ok (Cstruct.sub buf 0 off)
 
   let union_rr : type a. a key -> a -> a -> a = fun k l r ->
     match k, l, r with
@@ -1833,6 +2163,8 @@ module Rr_map = struct
     | Caa, (_, caas), (ttl, caas') -> (ttl, Caa_set.union caas caas')
     | Tlsa, (_, tlsas), (ttl, tlsas') -> (ttl, Tlsa_set.union tlsas tlsas')
     | Sshfp, (_, sshfps), (ttl, sshfps') -> (ttl, Sshfp_set.union sshfps sshfps')
+    | Ds, (_, ds), (ttl, ds') -> (ttl, Ds_set.union ds ds')
+    | Rrsig, (_, rrs), (ttl, rrs') -> (ttl, Rrsig_set.union rrs rrs')
     | Unknown _, (_, data), (ttl, data') -> (ttl, Txt_set.union data data')
 
   let unionee : type a. a key -> a -> a -> a option =
@@ -1878,6 +2210,12 @@ module Rr_map = struct
     | Sshfp, (ttl, sshfps), (_, rm) ->
       let s = Sshfp_set.diff sshfps rm in
       if Sshfp_set.is_empty s then None else Some (ttl, s)
+    | Ds, (ttl, ds), (_, rm) ->
+      let s = Ds_set.diff ds rm in
+      if Ds_set.is_empty s then None else Some (ttl, s)
+    | Rrsig, (ttl, rrs), (_, rm) ->
+      let s = Rrsig_set.diff rrs rm in
+      if Rrsig_set.is_empty s then None else Some (ttl, s)
     | Unknown _, (ttl, datas), (_, rm) ->
       let data = Txt_set.diff datas rm in
       if Txt_set.is_empty data then None else Some (ttl, data)
@@ -1907,6 +2245,12 @@ module Rr_map = struct
 
   let text : type c. ?origin:'a Domain_name.t -> ?default_ttl:int32 ->
     'b Domain_name.t -> c key -> c -> string = fun ?origin ?default_ttl n t v ->
+    let rec ws_after_56 s =
+      let pos = 56 in
+      let l = String.length s in
+      if l < pos then s
+      else String.sub s 0 pos ^ " " ^ ws_after_56 (String.sub s pos (l - pos))
+    in
     let hex cs =
       let buf = Bytes.create (Cstruct.length cs * 2) in
       for i = 0 to pred (Cstruct.length cs) do
@@ -1916,7 +2260,9 @@ module Rr_map = struct
         Bytes.set buf (i * 2) (to_hex_char up) ;
         Bytes.set buf (i * 2 + 1) (to_hex_char low)
       done;
-      Bytes.unsafe_to_string buf
+      Bytes.unsafe_to_string buf |> ws_after_56
+    and b64 cs =
+      Base64.encode_string (Cstruct.to_string cs) |> ws_after_56
     in
     let origin = match origin with
       | None -> None
@@ -1983,9 +2329,9 @@ module Rr_map = struct
         Dnskey_set.fold (fun key acc ->
             Fmt.str "%s%a\tDNSKEY\t%u\t3\t%d\t%s"
               str_name ttl_fmt (ttl_opt ttl)
-              key.flags
+              (Dnskey.encode_flags key.flags)
               (Dnskey.algorithm_to_int key.algorithm)
-              (hex key.key) :: acc)
+              (b64 key.key) :: acc)
           keys []
       | Caa, (ttl, caas) ->
         Caa_set.fold (fun caa acc ->
@@ -2010,6 +2356,31 @@ module Rr_map = struct
               (Sshfp.typ_to_int sshfp.typ)
               (hex sshfp.fingerprint) :: acc)
           sshfps []
+      | Ds, (ttl, ds) ->
+        Ds_set.fold (fun ds acc ->
+            Fmt.str "%s\t%aDS\t%u\t%u\t%u\t%s" str_name ttl_fmt (ttl_opt ttl)
+              ds.Ds.key_tag
+              (Dnskey.algorithm_to_int ds.algorithm)
+              (Ds.digest_type_to_int ds.digest_type)
+              (hex ds.digest) :: acc)
+          ds []
+      | Rrsig, (ttl, rrs) ->
+        Rrsig_set.fold (fun rrsig acc ->
+            let typ = match of_int rrsig.type_covered with
+              | Ok k -> Fmt.to_to_string ppk k
+              | Error _ -> "TYPE" ^ string_of_int rrsig.type_covered
+            in
+            let pp_ts ppf ts =
+              let (year, month, day), ((hour, minute, second), _) = Ptime.to_date_time ts in
+              Fmt.pf ppf "%04d%02d%02d%02d%02d%02d" year month day hour minute second
+            in
+            Fmt.str "%s\t%aRRSIG\t%s\t%u\t%u\t%lu\t%a\t%a\t%u\t%s\t%s" str_name ttl_fmt (ttl_opt ttl)
+              typ (Dnskey.algorithm_to_int rrsig.algorithm)
+              rrsig.label_count rrsig.original_ttl
+              pp_ts rrsig.signature_expiration pp_ts rrsig.signature_inception
+              rrsig.key_tag (name rrsig.signer_name)
+              (b64 rrsig.signature) :: acc)
+          rrs []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
             Fmt.str "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
@@ -2033,6 +2404,8 @@ module Rr_map = struct
     | Caa, (ttl, _) -> ttl
     | Tlsa, (ttl, _) -> ttl
     | Sshfp, (ttl, _) -> ttl
+    | Ds, (ttl, _) -> ttl
+    | Rrsig, (ttl, _) -> ttl
     | Unknown _, (ttl, _) -> ttl
 
   let with_ttl : type a. a key -> a -> int32 -> a = fun k v ttl ->
@@ -2050,6 +2423,8 @@ module Rr_map = struct
     | Caa, (_, caas) -> ttl, caas
     | Tlsa, (_, tlsas) -> ttl, tlsas
     | Sshfp, (_, sshfps) -> ttl, sshfps
+    | Ds, (_, ds) -> ttl, ds
+    | Rrsig, (_, rrs) -> ttl, rrs
     | Unknown _, (_, datas) -> ttl, datas
 
   let split : type a. a key -> a -> a * a option = fun k v ->
@@ -2128,6 +2503,20 @@ module Rr_map = struct
         if Sshfp_set.is_empty rest then None else Some (ttl, rest)
       in
       (ttl, Sshfp_set.singleton one), rest'
+    | Ds, (ttl, ds) ->
+      let one = Ds_set.choose ds in
+      let rest = Ds_set.remove one ds in
+      let rest' =
+        if Ds_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Ds_set.singleton one), rest'
+    | Rrsig, (ttl, rrs) ->
+      let one = Rrsig_set.choose rrs in
+      let rest = Rrsig_set.remove one rrs in
+      let rest' =
+        if Rrsig_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Rrsig_set.singleton one), rest'
     | Unknown _, (ttl, datas) ->
       let one = Txt_set.choose datas in
       let rest = Txt_set.remove one datas in
@@ -2215,6 +2604,12 @@ module Rr_map = struct
           | Txt ->
             let* txt, names, off = Txt.decode_exn names buf ~off ~len in
             Ok (B (Txt, (ttl, Txt_set.singleton txt)), names, off)
+          | Ds ->
+            let* ds, names, off = Ds.decode names buf ~off ~len in
+            Ok (B (Ds, (ttl, Ds_set.singleton ds)), names, off)
+          | Rrsig ->
+            let* rrs, names, off = Rrsig.decode names buf ~off ~len in
+            Ok (B (Rrsig, (ttl, Rrsig_set.singleton rrs)), names, off)
           | Unknown x ->
             let data = Cstruct.sub buf off len in
             Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)

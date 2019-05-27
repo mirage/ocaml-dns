@@ -119,6 +119,12 @@ sig
         [No_domain] if the [name] does not exist. This allows clients to treat
         these error conditions explicitly. *)
 
+  val get_rr_with_rrsig : t -> 'response Dns.Rr_map.key -> 'a Domain_name.t ->
+    ('response * Dns.Rr_map.Rrsig_set.t Dns.Rr_map.with_ttl option,
+     [> `Msg of string
+     | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+     | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result T.io
+
 end
 
 module Pure : sig
@@ -137,7 +143,7 @@ module Pure : sig
       application. *)
 
   val make_query :
-    (int -> Cstruct.t) -> Dns.proto ->
+    (int -> Cstruct.t) -> Dns.proto -> ?dnssec:bool ->
     [ `None | `Auto | `Manual of Dns.Edns.t ] ->
     'a Domain_name.t ->
     'query_type Dns.Rr_map.key ->
@@ -149,7 +155,8 @@ module Pure : sig
   val parse_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
     ( [ `Data of 'query_type | `Partial
       | `No_data of [`raw] Domain_name.t * Dns.Soa.t
-      | `No_domain of [`raw] Domain_name.t * Dns.Soa.t ],
+      | `No_domain of [`raw] Domain_name.t * Dns.Soa.t ] *
+      Dns.Rr_map.Rrsig_set.t Dns.Rr_map.with_ttl option,
       [`Msg of string]) result
   (** [parse_response query_state response] is the information contained in
       [response] parsed using [query_state] when the query was successful, or

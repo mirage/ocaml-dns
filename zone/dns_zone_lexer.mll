@@ -42,6 +42,7 @@ let kw_or_cs s = match (String.uppercase_ascii s) with
   | "CAA" -> TYPE_CAA s
   | "TLSA" -> TYPE_TLSA s
   | "SSHFP" -> TYPE_SSHFP s
+  | "DS" -> TYPE_DS s
   | "IN" -> CLASS_IN s
   | "CS" -> CLASS_CS s
   | "CH" -> CLASS_CH s
