@@ -720,15 +720,47 @@ module Dnskey = struct
 
   let pp_algorithm ppf k = Fmt.string ppf (algorithm_to_string k)
 
+  type flag = [ `Zone | `Revoke | `Secure_entry_point ]
+
+  let bit = function
+    | `Zone -> 7
+    | `Revoke -> 8
+    | `Secure_entry_point -> 15
+
+  let all = [ `Zone ; `Revoke ; `Secure_entry_point ]
+
+  let compare_flag a b = match a, b with
+    | `Zone, `Zone -> 0 | `Zone, _ -> 1 | _, `Zone -> -1
+    | `Revoke, `Revoke -> 0 | `Revoke, _ -> 1 | _, `Revoke -> -1
+    | `Secure_entry_point, `Secure_entry_point -> 0
+
+  module F = Set.Make(struct type t = flag let compare = compare_flag end)
+
+  let pp_flag ppf = function
+    | `Zone -> Fmt.string ppf "zone"
+    | `Revoke -> Fmt.string ppf "revoke"
+    | `Secure_entry_point -> Fmt.string ppf "secure entry point"
+
+  let number f = 1 lsl (15 - bit f)
+
+  let decode_flags i =
+    List.fold_left (fun flags f ->
+        if number f land i > 0 then F.add f flags else flags)
+      F.empty all
+
+  let encode_flags f =
+    F.fold (fun f acc -> acc + number f) f 0
+
   type t = {
-    flags : int ; (* uint16 *)
+    flags : F.t ;
     algorithm : algorithm ; (* u_int8_t *)
     key : Cstruct.t ;
   }
 
   let pp ppf t =
-    Fmt.pf ppf "DNSKEY flags %u algo %a key %a"
-      t.flags pp_algorithm t.algorithm
+    Fmt.pf ppf "DNSKEY flags %a algo %a key %a"
+      Fmt.(list ~sep:(unit ", ") pp_flag) (F.elements t.flags)
+      pp_algorithm t.algorithm
       Cstruct.hexdump_pp t.key
 
   let compare a b =
@@ -745,10 +777,12 @@ module Dnskey = struct
       (`Not_implemented (off + 2, Fmt.strf "dnskey protocol 0x%x" proto)) >>| fun () ->
     let algorithm = int_to_algorithm algo in
     let key = Cstruct.sub buf (off + 4) (len - 4) in
+    let flags = decode_flags flags in
     { flags ; algorithm ; key }, names, off + len
 
   let encode t names buf off =
-    Cstruct.BE.set_uint16 buf off t.flags ;
+    let flags = encode_flags t.flags in
+    Cstruct.BE.set_uint16 buf off flags ;
     Cstruct.set_uint8 buf (off + 2) 3 ;
     Cstruct.set_uint8 buf (off + 3) (algorithm_to_int t.algorithm) ;
     let kl = Cstruct.len t.key in
@@ -757,17 +791,13 @@ module Dnskey = struct
 
   let of_string key =
     let open Rresult.R.Infix in
-    let parse flags algo key =
+    let parse algo key =
       let key = Cstruct.of_string key in
       string_to_algorithm algo >>| fun algorithm ->
-      { flags ; algorithm ; key }
+      { flags = F.empty ; algorithm ; key }
     in
     match Astring.String.cuts ~sep:":" key with
-    | [ flags ; algo ; key ] ->
-      (try Ok (int_of_string flags) with Failure _ ->
-         Error (`Msg ("couldn't parse flags " ^ flags))) >>= fun flags ->
-      parse flags algo key
-    | [ algo ; key ] -> parse 0 algo key
+    | [ algo ; key ] -> parse algo key
     | _ -> Error (`Msg ("invalid DNSKEY string " ^ key))
 
   let name_key_of_string str =
@@ -1988,7 +2018,7 @@ module Rr_map = struct
         Dnskey_set.fold (fun key acc ->
             Fmt.strf "%s%a\tDNSKEY\t%u\t3\t%d\t%s"
               str_name ttl_fmt (ttl_opt ttl)
-              key.flags
+              (Dnskey.encode_flags key.flags)
               (Dnskey.algorithm_to_int key.algorithm)
               (hex key.key) :: acc)
           keys []

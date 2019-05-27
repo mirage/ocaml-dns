@@ -330,8 +330,14 @@ module Dnskey : sig
   val pp_algorithm : algorithm Fmt.t
   (** [pp_algorithm ppf a] pretty-prints the algorithm. *)
 
+  type flag = [ `Zone | `Revoke | `Secure_entry_point ]
+
+  module F : Set.S with type elt = flag
+
+  val decode_flags : int -> F.t
+
   type t = {
-    flags : int ; (* uint16 *)
+    flags : F.t ;
     algorithm :  algorithm ; (* u_int8_t *)
     key : Cstruct.t ;
   }
@@ -345,8 +351,8 @@ module Dnskey : sig
 
   val of_string : string -> (t, [> `Msg of string ]) result
   (** [of_string str] attempts to parse [str] to a dnskey. The colon character
-      ([:]) is used as separator, supported formats are: [algo:keydata] and
-      [flags:algo:keydata], where keydata is a base64 string. *)
+      ([:]) is used as separator, supported format is: [algo:keydata] where
+      keydata is a base64 string. *)
 
   val name_key_of_string : string -> ([ `raw ] Domain_name.t * t, [> `Msg of string ]) result
   (** [name_key_of_string str] attempts to parse [str] to a domain name and a

@@ -177,7 +177,8 @@ generic_type s generic_rdata {
          let algorithm = Dnskey.int_to_algorithm $7 in
          if String.length $9 > max_rdata_length - 4 then
            parse_error "DNSKEY exceeds maximum rdata size";
-         let dnskey = { Dnskey.flags = $3 ; algorithm ; key = Cstruct.of_string $9 } in
+         let flags = Dnskey.decode_flags $3 in
+         let dnskey = { Dnskey.flags ; algorithm ; key = Cstruct.of_string $9 } in
          B (Dnskey, (0l, Rr_map.Dnskey_set.singleton dnskey))
        with
        | Invalid_argument err -> parse_error err
