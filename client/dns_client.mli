@@ -111,14 +111,20 @@ sig
      [> `Msg of string
      | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
      | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result T.io
-    (** [get_resource_record state query_type name] resolves
-        [query_type, name] via the [state] specified. The
-        behaviour is equivalent to {!getaddrinfo}, apart from the error return
-        value - [get_resource_record] distinguishes some errors, at the moment
-        [No_data] if the [name] exists, but not the [query_type], and
-        [No_domain] if the [name] does not exist. This allows clients to treat
-        these error conditions explicitly. *)
+  (** [get_resource_record state query_type name] resolves
+      [query_type, name] via the [state] specified. The
+      behaviour is equivalent to {!getaddrinfo}, apart from the error return
+      value - [get_resource_record] distinguishes some errors, at the moment
+      [No_data] if the [name] exists, but not the [query_type], and
+      [No_domain] if the [name] does not exist. This allows clients to treat
+      these error conditions explicitly. *)
 
+  val get_raw_reply : t -> 'response Dns.Rr_map.key ->
+    'a Domain_name.t ->
+    (Dns.Packet.reply, [> `Partial | `Msg of string ]) result T.io
+  (** [get_raw_reply state query_type name] resolves [query_type, name] via the
+       [state] specified. The complete DNS reply is returned. CNAME records
+       are not followed. This allows DNSSec to process the entire reply. *)
 end
 
 module Pure : sig
@@ -137,7 +143,7 @@ module Pure : sig
       application. *)
 
   val make_query :
-    (int -> Cstruct.t) -> Dns.proto ->
+    (int -> Cstruct.t) -> Dns.proto -> ?dnssec:bool ->
     [ `None | `Auto | `Manual of Dns.Edns.t ] ->
     'a Domain_name.t ->
     'query_type Dns.Rr_map.key ->
@@ -147,11 +153,28 @@ module Pure : sig
       and [query_state] is the information required to validate the response. *)
 
   val parse_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
-    ( [ `Data of 'query_type | `Partial
+    (Dns.Packet.reply, [ `Partial | `Msg of string]) result
+  (** [parse_response query_state response] is the information contained in
+      [response] parsed using [query_state] when the query was successful, or
+      an [`Msg message] if the [response] did not match the [query_state]
+      (or if the query failed).
+
+      In a TCP usage context the [`Partial] means there are more bytes to be
+      read in order to parse correctly. This can happen due to short reads or if
+      the server (or something along the route) chunks its responses into
+      multiple individual packets. In that case you should concatenate
+      [response] and the next received data and call this function again.
+
+      In a UDP usage context the [`Partial] means information was lost, due to
+      an incomplete packet. *)
+
+  val handle_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
+    ( [ `Data of 'query_type
+      | `Partial
       | `No_data of [`raw] Domain_name.t * Dns.Soa.t
       | `No_domain of [`raw] Domain_name.t * Dns.Soa.t ],
       [`Msg of string]) result
-  (** [parse_response query_state response] is the information contained in
+  (** [handle_response query_state response] is the information contained in
       [response] parsed using [query_state] when the query was successful, or
       an [`Msg message] if the [response] did not match the [query_state]
       (or if the query failed).

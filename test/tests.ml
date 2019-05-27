@@ -1723,6 +1723,316 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
 
+  let dnskey_success () =
+    let data = Cstruct.of_hex {| 58 1d 81 80 00 01  00 03 00 00 00 00 04 63
+                          6f 6f 70 00 00 30 00 01  c0 0c 00 30 00 01 00 00
+                          0d bd 00 88 01 00 03 08  03 01 00 01 b0 16 c5 b1
+                          c0 a1 ea c9 9d 1c ae 3d  38 32 21 e4 c3 77 5c 0b
+                          fa e2 c0 cd ed c5 6d 37  0e af a0 53 5c 28 6b d3
+                          d5 82 54 7f db 42 5f 03  d3 11 e7 76 70 27 4b 22
+                          03 69 30 25 a4 8f d6 ea  9d 2c db ac 7d ce c2 a8
+                          fc 86 85 29 1f ab f9 ce  c0 b3 ee 30 d5 22 61 44
+                          01 24 ff 6d 87 4f 9e d4  75 88 94 b0 f7 52 59 f5
+                          dd 79 3e dd 64 ea e7 0c  be 16 37 f8 75 48 0d 47
+                          8c 8f 0f d0 9f c0 18 b1  55 6e 41 55 c0 0c 00 30
+                          00 01 00 00 0d bd 01 08  01 01 03 08 03 01 00 01
+                          ca cf de 90 a8 08 b4 0f  11 ee c1 ca 55 13 43 65
+                          97 a6 db d8 03 6a fa 1a  61 09 f4 aa 2a 0f 18 77
+                          fd 59 35 4a dc b8 e2 bd  c6 b4 80 86 83 f2 5c cb
+                          5b fc 5f ce 4b 60 0c 6d  c4 1c fe 0e 64 cb 30 78
+                          5b f0 cb 53 bf 5f 3b a3  bc e1 37 6b 9d eb b8 3d
+                          29 66 47 9c 6e 8d 1b a6  76 a9 20 97 6a c9 f8 bf
+                          24 e2 50 69 24 03 a1 5f  c2 e4 45 29 72 3a 20 24
+                          6e 76 df f3 97 88 5b 74  32 f2 de df e6 ef a3 3e
+                          1e ab d2 e2 74 dc 6d ac  b8 7a b9 d2 7d 63 5d f7
+                          2c 83 be 26 6f 67 50 2e  47 e2 94 98 e6 0c bf cf
+                          ee 1a 98 1c 0f 0c 1a 2e  1f 79 45 a8 f5 7b bb a4
+                          ab 6a da fc e4 f4 c6 48  36 81 a0 7d 7a 1b 11 80
+                          ab f1 0d 22 54 0f 13 cd  c8 41 e3 3a c1 18 2d c2
+                          28 9b b0 38 1b 5a 1a ed  5d 16 93 57 b7 88 02 f1
+                          da 7f 4d 44 56 fa 7a 3b  7b 3e f9 dd 1f ec df c3
+                          df f4 5d 0d b5 03 e3 f5  84 db 42 fe 32 e3 ae 85
+                          c0 0c 00 30 00 01 00 00  0d bd 00 88 01 00 03 08
+                          03 01 00 01 dd 67 34 bc  81 f1 b2 92 5c a6 af a2
+                          99 93 d9 48 94 8b cc 0f  c4 81 7c 8d f2 85 23 68
+                          27 fd 2f 9f 37 fb 92 b8  34 0b cc d3 c8 36 e7 14
+                          d7 17 7f 6d 78 0c f9 90  43 59 f8 7f 3d 90 f0 a6
+                          aa 30 1b 5b 84 61 1b 3c  bf d4 ee ba 21 d2 45 a6
+                          d6 a5 77 fe f7 e2 cd 87  a8 7b da 6e c5 7c e3 86
+                          87 a4 ae 6c f4 1b ac 0e  8e 0a ca fb 77 3d 76 b4
+                          de 2d 10 09 cd 92 95 24  0d 7d 2f 0a dd 02 4b ce
+                          9f 23 f8 0d|}
+    in
+    let host = n_of_s "coop" in
+    let header = 0x581d, Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and keys =
+      let key1 =
+        let b64 = "AwEAAcrP3pCoCLQPEe7BylUTQ2WXptvYA2r6GmEJ9KoqDxh3/Vk1Sty44r3GtICGg/Jcy1v8X85LYAxtxBz+DmTLMHhb8MtTv187o7zhN2ud67g9KWZHnG6NG6Z2qSCXasn4vyTiUGkkA6FfwuRFKXI6ICRudt/zl4hbdDLy3t/m76M+HqvS4nTcbay4ernSfWNd9yyDviZvZ1AuR+KUmOYMv8/uGpgcDwwaLh95Raj1e7ukq2ra/OT0xkg2gaB9ehsRgKvxDSJUDxPNyEHjOsEYLcIom7A4G1oa7V0Wk1e3iALx2n9NRFb6ejt7PvndH+zfw9/0XQ21A+P1hNtC/jLjroU=" in
+        Dnskey.({
+          flags = F.add `Zone (F.singleton `Secure_entry_point) ;
+          algorithm = RSA_SHA256 ;
+          key = Cstruct.of_string (Base64.decode_exn b64)})
+      and key2 =
+        let b64 = "AwEAAbAWxbHAoerJnRyuPTgyIeTDd1wL+uLAze3FbTcOr6BTXChr09WCVH/bQl8D0xHndnAnSyIDaTAlpI/W6p0s26x9zsKo/IaFKR+r+c7As+4w1SJhRAEk/22HT57UdYiUsPdSWfXdeT7dZOrnDL4WN/h1SA1HjI8P0J/AGLFVbkFV" in
+        Dnskey.({
+          flags = F.singleton `Zone ;
+          algorithm = RSA_SHA256 ;
+          key = Cstruct.of_string (Base64.decode_exn b64)})
+      and key3 =
+        let b64 = "AwEAAd1nNLyB8bKSXKavopmT2UiUi8wPxIF8jfKFI2gn/S+fN/uSuDQLzNPINucU1xd/bXgM+ZBDWfh/PZDwpqowG1uEYRs8v9TuuiHSRabWpXf+9+LNh6h72m7FfOOGh6SubPQbrA6OCsr7dz12tN4tEAnNkpUkDX0vCt0CS86fI/gN" in
+        Dnskey.({
+          flags = F.singleton `Zone ;
+          algorithm = RSA_SHA256 ;
+          key = Cstruct.of_string (Base64.decode_exn b64)})
+      in
+      Name_rr_map.singleton host Dnskey
+        (3517l, Rr_map.Dnskey_set.(add key3 (add key2 (singleton key1))))
+    in
+    let q = Question.create host Dnskey in
+    let res = create header q (`Answer (keys, Name_rr_map.empty)) in
+    Alcotest.(check (result t_ok p_err) "dnskey decodes"
+                (Ok res) (decode data))
+
+  let ds_success () =
+    let data = Cstruct.of_hex {|04 1f 81 80 00 01  00 02 00 00 00 00 04 63
+                          6f 6f 70 00 00 2b 00 01  c0 0c 00 2b 00 01 00 01
+                          31 c3 00 18 26 e9 08 01  f9 37 0f ae af 0b 84 64
+                          b7 c8 80 21 36 a0 3f c9  6d 8f f2 00 c0 0c 00 2b
+                          00 01 00 01 31 c3 00 24  26 e9 08 02 74 64 84 9b
+                          6c 08 38 40 30 d1 35 d1  56 55 96 91 db 98 80 4c
+                          e1 da b9 89 14 47 ca 45  b5 94 ef 36|}
+    in
+    let host = n_of_s "coop" in
+    let header = 0x041f, Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and content =
+      let ds1 = Ds.{ key_tag = 9961 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA256 ; digest = Cstruct.of_hex "7464849B6C08384030D135D156559691DB98804CE1DAB9891447CA45B594EF36"}
+      and ds2 = Ds.{ key_tag = 9961 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA1 ; digest = Cstruct.of_hex "F9370FAEAF0B8464B7C8802136A03FC96D8FF200" }
+      in
+      Name_rr_map.singleton host Ds
+        (78275l, Rr_map.Ds_set.(add ds2 (singleton ds1)))
+    in
+    let q = Question.create host Ds in
+    let res = create header q (`Answer (content, Name_rr_map.empty)) in
+    Alcotest.(check (result t_ok p_err) "ds decodes"
+                (Ok res) (decode data))
+
+  let rrsig_success () =
+    let data = Cstruct.of_hex {|6d ec 81 80 00 01  00 03 00 00 00 01 0a 63
+                              6c 6f 75 64 66 6c 61 72  65 03 63 6f 6d 00 00 01
+                              00 01 c0 0c 00 01 00 01  00 00 01 29 00 04 68 10
+                              85 e5 c0 0c 00 01 00 01  00 00 01 29 00 04 68 10
+                              84 e5 c0 0c 00 2e 00 01  00 00 01 29 00 62 00 01
+                              0d 02 00 00 01 2c 61 ce  06 6f 61 cb 47 4f 86 c9
+                              0a 63 6c 6f 75 64 66 6c  61 72 65 03 63 6f 6d 00
+                              7c 4a c3 54 38 74 f0 0f  f4 db ed 58 7f e4 aa aa
+                              0b bf bd 83 2a cc c1 f0  42 55 44 7b ad 43 9e 83
+                              ba 58 0c 38 a3 7c 1a e7  13 fe bf 8e dd 39 6b 6d
+                              c3 c2 06 9e 82 87 8e db  5c fa 88 82 b9 ee 5a c6
+                              00 00 29 20 00 00 00 80  00 00 00|}
+    in
+    let host = n_of_s "cloudflare.com" in
+    let header = 0x6DEC, Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and content =
+      let of_d_t d t = Option.get (Ptime.of_date_time (d, t)) in
+      let a = 297l, Ipaddr.V4.Set.(add (Ipaddr.V4.of_string_exn "104.16.133.229") (singleton (Ipaddr.V4.of_string_exn "104.16.132.229")))
+      and rrsig =
+        297l,
+        Rr_map.Rrsig_set.singleton
+          Rrsig.{ type_covered = 1 ; algorithm = Dnskey.P256_SHA256 ; label_count = 2 ; original_ttl = 300l ;
+                  signature_expiration = of_d_t (2021, 12, 30) ((19, 20, 15), 0) ;
+                  signature_inception = of_d_t (2021, 12, 28) ((17, 20, 15), 0) ;
+                  key_tag = 34505 ;
+                  signer_name = n_of_s "cloudflare.com" ;
+                  signature = Cstruct.of_string (Base64.decode_exn "fErDVDh08A/02+1Yf+Sqqgu/vYMqzMHwQlVEe61DnoO6WAw4o3wa5xP+v47dOWttw8IGnoKHjttc+oiCue5axg==")
+                }
+      in
+      Domain_name.Map.singleton host
+        Rr_map.(add A a (singleton Rrsig rrsig))
+    in
+    let q = Question.create host A in
+    let edns = Edns.create ~dnssec_ok:true ~payload_size:8192 () in
+    let res = create ~edns header q (`Answer (content, Name_rr_map.empty)) in
+    Alcotest.(check (result t_ok p_err) "rrsig decodes"
+                (Ok res) (decode data))
+
+  let nsec_success () =
+    let data = Cstruct.of_hex {|38 51 81 80 00 01  00 01 00 00 00 00 06 66
+                          6f 6f 6f 6f 6f 0a 63 6c  6f 75 64 66 6c 61 72 65
+                          03 63 6f 6d 00 00 2f 00  01 c0 0c 00 2f 00 01 00
+                          00 01 2c 00 21 01 00 06  66 6f 6f 6f 6f 6f 0a 63
+                          6c 6f 75 64 66 6c 61 72  65 03 63 6f 6d 00 00 06
+                          00 00 00 00 00 03|}
+    in
+    let host = n_of_s "fooooo.cloudflare.com" in
+    let header = 0x3851, Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and content =
+      let nsec = Nsec.{ next_domain = n_of_s "\000.fooooo.cloudflare.com" ; types = Bit_map.(add 47 (singleton 46)) } in
+      Name_rr_map.singleton host Nsec
+        (300l, nsec)
+    in
+    let q = Question.create host Nsec in
+    let res = create header q (`Answer (content, Name_rr_map.empty)) in
+    Alcotest.(check (result t_ok p_err) "nsec decodes"
+                (Ok res) (decode data));
+    let encoded, _ = Packet.encode `Udp res in
+    Alcotest.(check bool "nsec encodes" true (Cstruct.equal data encoded))
+
+  let nsec_success2 () =
+    let data = Cstruct.of_hex {|38 51 81 80 00 01  00 01 00 00 00 00 06 66
+                          6f 6f 6f 6f 6f 0a 63 6c  6f 75 64 66 6c 61 72 65
+                          03 63 6f 6d 00 00 2f 00  01 c0 0c 00 2f 00 01 00
+                          00 01 2c 00 22 01 00 06  66 6f 6f 6f 6f 6f 0a 63
+                          6c 6f 75 64 66 6c 61 72  65 03 63 6f 6d 00 00 07
+                          22 00 00 00 00 03 80|}
+    in
+    let host = n_of_s "fooooo.cloudflare.com" in
+    let header = 0x3851, Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and content =
+      let types = Bit_map.of_list [ 2 ; 6 ; 46; 47; 48 ] in
+      let nsec = Nsec.{ next_domain = n_of_s "\000.fooooo.cloudflare.com" ; types } in
+      Name_rr_map.singleton host Nsec
+        (300l, nsec)
+    in
+    let q = Question.create host Nsec in
+    let res = create header q (`Answer (content, Name_rr_map.empty)) in
+    Alcotest.(check (result t_ok p_err) "nsec decodes"
+                (Ok res) (decode data));
+    let encoded, _ = Packet.encode `Udp res in
+    Alcotest.(check bool "nsec encodes" true (Cstruct.equal data encoded))
+
+  let nsec3_success () =
+    let data = Cstruct.of_hex {|8f ab 81 83 00 01  00 00 00 06 00 01 03 61
+                              61 61 05 73 73 68 66 70  03 6e 65 74 00 00 2b 00
+                              01 c0 10 00 06 00 01 00  00 00 85 00 3b 03 6e 73
+                              30 08 77 65 62 65 72 64  6e 73 02 64 65 00 09 77
+                              65 62 6d 61 73 74 65 72  09 77 65 62 65 72 6e 65
+                              74 7a c0 16 78 76 7b b8  00 00 0e 10 00 00 03 84
+                              00 24 ea 00 00 00 00 b4  c0 10 00 2e 00 01 00 00
+                              00 85 01 1d 00 06 0a 02  00 01 51 80 61 ef 45 ad
+                              61 c7 aa 9d 79 4f 05 73  73 68 66 70 03 6e 65 74
+                              00 35 dd 03 c0 75 e9 f0  8f a6 23 90 1a 4d 5c e1
+                              52 2b ad 02 d3 d1 a5 43  52 8d f3 76 08 38 5e ec
+                              23 b0 85 80 71 02 89 13  d4 7d 24 0e 29 39 64 51
+                              2f f0 e0 30 c1 69 c6 0e  e0 fc 7e e5 08 b1 19 7b
+                              b2 7e ff 28 0e 7c 45 cf  88 25 87 25 34 de cb 49
+                              c9 58 39 c7 c7 80 cc f1  af 73 2d 6b d6 07 41 02
+                              88 34 b5 89 b5 c6 99 f8  30 e0 b2 70 ca fb 43 c8
+                              71 8e 8e d9 b6 0e 0d 0a  48 ef 89 a6 77 57 3c 08
+                              e4 47 ec 40 70 40 95 0f  0d 4c e0 76 5d cb 36 48
+                              02 82 5b 93 5a 84 c3 d6  c9 25 8e 22 99 11 5d 2c
+                              03 72 f8 32 62 a0 e2 df  50 89 4a cf ac b9 d9 44
+                              24 bd 80 5b cb b7 94 b0  40 e7 c3 65 ae 46 b9 00
+                              d4 14 83 c8 73 1c 3a 5e  94 29 a5 5f 13 73 f9 ba
+                              7c 7b 4e 18 82 a7 ea 12  0a bf e1 28 7d 67 24 70
+                              76 af e8 f5 01 61 a7 f7  ba 11 f7 45 1e 49 be 19
+                              63 2c 19 df 8a 83 57 ac  9d df 94 b7 5d 5d 0f 49
+                              3c 20 31 44 53 4a 53 38  39 4c 4a 31 38 46 4a 56
+                              4a 47 45 43 30 33 35 35  35 48 33 50 50 47 31 30
+                              42 4c c0 10 00 32 00 01  00 00 00 85 00 36 01 00
+                              00 14 10 7b 1a 90 a9 16  19 7e 45 d0 77 2a bc b6
+                              44 11 56 14 88 02 6c d0  ec 9b ca b3 15 02 81 1b
+                              fb 8e 8c 8d 35 6d d9 78  00 07 62 00 80 08 00 02
+                              90 01 01 40 c1 8f 00 2e  00 01 00 00 00 85 01 1d
+                              00 32 0a 03 00 00 00 b4  61 e0 10 7d 61 b8 79 58
+                              79 4f 05 73 73 68 66 70  03 6e 65 74 00 47 c4 15
+                              e8 2f 51 a8 d2 15 39 9f  09 fb 8e 8e 3d 69 01 dc
+                              37 6f 7b 6c ae 5e 77 a0  c8 b6 72 36 73 63 e7 bb
+                              c6 41 64 f1 14 15 6d 9b  79 a3 fc 12 65 5b ac b6
+                              f3 49 7a 1b 83 09 67 ac  f4 f7 dc 66 dc c7 27 98
+                              41 8b 2e 1f e9 58 15 01  49 b2 91 b1 fc 1d 19 e2
+                              15 6c 3e ce 2b 2e ad 68  d9 f8 7d 7a 17 60 db 67
+                              03 50 e8 83 d8 1b 59 f6  ee 9e 54 0e 98 5e f6 d8
+                              3b e5 f6 a6 a2 b2 73 ef  f8 c2 4e e8 17 27 25 95
+                              59 3f 2a a2 0c 79 74 6d  e4 12 34 83 29 f7 9e d6
+                              ad ca 6f 6c b1 0f e2 ad  e4 3e e3 81 28 74 72 75
+                              8a aa 7c da 25 52 e4 a0  56 8b aa f8 2a 08 25 24
+                              d5 98 28 5f b9 30 22 79  ea 47 b8 4b 26 75 b0 c2
+                              59 4d e9 12 87 ad 15 47  40 ac 36 ca 1b 13 d8 a9
+                              9c 90 76 06 4f 91 0b d8  0b 4b 66 9b bc 39 5c 22
+                              38 2c 2a 8f f1 fe ff 64  38 d4 48 ac fa 59 f0 e5
+                              aa 05 7f 0e 92 8e 0d be  17 a7 21 34 47 20 48 30
+                              31 36 50 4b 37 43 4a 46  35 42 36 35 38 32 47 34
+                              44 56 4e 33 4b 43 48 4b  51 4d 52 4d 42 4f c0 10
+                              00 32 00 01 00 00 00 85  00 32 01 00 00 14 10 7b
+                              1a 90 a9 16 19 7e 45 d0  77 2a bc b6 44 11 56 14
+                              dd 58 5c dc 28 6f 14 8e  f0 c9 23 cf 0e 43 30 ca
+                              c1 00 1e b0 00 06 00 00  80 00 00 02 c3 1b 00 2e
+                              00 01 00 00 00 85 01 1d  00 32 0a 03 00 00 00 b4
+                              61 e0 25 40 61 b8 93 2b  79 4f 05 73 73 68 66 70
+                              03 6e 65 74 00 1f 1d 69  09 b8 d4 7c c2 59 a9 4a
+                              d7 f8 4b d8 27 2b b0 01  46 40 10 97 af be 81 6b
+                              43 75 a6 44 3b c8 2a bc  34 99 66 1a 11 99 59 cc
+                              22 a2 f0 f9 26 9b 12 e1  44 bc 97 82 12 92 6c 2d
+                              d0 98 29 69 6b b3 68 8e  6d 5f 51 d3 dc 44 65 2f
+                              cd b9 f1 34 a8 d3 08 0c  b8 14 32 8c 4c 8c bb b4
+                              4e 55 cb d7 74 c3 80 b7  78 ec 34 8f ee d6 42 3e
+                              f7 77 54 d4 8c 7d f1 4f  c8 82 b3 3a 50 21 68 cd
+                              6a b5 37 cd 02 85 5c 7c  d6 b4 50 3f 68 47 43 98
+                              86 b5 f7 f9 85 ee 25 01  84 65 df ec 67 e9 4f 0b
+                              a3 67 62 f4 33 74 f9 7b  35 50 bb 92 6a 7b ee ca
+                              ce 14 04 15 0b e0 e7 3f  8e 2b 4f da 50 9c 62 b4
+                              e1 21 fa 4f 13 0d 2b 79  cc 78 91 ee f7 3e a6 c7
+                              0f 9b 9d 8c c9 70 78 b4  f9 91 a8 13 32 ab 10 57
+                              cb e3 a7 a0 c4 24 1b 1d  6a bf 4b 2e 47 e6 f2 37
+                              63 fe 0f 95 8d a8 a7 1d  6b 3c d4 b7 47 2d 2e bb
+                              30 f5 e5 16 20 00 00 29  20 00 00 00 80 00 00 00|}
+    in
+    let host = n_of_s "aaa.sshfp.net" in
+    let header = 0x8fab, Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and content =
+      let of_d_t d t = Option.get (Ptime.of_date_time (d, t)) in
+      let domain = n_of_s "sshfp.net" in
+      let nsec3_1_host = n_of_s "1DSJS89LJ18FJVJGEC03555H3PPG10BL.sshfp.net" in
+      let nsec3_2_host = n_of_s "H016PK7CJF5B6582G4DVN3KCHKQMRMBO.sshfp.net" in
+      let soa = Soa.{ nameserver = n_of_s "ns0.weberdns.de" ; hostmaster = n_of_s "webmaster.webernetz.net" ;
+                      serial = 2021030840l ; refresh = 3600l ; retry = 900l ; expiry = 2419200l ; minimum = 180l }
+      and rrsig_soa =
+        Rrsig.{ type_covered = 6 ; algorithm = Dnskey.RSA_SHA512 ; label_count = 2 ; original_ttl = 86400l ;
+                signature_expiration = of_d_t (2022, 01, 25) ((00, 34, 53), 0) ;
+                signature_inception = of_d_t (2021, 12, 25) ((23, 34, 53), 0) ;
+                key_tag = 31055 ;
+                signer_name = domain ;
+                signature = Cstruct.of_string (Base64.decode_exn "Nd0DwHXp8I+mI5AaTVzhUiutAtPRpUNSjfN2CDhe7COwhYBxAokT1H0kDik5ZFEv8OAwwWnGDuD8fuUIsRl7sn7/KA58Rc+IJYclNN7LSclYOcfHgMzxr3Mta9YHQQKINLWJtcaZ+DDgsnDK+0PIcY6O2bYODQpI74mmd1c8CORH7EBwQJUPDUzgdl3LNkgCgluTWoTD1skljiKZEV0sA3L4MmKg4t9QiUrPrLnZRCS9gFvLt5SwQOfDZa5GuQDUFIPIcxw6XpQppV8Tc/m6fHtOGIKn6hIKv+EofWckcHav6PUBYaf3uhH3RR5JvhljLBnfioNXrJ3flLddXQ9JPA==")
+              }
+      and nsec3_1 =
+        let types = Bit_map.of_list [1;2;6;16;28;46;48;51;257] in
+        Nsec3.{ flags = None ; iterations = 20 ; salt = Cstruct.of_hex "7B1A90A916197E45D0772ABCB6441156" ; next_owner_hashed = Cstruct.of_hex "88026CD0EC9BCAB31502811BFB8E8C8D356DD978" ; types }
+      and rrsig_nsec3_1 =
+        Rrsig.{ type_covered = 50 ; algorithm = Dnskey.RSA_SHA512 ; label_count = 3 ; original_ttl = 180l ;
+                signature_expiration = of_d_t (2022, 01, 13) ((11, 43, 57), 0) ;
+                signature_inception = of_d_t (2021, 12, 14) ((11, 00, 40), 0) ;
+                key_tag = 31055 ;
+                signer_name = domain ;
+                signature = Cstruct.of_string (Base64.decode_exn "R8QV6C9RqNIVOZ8J+46OPWkB3Ddve2yuXnegyLZyNnNj57vGQWTxFBVtm3mj/BJlW6y280l6G4MJZ6z099xm3McnmEGLLh/pWBUBSbKRsfwdGeIVbD7OKy6taNn4fXoXYNtnA1Dog9gbWfbunlQOmF722Dvl9qaisnPv+MJO6BcnJZVZPyqiDHl0beQSNIMp957WrcpvbLEP4q3kPuOBKHRydYqqfNolUuSgVouq+CoIJSTVmChfuTAieepHuEsmdbDCWU3pEoetFUdArDbKGxPYqZyQdgZPkQvYC0tmm7w5XCI4LCqP8f7/ZDjUSKz6WfDlqgV/DpKODb4XpyE0Rw==")
+              }
+      and nsec3_2 =
+        let types = Bit_map.of_list [16;46] in
+        Nsec3.{ flags = None ; iterations = 20 ; salt = Cstruct.of_hex "7B1A90A916197E45D0772ABCB6441156" ; next_owner_hashed = Cstruct.of_hex "DD585CDC286F148EF0C923CF0E4330CAC1001EB0" ; types }
+      and rrsig_nsec3_2 =
+        Rrsig.{ type_covered = 50 ; algorithm = Dnskey.RSA_SHA512 ; label_count = 3 ; original_ttl = 180l ;
+                signature_expiration = of_d_t (2022, 01, 13) ((13, 12, 32), 0) ;
+                signature_inception = of_d_t (2021, 12, 14) ((12, 50, 51), 0) ;
+                key_tag = 31055 ;
+                signer_name = domain ;
+                signature = Cstruct.of_string (Base64.decode_exn "Hx1pCbjUfMJZqUrX+EvYJyuwAUZAEJevvoFrQ3WmRDvIKrw0mWYaEZlZzCKi8PkmmxLhRLyXghKSbC3QmClpa7Nojm1fUdPcRGUvzbnxNKjTCAy4FDKMTIy7tE5Vy9d0w4C3eOw0j+7WQj73d1TUjH3xT8iCszpQIWjNarU3zQKFXHzWtFA/aEdDmIa19/mF7iUBhGXf7GfpTwujZ2L0M3T5ezVQu5Jqe+7KzhQEFQvg5z+OK0/aUJxitOEh+k8TDSt5zHiR7vc+pscPm52MyXB4tPmRqBMyqxBXy+OnoMQkGx1qv0suR+byN2P+D5WNqKcdazzUt0ctLrsw9eUWIA==")
+              }
+      in
+      Domain_name.Map.(
+        add nsec3_2_host
+          Rr_map.(add Nsec3 (133l, nsec3_2)
+                    (singleton Rrsig (133l, Rr_map.Rrsig_set.singleton rrsig_nsec3_2)))
+          (add nsec3_1_host
+             Rr_map.(add Nsec3 (133l, nsec3_1)
+                       (singleton Rrsig (133l, Rr_map.Rrsig_set.singleton rrsig_nsec3_1)))
+             (singleton domain
+                Rr_map.(add Soa soa (singleton Rrsig (133l, Rr_map.Rrsig_set.singleton rrsig_soa))))))
+    in
+    let q = Question.create host Ds in
+    let edns = Edns.create ~dnssec_ok:true ~payload_size:8192 () in
+    let res = create ~edns header q (`Rcode_error (Rcode.NXDomain, Opcode.Query, Some (Name_rr_map.empty, content))) in
+    Alcotest.(check (result t_ok p_err) "nsec3 decodes"
+                (Ok res) (decode data))
+
   let code_tests = [
     "bad query", `Quick, bad_query ;
     "regression0", `Quick, regression0 ;
@@ -1780,6 +2090,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "tlsa success", `Quick, tlsa_success ;
     "caa success", `Quick, caa_success ;
     "caa fail partial", `Quick, caa_fail_partial ;
+    "dnskey success", `Quick, dnskey_success ;
+    "ds success", `Quick, ds_success ;
+    "rrsig success", `Quick, rrsig_success ;
+    "nsec success", `Quick, nsec_success ;
+    "nsec success 2", `Quick, nsec_success2 ;
+    "nsec3 success", `Quick, nsec3_success ;
   ]
 end
 

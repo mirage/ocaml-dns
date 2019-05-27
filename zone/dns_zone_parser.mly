@@ -78,6 +78,7 @@ let add_to_map name ~ttl (Rr_map.B (k, v)) =
 %token <string> TYPE_DNSKEY
 %token <string> TYPE_TLSA
 %token <string> TYPE_SSHFP
+%token <string> TYPE_DS
 %token <string> TYPE_GENERIC
 
 %token <string> CLASS_IN
@@ -171,6 +172,19 @@ generic_type s generic_rdata {
        with
        | Invalid_argument err -> parse_error err
      }
+ | TYPE_DS s int16 s int8 s int8 s hex
+     { try
+         let key_tag = $3
+         and algorithm = Dnskey.int_to_algorithm $5
+         and digest_type = Ds.int_to_digest_type $7
+         in
+         if Cstruct.length $9 > max_rdata_length - 4 then
+           parse_error "DS payload exceeds maximum rdata size";
+         let ds = { Ds.key_tag ; algorithm ; digest_type ; digest = $9 } in
+         B (Ds, (0l, Rr_map.Ds_set.singleton ds))
+       with
+       | Invalid_argument err -> parse_error err
+     }
  | TYPE_AAAA s ipv6 { B (Aaaa, (0l, Ipaddr.V6.Set.singleton $3)) }
  | TYPE_DNSKEY s int16 s int8 s int8 s charstring
      { if not ($5 = 3) then
@@ -179,7 +193,8 @@ generic_type s generic_rdata {
          let algorithm = Dnskey.int_to_algorithm $7 in
          if String.length $9 > max_rdata_length - 4 then
            parse_error "DNSKEY exceeds maximum rdata size";
-         let dnskey = { Dnskey.flags = $3 ; algorithm ; key = Cstruct.of_string $9 } in
+         let flags = Dnskey.decode_flags $3 in
+         let dnskey = { Dnskey.flags ; algorithm ; key = Cstruct.of_string $9 } in
          B (Dnskey, (0l, Rr_map.Dnskey_set.singleton dnskey))
        with
        | Invalid_argument err -> parse_error err

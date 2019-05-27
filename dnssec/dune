@@ -1,0 +1,5 @@
+(library
+ (name dnssec)
+ (public_name dnssec)
+ (wrapped false)
+ (libraries cstruct mirage-crypto mirage-crypto-pk mirage-crypto-ec dns logs domain-name))

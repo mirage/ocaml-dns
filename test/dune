@@ -39,3 +39,9 @@
  (package dns-client)
  (libraries dns-client.resolvconf ipaddr alcotest)
  (modules resolvconf))
+
+(test
+ (name test_dnssec)
+ (package dnssec)
+ (libraries dns dnssec mirage-crypto-pk base64 logs.fmt alcotest)
+ (modules test_dnssec))

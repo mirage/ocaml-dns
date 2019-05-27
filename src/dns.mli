@@ -309,6 +309,13 @@ end
 module Dnskey : sig
 
   type algorithm =
+    | RSA_SHA1
+    | RSASHA1_NSEC3_SHA1
+    | RSA_SHA256
+    | RSA_SHA512
+    | P256_SHA256
+    | P384_SHA384
+    | ED25519
     | MD5
     | SHA1
     | SHA224
@@ -330,8 +337,17 @@ module Dnskey : sig
   val pp_algorithm : algorithm Fmt.t
   (** [pp_algorithm ppf a] pretty-prints the algorithm. *)
 
+  type flag = [ `Zone | `Revoke | `Secure_entry_point ]
+  (** The type of DNSKEY flags. *)
+
+  module F : Set.S with type elt = flag
+  (** The set of DNSKEY flags. *)
+
+  val decode_flags : int -> F.t
+  (** [decode_flags x] decodes [x] as a set of DNSKEY flags. *)
+
   type t = {
-    flags : int ; (* uint16 *)
+    flags : F.t ;
     algorithm :  algorithm ; (* u_int8_t *)
     key : Cstruct.t ;
   }
@@ -341,12 +357,12 @@ module Dnskey : sig
   (** [pp ppf t] pretty-prints the DNSKEY. *)
 
   val compare : t -> t -> int
-  (** [comapre a b] compares the DNSKEY [a] with [b]. *)
+  (** [compare a b] compares the DNSKEY [a] with [b]. *)
 
   val of_string : string -> (t, [> `Msg of string ]) result
   (** [of_string str] attempts to parse [str] to a dnskey. The colon character
-      ([:]) is used as separator, supported formats are: [algo:keydata] and
-      [flags:algo:keydata], where keydata is a base64 string. *)
+      ([:]) is used as separator, supported format is: [algo:keydata] where
+      keydata is a base64 string. *)
 
   val name_key_of_string : string -> ([ `raw ] Domain_name.t * t, [> `Msg of string ]) result
   (** [name_key_of_string str] attempts to parse [str] to a domain name and a
@@ -354,6 +370,121 @@ module Dnskey : sig
 
   val pp_name_key : ([ `raw ] Domain_name.t * t) Fmt.t
   (** [pp_name_key (name, key)] pretty-prints the dnskey and name pair. *)
+
+  val digest_prep : [ `raw ] Domain_name.t -> t -> Cstruct.t
+  (** [digest_prep name key] encodes name and key into a buffer, as preparation
+      for computing its digest (for DS records). *)
+
+  val key_tag : t -> int
+  (** [key_tag key] computes the key tag (RFC 4034, Appendix B). *)
+end
+
+(** RRSIG
+
+    Resource record signatures, used by DNSSec.  *)
+module Rrsig : sig
+
+  type t = {
+    type_covered : int ;
+    algorithm : Dnskey.algorithm ;
+    label_count : int ;
+    original_ttl : int32 ;
+    signature_expiration : Ptime.t ;
+    signature_inception : Ptime.t ;
+    key_tag : int ;
+    signer_name : [ `raw ] Domain_name.t ;
+    signature : Cstruct.t
+  }
+  (** The type of a RRSIG. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the RRSIG. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the RRSIG [a] with [b]. *)
+end
+
+(** DS
+
+    The delegation signer resource record, used by DNSSec. *)
+module Ds : sig
+  type digest_type =
+    | SHA1
+    | SHA256
+    | SHA384
+    | Unknown of int
+  (** The type of supported digest algorithms. *)
+
+  val digest_type_to_int : digest_type -> int
+  (** [digest_type_to_int d] encodes the digest type [d] to an integer. *)
+
+  val int_to_digest_type : int -> digest_type
+  (** [int_to_digest_type i] decodes the integer [i] to a digest type.
+
+      @raise Invalid_argument if [i] does not fit in one octet. *)
+
+  val pp_digest_type : digest_type Fmt.t
+  (** [pp_digest_type ppf d] pretty-prints digest type [d] on [ppd]. *)
+
+  type t = {
+    key_tag : int ;
+    algorithm : Dnskey.algorithm ;
+    digest_type : digest_type ;
+    digest : Cstruct.t
+  }
+  (** The type of delegation signer resource records. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the DS. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the DS [a] with [b]. *)
+end
+
+(** Bit Map encodings of integers, used by NSEC and NSEC3. *)
+module Bit_map : Set.S with type elt = int
+
+(** Nsec
+
+    Authenticated denial of existence resource record, used by DNSSec. *)
+module Nsec : sig
+  type t = {
+    next_domain : [`raw] Domain_name.t;
+    types : Bit_map.t;
+  }
+  (** The type of Nsec. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the Nsec. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the Nsec [a] with [b]. *)
+end
+
+(** Nsec3
+
+    Hashed authenticated denial of existence resource record, used by DNSSec. *)
+module Nsec3 : sig
+  type f = [ `Opt_out | `Unknown of int ]
+  (** The type of flags. *)
+
+  val flags_of_int : int -> f option
+  (** [flags_of_int v] is [f]. *)
+
+  type t = {
+    flags : f option ;
+    iterations : int ;
+    salt : Cstruct.t ;
+    next_owner_hashed : Cstruct.t ;
+    types : Bit_map.t ;
+  }
+  (** The type of Nsec3. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the Nsec3. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the Nsec3 [a] with [b]. *)
 end
 
 (** Certificate authority authorization
@@ -672,6 +803,8 @@ module Rr_map : sig
   module Caa_set : Set.S with type elt = Caa.t
   module Tlsa_set : Set.S with type elt = Tlsa.t
   module Sshfp_set : Set.S with type elt = Sshfp.t
+  module Ds_set : Set.S with type elt = Ds.t
+  module Rrsig_set : Set.S with type elt = Rrsig.t
 
   module I : sig
     type t
@@ -697,6 +830,10 @@ module Rr_map : sig
     | Tlsa : Tlsa_set.t with_ttl rr
     | Sshfp : Sshfp_set.t with_ttl rr
     | Txt : Txt_set.t with_ttl rr
+    | Ds : Ds_set.t with_ttl rr
+    | Rrsig : Rrsig_set.t with_ttl rr
+    | Nsec : Nsec.t with_ttl rr
+    | Nsec3 : Nsec3.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
   (** The type of resource record sets, as GADT: the value depends on the
      specific constructor. There may only be a single SOA and Cname and Ptr
@@ -728,7 +865,13 @@ module Rr_map : sig
   (** [ppk ppf k] pretty-prints [k]. *)
 
   val of_int : ?off:int -> int -> (k, [> `Malformed of int * string ]) result
-  (** [of_int ~off i] constructs a [k] of the  provided integer. *)
+  (** [of_int ~off i] constructs a [k] of the provided integer. *)
+
+  val to_int : 'a key -> int
+  (** [to_int k] is the integer representing the key [k]. *)
+
+  val of_string : string -> (k, [> `Msg of  string ]) result
+  (** [of_string i] constructs a [k] of the provided string. *)
 
   val names : 'a key -> 'a -> Domain_name.Host_set.t
   (** [names k v] are the referenced domain names in the given binding. *)
@@ -764,6 +907,11 @@ module Rr_map : sig
 
   val with_ttl : 'a key -> 'a -> int32 -> 'a
   (** [with_ttl k v ttl] updates [ttl] in [v]. *)
+
+  val prep_for_sig : [`raw] Domain_name.t -> Rrsig.t -> 'a key -> 'a ->
+    ([`raw] Domain_name.t * Cstruct.t, [ `Msg of string ]) result
+
+  val canonical_encoded_name : [`raw] Domain_name.t -> Cstruct.t
 
 end
 
