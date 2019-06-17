@@ -47,39 +47,40 @@ val remove_map : Rr_map.t Domain_name.Map.t -> t -> t
 (** [remove_map m t] removes all elements of the domain name map [m] from
     [t]. *)
 
-val insert : Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
+val insert : 'a Domain_name.t -> 'b Rr_map.key -> 'b -> t -> t
 (** [insert n k v t] inserts [k, v] under [n] in [t].  Existing entries are
     unioneed with {!Rr_map.union_rr}. *)
 
-val replace : Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
+val replace : 'a Domain_name.t -> 'b Rr_map.key -> 'b -> t -> t
 (** [replace n k v t] inserts [k, v] under [n] in [t].  Existing entries are
     replaced. *)
 
-val remove : Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
+val remove : 'a Domain_name.t -> 'b Rr_map.key -> 'b -> t -> t
 (** [remove k ty v t] removes [ty, v] from [t] at [k].  Beware, this may lead
     to a [t] where the initially mentioned invariants are violated. *)
 
-val remove_ty : Domain_name.t -> 'a Rr_map.key -> t -> t
+val remove_ty : 'a Domain_name.t -> 'b Rr_map.key -> t -> t
 (** [remove_ty k ty t] removes [ty] from [t] at [k]. Beware, this may lead to a
     [t] where the initially mentioned invariants are violated. *)
 
-val remove_all : Domain_name.t -> t -> t
+val remove_all : 'a Domain_name.t -> t -> t
 (** [remove_all k t] removes all entries of [k] in [t]. Beware, this may lead to
    a [t] where the initially mentioned invariants are violated. *)
 
-val remove_zone : Domain_name.t -> t -> t
+val remove_zone : 'a Domain_name.t -> t -> t
 (** [remove_zone name t] remove the zone [name] from [t], retaining subzones
     (entries with [Soa] records).  This removes as well any delegations. *)
 
 
 (** {2 Checking invariants} *)
 
-type zone_check = [ `Missing_soa of Domain_name.t
-                  | `Cname_other of Domain_name.t
-                  | `Bad_ttl of Domain_name.t * Rr_map.b
-                  | `Empty of Domain_name.t * Rr_map.k
-                  | `Missing_address of Domain_name.t
-                  | `Soa_not_ns of Domain_name.t ]
+type zone_check = [ `Missing_soa of [ `raw ] Domain_name.t
+                  | `Cname_other of [ `raw ] Domain_name.t
+                  | `Bad_ttl of [ `raw ] Domain_name.t * Rr_map.b
+                  | `Empty of [ `raw ] Domain_name.t * Rr_map.k
+                  | `Missing_address of [ `host ] Domain_name.t
+                  | `Soa_not_ns of [ `raw ] Domain_name.t
+                  | `Soa_not_a_host of [ `raw ] Domain_name.t * string ]
 
 val pp_zone_check : zone_check Fmt.t
 (** [pp_err ppf err] pretty prints the error [err]. *)
@@ -90,46 +91,47 @@ val check : t -> (unit, zone_check) result
 
 (** {2 Lookup} *)
 
-type e = [ `Delegation of Domain_name.t * (int32 * Domain_name.Set.t)
-         | `EmptyNonTerminal of Domain_name.t * Soa.t
+type e = [ `Delegation of [ `raw ] Domain_name.t * (int32 * Domain_name.Host_set.t)
+         | `EmptyNonTerminal of [ `raw ] Domain_name.t * Soa.t
          | `NotAuthoritative
-         | `NotFound of Domain_name.t * Soa.t ]
+         | `NotFound of [ `raw ] Domain_name.t * Soa.t ]
 (** The type of lookup errors. *)
 
 val pp_e : e Fmt.t
 (** [pp_e ppf e] pretty-prints [e] on [ppf]. *)
 
-val zone : Domain_name.t -> t -> (Domain_name.t * Soa.t, e) result
+val zone : 'a Domain_name.t -> t ->
+  ([ `raw ] Domain_name.t * Soa.t, e) result
 (** [zone k t] returns either the zone and soa for [k] in [t], or an error. *)
 
-val lookup_with_cname : Domain_name.t -> 'a Rr_map.key -> t ->
-  (Rr_map.b * (Domain_name.t * int32 * Domain_name.Set.t), e) result
+val lookup_with_cname : 'a Domain_name.t -> 'b Rr_map.key -> t ->
+  (Rr_map.b * ([ `raw ] Domain_name.t * int32 * Domain_name.Host_set.t), e) result
 (** [lookup_with_cname k ty t] finds [k, ty] in [t]. It either returns the found
     resource record set and authority information, a cname alias and authority
     information, or an error. *)
 
-val lookup : Domain_name.t -> 'a Rr_map.key -> t -> ('a, e) result
+val lookup : 'a Domain_name.t -> 'b Rr_map.key -> t -> ('b, e) result
 (** [lookup k ty t] finds [k, ty] in [t], which may lead to an error. *)
 
-val lookup_any : Domain_name.t -> t ->
-  (Rr_map.t * (Domain_name.t * int32 * Domain_name.Set.t), e) result
+val lookup_any : 'a Domain_name.t -> t ->
+  (Rr_map.t * ([ `raw ] Domain_name.t * int32 * Domain_name.Host_set.t), e) result
 (** [lookup_any k t] looks up all resource records of [k] in [t], and returns
     that and the authority information. *)
 
-val lookup_glue : Domain_name.t -> t ->
+val lookup_glue : 'a Domain_name.t -> t ->
   (int32 * Rr_map.Ipv4_set.t) option * (int32 * Rr_map.Ipv6_set.t) option
 (** [lookup_glue k t] finds glue records (A, AAAA) for [k] in [t]. It ignores
     potential DNS invariants, e.g. that there is no surrounding zone. *)
 
-val entries : Domain_name.t -> t ->
+val entries : 'a Domain_name.t -> t ->
   (Dns.Soa.t * Rr_map.t Domain_name.Map.t, e) result
 (** [entries name t] returns either the SOA and all entries for the requested
     [name], or an error. *)
 
-val fold : 'a Rr_map.key -> t -> (Domain_name.t -> 'a -> 'b -> 'b) -> 'b -> 'b
+val fold : 'a Rr_map.key -> t -> ([ `raw ] Domain_name.t -> 'a -> 'b -> 'b) -> 'b -> 'b
 (** [fold key t f acc] calls [f] with [dname value acc] element in [t]. *)
 
-val diff : Domain_name.t -> Soa.t -> old:t -> t ->
+val diff : 'a Domain_name.t -> Soa.t -> old:t -> t ->
   (Soa.t * [ `Empty | `Full of Name_rr_map.t | `Difference of Soa.t * Name_rr_map.t * Name_rr_map.t ],
    [> `Msg of string ]) result
 (** [diff zone soa ~old trie] computes the difference of [zone] in [old] and

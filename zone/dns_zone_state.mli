@@ -19,9 +19,9 @@
 type parserstate = {
     mutable paren : int;
     mutable lineno : int;
-    mutable origin : Domain_name.t;
+    mutable origin : [ `raw ] Domain_name.t;
     mutable ttl : int32;
-    mutable owner : Domain_name.t;
+    mutable owner : [ `raw ] Domain_name.t;
     mutable zone : Dns.Name_rr_map.t ;
   }
 

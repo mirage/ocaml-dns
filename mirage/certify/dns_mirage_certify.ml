@@ -163,7 +163,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
     let keyname, zone, dnskey =
       match Dns.Dnskey.name_key_of_string dns_key with
       | Ok (name, key) ->
-        let zone = Domain_name.drop_labels_exn ~amount:2 name in
+        let zone = Domain_name.(host_exn (drop_label_exn ~amount:2 name)) in
         (name, zone, key)
       | Error (`Msg m) -> invalid_arg ("failed to parse dnskey: " ^ m)
     in

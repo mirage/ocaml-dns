@@ -22,9 +22,9 @@
 type parserstate = {
   mutable paren : int ;
   mutable lineno : int ;
-  mutable origin : Domain_name.t ;
+  mutable origin : [ `raw ] Domain_name.t ;
   mutable ttl : int32 ;
-  mutable owner : Domain_name.t ;
+  mutable owner : [ `raw ] Domain_name.t ;
   mutable zone : Dns.Name_rr_map.t ;
 }
 
@@ -38,11 +38,11 @@ let state = {
 }
 
 let reset () =
-  state.paren <- 0;
-  state.lineno <- 1;
-  state.ttl <- Int32.of_int 3600;
-  state.origin <- Domain_name.root;
-  state.owner <- Domain_name.root;
+  state.paren <- 0 ;
+  state.lineno <- 1 ;
+  state.ttl <- Int32.of_int 3600 ;
+  state.origin <- Domain_name.root ;
+  state.owner <- Domain_name.root ;
   state.zone <- Dns.Name_rr_map.empty
 
 exception Zone_parse_problem of string

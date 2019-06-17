@@ -21,7 +21,7 @@ depends: [
   "rresult" {>= "0.6.0"}
   "mirage-flow"
   "randomconv"
-  "domain-name"
+  "domain-name" {>= "0.2.0"}
 ]
 synopsis: "Pure DNS resolver API"
 description: """

@@ -86,7 +86,7 @@ type proto = [ `Tcp | `Udp ]
 (** The type of supported protocols. Used by {!Packet.encode} to decide on
      maximum buffer length, etc. *)
 
-module Clas : sig
+module Class : sig
   type t =
     (* Reserved0 [@id 0] RFC6895 *)
     | IN (* RFC1035 *)
@@ -153,8 +153,8 @@ end
     contains metadata (serial number, refresh interval, hostmaster) of the domain. *)
 module Soa : sig
   type t = {
-    nameserver : Domain_name.t ;
-    hostmaster : Domain_name.t ;
+    nameserver : [ `raw ] Domain_name.t ;
+    hostmaster : [ `raw ] Domain_name.t ;
     serial : int32 ;
     refresh : int32 ;
     retry : int32 ;
@@ -163,8 +163,8 @@ module Soa : sig
   }
 
   val create : ?serial:int32 -> ?refresh:int32 -> ?retry:int32 ->
-    ?expiry:int32 -> ?minimum:int32 -> ?hostmaster:Domain_name.t ->
-    Domain_name.t -> t
+    ?expiry:int32 -> ?minimum:int32 -> ?hostmaster:'a Domain_name.t ->
+    'b Domain_name.t -> t
   (** [create ~serial ~refresh ~retry ~expiry ~minimum ~hostmaster nameserver]
       returns a start of authority. The default for [hostmaster] is replacing
       the first domain name part of [nameserver] with "hostmaster" (to result
@@ -186,7 +186,7 @@ end
     A name server (NS) record specifies authority over the domain. Each domain
     may have multiple name server records, at least two. *)
 module Ns : sig
-  type t = Domain_name.t
+  type t = [ `host ] Domain_name.t
   (** The type of a nameserver record. *)
 
   val pp : t Fmt.t
@@ -204,7 +204,7 @@ end
 module Mx : sig
   type t = {
     preference : int ;
-    mail_exchange : Domain_name.t ;
+    mail_exchange : [ `host ] Domain_name.t ;
   }
   (** The type of a mail exchange. *)
 
@@ -220,7 +220,7 @@ end
     A canonical name (CNAME) is an alias. [host.example.com CNAME foo.com]
     redirects all record sets of [host.example.com] to [foo.com]. *)
 module Cname : sig
-  type t = Domain_name.t
+  type t = [ `raw ] Domain_name.t
   (** The type of a canonical name. *)
 
   val pp : t Fmt.t
@@ -265,7 +265,7 @@ end
     [example.com] located at?", you can ask "who is located at
     [3.4.5.6.in-addr.arpa.]?" ([ip6.arpa] for IPv6 addresses). *)
 module Ptr : sig
-  type t = Domain_name.t
+  type t = [ `host ] Domain_name.t
   (** The type of a PTR record. *)
 
   val pp : t Fmt.t
@@ -283,7 +283,7 @@ module Srv : sig
     priority : int ;
     weight : int ;
     port : int ;
-    target : Domain_name.t
+    target : [ `host ] Domain_name.t
   }
   (** The type for a service record. *)
 
@@ -335,7 +335,7 @@ module Dnskey : sig
       ([:]) is used as separator, supported formats are: [algo:keydata] and
       [flags:algo:keydata], where keydata is a base64 string. *)
 
-  val name_key_of_string : string -> (Domain_name.t * t, [> `Msg of string ]) result
+  val name_key_of_string : string -> ([ `raw ] Domain_name.t * t, [> `Msg of string ]) result
   (** [name_key_of_string str] attempts to parse [str] to a domain name and a
       dnskey. The colon character ([:]) is used as separator. *)
 end
@@ -474,9 +474,9 @@ module Tsig : sig
     other : Ptime.t option
   }
 
-  val algorithm_to_name : algorithm -> Domain_name.t
+  val algorithm_to_name : algorithm -> [ `host ] Domain_name.t
 
-  val algorithm_of_name : ?off:int -> Domain_name.t ->
+  val algorithm_of_name : ?off:int -> [ `host ] Domain_name.t ->
     (algorithm, [> `Not_implemented of int * string ]) result
 
   val pp_algorithm : algorithm Fmt.t
@@ -497,9 +497,9 @@ module Tsig : sig
 
   val equal : t -> t -> bool
 
-  val encode_raw : Domain_name.t -> t -> Cstruct.t
+  val encode_raw : [ `raw ] Domain_name.t -> t -> Cstruct.t
 
-  val encode_full : Domain_name.t -> t -> Cstruct.t
+  val encode_full : [ `raw ] Domain_name.t -> t -> Cstruct.t
 
   val dnskey_to_tsig_algo : Dnskey.t -> (algorithm, [> `Msg of string ]) result
 
@@ -566,12 +566,12 @@ module Rr_map : sig
 
   type _ rr =
     | Soa : Soa.t rr
-    | Ns : (int32 * Domain_name.Set.t) rr
+    | Ns : (int32 * Domain_name.Host_set.t) rr
     | Mx : (int32 * Mx_set.t) rr
-    | Cname : (int32 * Domain_name.t) rr
+    | Cname : (int32 * Cname.t) rr
     | A : (int32 * Ipv4_set.t) rr
     | Aaaa : (int32 * Ipv6_set.t) rr
-    | Ptr : (int32 * Domain_name.t) rr
+    | Ptr : (int32 * Ptr.t) rr
     | Srv : (int32 * Srv_set.t) rr
     | Dnskey : (int32 * Dnskey_set.t) rr
     | Caa : (int32 * Caa_set.t) rr
@@ -597,13 +597,13 @@ module Rr_map : sig
   val ppk : k Fmt.t
   (** [ppk ppf k] pretty-prints [k]. *)
 
-  val names : 'a key -> 'a -> Domain_name.Set.t
+  val names : 'a key -> 'a -> Domain_name.Host_set.t
   (** [names k v] are the referenced domain names in the given binding. *)
 
   val pp_b : b Fmt.t
   (** [pp_b ppf b] pretty-prints the binding [b]. *)
 
-  val text_b : ?origin:Domain_name.t -> ?default_ttl:int32 -> Domain_name.t -> b -> string
+  val text_b : ?origin:'a Domain_name.t -> ?default_ttl:int32 -> 'b Domain_name.t -> b -> string
   (** [text_b ~origin ~default_ttl domain-name binding] is the zone file format of [binding] using
       [domain-name]. *)
 
@@ -623,7 +623,7 @@ module Rr_map : sig
       projection are the deleted entries, the right projection are the added
       entries. [Soa] entries are ignored. *)
 
-  val text : ?origin:Domain_name.t -> ?default_ttl:int32 -> Domain_name.t -> 'a rr -> 'a -> string
+  val text : ?origin:'a Domain_name.t -> ?default_ttl:int32 -> 'b Domain_name.t -> 'c rr -> 'c -> string
   (** [text ~origin ~default_ttl name k v] is the zone file data for [k, v]. *)
 
   val get_ttl : b -> int32
@@ -647,13 +647,13 @@ module Name_rr_map : sig
 
   val pp : t Fmt.t
 
-  val add : Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
+  val add : [ `raw ] Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
 
-  val find : Domain_name.t -> 'a Rr_map.key -> t -> 'a option
+  val find : [ `raw ] Domain_name.t -> 'a Rr_map.key -> t -> 'a option
 
   val remove_sub : t -> t -> t
 
-  val singleton : Domain_name.t -> 'a Rr_map.key -> 'a -> t
+  val singleton : [ `raw ] Domain_name.t -> 'a Rr_map.key -> 'a -> t
 
   val union : t -> t -> t
 end
@@ -694,17 +694,17 @@ module Packet : sig
 
     val compare_qtype : qtype -> qtype -> int
 
-    type t = Domain_name.t * [ qtype | `Axfr | `Ixfr ]
+    type t = [ `raw ] Domain_name.t * [ qtype | `Axfr | `Ixfr ]
 
     val qtype : t -> qtype option
 
-    val create : Domain_name.t -> 'a Rr_map.key -> t
+    val create : 'a Domain_name.t -> 'b Rr_map.key -> t
 
     val pp : t Fmt.t
     val compare : t -> t -> int
   end
 
-  module Query : sig
+  module Answer : sig
     type t = Name_rr_map.t * Name_rr_map.t
     val empty : t
     val is_empty : t -> bool
@@ -764,12 +764,12 @@ module Packet : sig
   val pp_request : request Fmt.t
 
   type reply = [
-    | `Answer of Query.t
+    | `Answer of Answer.t
     | `Notify_ack
     | `Axfr_reply of Axfr.t
     | `Ixfr_reply of Ixfr.t
     | `Update_ack
-    | `Rcode_error of Rcode.t * Opcode.t * Query.t option
+    | `Rcode_error of Rcode.t * Opcode.t * Answer.t option
   ]
 
   val equal_reply : reply -> reply -> bool
@@ -792,7 +792,7 @@ module Packet : sig
     data : data ;
     additional : Name_rr_map.t ;
     edns : Edns.t option ;
-    tsig : (Domain_name.t * Tsig.t * int) option ;
+    tsig : ([ `raw ] Domain_name.t * Tsig.t * int) option ;
   }
 
   val create : ?max_size:int -> ?additional:Name_rr_map.t -> ?edns:Edns.t ->
@@ -857,23 +857,24 @@ end
 
 module Tsig_op : sig
   type e = [
-    | `Bad_key of Domain_name.t * Tsig.t
-    | `Bad_timestamp of Domain_name.t * Tsig.t * Dnskey.t
-    | `Bad_truncation of Domain_name.t * Tsig.t
-    | `Invalid_mac of Domain_name.t * Tsig.t
+    | `Bad_key of [ `raw ] Domain_name.t * Tsig.t
+    | `Bad_timestamp of [ `raw ] Domain_name.t * Tsig.t * Dnskey.t
+    | `Bad_truncation of [ `raw ] Domain_name.t * Tsig.t
+    | `Invalid_mac of [ `raw ] Domain_name.t * Tsig.t
   ]
 
   val pp_e : e Fmt.t
 
   type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.t ->
-    Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> Cstruct.t ->
+    [ `raw ] Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> Cstruct.t ->
     (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
 
   val no_verify : verify
   (** [no_verify] always returns an error. *)
 
-  type sign = ?mac:Cstruct.t -> ?max_size:int -> Domain_name.t -> Tsig.t ->
-    key:Dnskey.t -> Packet.t -> Cstruct.t -> (Cstruct.t * Cstruct.t) option
+  type sign = ?mac:Cstruct.t -> ?max_size:int -> [ `raw ] Domain_name.t ->
+    Tsig.t -> key:Dnskey.t -> Packet.t -> Cstruct.t ->
+    (Cstruct.t * Cstruct.t) option
 
   val no_sign : sign
   (** [no_sign] always returns [None]. *)

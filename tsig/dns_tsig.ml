@@ -15,8 +15,9 @@ let algorithm_to_nc = function
   | Tsig.SHA512 -> `SHA512
 
 let compute_tsig name tsig ~key buf =
+  let raw_name = Domain_name.raw name in
   let h = algorithm_to_nc tsig.Tsig.algorithm
-  and data = Tsig.encode_raw name tsig
+  and data = Tsig.encode_raw raw_name tsig
   in
   Nocrypto.Hash.mac h ~key (Cstruct.append buf data)
 
@@ -79,6 +80,7 @@ let sign ?mac ?max_size name tsig ~key p buf =
         | Some out -> Some (out, mac)
 
 let verify_raw ?mac now name ~key tsig tbs =
+  let name = Domain_name.raw name in
   Rresult.R.of_option ~none:(fun () -> Error (`Bad_key (name, tsig)))
     (Nocrypto.Base64.decode key.Dnskey.key) >>= fun priv ->
   let ac = Cstruct.BE.get_uint16 tbs 10 in
@@ -94,9 +96,10 @@ let verify_raw ?mac now name ~key tsig tbs =
   tsig, mac
 
 let verify ?mac now p name ?key tsig tbs =
+  let raw_name = Domain_name.raw name in
   match
-    Rresult.R.of_option ~none:(fun () -> Error (`Bad_key (name, tsig))) key >>= fun key ->
-    verify_raw ?mac now name ~key tsig tbs >>= fun (tsig, mac) ->
+    Rresult.R.of_option ~none:(fun () -> Error (`Bad_key (raw_name, tsig))) key >>= fun key ->
+    verify_raw ?mac now raw_name ~key tsig tbs >>= fun (tsig, mac) ->
     Ok (tsig, mac, key)
   with
   | Ok x -> Ok x
@@ -148,26 +151,33 @@ let encode_and_sign ?(proto = `Udp) p now key keyname =
   | Error _ -> Error (`Key_algorithm key)
   | Ok algorithm -> match Tsig.tsig ~algorithm ~signed:now () with
     | None -> Error `Tsig_creation
-    | Some tsig -> match sign keyname ~key tsig p b with
+    | Some tsig -> match sign (Domain_name.raw keyname) ~key tsig p b with
       | None -> Error `Sign
       | Some r -> Ok r
 
-type e = [ `Decode of Packet.err | `Unsigned of Packet.t | `Crypto of Tsig_op.e | `Invalid_key of Domain_name.t * Domain_name.t ]
+type e = [
+  | `Decode of Packet.err
+  | `Unsigned of Packet.t
+  | `Crypto of Tsig_op.e
+  | `Invalid_key of [ `raw ] Domain_name.t * [ `raw ] Domain_name.t
+]
 
 let pp_e ppf = function
   | `Decode err -> Fmt.pf ppf "decode %a" Packet.pp_err err
   | `Unsigned res -> Fmt.pf ppf "unsigned %a" Packet.pp res
   | `Crypto c -> Fmt.pf ppf "crypto %a" Tsig_op.pp_e c
-  | `Invalid_key (key, used) -> Fmt.pf ppf "invalid key, expected %a, but %a was used"
-                                  Domain_name.pp key Domain_name.pp used
+  | `Invalid_key (key, used) ->
+    Fmt.pf ppf "invalid key, expected %a, but %a was used"
+      Domain_name.pp key Domain_name.pp used
 
 let decode_and_verify now key keyname ?mac buf =
+  let raw_keyname = Domain_name.raw keyname in
   match Packet.decode buf with
   | Error e -> Error (`Decode e)
   | Ok ({ Packet.tsig = None ; _ } as res) -> Error (`Unsigned res)
   | Ok ({ Packet.tsig = Some (name, tsig, tsig_off) ; _ } as res) when Domain_name.equal keyname name ->
-      begin match verify_raw ?mac now keyname ~key tsig (Cstruct.sub buf 0 tsig_off) with
-        | Ok (_, mac) -> Ok (res, tsig, mac)
-        | Error e -> Error (`Crypto e)
-      end
-  | Ok { Packet.tsig = Some (name, _, _) ; _ } -> Error (`Invalid_key (keyname, name))
+    begin match verify_raw ?mac now raw_keyname ~key tsig (Cstruct.sub buf 0 tsig_off) with
+      | Ok (_, mac) -> Ok (res, tsig, mac)
+      | Error e -> Error (`Crypto e)
+    end
+  | Ok { Packet.tsig = Some (name, _, _) ; _ } -> Error (`Invalid_key (raw_keyname, name))

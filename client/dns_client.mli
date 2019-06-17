@@ -18,7 +18,7 @@ type 'key query_state constraint 'key = 'a Dns.Rr_map.key
 *)
 
 val make_query :
-  Dns.proto -> Domain_name.t ->
+  Dns.proto -> 'a Domain_name.t ->
   'query_type Dns.Rr_map.key ->
   Cstruct.t * 'query_type Dns.Rr_map.key query_state
 (** [make_query protocol name query_type] is [query, query_state]

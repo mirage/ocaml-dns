@@ -68,14 +68,14 @@ sig
   (** [nameserver t] returns the default nameserver to be used. *)
 
   val getaddrinfo : U.t -> ?nameserver:U.ns_addr -> 'response Dns.Rr_map.key ->
-    Domain_name.t -> ('response, 'err) U.io
+    'a Domain_name.t -> ('response, 'err) U.io
   (** [getaddrinfo nameserver query_type name] is the [query_type]-dependent
       response from [nameserver] regarding [name], or an [Error _] message.
       See {!Dns_client.query_state} for more information about the
       result types.
   *)
 
-  val gethostbyname : U.t -> ?nameserver:U.ns_addr -> Domain_name.t ->
+  val gethostbyname : U.t -> ?nameserver:U.ns_addr -> [ `host ] Domain_name.t ->
     (Ipaddr.V4.t, 'err) U.io
     (** [gethostbyname state ~nameserver domain] is the IPv4 address of [domain]
         resolved via the [state] and [nameserver] specified.
@@ -86,7 +86,7 @@ sig
         in the distribution of this package.
     *)
 
-  val gethostbyname6 : U.t -> ?nameserver:U.ns_addr -> Domain_name.t ->
+  val gethostbyname6 : U.t -> ?nameserver:U.ns_addr -> [ `host ] Domain_name.t ->
     (Ipaddr.V6.t, 'err) U.io
     (** [gethostbyname6 state ~nameserver domain] is the IPv6 address of
         [domain] resolved via the [state] and [nameserver] specified.
