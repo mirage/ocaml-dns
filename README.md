@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/mirage/ocaml-dns.svg?branch=master)](https://travis-ci.org/roburio/udns)
 
-(c) 2017,2018 Hannes Mehnert (robur.io, Center for the Cultivation of Technology)
+(c) 2017-2019 Hannes Mehnert (robur.io, Center for the Cultivation of Technology)
 
 %%VERSION%%
 
@@ -76,12 +76,17 @@ This library is published under the 2 clause BSD license.
 You first need to install [OCaml](https://ocaml.org) (at least 4.07.0) and
 [opam](https://opam.ocaml.org), the OCaml package manager (at least 2.0.0) on
 your machine (you can use opam to install an up-to-date OCaml (`opam switch
-4.07.1`)).  You may want to follow the [mirage installation
+4.07.1`)).
+
+You may want to follow the [mirage installation
 instructions](https://mirage.io/wiki/install) to get `mirage` installed on your
 computer.
 
-You can install it and its dependencies via opam:
-`opam pin add dns --dev`
+To lower the amount of run-time dependencies for each individual functionality,
+the library is split across a number of opam packages.
+
+µDNS is not released yet, but you can install it and its dependencies via opam,
+see [Development](#Development).
 
 Now the µDNS library is installed, and you can try out the examples.  Find some
 examples at the [unikernel repository](https://github.com/roburio/unikernels).
@@ -95,7 +100,7 @@ API documentation [is available online](https://mirage.github.io/ocaml-dns/).
 The pre-2.0.0 versions of ocaml-dns had a significantly different interface,
 and so applications using them will need to be rewritten to follow the
 stricter coding style used in the post-2.0.0 branches.  The major improvements
-from 1.x to the 2.x series are: 
+from 1.x to the 2.x series are:
 
 - data (rrset) is defined in a single GADT in `Rr_map`
 - add support for: notify, dynamic update, zone transfer, tsig (hmac authentication), edns
@@ -109,3 +114,49 @@ from 1.x to the 2.x series are:
 Please get in touch on <mirageos-devel@lists.xenproject.org> or on the Discuss forum
 at <https://discuss.ocaml.org> (with the `mirageos` tag) if you have any questions
 about migrating (or just general questions).
+
+## Development
+
+To work with the [opam](https://opam.ocaml.org/) packages provided when
+developing modifications to DNS, or when pinning a specific version,
+you will have to pin the same *version* for all of them:
+
+```csh
+: csh syntax
+set version=2.0.0
+set repo=git+https://github.com/roburio/dns.git
+
+# the -y parameter means "force" or
+# "do go ahead and register a new package"
+
+# the -n parameter means
+# "just register the pin, don't actually install it yet"
+
+foreach pkg ( dns dns-{certify,cli,client{,-lwt,-unix}} \
+              dns-mirage{,-certify,-client,-resolver,-server} \
+              dns-{resolver,server,tsig,zone} )
+  opam pin add -y -n $pkg.$version --dev $repo
+end
+```
+
+```bash
+: bash syntax
+version=2.0.0
+repo=git+https://github.com/roburio/dns.git
+
+for pkg in dns dns-{certify,cli,client{,-lwt,-unix}} \
+           dns-mirage{,-certify,-client,-resolver,-server} \
+           dns-{resolver,server,tsig,zone}
+do
+  opam pin add -y -n $pkg.$version --dev $repo
+done
+```
+
+Now you can install the packages you need, for instance:
+```shell
+opam install dns-client-lwt
+```
+or
+```shell
+opam install dns-resolver
+```
