@@ -263,7 +263,7 @@ let check trie =
           else Ok ()
         | B (Ns, (ttl, names)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Domain_name.Set.cardinal names = 0 then
+          else if Domain_name.Set.is_empty names then
             Error (`Empty (name, K Ns))
           else
             let domain = match state' with `None -> name | `Soa zone -> zone in

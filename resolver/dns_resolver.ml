@@ -499,7 +499,7 @@ let try_other_timer t ts =
       t.transit
   in
   let t = { t with transit } in
-  if QM.cardinal transit > 0 || QM.cardinal rem > 0 then
+  if not (QM.is_empty transit && QM.is_empty rem) then
     Logs.debug (fun m -> m "try_other timer wheel -- keeping %d, running over %d"
                    (QM.cardinal transit) (QM.cardinal rem)) ;
   QM.fold (fun (name, typ) (_, retry, _, _, _, qs, _, _, _) (t, out_a, out_q) ->
@@ -517,7 +517,7 @@ let try_other_timer t ts =
     rem (t, [], [])
 
 let _retry_timer t ts =
-  if QM.cardinal t.transit > 0 then
+  if not (QM.is_empty t.transit) then
     Logs.debug (fun m -> m "retry timer with %d entries" (QM.cardinal t.transit)) ;
   List.fold_left (fun (t, out_a, out_q) (key, (c, retry, proto, zone, edns, qs, _port, _query, id)) ->
       if Int64.sub ts c < retry_interval then
