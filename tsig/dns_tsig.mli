@@ -20,17 +20,22 @@ val pp_s : s Fmt.t
 (** [pp_s ppf s] pretty-prints [s] on [ppf]. *)
 
 val encode_and_sign : ?proto:proto -> Packet.t -> Ptime.t -> Dns.Dnskey.t ->
-  Domain_name.t -> (Cstruct.t * Cstruct.t, s) result
+  'a Domain_name.t -> (Cstruct.t * Cstruct.t, s) result
 (** [encode_and_sign ~proto t now dnskey name] signs and encodes the DNS
     packet. *)
 
-type e = [ `Decode of Packet.err | `Unsigned of Packet.t | `Crypto of Tsig_op.e | `Invalid_key of Domain_name.t * Domain_name.t ]
+type e = [
+  | `Decode of Packet.err
+  | `Unsigned of Packet.t
+  | `Crypto of Tsig_op.e
+  | `Invalid_key of [ `raw ] Domain_name.t * [ `raw ] Domain_name.t
+]
 (** The type for decode and verify errors. *)
 
 val pp_e : e Fmt.t
 (** [pp_e ppf e] prety-prints [e] on [ppf]. *)
 
-val decode_and_verify : Ptime.t -> Dnskey.t -> Domain_name.t ->
+val decode_and_verify : Ptime.t -> Dnskey.t -> 'a Domain_name.t ->
   ?mac:Cstruct.t -> Cstruct.t ->
   (Packet.t * Tsig.t * Cstruct.t, e) result
 (** [decode_and_verify now dnskey name ~mac buffer] decodes and verifies the
@@ -38,7 +43,7 @@ val decode_and_verify : Ptime.t -> Dnskey.t -> Domain_name.t ->
    or a failure. *)
 
 (**/**)
-val compute_tsig : Domain_name.t -> Tsig.t -> key:Cstruct.t ->
+val compute_tsig : 'a Domain_name.t -> Tsig.t -> key:Cstruct.t ->
   Cstruct.t -> Cstruct.t
 (** [compute_tsig name tsig ~key buffer] computes the mac over [buffer]
     and [tsig], using the provided [key] and [name]. *)

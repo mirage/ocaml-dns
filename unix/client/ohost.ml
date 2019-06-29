@@ -1,6 +1,6 @@
 let () =
   let t = Dns_client_unix.create () in
-  let domain = Domain_name.of_string_exn Sys.argv.(1) in
+  let domain = Domain_name.(host_exn (of_string_exn Sys.argv.(1))) in
   let ipv4 =
     match Dns_client_unix.gethostbyname t domain with
     | Ok addr -> Fmt.pr "%a has address %a\n"

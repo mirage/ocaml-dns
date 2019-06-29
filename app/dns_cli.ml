@@ -64,7 +64,8 @@ let namekey_c =
     let open Rresult.R.Infix in
     match
       Dns.Dnskey.name_key_of_string s >>= fun (name, key) ->
-      Domain_name.drop_labels ~amount:2 name >>| fun zone ->
+      Domain_name.drop_label ~amount:2 name >>= fun zone ->
+      Domain_name.host zone >>| fun zone ->
       (name, zone, key)
     with
     | Error (`Msg m) -> `Error ("failed to parse key: " ^ m)
@@ -76,4 +77,12 @@ let namekey_c =
 let name_c =
   (fun s -> match Domain_name.of_string s with
      | Error _ -> `Error "failed to parse hostname"
+     | Ok name ->
+       match Domain_name.host name with
+       | Error (`Msg e) -> `Error ("failed to parse hostname: " ^ e)
+       | Ok host -> `Ok host), Domain_name.pp
+
+let domain_name_c =
+  (fun s -> match Domain_name.of_string s with
+     | Error _ -> `Error "failed to parse domain name"
      | Ok name -> `Ok name), Domain_name.pp

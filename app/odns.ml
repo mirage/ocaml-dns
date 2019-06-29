@@ -116,8 +116,8 @@ let do_any _nameserver _domains _ =
 
 let do_dkim nameserver (selector:string) domains _ =
   let domains = List.map (fun original_domain ->
-      Domain_name.prepend_exn ~hostname:false
-        (Domain_name.prepend_exn ~hostname:false
+      Domain_name.prepend_label_exn
+        (Domain_name.prepend_label_exn
            (original_domain) "_domainkey") selector
     ) domains in
   for_all_domains nameserver ~domains Dns.Rr_map.Txt
@@ -154,15 +154,15 @@ let arg_ns : 'a Term.t =
   let doc = "IP of nameserver to use" in
   Arg.(value & opt (some parse_ns) None & info ~docv:"NS-IP" ~doc ["ns"])
 
-let parse_domain : Domain_name.t Arg.conv =
+let parse_domain : [ `raw ] Domain_name.t Arg.conv =
   ( fun name ->
-      Domain_name.of_string ~hostname:false name
+      Domain_name.of_string name
       |> Rresult.R.reword_error
         (fun (`Msg m) -> Fmt.strf "Invalid domain: %S: %s" name m)
       |> Rresult.R.to_presult) ,
   Domain_name.pp
 
-let arg_domains : Domain_name.t list Term.t =
+let arg_domains : [ `raw ] Domain_name.t list Term.t =
   let doc = "Domain names to operate on" in
   Arg.(non_empty & pos_all parse_domain []
        & info [] ~docv:"DOMAIN(s)" ~doc)

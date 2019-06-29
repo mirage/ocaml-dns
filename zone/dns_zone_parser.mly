@@ -124,16 +124,16 @@ generic_type s generic_rdata {
 }
      /* RFC 1035 */
  | TYPE_A s ipv4 { B (A, (0l, Rr_map.Ipv4_set.singleton $3)) }
- | TYPE_NS s domain { B (Ns, (0l, Domain_name.Set.singleton $3)) }
+ | TYPE_NS s hostname { B (Ns, (0l, Domain_name.Host_set.singleton $3)) }
  | TYPE_CNAME s domain { B (Cname, (0l, $3)) }
  | TYPE_SOA s domain s domain s int32 s int32 s int32 s int32 s int32
      { B (Soa, { Soa.nameserver = $3 ; hostmaster = $5 ; serial = $7 ;
                  refresh = $9 ; retry = $11 ; expiry = $13 ; minimum = $15 }) }
- | TYPE_PTR s domain { B (Ptr, (0l, $3)) }
- | TYPE_MX s int16 s domain { B (Mx, (0l, Rr_map.Mx_set.singleton { Mx.preference = $3 ; mail_exchange = $5 })) }
+ | TYPE_PTR s hostname { B (Ptr, (0l, $3)) }
+ | TYPE_MX s int16 s hostname { B (Mx, (0l, Rr_map.Mx_set.singleton { Mx.preference = $3 ; mail_exchange = $5 })) }
  | TYPE_TXT s charstrings { B (Txt, (0l, Rr_map.Txt_set.of_list $3)) }
      /* RFC 2782 */
- | TYPE_SRV s int16 s int16 s int16 s domain
+ | TYPE_SRV s int16 s int16 s int16 s hostname
      { B (Srv, (0l, Rr_map.Srv_set.singleton { Srv.priority = $3 ; weight = $5 ; port = $7 ; target = $9 })) }
      /* RFC 3596 */
  | TYPE_TLSA s int8 s int8 s int8 s hex
@@ -241,14 +241,16 @@ owner:
 domain:
    DOT { Domain_name.root }
  | AT { state.origin }
- | label_except_at { Domain_name.prepend_exn ~hostname:false state.origin $1 }
- | label DOT { Domain_name.of_strings_exn ~hostname:false [$1] }
- | label DOT domain_labels { Domain_name.of_strings_exn ~hostname:false ($1 :: $3 @ (Domain_name.to_strings state.origin)) }
- | label DOT domain_labels DOT { Domain_name.of_strings_exn ~hostname:false ($1 :: $3) }
+ | label_except_at { Domain_name.prepend_label_exn state.origin $1 }
+ | label DOT { Domain_name.of_strings_exn [$1] }
+ | label DOT domain_labels { Domain_name.of_strings_exn ($1 :: $3 @ (Domain_name.to_strings state.origin)) }
+ | label DOT domain_labels DOT { Domain_name.of_strings_exn ($1 :: $3) }
 
 domain_labels:
    label { [$1] }
  | domain_labels DOT label { $1 @ [$3] }
+
+hostname: domain { Domain_name.host_exn $1 }
 
 /* It's acceptable to re-use numbers and keywords as character-strings.
    This is pretty ugly: we need special cases to distinguish a domain

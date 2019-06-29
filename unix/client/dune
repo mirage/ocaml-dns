@@ -2,7 +2,7 @@
   (name        dns_client_unix)
   (modules     dns_client_unix)
   (public_name dns-client-unix)
-  (libraries   domain-name ipaddr dns-client rresult)
+  (libraries   domain-name ipaddr dns-client rresult unix)
   (wrapped     false)
 )
 

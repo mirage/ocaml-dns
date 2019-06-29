@@ -2,7 +2,7 @@
 open Dns
 
 let root_servers =
-  List.map (fun (n, ip) -> Domain_name.of_string_exn n, Ipaddr.V4.of_string_exn ip)
+  List.map (fun (n, ip) -> Domain_name.(host_exn (of_string_exn n)), Ipaddr.V4.of_string_exn ip)
     [
       "a.root-servers.net", "198.41.0.4" ; (* , 2001:503:ba3e::2:30 VeriSign, Inc. *)
       "b.root-servers.net", "199.9.14.201" ; (* , 2001:500:200::b University of Southern California (ISI) *)
@@ -24,14 +24,14 @@ let ns_ttl = 518400l
 
 let ns_records =
   let ns =
-    let add_to_set set (name, _) = Domain_name.Set.add name set in
-    List.fold_left add_to_set Domain_name.Set.empty root_servers
+    let add_to_set set (name, _) = Domain_name.Host_set.add name set in
+    List.fold_left add_to_set Domain_name.Host_set.empty root_servers
   in
   Rr_map.(B (Ns, (ns_ttl, ns)))
 
 let a_records =
   List.map (fun (name, ip) ->
-      name, Rr_map.(B (A, (a_ttl, Ipv4_set.singleton ip))))
+      Domain_name.raw name, Rr_map.(B (A, (a_ttl, Ipv4_set.singleton ip))))
     root_servers
 
 let reserved_zone_records =
@@ -70,9 +70,12 @@ let reserved_zone_records =
     zones nets
 (* XXX V6 reserved nets (also RFC6890) *)
 
-let stub_soa s = { Soa.nameserver = s ; hostmaster = s ;
-                   serial = 0l ; refresh = 300l ; retry = 300l ;
-                   expiry = 300l ; minimum = 300l }
+let stub_soa s =
+  let nameserver = Domain_name.prepend_label_exn s "ns"
+  and hostmaster = Domain_name.prepend_label_exn s "hostmaster"
+  in
+  { Soa.nameserver ; hostmaster ; serial = 0l ; refresh = 300l ; retry = 300l ;
+    expiry = 300l ; minimum = 300l }
 
 let reserved_zones =
   let inv s = Rr_map.(B (Soa, stub_soa s)) in
@@ -82,3 +85,5 @@ let reserved =
   Domain_name.Set.fold (fun name trie ->
       Dns_trie.insert name Rr_map.Soa (stub_soa name) trie)
     reserved_zone_records Dns_trie.empty
+
+let root_servers = List.map (fun (n, ip) -> Domain_name.raw n, ip) root_servers

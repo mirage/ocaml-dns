@@ -67,7 +67,7 @@ let key =
 
 let hostname =
   let doc = "Hostname to modify" in
-  Arg.(required & pos 2 (some Dns_cli.name_c) None & info [] ~doc ~docv:"HOSTNAME")
+  Arg.(required & pos 2 (some Dns_cli.domain_name_c) None & info [] ~doc ~docv:"HOSTNAME")
 
 let ip_address =
   let doc = "New IP address" in

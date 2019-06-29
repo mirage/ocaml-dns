@@ -53,8 +53,8 @@ module V = struct
 
   type rr_map_entry =
     | Entry of Rr_map.b
-    | No_data of Domain_name.t * Soa.t
-    | Serv_fail of Domain_name.t * Soa.t
+    | No_data of [ `raw ] Domain_name.t * Soa.t
+    | Serv_fail of [ `raw ] Domain_name.t * Soa.t
   let pp_map_entry ppf entry = match entry with
     | Entry b -> Fmt.pf ppf "entry %a" Rr_map.pp_b b
     | No_data (name, soa) -> Fmt.pf ppf "no data %a SOA %a" Domain_name.pp name Soa.pp soa
@@ -70,8 +70,8 @@ module V = struct
     | _ -> assert false
 
   type t =
-    | Alias of meta * int32 * Domain_name.t
-    | No_domain of meta * Domain_name.t * Soa.t
+    | Alias of meta * int32 * [ `raw ] Domain_name.t
+    | No_domain of meta * [ `raw ] Domain_name.t * Soa.t
     | Rr_map of (meta * rr_map_entry) RRMap.t
 
   let weight = function
@@ -91,7 +91,12 @@ module V = struct
         (RRMap.bindings rr)
 end
 
-module LRU = Lru.F.Make(Domain_name)(V)
+module D = struct
+  type t = [ `raw ] Domain_name.t
+  let compare = Domain_name.compare
+end
+
+module LRU = Lru.F.Make(D)(V)
 
 type t = LRU.t
 
@@ -128,11 +133,11 @@ let update_ttl ~created ~now ttl =
   Int32.sub ttl (Int32.of_int (Duration.to_sec (Int64.sub now created)))
 
 type res = [
-  | `Alias of int32 * Domain_name.t
+  | `Alias of int32 * [ `raw ] Domain_name.t
   | `Entry of Rr_map.b
-  | `No_data of Domain_name.t * Soa.t
-  | `No_domain of Domain_name.t * Soa.t
-  | `Serv_fail of Domain_name.t * Soa.t
+  | `No_data of [ `raw ] Domain_name.t * Soa.t
+  | `No_domain of [ `raw ] Domain_name.t * Soa.t
+  | `Serv_fail of [ `raw ] Domain_name.t * Soa.t
 ]
 
 let pp_res ppf res =
@@ -381,7 +386,7 @@ let find_nearest_ns rng ts t name =
     | xs -> Some (List.nth xs (Randomconv.int ~bound:(List.length xs) rng))
   in
   let find_ns name = match cached t ts Ns name with
-    | Ok (`Entry Rr_map.(B (Ns, (_, names))), _) -> Domain_name.Set.elements names
+    | Ok (`Entry Rr_map.(B (Ns, (_, names))), _) -> Domain_name.Host_set.elements names
     | _ -> []
   and find_a name = match cached t ts A name with
     | Ok (`Entry Rr_map.(B (A, (_, ips))), _) -> Rr_map.Ipv4_set.elements ips
@@ -393,18 +398,20 @@ let find_nearest_ns rng ts t name =
       | None -> assert false
       | Some ip -> `HaveIP (Domain_name.root, ip)
     else
-      f (Domain_name.drop_labels_exn nam)
+      f (Domain_name.drop_label_exn nam)
   in
   let rec go nam =
     match pick (find_ns nam) with
     | None -> or_root go nam
-    | Some ns -> match pick (find_a ns) with
+    | Some ns ->
+      let host = Domain_name.raw ns in
+      match pick (find_a host) with
       | None ->
         if Domain_name.sub ~subdomain:ns ~domain:nam then
           (* we actually need glue *)
           or_root go nam
         else
-          `NeedA ns
+          `NeedA host
       | Some ip -> `HaveIP (nam, ip)
   in
   go name
@@ -439,7 +446,7 @@ let resolve t ~rng ts name typ =
   (* the standard recursive algorithm *)
   let rec go t typ name =
     Logs.debug (fun m -> m "go %a" Domain_name.pp name) ;
-    match find_nearest_ns rng ts t name with
+    match find_nearest_ns rng ts t (Domain_name.raw name) with
     | `NeedA ns -> go t (Rr_map.K A) ns
     | `HaveIP (zone, ip) -> zone, name, typ, ip, t
   in
@@ -602,7 +609,7 @@ let answer t ts name typ =
     and data = match rcode with
       | Rcode.NoError -> `Answer data
       | x ->
-        let data = if Packet.Query.is_empty data then None else Some data in
+        let data = if Packet.Answer.is_empty data then None else Some data in
         `Rcode_error (x, Opcode.Query, data)
     in
     (flags, data, t)
@@ -654,17 +661,13 @@ let handle_query t ~rng ts qname qtype =
     (* similar for TLSA, which uses _443._tcp.<name> (a service name!) *)
     (* TODO unclear why it's here... *)
     let qname', qtype' =
-      if Domain_name.is_service name then
-        Domain_name.drop_labels_exn ~amount:2 name, Rr_map.K Ns
-      else
-        name, (match qtype with `Any -> Rr_map.K Ns | `K k -> k)
+      match Domain_name.service name with
+      | Error _ -> name, (match qtype with `Any -> Rr_map.K Ns | `K k -> k)
+      | Ok _ -> Domain_name.drop_label_exn ~amount:2 name, Rr_map.K Ns
     in
     let zone, name', typ, ip, t = resolve t ~rng ts qname' qtype' in
     let name, typ =
-      if Domain_name.equal name' qname' then
-        qname, qtype
-      else
-        name', `K typ
+      if Domain_name.equal name' qname' then qname, qtype else name', `K typ
     in
     Logs.debug (fun m -> m "resolve returned zone %a query %a, ip %a"
                    Domain_name.pp zone pp_question (name, typ) Ipaddr.V4.pp ip);

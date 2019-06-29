@@ -7,7 +7,7 @@ open Rresult.R.Infix
 
 let invalid_soa name =
   let p pre =
-    match Domain_name.(prepend name "invalid" >>= fun n -> prepend n pre) with
+    match Domain_name.(prepend_label name "invalid" >>= fun n -> prepend_label n pre) with
     | Ok name -> name
     | Error _ -> name
   in
@@ -71,11 +71,16 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
       | `Any ->
         Rr_map.fold (fun (B (k, v)) (acc, names) ->
             (Rr_map.K k, q_name, rank, `Entry (Rr_map.B (k, v))) :: acc,
-            Domain_name.Set.union names (Rr_map.names k v))
+            Domain_name.Host_set.fold (fun n acc ->
+                Domain_name.Set.add (Domain_name.raw n) acc)
+              (Rr_map.names k v) names)
           rr_map ([], Domain_name.Set.empty)
       | `K (Rr_map.K Cname) ->
         begin match Rr_map.find Cname rr_map with
-          | Some v -> [ Rr_map.K Cname, q_name, rank, `Alias v ], Rr_map.names Cname v
+          | Some v -> [ Rr_map.K Cname, q_name, rank, `Alias v ],
+                      Domain_name.Host_set.fold (fun n acc ->
+                          Domain_name.Set.add (Domain_name.raw n) acc)
+                        (Rr_map.names Cname v) Domain_name.Set.empty
           | None ->
             (* case no cname *)
             Logs.warn (fun m -> m "noerror answer with right name, but no cname in %a, invalid soa for %a"
@@ -85,7 +90,10 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
         end
       | `K (Rr_map.K k) -> match Rr_map.find k rr_map with
         | Some v ->
-          [ Rr_map.K k, q_name, rank, `Entry (B (k, v)) ], Rr_map.names k v
+          [ Rr_map.K k, q_name, rank, `Entry (B (k, v)) ],
+          Domain_name.Host_set.fold (fun n acc ->
+              Domain_name.Set.add (Domain_name.raw n) acc)
+            (Rr_map.names k v) Domain_name.Set.empty
         | None -> match Rr_map.find Cname rr_map with
           | None ->
             (* case neither TYP nor cname *)
@@ -110,8 +118,10 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
           if in_bailiwick name then
             match Rr_map.find Ns map with
             | None -> acc, s
-            | Some (ns : int32 * Domain_name.Set.t) ->
-              (name, ns) :: acc, Domain_name.Set.union s (snd ns)
+            | Some (ns : int32 * Domain_name.Host_set.t) ->
+              (name, ns) :: acc, Domain_name.Host_set.fold (fun n acc ->
+                  Domain_name.Set.add (Domain_name.raw n) acc)
+                (snd ns) s
           else
             acc, s)
         authority
@@ -172,9 +182,9 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
 let find_soa name authority =
   let rec go name =
     match Domain_name.Map.find name authority with
-    | None -> go (Domain_name.drop_labels_exn name)
+    | None -> go (Domain_name.drop_label_exn name)
     | Some rrmap -> match Rr_map.(find Soa rrmap) with
-      | None -> go (Domain_name.drop_labels_exn name)
+      | None -> go (Domain_name.drop_label_exn name)
       | Some soa -> name, soa
   in
   try Some (go name) with Invalid_argument _ -> None

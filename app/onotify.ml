@@ -3,9 +3,10 @@
 open Dns
 
 let notify zone serial key now =
-  let question = Packet.Question.create zone Soa
+  let raw_zone = Domain_name.raw zone in
+  let question = Packet.Question.create raw_zone Soa
   and soa =
-    { Soa.nameserver = zone ; hostmaster = zone ; serial ;
+    { Soa.nameserver = raw_zone ; hostmaster = raw_zone ; serial ;
       refresh = 0l; retry = 0l ; expiry = 0l ; minimum = 0l }
   and header = Random.int 0xFFFF, Packet.Flags.singleton `Authoritative
   in

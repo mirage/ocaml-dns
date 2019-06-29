@@ -5,8 +5,8 @@ let dns_header rng =
   (id, Packet.Flags.empty)
 
 let letsencrypt_name name =
-  match Domain_name.prepend ~hostname:false name "_tcp" with
-  | Ok name' -> Domain_name.prepend ~hostname:false name' "_letsencrypt"
+  match Domain_name.(prepend_label (raw name) "_tcp") with
+  | Ok name' -> Domain_name.prepend_label name' "_letsencrypt"
   | Error e -> Error e
 
 type u_err = [ `Tsig of Dns_tsig.e | `Bad_reply of Packet.mismatch * Packet.t | `Unexpected_reply of Packet.reply ]

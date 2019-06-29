@@ -2,7 +2,7 @@
 
 open Dns
 
-type key = Domain_name.t * Packet.Question.qtype
+type key = [ `raw ] Domain_name.t * Packet.Question.qtype
 
 let pp_key = Dns_resolver_cache.pp_question
 
@@ -17,7 +17,7 @@ module QM = Map.Make(struct
   end)
 
 type awaiting =
-  int64 * int * proto * Domain_name.t * Edns.t option * Ipaddr.V4.t * int * key * int
+  int64 * int * proto * [ `raw ] Domain_name.t * Edns.t option * Ipaddr.V4.t * int * key * int
 
 let retry_interval = Duration.of_ms 500
 
@@ -358,7 +358,7 @@ let handle_reply t ts proto sender packet reply =
     Error ()
 
 let handle_delegation t ts proto sender sport req (delegation, add_data) =
-  Logs.debug (fun m -> m "handling delegation %a (for %a)" Packet.Query.pp delegation Packet.pp req) ;
+  Logs.debug (fun m -> m "handling delegation %a (for %a)" Packet.Answer.pp delegation Packet.pp req) ;
   match req.Packet.data, Packet.Question.qtype req.question with
   | `Query, Some qtype ->
     begin match Dns_resolver_cache.answer t.cache ts (fst req.question) qtype with
@@ -456,8 +456,8 @@ let query_root t now proto =
     match Dns_resolver_cache.cached t.cache now Ns Domain_name.root with
     | Ok (`Entry Rr_map.(B (Ns, (_, names))), _) ->
       let ips =
-        Domain_name.Set.fold (fun name acc ->
-            match Dns_resolver_cache.cached t.cache now A name with
+        Domain_name.Host_set.fold (fun name acc ->
+            match Dns_resolver_cache.cached t.cache now A (Domain_name.raw name) with
             | Ok (`Entry Rr_map.(B (A, (_, ips))), _) ->
               Rr_map.Ipv4_set.union ips acc
             | _ -> acc)
@@ -499,7 +499,7 @@ let try_other_timer t ts =
       t.transit
   in
   let t = { t with transit } in
-  if QM.cardinal transit > 0 || QM.cardinal rem > 0 then
+  if not (QM.is_empty transit && QM.is_empty rem) then
     Logs.debug (fun m -> m "try_other timer wheel -- keeping %d, running over %d"
                    (QM.cardinal transit) (QM.cardinal rem)) ;
   QM.fold (fun (name, typ) (_, retry, _, _, _, qs, _, _, _) (t, out_a, out_q) ->
@@ -517,7 +517,7 @@ let try_other_timer t ts =
     rem (t, [], [])
 
 let _retry_timer t ts =
-  if QM.cardinal t.transit > 0 then
+  if not (QM.is_empty t.transit) then
     Logs.debug (fun m -> m "retry timer with %d entries" (QM.cardinal t.transit)) ;
   List.fold_left (fun (t, out_a, out_q) (key, (c, retry, proto, zone, edns, qs, _port, _query, id)) ->
       if Int64.sub ts c < retry_interval then
