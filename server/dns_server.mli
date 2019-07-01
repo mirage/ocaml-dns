@@ -65,6 +65,11 @@ module Primary : sig
   (** [with_data s now ts trie] replaces the current data with [trie] in [s].
       The returned notifications should be send out. *)
 
+  val with_keys : s -> Ptime.t -> int64 -> ('a Domain_name.t * Dnskey.t) list ->
+    s * (Ipaddr.V4.t * Cstruct.t) list
+  (** [with_keys s now ts keys] replaces the current keys with [keys] in [s],
+      and generates notifications. *)
+
   val create : ?keys:('a Domain_name.t * Dnskey.t) list ->
     ?a:Authentication.a list -> ?tsig_verify:Tsig_op.verify ->
     ?tsig_sign:Tsig_op.sign -> rng:(int -> Cstruct.t) -> Dns_trie.t -> s

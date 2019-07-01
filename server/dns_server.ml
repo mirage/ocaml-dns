@@ -743,6 +743,69 @@ module Primary = struct
     let m' = update_trie_cache m t.data in
     ({ t with data }, m', l, n''), out @ out'
 
+  let with_keys (t, m, l, n) now ts keys =
+    let auth = Authentication.of_keys keys in
+    let old, au = t.auth in
+    (* need to diff the old and new keys *)
+    let added =
+      Dns_trie.fold Rr_map.Dnskey auth (fun name _ acc ->
+          match Dns_trie.lookup name Rr_map.Dnskey old with
+          | Ok _ -> acc
+          | Error _ -> Domain_name.Set.add name acc) Domain_name.Set.empty
+    and removed =
+      Dns_trie.fold Rr_map.Dnskey old (fun name _ acc ->
+          match Dns_trie.lookup name Rr_map.Dnskey auth with
+          | Ok _ -> acc
+          | Error _ -> Domain_name.Set.add name acc) Domain_name.Set.empty
+    in
+    (* drop all removed keys from connections & notifications *)
+    let l' = Domain_name.Host_map.fold (fun name v acc ->
+        match List.filter (fun (n, _) -> not (Domain_name.Set.mem n removed)) v with
+        | [] -> acc
+        | v' -> Domain_name.Host_map.add name v' acc)
+        l Domain_name.Host_map.empty
+    and n' = IPM.fold (fun ip m acc ->
+        let m' = Domain_name.Host_map.fold (fun name v acc ->
+            match v with
+            | _, _, _, _, Some key when Domain_name.Set.mem key removed -> acc
+            | _ -> Domain_name.Host_map.add name v acc)
+            m Domain_name.Host_map.empty
+        in
+        if Domain_name.Host_map.is_empty m' then acc else IPM.add ip m' acc)
+        n IPM.empty
+    in
+    let t' = { t with auth = (auth, au) } in
+    (* for new transfer keys, send notifies out (with respective zone) *)
+    let n'', outs =
+      Domain_name.Set.fold (fun key (ns, out) ->
+          match Authentication.find_zone_ips key with
+          | Some (zone, _, Some secondary) ->
+            let notify =
+              if Domain_name.(equal zone root) then
+                Dns_trie.fold Soa t'.data (fun name soa n -> (name, soa)::n) []
+              else
+                match Dns_trie.lookup zone Rr_map.Soa t'.data with
+                | Error _ -> []
+                | Ok soa -> [zone, soa]
+            in
+            List.fold_left (fun (ns, outs) (name, soa) ->
+                match Domain_name.host name with
+                | Error (`Msg msg) ->
+                  Log.warn (fun m -> m "non-hostname notification %a: %s"
+                               Domain_name.pp name msg);
+                  ns, outs
+                | Ok host ->
+                  let ns, out =
+                    let key = Some key in
+                    Notification.notify_one ns t' now ts host soa secondary key
+                  in
+                  ns, out :: outs)
+              (ns, out) notify
+          | _ -> ns, out)
+        added (n', [])
+    in
+    (t', m, l', n''), outs
+
   let create ?(keys = []) ?(a = []) ?tsig_verify ?tsig_sign ~rng data =
     let keys = Authentication.of_keys keys in
     let t = create ?tsig_verify ?tsig_sign data (keys, a) rng in
