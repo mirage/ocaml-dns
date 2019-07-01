@@ -5,8 +5,7 @@ let find_or_generate_key key_filename bits seed =
   Bos.OS.File.exists key_filename >>= function
   | true ->
     Bos.OS.File.read key_filename >>= fun data ->
-    (try Ok (X509.Encoding.Pem.Private_key.of_pem_cstruct1 (Cstruct.of_string data)) with
-     | _ -> Error (`Msg "while parsing private key file"))
+    X509.Private_key.decode_pem (Cstruct.of_string data)
   | false ->
     let key =
       let g =
@@ -18,7 +17,7 @@ let find_or_generate_key key_filename bits seed =
       in
       `RSA (Nocrypto.Rsa.generate ?g bits)
     in
-    let pem = X509.Encoding.Pem.Private_key.to_pem_cstruct1 key in
+    let pem = X509.Private_key.encode_pem key in
     Bos.OS.File.write ~mode:0o600 key_filename (Cstruct.to_string pem) >>= fun () ->
     Ok key
 
@@ -53,15 +52,17 @@ let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
   (Bos.OS.File.exists csr_filename >>= function
     | true ->
       Bos.OS.File.read csr_filename >>= fun data ->
-      (try Ok (X509.Encoding.Pem.Certificate_signing_request.of_pem_cstruct1 (Cstruct.of_string data)) with
-       | _ -> Error (`Msg "while parsing certificate signing request"))
+      X509.Signing_request.decode_pem (Cstruct.of_string data)
     | false ->
       find_or_generate_key key_filename bits seed >>= fun key ->
-      let req = X509.CA.request [ `CN (Domain_name.to_string hostname) ] key in
-      let pem = X509.Encoding.Pem.Certificate_signing_request.to_pem_cstruct1 req in
+      let cn =
+        X509.Distinguished_name.(singleton CN (Domain_name.to_string hostname))
+      in
+      let req = X509.Signing_request.create cn key in
+      let pem = X509.Signing_request.encode_pem req in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
       Ok req) >>= fun req ->
-  let public_key = (X509.CA.info req).X509.CA.public_key in
+  let public_key = X509.Signing_request.((info req).public_key) in
   (* before doing anything, let's check whether cert_filename is present, matches public key, and is valid *)
   let tomorrow =
     let (d, ps) = Ptime_clock.now_d_ps () in
@@ -70,18 +71,19 @@ let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
   (Bos.OS.File.exists cert_filename >>= function
     | true ->
       Bos.OS.File.read cert_filename >>= fun data ->
-      (try Ok (Some (X509.Encoding.Pem.Certificate.of_pem_cstruct1 (Cstruct.of_string data))) with
-       | _ -> Error (`Msg "while parsing certificate"))
+      X509.Certificate.decode_pem (Cstruct.of_string data) >>| fun cert ->
+      Some cert
     | false -> Ok None) >>= (function
-      | Some cert when not force
-                       && Cstruct.equal (X509.key_id (X509.public_key cert)) (X509.key_id public_key)
-                       && Ptime.is_later (snd (X509.validity cert)) ~than:tomorrow ->
+      | Some cert when
+          not force
+          && Cstruct.equal X509.(Public_key.id (Certificate.public_key cert)) (X509.Public_key.id public_key)
+          && Ptime.is_later (snd (X509.Certificate.validity cert)) ~than:tomorrow ->
         Error (`Msg "valid certificate with matching key already present")
       | _ -> Ok ()) >>= fun () ->
   (* strategy: unless force is provided, we can request DNS, and if a
      certificate is present, compare its public key with csr public key *)
   let write_certificate cert =
-    let cert = X509.Encoding.Pem.Certificate.to_pem_cstruct1 cert in
+    let cert = X509.Certificate.encode_pem cert in
     Bos.OS.File.delete cert_filename >>= fun () ->
     Bos.OS.File.write cert_filename (Cstruct.to_string cert)
   in
