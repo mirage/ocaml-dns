@@ -62,10 +62,11 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       | None -> Lwt.return_unit
       | Some n -> on_notify n t >>= function
         | None -> Lwt.return_unit
-        | Some trie ->
-          let state', outs = Dns_server.Primary.with_data t now ts trie in
-          state := state';
-          Lwt_list.iter_p (send_notify recv_task) outs
+        | Some (trie, keys) ->
+          let state', outs = Dns_server.Primary.with_keys t now ts keys in
+          let state'', outs' = Dns_server.Primary.with_data state' now ts trie in
+          state := state'';
+          Lwt_list.iter_p (send_notify recv_task) (outs @ outs')
     in
 
     let rec recv_task ip port flow () =
