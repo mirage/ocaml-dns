@@ -65,23 +65,17 @@ let namekey_c =
     match Dns.Dnskey.name_key_of_string s with
     | Error (`Msg m) -> `Error ("failed to parse key: " ^ m)
     | Ok (name, key) ->
-      let rec go idx =
-        if idx = 0 then
-          idx
-        else
-          let lbl = Domain_name.get_label_exn name idx in
-          if lbl = "_update" || lbl = "_transfer" then
-            succ idx
-          else
-            go (pred idx)
+      let is_op s =
+        Domain_name.(equal_label s "_update" || equal_label s "_transfer")
       in
-      let l = pred (Domain_name.count_labels name) in
-      let idx = go l in
+      let amount = match Domain_name.find_label ~rev:true name is_op with
+        | None -> 0
+        | Some x -> x
+      in
       match
-        Domain_name.drop_label ~amount:idx name >>=
-        Domain_name.host
+        Domain_name.drop_label ~amount name >>= Domain_name.host
       with
-      | Error (`Msg m) -> `Error ("failed to parse zone (idx " ^ string_of_int idx ^ "): " ^ m)
+      | Error (`Msg m) -> `Error ("failed to parse zone (idx " ^ string_of_int amount ^ "): " ^ m)
       | Ok zone -> `Ok (name, zone, key)
   in
   parse, fun ppf (name, zone, key) -> Fmt.pf ppf "key name %a zone %a dnskey %a"
