@@ -407,7 +407,7 @@ let find_nearest_ns rng ts t name =
       let host = Domain_name.raw ns in
       match pick (find_a host) with
       | None ->
-        if Domain_name.sub ~subdomain:ns ~domain:nam then
+        if Domain_name.is_subdomain ~subdomain:ns ~domain:nam then
           (* we actually need glue *)
           or_root go nam
         else

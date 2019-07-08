@@ -4,7 +4,7 @@ open Dns
 
 module O = struct
   type t = string
-  let compare = Domain_name.compare_sub
+  let compare = Domain_name.compare_label
 end
 module M = Map.Make(O)
 
@@ -272,7 +272,7 @@ let check trie =
             let domain = match state' with `None -> name | `Soa zone -> zone in
             Domain_name.Host_set.fold (fun name r ->
                 r >>= fun () ->
-                if Domain_name.sub ~subdomain:name ~domain then
+                if Domain_name.is_subdomain ~subdomain:name ~domain then
                   guard (has_address name) (`Missing_address name)
                 else
                   Ok ()) names (Ok ())
@@ -287,7 +287,7 @@ let check trie =
             let domain = match state' with `None -> name | `Soa zone -> zone in
             Rr_map.Mx_set.fold (fun { mail_exchange ; _ } r ->
                 r >>= fun () ->
-                if Domain_name.sub ~subdomain:mail_exchange ~domain then
+                if Domain_name.is_subdomain ~subdomain:mail_exchange ~domain then
                   guard (has_address mail_exchange) (`Missing_address mail_exchange)
                 else
                   Ok ())

@@ -10,7 +10,7 @@ let load_zone zone =
   Bos.OS.File.read Fpath.(v zone) >>= fun data ->
   Dns_zone.parse data >>= fun rrs ->
   let domain = Domain_name.of_string_exn Fpath.(basename (v zone)) in
-  (if not (Domain_name.Map.for_all (fun name _ -> Domain_name.sub ~domain ~subdomain:name) rrs) then
+  (if not (Domain_name.Map.for_all (fun name _ -> Domain_name.is_subdomain ~domain ~subdomain:name) rrs) then
      Error (`Msg (Fmt.strf "an entry of %a is not in its zone, won't handle this@.%a"
                     Domain_name.pp domain Dns.Name_rr_map.pp rrs))
    else

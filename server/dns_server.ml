@@ -150,8 +150,8 @@ module Authentication = struct
       let root = Domain_name.of_string_exn op_string
       and zone = Domain_name.prepend_label_exn zone op_string
       in
-      Domain_name.sub ~subdomain ~domain:zone
-      || Domain_name.sub ~subdomain ~domain:root
+      Domain_name.is_subdomain ~subdomain ~domain:zone
+      || Domain_name.is_subdomain ~subdomain ~domain:root
 
   let authorise (data, authorised) proto ?key ~zone operation =
     List.exists (fun a -> a data proto ?key operation ~zone) authorised
@@ -606,7 +606,7 @@ module Notification = struct
         | None -> None
 end
 
-let in_zone zone name = Domain_name.sub ~subdomain:name ~domain:zone
+let in_zone zone name = Domain_name.is_subdomain ~subdomain:name ~domain:zone
 
 let update_data trie zone (prereq, update) =
   let in_zone = in_zone zone in
@@ -961,7 +961,7 @@ module Secondary = struct
                     let keyname = Domain_name.raw keyname in
                     if
                       Authentication.is_op `Transfer keyname &&
-                      Domain_name.sub ~domain:name ~subdomain:keyname
+                      Domain_name.is_subdomain ~domain:name ~subdomain:keyname
                     then begin
                       Log.app (fun m -> m "adding zone %a with key %a and ip %a"
                                   Domain_name.pp name Domain_name.pp keyname
@@ -1226,7 +1226,7 @@ module Secondary = struct
 
   let rrs_in_zone zone rr_map =
     Domain_name.Map.filter
-      (fun name _ -> Domain_name.sub ~subdomain:name ~domain:zone)
+      (fun name _ -> Domain_name.is_subdomain ~subdomain:name ~domain:zone)
       rr_map
 
   let handle_axfr t zones ts keyname header zone ((fresh_soa, fresh_zone) as axfr) =
