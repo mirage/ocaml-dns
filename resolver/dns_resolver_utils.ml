@@ -25,7 +25,7 @@ let _invalid_soa_map name =
 
 let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
   (* maybe should be passed explicitly (when we don't do qname minimisation) *)
-  let in_bailiwick name = Domain_name.sub ~domain:bailiwick ~subdomain:name in
+  let in_bailiwick name = Domain_name.is_subdomain ~domain:bailiwick ~subdomain:name in
   (* ANSWER *)
   let answers, anames =
     match Domain_name.Map.find q_name answer with
@@ -43,7 +43,7 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
         let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAuthority else Additional in
         match
           Domain_name.Map.fold (fun name rr_map acc ->
-              if Domain_name.sub ~subdomain:q_name ~domain:name then
+              if Domain_name.is_subdomain ~subdomain:q_name ~domain:name then
                 match Rr_map.find Soa rr_map with
                 | Some soa -> (name, soa) :: acc
                 | None -> acc

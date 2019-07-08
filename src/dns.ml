@@ -1835,8 +1835,8 @@ module Rr_map = struct
     let name : type a . a Domain_name.t -> string = fun n ->
       let n = Domain_name.raw n in
       match origin with
-      | Some (domain, amount) when Domain_name.sub ~subdomain:n ~domain ->
-        let n' = Domain_name.drop_label_exn ~back:true ~amount n in
+      | Some (domain, amount) when Domain_name.is_subdomain ~subdomain:n ~domain ->
+        let n' = Domain_name.drop_label_exn ~rev:true ~amount n in
         if Domain_name.equal n' Domain_name.root then
           "@"
         else

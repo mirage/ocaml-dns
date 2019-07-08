@@ -167,7 +167,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         (name, zone, key)
       | Error (`Msg m) -> invalid_arg ("failed to parse dnskey: " ^ m)
     in
-    let not_sub subdomain = not (Domain_name.sub ~subdomain ~domain:zone) in
+    let not_sub subdomain = not (Domain_name.is_subdomain ~subdomain ~domain:zone) in
     if not_sub hostname || List.exists not_sub additional_hostnames then
       Lwt.fail_with "hostname not a subdomain of zone provided by dns_key"
     else
