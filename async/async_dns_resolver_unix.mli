@@ -17,7 +17,6 @@
 
 (** Async DNS resolution interface on Unix *)
 
-open !Core
 open !Async
 
 val gethostbyname :
