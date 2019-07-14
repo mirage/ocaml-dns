@@ -1,3 +1,6 @@
+### v1.1.3 (2019-07-16)
+* Support domain-name.0.3.0 interface (@avsm)
+
 ### v1.1.2 (2019-02-28)
 
 * Mirage: adapt to mirage-kv 2.0.0 interface (#156 by @samoht)
