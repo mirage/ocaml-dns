@@ -41,6 +41,8 @@ depends: [
   "base64" {>= "3.0.0"}
   "hashcons"
   "result"
+  "mmap" {with-test}
+  "bigarray-compat" {with-test}
   "pcap-format" {with-test}
   "ounit" {with-test}
 ]

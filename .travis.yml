@@ -9,6 +9,7 @@ env:
    - PINS="mirage-dns:. dns-async:. dns-lwt:. dns-lwt-unix:."
    - PACKAGE="dns"
    - DEPOPTS="dns-async dns-lwt dns-lwt-unix"
+   - PRE_INSTALL_HOOK="cd /home/opam/opam-repository && git pull origin master && opam update -u -y"
  matrix:
    - DISTRO=debian-stable OCAML_VERSION=4.03
    - DISTRO=debian-testing OCAML_VERSION=4.04

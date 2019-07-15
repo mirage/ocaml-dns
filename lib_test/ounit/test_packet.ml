@@ -38,7 +38,7 @@ type udpv4 = {
 
 let load_pcap path =
   let fd = Unix.(openfile path [O_RDONLY] 0) in
-  let buf = Bigarray.(Array1.map_file fd Bigarray.char c_layout false (-1)) in
+  let buf = Bigarray.(array1_of_genarray (Mmap.V1.map_file fd Bigarray.char c_layout false [|-1|])) in
   let buf = Cstruct.of_bigarray buf in
   let header, body = Cstruct.split buf Pcap.sizeof_pcap_header in
   match Pcap.detect header with
