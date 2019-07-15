@@ -1,5 +1,7 @@
 ### v1.1.3 (2019-07-16)
-* Support domain-name.0.3.0 interface (@avsm)
+
+* Support domain-name.0.3.0 interface, which bumps the minimum
+  OCaml version supported to 4.04 due to that dependency (@avsm)
 * Fix tests with recent OCaml (use mmap/bigarray-compat) (@avsm)
 
 ### v1.1.2 (2019-02-28)
