@@ -124,7 +124,7 @@ you will have to pin the same *version* for all of them:
 ```csh
 : csh syntax
 set version=2.0.0
-set repo=git+https://github.com/roburio/dns.git
+set repo=git+https://github.com/mirage/ocaml-dns.git
 
 # the -y parameter means "force" or
 # "do go ahead and register a new package"
@@ -142,7 +142,7 @@ end
 ```bash
 : bash syntax
 version=2.0.0
-repo=git+https://github.com/roburio/dns.git
+repo=git+https://github.com/mirage/ocaml-dns.git
 
 for pkg in dns dns-{certify,cli,client{,-lwt,-unix}} \
            dns-mirage{,-certify,-client,-resolver,-server} \
