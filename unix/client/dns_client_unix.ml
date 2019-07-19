@@ -9,14 +9,19 @@ module Uflow : Dns_client_flow.S
    and type stack = unit
    and type (+'a,+'b) io = ('a,[> `Msg of string]as 'b) result
 = struct
-  type io_addr = Unix.inet_addr * int
+  type io_addr =
+    [ `Bool of Unix.socket_bool_option * bool
+    | `Int of Unix.socket_int_option * int
+    | `Intopt of Unix.socket_optint_option * int option
+    | `Float of Unix.socket_float_option * float
+    ] list * Unix.inet_addr * int
   type ns_addr = [`TCP | `UDP] * io_addr
   type stack = unit
   type flow = Unix.file_descr
   type t = { nameserver : ns_addr }
   type (+'a,+'b) io = ('a,'b) result constraint 'b = [> `Msg of string]
 
-  let create ?(nameserver = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)) () =
+  let create ?(nameserver = `TCP, ([], Unix.inet_addr_of_string "91.239.100.100", 53)) () =
     { nameserver }
 
   let nameserver { nameserver } = nameserver
@@ -28,13 +33,19 @@ module Uflow : Dns_client_flow.S
   open Rresult
 
   let connect ?nameserver:ns t =
-    let proto, (server, port) = match ns with None -> nameserver t | Some x -> x in
+    let proto, (sockopts, server, port) = match ns with None -> nameserver t | Some x -> x in
     begin match proto with
       | `UDP -> Ok Unix.((getprotobyname "udp").p_proto)
       | `TCP -> Ok Unix.((getprotobyname "tcp").p_proto)
     end >>= fun proto_number ->
     let socket = Unix.socket PF_INET SOCK_STREAM proto_number in
     let addr = Unix.ADDR_INET (server, port) in
+    let () = sockopts |> List.iter (function
+        | `Bool (o,b) -> Unix.setsockopt socket o b
+        | `Float (o,f) -> Unix.setsockopt_float socket o f
+        | `Int (o,i) -> Unix.setsockopt_int socket o i
+        | `Intopt (o,i) -> Unix.setsockopt_optint socket o i
+      ) in
     Unix.connect socket addr ;
     Ok socket
 
