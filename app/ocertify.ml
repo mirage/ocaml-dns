@@ -99,32 +99,29 @@ let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
      | Error (`Msg m) -> Error (`Msg m)
      | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
        Error (`Msg (Fmt.strf "error %a while parsing TLSA reply" Dns_certify.pp_q_err e)))
-  >>= fun send_update ->
-  if send_update then
+  >>= function
+  | false -> Ok ()
+  | true ->
     match dns_key_opt with
     | None -> Error (`Msg "no dnskey provided, but required for uploading CSR")
     | Some (keyname, zone, dnskey) ->
       nsupdate_csr sock hostname keyname zone dnskey req >>= fun () ->
       let rec request retries =
-        if retries = 0 then
-          Error (`Msg "failed to request certificate")
-        else
-          match query_certificate sock public_key hostname with
-          | Error `No_tlsa ->
-            Logs.warn (fun m -> m "still no tlsa, sleeping two more seconds");
-            Unix.sleep 2;
-            request (pred retries)
-          | Error (`Msg msg) ->
-            Logs.err (fun m -> m "error %s" msg);
-            Error (`Msg msg)
-          | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
-            Logs.err (fun m -> m "error %a while handling TLSA reply (retrying anyways)" Dns_certify.pp_q_err e);
-            request (pred retries)
-          | Ok x -> write_certificate x
+        match query_certificate sock public_key hostname with
+        | Error (`Msg msg) -> Error (`Msg msg)
+        | Error #Dns_certify.q_err when retries = 0 ->
+          Error (`Msg "failed to retrieve certificate (tried 10 times)")
+        | Error `No_tlsa ->
+          Logs.warn (fun m -> m "still no tlsa, sleeping two more seconds");
+          Unix.sleep 2;
+          request (pred retries)
+        | Error (#Dns_certify.q_err as e) ->
+          Logs.err (fun m -> m "error %a while handling TLSA reply (retrying)"
+                       Dns_certify.pp_q_err e);
+          request (pred retries)
+        | Ok x -> write_certificate x
       in
       request 10
-  else
-    Ok ()
 
 open Cmdliner
 
