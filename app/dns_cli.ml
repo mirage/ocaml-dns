@@ -62,14 +62,21 @@ let ip_c : Ipaddr.V4.t Arg.converter =
 let namekey_c =
   let parse s =
     let open Rresult.R.Infix in
-    match
-      Dns.Dnskey.name_key_of_string s >>= fun (name, key) ->
-      Domain_name.drop_label ~amount:2 name >>= fun zone ->
-      Domain_name.host zone >>| fun zone ->
-      (name, zone, key)
-    with
+    match Dns.Dnskey.name_key_of_string s with
     | Error (`Msg m) -> `Error ("failed to parse key: " ^ m)
-    | Ok a -> `Ok a
+    | Ok (name, key) ->
+      let is_op s =
+        Domain_name.(equal_label s "_update" || equal_label s "_transfer")
+      in
+      let amount = match Domain_name.find_label ~rev:true name is_op with
+        | None -> 0
+        | Some x -> x
+      in
+      match
+        Domain_name.drop_label ~amount name >>= Domain_name.host
+      with
+      | Error (`Msg m) -> `Error ("failed to parse zone (idx " ^ string_of_int amount ^ "): " ^ m)
+      | Ok zone -> `Ok (name, zone, key)
   in
   parse, fun ppf (name, zone, key) -> Fmt.pf ppf "key name %a zone %a dnskey %a"
       Domain_name.pp name Domain_name.pp zone Dns.Dnskey.pp key

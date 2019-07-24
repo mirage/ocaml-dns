@@ -40,7 +40,7 @@ let nsupdate_csr sock host keyname zone dnskey csr =
     | Ok () -> Ok ()
     | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Dns_certify.pp_u_err e))
 
-let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cert force =
+let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
   Nocrypto_entropy_unix.initialize ();
   let fn suffix = function
     | None -> Fpath.(v (Domain_name.to_string hostname) + suffix)
@@ -99,29 +99,29 @@ let jump _ server_ip port (keyname, zone, dnskey) hostname csr key seed bits cer
      | Error (`Msg m) -> Error (`Msg m)
      | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
        Error (`Msg (Fmt.strf "error %a while parsing TLSA reply" Dns_certify.pp_q_err e)))
-  >>= fun send_update ->
-  if send_update then
-    nsupdate_csr sock hostname keyname zone dnskey req >>= fun () ->
-    let rec request retries =
-      if retries = 0 then
-        Error (`Msg "failed to request certificate")
-      else
+  >>= function
+  | false -> Ok ()
+  | true ->
+    match dns_key_opt with
+    | None -> Error (`Msg "no dnskey provided, but required for uploading CSR")
+    | Some (keyname, zone, dnskey) ->
+      nsupdate_csr sock hostname keyname zone dnskey req >>= fun () ->
+      let rec request retries =
         match query_certificate sock public_key hostname with
+        | Error (`Msg msg) -> Error (`Msg msg)
+        | Error #Dns_certify.q_err when retries = 0 ->
+          Error (`Msg "failed to retrieve certificate (tried 10 times)")
         | Error `No_tlsa ->
           Logs.warn (fun m -> m "still no tlsa, sleeping two more seconds");
           Unix.sleep 2;
           request (pred retries)
-        | Error (`Msg msg) ->
-          Logs.err (fun m -> m "error %s" msg);
-          Error (`Msg msg)
-        | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
-          Logs.err (fun m -> m "error %a while handling TLSA reply (retrying anyways)" Dns_certify.pp_q_err e);
+        | Error (#Dns_certify.q_err as e) ->
+          Logs.err (fun m -> m "error %a while handling TLSA reply (retrying)"
+                       Dns_certify.pp_q_err e);
           request (pred retries)
         | Ok x -> write_certificate x
-    in
-    request 10
-  else
-    Ok ()
+      in
+      request 10
 
 open Cmdliner
 
@@ -135,11 +135,11 @@ let port =
 
 let dns_key =
   let doc = "nsupdate key (name:alg:b64key, where name is YYY._update.zone)" in
-  Arg.(required & pos 1 (some Dns_cli.namekey_c) None & info [] ~doc ~docv:"KEY")
+  Arg.(value & opt (some Dns_cli.namekey_c) None & info [ "dns-key" ] ~doc ~docv:"KEY")
 
 let hostname =
   let doc = "Hostname (FQDN) to issue a certificate for" in
-  Arg.(required & pos 2 (some Dns_cli.name_c) None & info [] ~doc ~docv:"HOSTNAME")
+  Arg.(required & pos 1 (some Dns_cli.name_c) None & info [] ~doc ~docv:"HOSTNAME")
 
 let csr =
   let doc = "certificate signing request filename (defaults to hostname.req)" in
@@ -168,7 +168,7 @@ let force =
 let ocertify =
   let doc = "ocertify requests a signed certificate" in
   let man = [ `S "BUGS"; `P "Submit bugs to me";] in
-  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ dns_key $ hostname $ csr $ key $ seed $ bits $ cert $ force)),
+  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ hostname $ dns_key $ csr $ key $ seed $ bits $ cert $ force)),
   Term.info "ocertify" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () = match Term.eval ocertify with `Ok () -> exit 0 | _ -> exit 1
