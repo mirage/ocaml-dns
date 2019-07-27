@@ -14,7 +14,7 @@ depends: [
   "dns-tsig" {= version}
   "randomconv"
   "duration"
-  "x509"
+  "x509" {>= "0.7.0"}
 ]
 
 build: [

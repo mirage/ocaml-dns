@@ -20,7 +20,7 @@ depends: [
   "bos"
   "cmdliner" {>= "1.0.0"}
   "fpath"
-  "x509"
+  "x509" {>= "0.7.0"}
   "nocrypto"
   "hex"
   "ptime"

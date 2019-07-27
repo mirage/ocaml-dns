@@ -24,7 +24,7 @@ let nsupdate rng now ~host ~keyname ~zone dnskey csr =
       { Tlsa.cert_usage = Domain_issued_certificate ;
         selector = Private ;
         matching_type = No_hash ;
-        data = X509.Encoding.cs_of_signing_request csr ;
+        data = X509.Signing_request.encode_der csr ;
       }
     in
     let zone = Packet.Question.create zone Soa
@@ -76,10 +76,11 @@ let query rng public_key host =
       && tlsa.matching_type = No_hash
     in
     let parse tlsa =
-      match X509.Encoding.parse tlsa.Tlsa.data with
-      | Some cert ->
-        let keys_equal a b = Cstruct.equal (X509.key_id a) (X509.key_id b) in
-        if keys_equal (X509.public_key cert) public_key then
+      match X509.Certificate.decode_der tlsa.Tlsa.data with
+      | Ok cert ->
+        let keys_equal a b =
+          Cstruct.equal (X509.Public_key.id a) (X509.Public_key.id b) in
+        if keys_equal (X509.Certificate.public_key cert) public_key then
           Some cert
         else
           None
