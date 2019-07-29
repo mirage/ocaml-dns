@@ -70,7 +70,7 @@ let namekey_c =
       in
       let amount = match Domain_name.find_label ~rev:true name is_op with
         | None -> 0
-        | Some x -> x
+        | Some x -> succ x
       in
       match
         Domain_name.drop_label ~amount name >>= Domain_name.host
