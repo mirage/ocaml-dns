@@ -1536,21 +1536,23 @@ module Rr_map = struct
     let compare = int_compare
   end
 
+  type 'a with_ttl = int32 * 'a
+
   type _ rr =
     | Soa : Soa.t rr
-    | Ns : (int32 * Domain_name.Host_set.t) rr
-    | Mx : (int32 * Mx_set.t) rr
-    | Cname : (int32 * Cname.t) rr
-    | A : (int32 * Ipv4_set.t) rr
-    | Aaaa : (int32 * Ipv6_set.t) rr
-    | Ptr : (int32 * Ptr.t) rr
-    | Srv : (int32 * Srv_set.t) rr
-    | Dnskey : (int32 * Dnskey_set.t) rr
-    | Caa : (int32 * Caa_set.t) rr
-    | Tlsa : (int32 * Tlsa_set.t) rr
-    | Sshfp : (int32 * Sshfp_set.t) rr
-    | Txt : (int32 * Txt_set.t) rr
-    | Unknown : I.t -> (int32 * Txt_set.t) rr
+    | Ns : Domain_name.Host_set.t with_ttl rr
+    | Mx : Mx_set.t with_ttl rr
+    | Cname : Cname.t with_ttl rr
+    | A : Ipv4_set.t with_ttl rr
+    | Aaaa : Ipv6_set.t with_ttl rr
+    | Ptr : Ptr.t with_ttl rr
+    | Srv : Srv_set.t with_ttl rr
+    | Dnskey : Dnskey_set.t with_ttl rr
+    | Caa : Caa_set.t with_ttl rr
+    | Tlsa : Tlsa_set.t with_ttl rr
+    | Sshfp : Sshfp_set.t with_ttl rr
+    | Txt : Txt_set.t with_ttl rr
+    | Unknown : I.t -> Txt_set.t with_ttl rr
 
   module K = struct
     type 'a t = 'a rr
