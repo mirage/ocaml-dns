@@ -271,8 +271,8 @@ module Name = struct
   (*
   (* enable once https://github.com/ocaml/dune/issues/897 is resolved *)
   let%expect_test "decode_name" =
-    let test ?hostname ?(map = Int_map.empty) ?(off = 0) data rmap roff =
-      match decode ?hostname map (Cstruct.of_string data) ~off with
+    let test ?(map = Int_map.empty) ?(off = 0) data rmap roff =
+      match decode map (Cstruct.of_string data) ~off with
       | Error _ -> Format.printf "decode error"
       | Ok (name, omap, ooff) ->
         begin match Int_map.equal (fun (n, off) (n', off') ->
@@ -283,8 +283,8 @@ module Name = struct
           | _, false -> Format.printf "offset mismatch"
         end
     in
-    let test_err ?hostname ?(map = Int_map.empty) ?(off = 0) data =
-      match decode ?hostname map (Cstruct.of_string data) ~off with
+    let test_err ?(map = Int_map.empty) ?(off = 0) data =
+      match decode map (Cstruct.of_string data) ~off with
       | Error _ -> Format.printf "error (as expected)"
       | Ok _ -> Format.printf "expected error, got ok"
     in
@@ -316,10 +316,10 @@ module Name = struct
     test "\003f23\000" map' 5;
     [%expect {|f23|}];
     let map' =
-      Int_map.add 0 (n_of_s ~hostname:false "23", 4)
+      Int_map.add 0 (n_of_s "23", 4)
         (Int_map.add 3 (Domain_name.root, 1) Int_map.empty)
     in
-    test ~hostname:false "\00223\000" map' 4;
+    test "\00223\000" map' 4;
     [%expect {|23|}];
     test_err "\003bar"; (* incomplete label *)
     [%expect {|error (as expected)|}];
@@ -337,12 +337,24 @@ module Name = struct
     [%expect {|error (as expected)|}];
     test_err "\x80"; (* bad tag 0x80 *)
     [%expect {|error (as expected)|}];
-    test_err "\001-\000"; (* bad content "-" at start of label *)
-    [%expect {|error (as expected)|}];
-    test_err "\005foo-+\000"; (* bad content foo-+ in label *)
-    [%expect {|error (as expected)|}];
-    test_err "\00223\000"; (* bad content 23 in label *)
-    [%expect {|error (as expected)|}];
+    let map' =
+      Int_map.add 0 (n_of_s "-", 3)
+        (Int_map.add 2 (Domain_name.root, 1) Int_map.empty)
+    in
+    test "\001-\000" map' 3; (* "-" at start of label *)
+    [%expect {|-|}];
+    let map' =
+      Int_map.add 0 (n_of_s "foo-+", 7)
+        (Int_map.add 6 (Domain_name.root, 1) Int_map.empty)
+    in
+    test "\005foo-+\000" map' 7; (* content foo-+ in label *)
+    [%expect {|foo-+|}];
+    let map' =
+      Int_map.add 0 (n_of_s "23", 4)
+        (Int_map.add 3 (Domain_name.root, 1) Int_map.empty)
+    in
+    test "\00223\000" map' 4; (* content 23 in label *)
+    [%expect {|23|}];
     (* longest allowed domain name *)
     let open Astring in
     let max = "s23456789012345678901234567890123456789012345678901234567890123" in
@@ -412,7 +424,7 @@ module Name = struct
     [%expect {|
 03 66 6f 6f 03 62 61 72  00 03 62 61 7a 03 66 6f
 6f 03 62 61 72 00|}]
-*)
+    *)
 end
 
 (* start of authority *)
@@ -2215,7 +2227,7 @@ module Packet = struct
       Cstruct.BE.set_uint16 buf 0 id ;
       Cstruct.BE.set_uint16 buf 2 header
 
-    (*
+(*
     let%expect_test "encode_decode_header" =
       let eq (hdr, query, op, rc) (hdr', query', op', rc') =
         compare hdr hdr' = 0 && rc = rc' && query = query' && op = op'
@@ -2294,7 +2306,9 @@ module Packet = struct
       [%expect {|ok|}];
       let data = Cstruct.of_hex "0000 000e 0000 0000 0000 0000" in
       test_err (decode data);
-      [%expect {|ok|}] *)
+      [%expect {|ok|}]
+   *)
+
   end
 
   let decode_ntc names buf off =

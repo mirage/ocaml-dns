@@ -15,7 +15,6 @@ depends: [
   "gmap" {>= "0.3.0"}
   "cstruct" {>= "3.2.0"}
   "ipaddr" {>= "3.0.0"}
-  "ppx_expect"
   "alcotest" {with-test}
 ]
 build: [
