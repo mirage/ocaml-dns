@@ -86,22 +86,6 @@ type proto = [ `Tcp | `Udp ]
 (** The type of supported protocols. Used by {!Packet.encode} to decide on
      maximum buffer length, etc. *)
 
-module Class : sig
-  type t =
-    (* Reserved0 [@id 0] RFC6895 *)
-    | IN (* RFC1035 *)
-    (* 2 Uassigned *)
-    | CHAOS (* D. Moon, "Chaosnet", A.I. Memo 628, Massachusetts Institute of Technology Artificial Intelligence Laboratory, June 1981. *)
-    | HESIOD (* Dyer, S., and F. Hsu, "Hesiod", Project Athena Technical Plan - Name Service, April 1987. *)
-    | NONE (* RFC2136 *)
-    | ANY_CLASS (* RFC1035 *)
-  (* 256-65279 Unassigned *)
-  (* 65280-65534 Reserved for Private Use [RFC6895] *)
-  (* ReservedFFFF [@id 65535] *)
-  val pp : t Fmt.t
-  val compare : t -> t -> int
-end
-
 module Opcode : sig
   type t =
     | Query (* RFC1035 *)

@@ -37,7 +37,7 @@ module Class = struct
     | NONE -> 254
     | ANY_CLASS -> 255
 
-  let compare a b = int_compare (to_int a) (to_int b)
+  let _compare a b = int_compare (to_int a) (to_int b)
 
   let of_int ?(off = 0) = function
     | 1 -> Ok IN
@@ -54,7 +54,7 @@ module Class = struct
     | NONE -> "NONE"
     | ANY_CLASS -> "ANY_CLASS"
 
-  let pp ppf c = Fmt.string ppf (to_string c)
+  let _pp ppf c = Fmt.string ppf (to_string c)
 end
 
 module Opcode = struct
@@ -3148,7 +3148,6 @@ module Packet = struct
                 `Query, names, off
             end
           | Opcode.Notify ->
-            (* TODO notify has some restrictions: Q=1, AN>=0 (must be SOA) *)
             guard (an_count = 0 || an_count = 1) (`Notify_answer_count an_count) >>= fun () ->
             guard (au_count = 0) (`Notify_authority_count au_count) >>= fun () ->
             Answer.decode header buf names off >>| fun ((ans, _), names, off, _, _) ->
