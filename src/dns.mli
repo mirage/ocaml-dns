@@ -8,12 +8,13 @@
    communication channels - so called {{!A}address} records. DNS has been
    deployed since 1985 on the Internet. It is a widely deployed, fault-tolerant,
    distributed key-value store with built-in caching mechanisms. The keys
-   are {{!Domain_name}domain names} and {{!Dns_enum.rr_typ}record type}, the
-   values are record sets. Each record set has a time-to-live associated with
-   it: the maximum time this entry may be cached. The
+   are {{!Domain_name}domain names} and {{!Rr_map.k}record types}, the
+   values are {{!Rr_map.rr}record sets}. Each record set has a time-to-live
+   associated with it: the maximum time this entry may be cached. The
    {{:https://github.com/hannesm/domain-name}domain name} library provides
-   operations on domain names, which have a restricted character set (letters,
-   digits, hyphen), and comparison is defined case-insensitively.
+   operations on domain names. Hostnames are domain names with further
+   restrictions: Only letters, digits, and hyphen are allowed. Domain name
+   comparison is usually done ignoring the case.
 
     A set of 13 authoritative name servers form the root zone which delegate
    authority for subdomains to registrars (using country codes, etc.), which
@@ -48,10 +49,10 @@
     This core µDNS library is used by various DNS components:
     {ul
     {- {!Dns_tsig} implements TSIG authentication}
-    {- {!Dns_server} implements the authoritative server logic}
-    {- {!Dns_client} implements a client API}
-    {- {!Dns_zonesfile} implements the zone file parser}
-    {- {!Dns_resolver} implements the resolver logic}}
+    {- {!Dns_server} implements an authoritative server}
+    {- {!Dns_client} implements a client}
+    {- {!Dns_zone} implements a zone file parser}
+    {- {!Dns_resolver} implements a recursive resolver}}
 
     These core libraries are pure, i.e. it is independent of network
    communnication, uses immutable values, and errors are explicit as {!result}
@@ -61,22 +62,24 @@
    needs to be called from a side-effecting layer.
 
     For the client library, several side-effecting layers are implemented:
-   [dns-client-unix] uses the blocking {!Unix} API, [dns-client-lwt] uses the
-   non-blocking {!Lwt}, and [dns-mirage-client] using MirageOS interfaces.
-   Unix command line utilities are provided in the [dns-cli] package.
+   [dns-client-unix] uses the blocking [Unix] API (distributed with the OCaml
+   runtime), [dns-client-lwt] uses the non-blocking [Lwt] API, and
+   [dns-mirage-client] using MirageOS interfaces. Unix command line utilities
+   are provided in the [dns-cli] package.
 
     For the server and resolver components, side-effecting implementations
    using MirageOS interfaces are provided in [dns-mirage-server] and
-   [dns-mirage-resolver]. Some
-   {{:https://github.com/roburio/unikernels}example unikernels} are provided
+   [dns-mirage-resolver].
+   {{:https://github.com/roburio/unikernels}Example unikernels} are provided
    externally, including authoritative primary and secondary servers, recursive
-   and stub resolvers.
-
-    The DNS protocol ({{!Txt}TXT} records) are used by the certificate authority
-   {{:https://letsencrypt}Let's Encrypt} to provision X.509 certificates which
-   are trusted by web browsers. µDNS together with
-   {{:https://github.com/mmaker/ocaml-letsencrypt}ocaml-letsencrypt} can be
-   used to provision certificate signing requests for your domain. The
+   and stub resolvers. The certificate authority
+   {{:https://letsencrypt}Let's Encrypt} implements a protocol (ACME) which
+   automatically provisions X.509 certificates (which are trusted by common
+   web browsers); one of the methods to produce proof of ownership is with a DNS
+   {{!Txt}TXT} record. Together with
+   {{:https://github.com/mmaker/ocaml-letsencrypt}ocaml-letsencrypt}, this DNS
+   library can be used to provision certificate signing requests for the
+   domain where you run an authoritative server. The
    certificate signing request and certificate are both stored as {{!Tlsa}TLSA}
    records in DNS.
 
@@ -86,65 +89,61 @@ type proto = [ `Tcp | `Udp ]
 (** The type of supported protocols. Used by {!Packet.encode} to decide on
      maximum buffer length, etc. *)
 
-module Class : sig
-  type t =
-    (* Reserved0 [@id 0] RFC6895 *)
-    | IN (* RFC1035 *)
-    (* 2 Uassigned *)
-    | CHAOS (* D. Moon, "Chaosnet", A.I. Memo 628, Massachusetts Institute of Technology Artificial Intelligence Laboratory, June 1981. *)
-    | HESIOD (* Dyer, S., and F. Hsu, "Hesiod", Project Athena Technical Plan - Name Service, April 1987. *)
-    | NONE (* RFC2136 *)
-    | ANY_CLASS (* RFC1035 *)
-  (* 256-65279 Unassigned *)
-  (* 65280-65534 Reserved for Private Use [RFC6895] *)
-  (* ReservedFFFF [@id 65535] *)
-  val pp : t Fmt.t
-  val compare : t -> t -> int
-end
+(** Opcode
 
+    Each DNS packet includes the kind of query, identified by a 4bit opcode.
+   This value is set by the originator of a query and copied into the
+   response. *)
 module Opcode : sig
   type t =
-    | Query (* RFC1035 *)
-    | IQuery (* Inverse Query, OBSOLETE) [RFC3425] *)
-    | Status (* RFC1035 *)
-    (* 3 Unassigned *)
-    | Notify (* RFC1996 *)
-    | Update (* RFC2136 *)
-      (* 6-15 Unassigned *)
+    | Query
+    | IQuery
+    | Status
+    | Notify
+    | Update
+  (** The type of opcodes. *)
+
   val pp : t Fmt.t
+  (** [pp ppf opcode] pretty-prints the [opcode] on [ppf]. *)
+
   val compare : t -> t -> int
+  (** [compare a b] compares the opcode [a] with [b], using the RFC-specified
+      integer representation of each opcode. *)
 end
 
+(** Response code
+
+    Each DNS reply includes a 4bit response code which signals the status of
+   the request. *)
 module Rcode : sig
   type t =
-    | NoError (* No Error,[RFC1035] *)
-    | FormErr (* Format Error,[RFC1035] *)
-    | ServFail (* Server Failure,[RFC1035] *)
-    | NXDomain (* Non-Existent Domain,[RFC1035] *)
-    | NotImp (* Not Implemented,[RFC1035] *)
-    | Refused (* Query Refused,[RFC1035] *)
-    | YXDomain (* Name Exists when it should not,[RFC2136][RFC6672] *)
-    | YXRRSet (* RR Set Exists when it should not,[RFC2136] *)
-    | NXRRSet (* RR Set that should exist does not,[RFC2136] *)
-    | NotAuth (* Server Not Authoritative for zone,[RFC2136]
-                 9,NotAuth,Not Authorized,[RFC2845] *)
-    | NotZone (* Name not contained in zone,[RFC2136] *)
-    (* 11-15,Unassigned *)
-    | BadVersOrSig (* 16,BADVERS,Bad OPT Version,[RFC6891]
-                      16,BADSIG,TSIG Signature Failure,[RFC2845] *)
-    | BadKey (* Key not recognized,[RFC2845] *)
-    | BadTime (* Signature out of time window,[RFC2845] *)
-    | BadMode (* BADMODE,Bad TKEY Mode,[RFC2930] *)
-    | BadName (* BADNAME,Duplicate key name,[RFC2930] *)
-    | BadAlg (* BADALG,Algorithm not supported,[RFC2930] *)
-    | BadTrunc (* BADTRUNC,Bad Truncation,[RFC4635] *)
-    | BadCookie (* BADCOOKIE,Bad/missing Server Cookie,[RFC7873] *)
-  (* 24-3840,Unassigned *)
-  (* 3841-4095,Reserved for Private Use,,[RFC6895] *)
-  (* 4096-65534,Unassigned *)
-  (* 65535,"Reserved, can be allocated by Standards Action",,[RFC6895] *)
+    | NoError
+    | FormErr
+    | ServFail
+    | NXDomain
+    | NotImp
+    | Refused
+    | YXDomain
+    | YXRRSet
+    | NXRRSet
+    | NotAuth
+    | NotZone
+    | BadVersOrSig
+    | BadKey
+    | BadTime
+    | BadMode
+    | BadName
+    | BadAlg
+    | BadTrunc
+    | BadCookie
+  (** The type of response codes. *)
+
   val pp : t Fmt.t
+  (** [pp ppf rcode] pretty-prints the [rcode] on [ppf]. *)
+
   val compare : t -> t -> int
+  (** [compare a b] compares the response code [a] with [b] using the
+      RFC-specified integer representation of response codes. *)
 end
 
 (** Start of authority
@@ -161,6 +160,7 @@ module Soa : sig
     expiry : int32 ;
     minimum : int32 ;
   }
+  (** The type of a start of authority. *)
 
   val create : ?serial:int32 -> ?refresh:int32 -> ?retry:int32 ->
     ?expiry:int32 -> ?minimum:int32 -> ?hostmaster:'a Domain_name.t ->
@@ -306,7 +306,7 @@ module Dnskey : sig
     | SHA256
     | SHA384
     | SHA512
-    (** The type of supported algorithms. *)
+  (** The type of currently supported DNS key algorithms. *)
 
   val int_to_algorithm : ?off:int -> int -> (algorithm, [> `Not_implemented of int * string ]) result
   (** [int_to_algorithm ~off i] tries to decode [i] to an [algorithm]. *)
@@ -366,31 +366,55 @@ module Tlsa : sig
     | Service_certificate_constraint
     | Trust_anchor_assertion
     | Domain_issued_certificate
+  (** The type of the certificate usage field. *)
 
   val cert_usage_to_int : cert_usage -> int
+  (** [cert_usage_to_int cu] is the 8 bit integer representation of [cu]. *)
+
   val int_to_cert_usage : ?off:int -> int ->
     (cert_usage, [> `Not_implemented of int * string ]) result
+  (** [int_to_cert_usage ~off i] attempts to convert [i] to a certificate
+     usage constructor. If successful, this is the result, otherwise an
+     Error is returned (with [off] as position). *)
+
   val pp_cert_usage : cert_usage Fmt.t
+  (** [pp_cert_usage ppf cu] pretty-prints the certificate usage on [ppf]. *)
 
   type selector =
     | Full_certificate
     | Subject_public_key_info
     | Private
+  (** The type of the selector. *)
 
   val selector_to_int : selector -> int
+  (** [selector_to_int s] is the 8 bit integer representation of [s]. *)
+
   val int_to_selector : ?off:int -> int ->
     (selector, [> `Not_implemented of int * string ]) result
+  (** [int_to_selector ~off i] attempts to convert [i] to a selector
+     constructor. If there is no such constructor known for the provided [i], an
+     Error is returned. *)
+
   val pp_selector : selector Fmt.t
+  (** [pp_selector ppf s] pretty-prints the selector [s] on [ppf]. *)
 
   type matching_type =
     | No_hash
     | SHA256
     | SHA512
+  (** The type of matching type. *)
 
   val matching_type_to_int : matching_type -> int
+  (** [matching_type_to_int m] is the 8 bit integer representation of [m]. *)
+
   val int_to_matching_type : ?off:int -> int ->
     (matching_type, [> `Not_implemented of int * string ]) result
+  (** [int_to_matching_type ~off i] attempts to convert [i] to a matching type
+     constructor. If there is no such constructor for the provided [i], an Error
+     is returned. *)
+
   val pp_matching_type : matching_type Fmt.t
+  (** [pp_matching_type ppf m] pretty-prints the matching type [m] on [ppf]. *)
 
   type t = {
     cert_usage : cert_usage ;
@@ -398,10 +422,15 @@ module Tlsa : sig
     matching_type : matching_type ;
     data : Cstruct.t ;
   }
+  (** The type of a TLSA record: certificate usage, selector, matching type,
+      and data. *)
 
   val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the TLSA record [t] on [ppf]. *)
 
   val compare : t -> t -> int
+  (** [compare a b] compare the TLSA record [a] with [b], comparing the
+      integer representations of the individual fields in order. *)
 end
 
 (** Secure shell fingerprint
@@ -415,41 +444,64 @@ module Sshfp : sig
     | Dsa
     | Ecdsa
     | Ed25519
+  (** The type of supported algorithms. *)
 
   val algorithm_to_int : algorithm -> int
+  (** [algorithm_to_int a] is the 8 bit integer representation of algorithm
+     [a]. *)
+
   val int_to_algorithm : ?off:int -> int ->
     (algorithm, [> `Not_implemented of int * string ]) result
+  (** [int_to_algorithm ~off i] is the algorithm constructor of [i], if
+     defined. Otherwise an Error is returned. *)
+
   val pp_algorithm : algorithm Fmt.t
+  (** [pp_algorithm ppf a] pretty-prints the algorithm [a] on [ppf]. *)
 
   type typ =
     | SHA1
     | SHA256
+  (** The type of supported SSH fingerprint types. *)
 
   val typ_to_int : typ -> int
+  (** [typ_to_int t] is the 8 bit integer representation of typ [t]. *)
+
   val int_to_typ : ?off:int -> int ->
     (typ, [> `Not_implemented of int * string ]) result
+  (** [int_to_typ ~off i] is the typ constructor of [i], if defined. Otherwise
+     an Error is returned. *)
+
   val pp_typ : typ Fmt.t
+  (** [pp_typ ppf t] pretty-prints the typ [t] on [ppf]. *)
 
   type t = {
     algorithm : algorithm ;
     typ : typ ;
     fingerprint : Cstruct.t ;
   }
+  (** The type of a SSH fingerprint record, consisting of algorithm, typ, and
+     actual fingerprint. *)
 
   val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the SSH fingerprint record [t] on [ppf]. *)
 
   val compare : t -> t -> int
+  (** [compare a b] compares the SSH fingerprint record [a] with [b] by
+      comparing the individual fields in order. *)
 end
 
 (** Text records *)
 module Txt : sig
   type t = string
+  (** The type of a Text record. *)
 
   val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the Text record [t] on [ppf]. *)
 
   val compare : t -> t -> int
+  (** [compare a b] compares the Text record [a] with [b] (using
+     [String.compare]). *)
 end
-
 
 (** Transaction signature
 
@@ -463,6 +515,18 @@ module Tsig : sig
     | SHA256
     | SHA384
     | SHA512
+  (** The type of supported signature algorithms. *)
+
+  val algorithm_to_name : algorithm -> [ `host ] Domain_name.t
+  (** [algorithm_to_name a] is the hostname of the algorithm. *)
+
+  val algorithm_of_name : ?off:int -> [ `host ] Domain_name.t ->
+    (algorithm, [> `Not_implemented of int * string ]) result
+  (** [algorithm_of_name ~off name] is the algorithm represented by [name], or
+     an Error if no such algorithm exist. *)
+
+  val pp_algorithm : algorithm Fmt.t
+  (** [pp_algorithm ppf a] pretty-prints the algorithm [a] on [ppf]. *)
 
   type t = private {
     algorithm : algorithm ;
@@ -473,37 +537,55 @@ module Tsig : sig
     error : Rcode.t ;
     other : Ptime.t option
   }
-
-  val algorithm_to_name : algorithm -> [ `host ] Domain_name.t
-
-  val algorithm_of_name : ?off:int -> [ `host ] Domain_name.t ->
-    (algorithm, [> `Not_implemented of int * string ]) result
-
-  val pp_algorithm : algorithm Fmt.t
+  (** The type of a transaction signature: algorithm, timestamp when it was
+     signed, the span it is valid for, the actual signature (mac), the original
+     DNS identifier, a potential error, and optionally the other timestamp (used
+     to signal non-synchronized clocks). *)
 
   val tsig : algorithm:algorithm -> signed:Ptime.t ->
     ?fudge:Ptime.span -> ?mac:Cstruct.t -> ?original_id:int ->
     ?error:Rcode.t -> ?other:Ptime.t -> unit -> t option
+  (** [tsig ~algorithm ~signed ~fudge ~mac ~original_id ~error ~other ()]
+     constructs a transaction signature [t] if possible (timestamp needs to
+     fit into 48 bit as seconds since Unix epoch). *)
 
   val with_mac : t -> Cstruct.t -> t
+  (** [with_mac t mac] updates [t] with [mac]. *)
 
   val with_error : t -> Rcode.t -> t
+  (** [with_error t err] updates [t] with [err]. *)
 
   val with_signed : t -> Ptime.t -> t option
+  (** [with_signed t ts] updates [t] with signed timestamp [ts], if [ts] fits
+     in the representation (seconds since Unix epoch in 48 bit). *)
 
   val with_other : t -> Ptime.t option -> t option
+  (** [with_other t ts] updates [t] with other timestamp [ts], if [ts] fits
+     in the representation (seconds since Unix epoch in 48 bit). *)
 
   val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the transaction signature [t] on [ppf]. *)
 
   val equal : t -> t -> bool
+  (** [equal a b] compares the transaction signature [a] with [b], and is [true]
+     if they are equal, [false] otherwise. *)
 
   val encode_raw : [ `raw ] Domain_name.t -> t -> Cstruct.t
+  (** [encode_raw name t] encodes the transaction signature [t] as resource
+     record using [name]. The mac is not included, this is used for computing
+     the signature. *)
 
   val encode_full : [ `raw ] Domain_name.t -> t -> Cstruct.t
+  (** [encode_full name t] encodes the transaction signature [t] as resource
+     record using [name]. *)
 
   val dnskey_to_tsig_algo : Dnskey.t -> (algorithm, [> `Msg of string ]) result
+  (** [dnskey_to_tsig_algo dnskey] is the TSIG algorithm of [dnskey], or an
+     Error. *)
 
   val valid_time : Ptime.t -> t -> bool
+  (** [valid_time ts t] checks whether the [signed] timestamp (within [fudge])
+     matches [ts]. *)
 end
 
 (** Extensions to DNS
@@ -519,6 +601,7 @@ module Edns : sig
     | Tcp_keepalive of int option
     | Padding of int
     | Extension of int * Cstruct.t
+  (** The type of supported extensions. *)
 
   type t = private {
     extended_rcode : int ;
@@ -527,22 +610,34 @@ module Edns : sig
     payload_size : int ;
     extensions : extension list ;
   }
+  (** The type of an EDNS record. *)
 
   val create : ?extended_rcode:int -> ?version:int -> ?dnssec_ok:bool ->
     ?payload_size:int -> ?extensions:extension list -> unit -> t
+  (** [create ~extended_rcode ~version ~dnssec_ok ~payload_size ~extensions ()]
+     constructs an EDNS record with the optionally provided data. The
+     [extended_rcode] defaults to 0, [version] defaults to 0, [dnssec_ok] to
+     false, [payload_size] to the minimum payload size (512 byte), [extensions]
+     to the empty list. *)
 
-  (* once we handle cookies, dnssec, or other extensions, need to adjust *)
   val reply : t option -> int option * t option
+  (** [reply edns] either constructs an EDNS record and returns a maximum payload
+     size, or [None] (if no EDNS is provided). *)
 
   val compare : t -> t -> int
+  (** [compare a b] compares the EDNS record [a] with [b] by comparing
+      individual fields in-order. The extension list must be exactly in the
+      same order. *)
 
   val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the EDNS record [t] on [ppf]. *)
 
   val allocate_and_encode : t -> Cstruct.t
-
+  (** [allocate_and_encode t] allocates a buffer and encodes [t] into that
+      buffer. *)
 end
 
-(** A map whose key are record types and their values are the time-to-live and
+ (** A map whose keys are record types and their values are the time-to-live and
     the record set. The relation between key and value type is restricted by the
     below defined GADT. *)
 module Rr_map : sig
@@ -564,21 +659,33 @@ module Rr_map : sig
     val compare : t -> t -> int
   end
 
+  type 'a with_ttl = int32 * 'a
+  (** A tuple type whose first component is a time-to-live counter in seconds. *)
+
   type _ rr =
     | Soa : Soa.t rr
-    | Ns : (int32 * Domain_name.Host_set.t) rr
-    | Mx : (int32 * Mx_set.t) rr
-    | Cname : (int32 * Cname.t) rr
-    | A : (int32 * Ipv4_set.t) rr
-    | Aaaa : (int32 * Ipv6_set.t) rr
-    | Ptr : (int32 * Ptr.t) rr
-    | Srv : (int32 * Srv_set.t) rr
-    | Dnskey : (int32 * Dnskey_set.t) rr
-    | Caa : (int32 * Caa_set.t) rr
-    | Tlsa : (int32 * Tlsa_set.t) rr
-    | Sshfp : (int32 * Sshfp_set.t) rr
-    | Txt : (int32 * Txt_set.t) rr
-    | Unknown : I.t -> (int32 * Txt_set.t) rr
+    | Ns : Domain_name.Host_set.t with_ttl rr
+    | Mx : Mx_set.t with_ttl rr
+    | Cname : Cname.t with_ttl rr
+    | A : Ipv4_set.t with_ttl rr
+    | Aaaa : Ipv6_set.t with_ttl rr
+    | Ptr : Ptr.t with_ttl rr
+    | Srv : Srv_set.t with_ttl rr
+    | Dnskey : Dnskey_set.t with_ttl rr
+    | Caa : Caa_set.t with_ttl rr
+    | Tlsa : Tlsa_set.t with_ttl rr
+    | Sshfp : Sshfp_set.t with_ttl rr
+    | Txt : Txt_set.t with_ttl rr
+    | Unknown : I.t -> Txt_set.t with_ttl rr
+  (** The type of resource record sets, as GADT: the value depends on the
+     specific constructor. There may only be a single SOA and Cname and Ptr
+     record, while other constructors, such as address (A), contain a set of
+     the respective types. The Unknown constructor is used for not specifically
+     supported records. These resource records are usually persisted to disk by
+     a server or resolver. Resource records that are only meant for a single
+     transaction (such as EDNS or TSIG) are not in this GADT, neither is the
+     query type ANY (which answer is computed on the fly), or zone transfer
+     operations (AXFR/IXFR). *)
 
   include Gmap.S with type 'a key = 'a rr
 
@@ -616,7 +723,7 @@ module Rr_map : sig
       Cname overwrites its [l] counterpart. *)
 
   val unionee : 'a key -> 'a -> 'a -> 'a option
-  (** [unionee k l r] unions [l] with [r] using [union_rr]. *)
+  (** [unionee k l r] unions [l] with [r] using {!union_rr}. *)
 
   val diff : old:t -> t -> (t option * t option)
   (** [diff ~old m] computes the difference between [old] and [m]. The left
@@ -641,21 +748,37 @@ end
 module Name_rr_map : sig
 
   type t = Rr_map.t Domain_name.Map.t
+  (** The type of a Domain_name map whose values are resource record sets.
+      Observable in the answer and authority sections of a DNS packet. *)
 
   val empty : t
+  (** [empty] is the empty map. *)
+
   val equal : t -> t -> bool
+  (** [equal a b] is [true] when [a] and [b] contain the same keys and values,
+     [false] otherwise. *)
 
   val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the name resource record map [t] on [ppf]. *)
 
   val add : [ `raw ] Domain_name.t -> 'a Rr_map.key -> 'a -> t -> t
+  (** [add name rr_typ rr_set map] adds the binding [name -> rr_typ, rr_set] to
+     [map], if already present, {!Rr_map.union_rr} is applied for merging. *)
 
   val find : [ `raw ] Domain_name.t -> 'a Rr_map.key -> t -> 'a option
+  (** [find name rr_typ map] returns the [rr_set] for [name, rr_typ] if present,
+     [None] otherwise. *)
 
   val remove_sub : t -> t -> t
+  (** [remove_sub map sub] removes all [name, rr_key] from [map] that are
+     present in [sub]. Their values [rr_set] are not compared. *)
 
   val singleton : [ `raw ] Domain_name.t -> 'a Rr_map.key -> 'a -> t
+  (** [singleton name rr_typ rr_set] constructs a [t] with the single entry
+     [name, rr_typ] mapped to [rr_set]. *)
 
   val union : t -> t -> t
+  (** [union a b] is union of [a] and [b], using {!Rr_map.unionee}. *)
 end
 
 (** The DNS packet.
@@ -673,60 +796,117 @@ module Packet : sig
       | `Authentic_data
       | `Checking_disabled
     ]
+    (** The type of DNS packet flags. *)
 
     val compare : t -> t -> int
+    (** [compare a b] compares the flag [a] with [b]. *)
+
     val pp : t Fmt.t
+    (** [pp ppf f] pretty-prints the flag [f] on [ppf]. *)
+
     val pp_short : t Fmt.t
+    (** [pp_short ppf f] pretty-prints the flag in two letters on [ppf]. *)
   end
 
+  (** The set of flags *)
   module Flags : Set.S with type elt = Flag.t
 
+  (** A DNS header *)
   module Header : sig
     type t = int * Flags.t
+    (** The type of a DNS header, its 16 bit identifier and a flag set. *)
 
     val compare : t -> t -> int
+    (** [compare a b] compares the header [a] with [b]. *)
   end
 
+  (** A DNS Question - the first section of a DNS packet *)
   module Question : sig
     type qtype = [ `Any | `K of Rr_map.k ]
+    (** The question type, either Any or a concrete RR type. *)
 
     val pp_qtype : qtype Fmt.t
+    (** [pp_qtype ppf q] pretty-prints the question type [q] on [ppf]. *)
 
     val compare_qtype : qtype -> qtype -> int
+    (** [compare_qtype a b] compares the question type [a] with [b]. *)
 
     type t = [ `raw ] Domain_name.t * [ qtype | `Axfr | `Ixfr ]
+    (** The type in a DNS question: its name and question type or a zone
+       full or incremental transfer. *)
 
     val qtype : t -> qtype option
+    (** [qtype t] is the question type of [t], if any, or [None]. *)
 
     val create : 'a Domain_name.t -> 'b Rr_map.key -> t
+    (** [create name key] is a DNS question. *)
 
     val pp : t Fmt.t
+    (** [pp ppf t] pretty-prints the question [t] on [ppf]. *)
+
     val compare : t -> t -> int
+    (** [compare a b] compares the question [a] with [b] by first comparing the
+        domain name for equality, and if equal the query type. *)
   end
 
+  (** A DNS answer, consisting of the answer and authority sections. *)
   module Answer : sig
     type t = Name_rr_map.t * Name_rr_map.t
+    (** The type of an answer: answer and authority section, each represented
+       as Domain_name maps with resource record sets. *)
+
     val empty : t
+    (** [empty] is the empty answer. *)
+
     val is_empty : t -> bool
+    (** [is_empty t] is [true] if [t] is empty, [false] otherwise. *)
+
     val pp : t Fmt.t
+    (** [pp ppf t] pretty-prints the answer [t] on [ppf]. *)
+
     val equal : t -> t -> bool
+    (** [equal a b] is [true] if the answer [a] contains the same resource
+       record sets as the answer [b], [false] otherwise. *)
   end
 
+  (** A DNS zone transfer. *)
   module Axfr : sig
     type t = Soa.t * Name_rr_map.t
+    (** The type of a zone transfer: a start of authority record and the
+       complete zone, may include glue records. *)
+
     val pp : t Fmt.t
+    (** [pp ppf t] pretty-prints the zone transfer [t] on [ppf]. *)
+
     val equal : t -> t -> bool
+    (** [equal a b] is [true] if the zone transfer [a] contains the same
+       resource records as [b], and the start of authority is equal. Otherwise
+       [false]. *)
   end
 
+  (** Incremental DNS zone transfer. *)
   module Ixfr : sig
     type t = Soa.t *
              [ `Empty
              | `Full of Name_rr_map.t
              | `Difference of Soa.t * Name_rr_map.t * Name_rr_map.t ]
+   (** The type of an incremental zone transfer between two serials, consisting
+      of the new start of authority and:
+      {ul
+      {- Empty, if there are no changes}
+      {- Full zone transfer, same as AXFR}
+      {- Difference, with the old start of authority, the resource record sets
+          to be removed, and the resource record sets to be added.}} *)
+
     val pp : t Fmt.t
+    (** [pp ppf t] pretty-prints the incremental zone transfer [t] on [ppf]. *)
+
     val equal : t -> t -> bool
+    (** [equal a b] compares the incremental zone transfer [a] with [b], and is
+       [true] if they are the same. *)
   end
 
+  (** DNS update packets. *)
   module Update : sig
     type prereq =
       | Exists of Rr_map.k
@@ -734,21 +914,41 @@ module Packet : sig
       | Not_exists of Rr_map.k
       | Name_inuse
       | Not_name_inuse
+    (** The type of Update prerequisites. *)
+
     val pp_prereq : prereq Fmt.t
+    (** [pp_prereq ppf t] pretty-prints the prerequisite [t] on [ppf]. *)
+
     val equal_prereq : prereq -> prereq -> bool
+    (** [equal_prereq a b] is [true] if [a] and [b] are equal, [false]
+       otherwise. *)
 
     type update =
       | Remove of Rr_map.k
       | Remove_all
       | Remove_single of Rr_map.b
       | Add of Rr_map.b
+    (** The type of an update. *)
+
     val pp_update : update Fmt.t
+    (** [pp_update ppf t] pretty-prints the update [t] on [ppf]. *)
+
     val equal_update : update -> update -> bool
+    (** [equal_update a b] is [true] if [a] is equal to [b], [false]
+       otherwise. *)
 
     type t = prereq list Domain_name.Map.t * update list Domain_name.Map.t
+    (** The type of a DNS update: a map indexed by domain name with a list of
+       prerequisites, and a map indexed by domain name of a list of updates. *)
+
     val empty : t
+    (** [empty] is the empty update. *)
+
     val pp : t Fmt.t
+    (** [pp ppf t] pretty-prints the update [t] on [ppf]. *)
+
     val equal : t -> t -> bool
+    (** [equal a b] is [true] if [a] is equal to [b], [false] otherwise. *)
   end
 
   type request = [
@@ -758,10 +958,14 @@ module Packet : sig
     | `Ixfr_request of Soa.t
     | `Update of Update.t
   ]
+  (** The type of a DNS request: depending on opcode and rr_typ. *)
 
   val equal_request : request -> request -> bool
+  (** [equal_request a b] is [true] if the request [a] is the same as [b],
+     [false] otherwise. *)
 
   val pp_request : request Fmt.t
+  (** [pp_request ppf r] pretty-prints the request [r] on [ppf]. *)
 
   type reply = [
     | `Answer of Answer.t
@@ -771,20 +975,30 @@ module Packet : sig
     | `Update_ack
     | `Rcode_error of Rcode.t * Opcode.t * Answer.t option
   ]
+  (** The type of a DNS reply: depending on opcode, rr_typ, and rcode. *)
 
   val equal_reply : reply -> reply -> bool
+  (** [equal_reply a b] is [true] if the reply [a] is the same as [b], [false]
+     otherwise. *)
 
   val pp_reply : reply Fmt.t
+  (** [pp_reply ppf r] pretty-prints the reply [r] on [ppf]. *)
 
   type data = [ request | reply ]
+  (** The type of either request or reply. *)
 
   val opcode_data : data -> Opcode.t
+  (** [opcode_data data] is the opcode of [data]. *)
 
   val rcode_data : data -> Rcode.t
+  (** [rcode_data data] is the response code of [data]. *)
 
   val equal_data : data -> data -> bool
+  (** [equal_data a b] is [true] if [a] and [b] are the same, [false]
+     otherwise. *)
 
   val pp_data : data Fmt.t
+  (** [pp_data ppf data] pretty-prints [data] on [ppf]. *)
 
   type t = private {
     header : Header.t ;
@@ -794,17 +1008,25 @@ module Packet : sig
     edns : Edns.t option ;
     tsig : ([ `raw ] Domain_name.t * Tsig.t * int) option ;
   }
+  (** The type of a DNS packet: its header, question, data, additional section,
+     and optional EDNS and TSIG records. *)
 
   val create : ?max_size:int -> ?additional:Name_rr_map.t -> ?edns:Edns.t ->
     Header.t -> Question.t -> data -> t
+  (** [create ~max_size ~additional ~edns hdr q data] is a DNS packet. *)
 
   val with_edns : t -> Edns.t option -> t
+  (** [with_edns t edns] is [t] with the edns field set to [edns]. *)
 
   val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the DNS packet [t] on [ppf]. *)
 
   val pp_header : t Fmt.t
+  (** [pp_header ppf t] pretty-prints the header of the DNS packet on [ppf]. *)
 
   val equal : t -> t -> bool
+  (** [equal a b] is [true] if the DNS packet [a] and [b] are equal, [false]
+     otherwise. *)
 
   type err = [
     | `Bad_edns_version of int
@@ -825,18 +1047,23 @@ module Packet : sig
     | `Update_ack_answer_count of int
     | `Update_ack_authority_count of int
   ]
+  (** The type of decode errors. *)
 
   val pp_err : err Fmt.t
+  (** [pp_err ppf err] pretty-prints the decode error [err] on [ppf]. *)
 
   val decode : Cstruct.t -> (t, err) result
+  (** [decode cs] decode the binary data [cs] to a DNS packet [t] or an error. *)
 
   type mismatch = [ `Not_a_reply of request
                   | `Id_mismatch of int * int
                   | `Operation_mismatch of request * reply
                   | `Question_mismatch of Question.t * Question.t
                   | `Expected_request ]
+  (** The type of request / reply mismatches. *)
 
   val pp_mismatch : mismatch Fmt.t
+  (** [pp_mismatch ppf m] pretty-prints the mismatch [m] on [ppf]. *)
 
   val reply_matches_request : request:t -> t -> (reply, mismatch) result
   (** [reply_matches_request ~request reply] validates
@@ -849,12 +1076,21 @@ module Packet : sig
       {- Is [question] and the question of [response] equal?}} *)
 
   val size_edns : int option -> Edns.t option -> proto -> bool -> int * Edns.t option
+  (** [size_edns max_size edns protocol query] computes the size of the reply
+     packet, and optionally an EDNS record. *)
 
   val encode : ?max_size:int -> proto -> t -> Cstruct.t * int
+  (** [encode ~max_size protocol t] allocates a buffer and encodes the DNS
+     packet [t] into it. If the maximum size (depending on [max_size] and
+     [protocol]) is reached, the truncation flag is set. The last component of
+     the result is the maximum size. *)
 
   val raw_error : Cstruct.t -> Rcode.t -> Cstruct.t option
+  (** [raw_error cs rcode] is an error reply with [rcode] to [cs], or None if
+     [cs] is already a reply. *)
 end
 
+(** Signature operations and their errors. *)
 module Tsig_op : sig
   type e = [
     | `Bad_key of [ `raw ] Domain_name.t * Tsig.t
@@ -862,12 +1098,16 @@ module Tsig_op : sig
     | `Bad_truncation of [ `raw ] Domain_name.t * Tsig.t
     | `Invalid_mac of [ `raw ] Domain_name.t * Tsig.t
   ]
+  (** The type of a verification error. *)
 
   val pp_e : e Fmt.t
+  (** [pp_e ppf e] pretty-prints the verification error [e] on [ppf]. *)
 
   type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.t ->
     [ `raw ] Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> Cstruct.t ->
     (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
+  (** The type of a verification function. The [mac] contains data for a reply
+     to a signed request. *)
 
   val no_verify : verify
   (** [no_verify] always returns an error. *)
@@ -875,6 +1115,8 @@ module Tsig_op : sig
   type sign = ?mac:Cstruct.t -> ?max_size:int -> [ `raw ] Domain_name.t ->
     Tsig.t -> key:Dnskey.t -> Packet.t -> Cstruct.t ->
     (Cstruct.t * Cstruct.t) option
+  (** The type of a signature function. The [mac] contains data for a reply to
+     a signed request. *)
 
   val no_sign : sign
   (** [no_sign] always returns [None]. *)

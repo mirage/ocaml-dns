@@ -61,7 +61,8 @@ module Primary : sig
   val data : s -> Dns_trie.t
   (** [data s] is the data store of [s]. *)
 
-  val with_data : s -> Ptime.t -> int64 -> Dns_trie.t -> s * (Ipaddr.V4.t * Cstruct.t) list
+  val with_data : s -> Ptime.t -> int64 -> Dns_trie.t ->
+    s * (Ipaddr.V4.t * Cstruct.t) list
   (** [with_data s now ts trie] replaces the current data with [trie] in [s].
       The returned notifications should be send out. *)
 
@@ -73,7 +74,8 @@ module Primary : sig
   val create : ?keys:('a Domain_name.t * Dnskey.t) list ->
     ?a:Authentication.a list -> ?tsig_verify:Tsig_op.verify ->
     ?tsig_sign:Tsig_op.sign -> rng:(int -> Cstruct.t) -> Dns_trie.t -> s
-  (** [create ~keys ~a ~tsig_verify ~tsig_sign ~rng data] creates a primary server. *)
+  (** [create ~keys ~a ~tsig_verify ~tsig_sign ~rng data] creates a primary
+      server. *)
 
   val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> int ->
     Packet.t -> 'a Domain_name.t option ->
@@ -94,8 +96,8 @@ module Primary : sig
   (** [closed s ip] marks the connection to [ip] closed. *)
 
   val timer : s -> Ptime.t -> int64 -> s * (Ipaddr.V4.t * Cstruct.t) list
-  (** [timer s now ts] may encode some notify if they were not acknowledget by the
-     other side. *)
+  (** [timer s now ts] may encode some notifications to secondary name servers
+     if previous ones were not acknowledged. *)
 
   val to_be_notified : s -> [ `host ] Domain_name.t ->
     (Ipaddr.V4.t * [ `raw ] Domain_name.t option) list
@@ -133,7 +135,8 @@ module Secondary : sig
   (** [handle_buf s now ts proto src buf] decodes [buf], processes with
       {!handle_packet}, and encodes the results. *)
 
-  val timer : s -> Ptime.t -> int64 -> s * (proto * Ipaddr.V4.t * Cstruct.t) list
+  val timer : s -> Ptime.t -> int64 ->
+    s * (proto * Ipaddr.V4.t * Cstruct.t) list
   (** [timer s now ts] may request SOA or retransmit AXFR. *)
 
   val closed : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->

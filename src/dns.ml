@@ -37,7 +37,7 @@ module Class = struct
     | NONE -> 254
     | ANY_CLASS -> 255
 
-  let compare a b = int_compare (to_int a) (to_int b)
+  let _compare a b = int_compare (to_int a) (to_int b)
 
   let of_int ?(off = 0) = function
     | 1 -> Ok IN
@@ -54,7 +54,7 @@ module Class = struct
     | NONE -> "NONE"
     | ANY_CLASS -> "ANY_CLASS"
 
-  let pp ppf c = Fmt.string ppf (to_string c)
+  let _pp ppf c = Fmt.string ppf (to_string c)
 end
 
 module Opcode = struct
@@ -271,8 +271,8 @@ module Name = struct
   (*
   (* enable once https://github.com/ocaml/dune/issues/897 is resolved *)
   let%expect_test "decode_name" =
-    let test ?hostname ?(map = Int_map.empty) ?(off = 0) data rmap roff =
-      match decode ?hostname map (Cstruct.of_string data) ~off with
+    let test ?(map = Int_map.empty) ?(off = 0) data rmap roff =
+      match decode map (Cstruct.of_string data) ~off with
       | Error _ -> Format.printf "decode error"
       | Ok (name, omap, ooff) ->
         begin match Int_map.equal (fun (n, off) (n', off') ->
@@ -283,8 +283,8 @@ module Name = struct
           | _, false -> Format.printf "offset mismatch"
         end
     in
-    let test_err ?hostname ?(map = Int_map.empty) ?(off = 0) data =
-      match decode ?hostname map (Cstruct.of_string data) ~off with
+    let test_err ?(map = Int_map.empty) ?(off = 0) data =
+      match decode map (Cstruct.of_string data) ~off with
       | Error _ -> Format.printf "error (as expected)"
       | Ok _ -> Format.printf "expected error, got ok"
     in
@@ -316,10 +316,10 @@ module Name = struct
     test "\003f23\000" map' 5;
     [%expect {|f23|}];
     let map' =
-      Int_map.add 0 (n_of_s ~hostname:false "23", 4)
+      Int_map.add 0 (n_of_s "23", 4)
         (Int_map.add 3 (Domain_name.root, 1) Int_map.empty)
     in
-    test ~hostname:false "\00223\000" map' 4;
+    test "\00223\000" map' 4;
     [%expect {|23|}];
     test_err "\003bar"; (* incomplete label *)
     [%expect {|error (as expected)|}];
@@ -337,12 +337,24 @@ module Name = struct
     [%expect {|error (as expected)|}];
     test_err "\x80"; (* bad tag 0x80 *)
     [%expect {|error (as expected)|}];
-    test_err "\001-\000"; (* bad content "-" at start of label *)
-    [%expect {|error (as expected)|}];
-    test_err "\005foo-+\000"; (* bad content foo-+ in label *)
-    [%expect {|error (as expected)|}];
-    test_err "\00223\000"; (* bad content 23 in label *)
-    [%expect {|error (as expected)|}];
+    let map' =
+      Int_map.add 0 (n_of_s "-", 3)
+        (Int_map.add 2 (Domain_name.root, 1) Int_map.empty)
+    in
+    test "\001-\000" map' 3; (* "-" at start of label *)
+    [%expect {|-|}];
+    let map' =
+      Int_map.add 0 (n_of_s "foo-+", 7)
+        (Int_map.add 6 (Domain_name.root, 1) Int_map.empty)
+    in
+    test "\005foo-+\000" map' 7; (* content foo-+ in label *)
+    [%expect {|foo-+|}];
+    let map' =
+      Int_map.add 0 (n_of_s "23", 4)
+        (Int_map.add 3 (Domain_name.root, 1) Int_map.empty)
+    in
+    test "\00223\000" map' 4; (* content 23 in label *)
+    [%expect {|23|}];
     (* longest allowed domain name *)
     let open Astring in
     let max = "s23456789012345678901234567890123456789012345678901234567890123" in
@@ -412,7 +424,7 @@ module Name = struct
     [%expect {|
 03 66 6f 6f 03 62 61 72  00 03 62 61 7a 03 66 6f
 6f 03 62 61 72 00|}]
-*)
+    *)
 end
 
 (* start of authority *)
@@ -1536,21 +1548,23 @@ module Rr_map = struct
     let compare = int_compare
   end
 
+  type 'a with_ttl = int32 * 'a
+
   type _ rr =
     | Soa : Soa.t rr
-    | Ns : (int32 * Domain_name.Host_set.t) rr
-    | Mx : (int32 * Mx_set.t) rr
-    | Cname : (int32 * Cname.t) rr
-    | A : (int32 * Ipv4_set.t) rr
-    | Aaaa : (int32 * Ipv6_set.t) rr
-    | Ptr : (int32 * Ptr.t) rr
-    | Srv : (int32 * Srv_set.t) rr
-    | Dnskey : (int32 * Dnskey_set.t) rr
-    | Caa : (int32 * Caa_set.t) rr
-    | Tlsa : (int32 * Tlsa_set.t) rr
-    | Sshfp : (int32 * Sshfp_set.t) rr
-    | Txt : (int32 * Txt_set.t) rr
-    | Unknown : I.t -> (int32 * Txt_set.t) rr
+    | Ns : Domain_name.Host_set.t with_ttl rr
+    | Mx : Mx_set.t with_ttl rr
+    | Cname : Cname.t with_ttl rr
+    | A : Ipv4_set.t with_ttl rr
+    | Aaaa : Ipv6_set.t with_ttl rr
+    | Ptr : Ptr.t with_ttl rr
+    | Srv : Srv_set.t with_ttl rr
+    | Dnskey : Dnskey_set.t with_ttl rr
+    | Caa : Caa_set.t with_ttl rr
+    | Tlsa : Tlsa_set.t with_ttl rr
+    | Sshfp : Sshfp_set.t with_ttl rr
+    | Txt : Txt_set.t with_ttl rr
+    | Unknown : I.t -> Txt_set.t with_ttl rr
 
   module K = struct
     type 'a t = 'a rr
@@ -2213,7 +2227,7 @@ module Packet = struct
       Cstruct.BE.set_uint16 buf 0 id ;
       Cstruct.BE.set_uint16 buf 2 header
 
-    (*
+(*
     let%expect_test "encode_decode_header" =
       let eq (hdr, query, op, rc) (hdr', query', op', rc') =
         compare hdr hdr' = 0 && rc = rc' && query = query' && op = op'
@@ -2292,7 +2306,9 @@ module Packet = struct
       [%expect {|ok|}];
       let data = Cstruct.of_hex "0000 000e 0000 0000 0000 0000" in
       test_err (decode data);
-      [%expect {|ok|}] *)
+      [%expect {|ok|}]
+   *)
+
   end
 
   let decode_ntc names buf off =
@@ -3132,7 +3148,6 @@ module Packet = struct
                 `Query, names, off
             end
           | Opcode.Notify ->
-            (* TODO notify has some restrictions: Q=1, AN>=0 (must be SOA) *)
             guard (an_count = 0 || an_count = 1) (`Notify_answer_count an_count) >>= fun () ->
             guard (au_count = 0) (`Notify_authority_count au_count) >>= fun () ->
             Answer.decode header buf names off >>| fun ((ans, _), names, off, _, _) ->
