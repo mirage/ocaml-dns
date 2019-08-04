@@ -96,19 +96,19 @@ type proto = [ `Tcp | `Udp ]
    response. *)
 module Opcode : sig
   type t =
-    | Query (* RFC1035 *)
-    | IQuery (* Inverse Query, OBSOLETE) [RFC3425] *)
-    | Status (* RFC1035 *)
-    (* 3 Unassigned *)
-    | Notify (* RFC1996 *)
-    | Update (* RFC2136 *)
+    | Query
+    | IQuery
+    | Status
+    | Notify
+    | Update
   (** The type of opcodes. *)
 
   val pp : t Fmt.t
   (** [pp ppf opcode] pretty-prints the [opcode] on [ppf]. *)
 
   val compare : t -> t -> int
-  (** [compare a b] compares the opcode [a] with [b]. *)
+  (** [compare a b] compares the opcode [a] with [b], using the RFC-specified
+      integer representation of each opcode. *)
 end
 
 (** Response code
@@ -142,7 +142,8 @@ module Rcode : sig
   (** [pp ppf rcode] pretty-prints the [rcode] on [ppf]. *)
 
   val compare : t -> t -> int
-  (** [compare a b] compares the response code [a] with [b]. *)
+  (** [compare a b] compares the response code [a] with [b] using the
+      RFC-specified integer representation of response codes. *)
 end
 
 (** Start of authority
@@ -428,7 +429,8 @@ module Tlsa : sig
   (** [pp ppf t] pretty-prints the TLSA record [t] on [ppf]. *)
 
   val compare : t -> t -> int
-  (** [compare a b] compare the TLSA record [a] with [b]. *)
+  (** [compare a b] compare the TLSA record [a] with [b], comparing the
+      integer representations of the individual fields in order. *)
 end
 
 (** Secure shell fingerprint
@@ -484,7 +486,8 @@ module Sshfp : sig
   (** [pp ppf t] pretty-prints the SSH fingerprint record [t] on [ppf]. *)
 
   val compare : t -> t -> int
-  (** [compare a b] compares the SSH fingerprint record [a] with [b]. *)
+  (** [compare a b] compares the SSH fingerprint record [a] with [b] by
+      comparing the individual fields in order. *)
 end
 
 (** Text records *)
@@ -622,7 +625,9 @@ module Edns : sig
      size, or [None] (if no EDNS is provided). *)
 
   val compare : t -> t -> int
-  (** [compare a b] compares the EDNS record [a] with [b]. *)
+  (** [compare a b] compares the EDNS record [a] with [b] by comparing
+      individual fields in-order. The extension list must be exactly in the
+      same order. *)
 
   val pp : t Fmt.t
   (** [pp ppf t] pretty-prints the EDNS record [t] on [ppf]. *)
@@ -676,8 +681,11 @@ module Rr_map : sig
      specific constructor. There may only be a single SOA and Cname and Ptr
      record, while other constructors, such as address (A), contain a set of
      the respective types. The Unknown constructor is used for not specifically
-     supported records. These resource records may be persisted to disk, i.e.
-     EDNS/TSIG/ANY are not present! *)
+     supported records. These resource records are usually persisted to disk by
+     a server or resolver. Resource records that are only meant for a single
+     transaction (such as EDNS or TSIG) are not in this GADT, neither is the
+     query type ANY (which answer is computed on the fly), or zone transfer
+     operations (AXFR/IXFR). *)
 
   include Gmap.S with type 'a key = 'a rr
 
@@ -837,7 +845,8 @@ module Packet : sig
     (** [pp ppf t] pretty-prints the question [t] on [ppf]. *)
 
     val compare : t -> t -> int
-    (** [compare a b] compares the question [a] with [b]. *)
+    (** [compare a b] compares the question [a] with [b] by first comparing the
+        domain name for equality, and if equal the query type. *)
   end
 
   (** A DNS answer, consisting of the answer and authority sections. *)

@@ -96,8 +96,8 @@ module Primary : sig
   (** [closed s ip] marks the connection to [ip] closed. *)
 
   val timer : s -> Ptime.t -> int64 -> s * (Ipaddr.V4.t * Cstruct.t) list
-  (** [timer s now ts] may encode some notify if they were not acknowledget by
-     the other side. *)
+  (** [timer s now ts] may encode some notifications to secondary name servers
+     if previous ones were not acknowledged. *)
 
   val to_be_notified : s -> [ `host ] Domain_name.t ->
     (Ipaddr.V4.t * [ `raw ] Domain_name.t option) list
