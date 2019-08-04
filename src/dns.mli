@@ -13,7 +13,7 @@
    associated with it: the maximum time this entry may be cached. The
    {{:https://github.com/hannesm/domain-name}domain name} library provides
    operations on domain names. Hostnames are domain names with further
-   restritions, only letters, digits, and hyphen are allowed. Domain name
+   restrictions: Only letters, digits, and hyphen are allowed. Domain name
    comparison is usually done ignoring the case.
 
     A set of 13 authoritative name servers form the root zone which delegate
@@ -75,7 +75,7 @@
    and stub resolvers. The certificate authority
    {{:https://letsencrypt}Let's Encrypt} implements a protocol (ACME) which
    automatically provisions X.509 certificates (which are trusted by common
-   web browsers), one of the proof of ownership can be achieved via a DNS
+   web browsers); one of the methods to produce proof of ownership is with a DNS
    {{!Txt}TXT} record. Together with
    {{:https://github.com/mmaker/ocaml-letsencrypt}ocaml-letsencrypt}, this DNS
    library can be used to provision certificate signing requests for the
@@ -607,7 +607,7 @@ module Edns : sig
     payload_size : int ;
     extensions : extension list ;
   }
-  (** The type of a EDNS record. *)
+  (** The type of an EDNS record. *)
 
   val create : ?extended_rcode:int -> ?version:int -> ?dnssec_ok:bool ->
     ?payload_size:int -> ?extensions:extension list -> unit -> t
@@ -618,7 +618,7 @@ module Edns : sig
      to the empty list. *)
 
   val reply : t option -> int option * t option
-  (** [reply edns] either constructs a EDNS record and returns a maximum payload
+  (** [reply edns] either constructs an EDNS record and returns a maximum payload
      size, or [None] (if no EDNS is provided). *)
 
   val compare : t -> t -> int
@@ -632,7 +632,7 @@ module Edns : sig
       buffer. *)
 end
 
-(** A map whose key are record types and their values are the time-to-live and
+ (** A map whose keys are record types and their values are the time-to-live and
     the record set. The relation between key and value type is restricted by the
     below defined GADT. *)
 module Rr_map : sig
@@ -655,7 +655,7 @@ module Rr_map : sig
   end
 
   type 'a with_ttl = int32 * 'a
-  (** A tuple type which first component is a time to live. *)
+  (** A tuple type whose first component is a time-to-live counter in seconds. *)
 
   type _ rr =
     | Soa : Soa.t rr
@@ -740,7 +740,7 @@ end
 module Name_rr_map : sig
 
   type t = Rr_map.t Domain_name.Map.t
-  (** The type of a Domain_name map which values are resource record sets.
+  (** The type of a Domain_name map whose values are resource record sets.
       Observable in the answer and authority sections of a DNS packet. *)
 
   val empty : t
@@ -828,7 +828,7 @@ module Packet : sig
        full or incremental transfer. *)
 
     val qtype : t -> qtype option
-    (** [qtype t] is the question type of [t], or [None]. *)
+    (** [qtype t] is the question type of [t], if any, or [None]. *)
 
     val create : 'a Domain_name.t -> 'b Rr_map.key -> t
     (** [create name key] is a DNS question. *)
@@ -905,7 +905,7 @@ module Packet : sig
       | Not_exists of Rr_map.k
       | Name_inuse
       | Not_name_inuse
-    (** The type for prerequisites. *)
+    (** The type of Update prerequisites. *)
 
     val pp_prereq : prereq Fmt.t
     (** [pp_prereq ppf t] pretty-prints the prerequisite [t] on [ppf]. *)
@@ -919,7 +919,7 @@ module Packet : sig
       | Remove_all
       | Remove_single of Rr_map.b
       | Add of Rr_map.b
-    (** The type for an update. *)
+    (** The type of an update. *)
 
     val pp_update : update Fmt.t
     (** [pp_update ppf t] pretty-prints the update [t] on [ppf]. *)
@@ -1068,7 +1068,7 @@ module Packet : sig
 
   val size_edns : int option -> Edns.t option -> proto -> bool -> int * Edns.t option
   (** [size_edns max_size edns protocol query] computes the size of the reply
-     packet, and optionally a EDNS record. *)
+     packet, and optionally an EDNS record. *)
 
   val encode : ?max_size:int -> proto -> t -> Cstruct.t * int
   (** [encode ~max_size protocol t] allocates a buffer and encodes the DNS
@@ -1089,7 +1089,7 @@ module Tsig_op : sig
     | `Bad_truncation of [ `raw ] Domain_name.t * Tsig.t
     | `Invalid_mac of [ `raw ] Domain_name.t * Tsig.t
   ]
-  (** The type of verification errors. *)
+  (** The type of a verification error. *)
 
   val pp_e : e Fmt.t
   (** [pp_e ppf e] pretty-prints the verification error [e] on [ppf]. *)
