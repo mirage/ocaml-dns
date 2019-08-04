@@ -8,7 +8,7 @@
 module Uflow : Dns_client_flow.S
   with type flow = Lwt_unix.file_descr
    and type io_addr = Lwt_unix.inet_addr * int
-   and type (+'a,+'b) io = ('a,'b) Lwt_result.t
+   and type +'a io = 'a Lwt.t
    and type stack = unit
 
 include module type of Dns_client_flow.Make(Uflow)
