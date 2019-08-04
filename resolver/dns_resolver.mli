@@ -13,7 +13,9 @@ val handle_buf : t -> Ptime.t -> int64 -> bool -> Dns.proto -> Ipaddr.V4.t ->
   t * (Dns.proto * Ipaddr.V4.t * int * Cstruct.t) list
     * (Dns.proto * Ipaddr.V4.t * Cstruct.t) list
 (** [handle_buf t now ts query_or_reply proto sender source-port buf] handles
-   resolution of [buf], which my involve further outgoing and reply packets. *)
+   resolution of [buf], which leads to a new [t], a list of answers to be
+   transmitted (quadruple of protocol, ip address, port, buffer), and a list of
+   queries (triple of protocol, ip address, buffer). *)
 
 val query_root : t -> int64 -> Dns.proto ->
   t * (Dns.proto * Ipaddr.V4.t * Cstruct.t)

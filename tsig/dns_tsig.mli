@@ -6,8 +6,10 @@ open Dns
 
 val sign : Tsig_op.sign
 (** [sign ~mac ~max_size name tsig ~key packet buffer] signs the given
-    [buffer] with the provided [key], its [name], the [tsig]. If signing
-    fails, an error may be produced. The result is a buffer and a mac. *)
+    [buffer] with the provided [key], its [name], the [tsig]. The [mac]
+    argument is expected when a reply to a signed DNS packet should be signed.
+    If signing fails, an error may be produced. The result is a buffer and a
+    mac. *)
 
 val verify : Tsig_op.verify
 (** [verify ~mac now packet name ~key tsig buffer] verifies the [buffer]
@@ -40,7 +42,8 @@ val decode_and_verify : Ptime.t -> Dnskey.t -> 'a Domain_name.t ->
   (Packet.t * Tsig.t * Cstruct.t, e) result
 (** [decode_and_verify now dnskey name ~mac buffer] decodes and verifies the
    given buffer using the key material, resulting in a DNS packet and the mac,
-   or a failure. *)
+   or a failure. The optional [mac] argument should be provided if an answer to
+   a signed DNS packet is to be decoded. *)
 
 (**/**)
 val compute_tsig : 'a Domain_name.t -> Tsig.t -> key:Cstruct.t ->
