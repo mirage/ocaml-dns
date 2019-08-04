@@ -13,6 +13,7 @@ module type S = sig
   val connect : ?nameserver:ns_addr -> t -> (flow,'err) io
   val send : flow -> Cstruct.t -> (unit,'b) io
   val recv : flow -> (Cstruct.t, 'b) io
+  val close : flow -> (unit, 'b) io
 
   val resolve : ('a,'b) io -> ('a -> ('c,'b) result) -> ('c,'b) io
   val map : ('a,'b) io -> ('a -> ('c,'b) io) -> ('c,'b) io
@@ -37,7 +38,7 @@ struct
     Uflow.connect ?nameserver t >>| fun socket ->
     Logs.debug (fun m -> m "Connected to NS.");
     Uflow.send socket tx >>| fun () ->
-    let () = Logs.debug (fun m -> m "Receiving from NS") in
+    Logs.debug (fun m -> m "Receiving from NS");
     let rec recv_loop acc =
       Uflow.recv socket >>| fun recv_buffer ->
       Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
@@ -45,12 +46,14 @@ struct
       let buf = Cstruct.append acc recv_buffer in
       match Dns_client.parse_response state buf with
       | Ok x -> Uflow.lift (Ok x)
-      | Error (`Msg xxx) ->
-        Uflow.lift (Error (`Msg( "err: " ^ xxx)))
+      | Error (`Msg xxx) -> Uflow.lift (Error (`Msg( "err: " ^ xxx)))
       | Error `Partial -> begin match proto with
           | `TCP -> recv_loop buf
           | `UDP -> Uflow.lift (Error (`Msg "Truncated UDP response")) end
-    in recv_loop Cstruct.empty
+    in
+    recv_loop Cstruct.empty >>| fun r ->
+    Uflow.close socket >>| fun () ->
+    Uflow.lift (Ok r)
 
   let gethostbyname stack ?nameserver domain =
     let (>>=) = Uflow.resolve in

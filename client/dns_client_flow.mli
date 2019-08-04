@@ -49,6 +49,9 @@ module type S = sig
   val recv : flow -> (Cstruct.t, 'err) io
   (** [recv flow] tries to read a [buffer] from the [flow] downstream.*)
 
+  val close : flow -> (unit, 'err) io
+  (** [close flow] closes the [flow], freeing up resources. *)
+
   val resolve : ('ok,'err) io -> ('ok -> ('next,'err) result) -> ('next,'err) io
   (** a.k.a. [>|=] *)
 

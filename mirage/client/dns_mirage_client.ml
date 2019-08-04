@@ -40,16 +40,22 @@ module Make (S : Mirage_stack_lwt.V4) = struct
         Error (`Msg "connect failure")
       | Ok flow -> Ok flow
 
+    let close f = S.TCPV4.close f >|= fun () -> Ok ()
+
     let recv flow =
-      S.TCPV4.read flow >|= function
-      | Error e -> Error (`Msg (Fmt.to_to_string S.TCPV4.pp_error e))
-      | Ok (`Data cs) -> Ok cs
-      | Ok `Eof -> Ok Cstruct.empty
+      S.TCPV4.read flow >>= function
+      | Error e ->
+        S.TCPV4.close flow >|= fun () ->
+        Error (`Msg (Fmt.to_to_string S.TCPV4.pp_error e))
+      | Ok (`Data cs) -> Lwt.return (Ok cs)
+      | Ok `Eof -> Lwt.return (Ok Cstruct.empty)
 
     let send flow s =
-      S.TCPV4.write flow s >|= function
-      | Error e -> Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e))
-      | Ok () -> Ok ()
+      S.TCPV4.write flow s >>= function
+      | Error e ->
+        S.TCPV4.close flow >|= fun () ->
+        Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e))
+      | Ok () -> Lwt.return (Ok ())
   end
 
   include Dns_client_flow.Make(Uflow)

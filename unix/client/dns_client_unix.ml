@@ -27,6 +27,8 @@ module Uflow : Dns_client_flow.S
 
   open Rresult
 
+  let safe_close socket = try Unix.close socket with _ -> ()
+
   let connect ?nameserver:ns t =
     let proto, (server, port) = match ns with None -> nameserver t | Some x -> x in
     begin match proto with
@@ -35,23 +37,41 @@ module Uflow : Dns_client_flow.S
     end >>= fun proto_number ->
     let socket = Unix.socket PF_INET SOCK_STREAM proto_number in
     let addr = Unix.ADDR_INET (server, port) in
-    Unix.connect socket addr ;
-    Ok socket
+    try
+      Unix.connect socket addr ;
+      Ok socket
+    with e ->
+      safe_close socket ;
+      Error (`Msg (Printexc.to_string e))
+
+  let close socket = try Ok (Unix.close socket) with _ -> Ok ()
 
   let send (socket:flow) (tx:Cstruct.t) =
     let str = Cstruct.to_string tx in
-    let res = Unix.send_substring socket str 0 (String.length str) [] in
-    if res <> String.length str
-    then Error (`Msg ("Broken write to upstream NS" ^ (string_of_int res)))
-    else Ok ()
+    try
+      let res = Unix.send_substring socket str 0 (String.length str) [] in
+      if res <> String.length str
+      then begin
+        safe_close socket;
+        Error (`Msg ("Broken write to upstream NS" ^ (string_of_int res)))
+      end else Ok ()
+   with e ->
+     safe_close socket;
+     Error (`Msg (Printexc.to_string e))
 
   let recv (socket:flow) =
     let buffer = Bytes.make 2048 '\000' in
-    let x = Unix.recv socket buffer 0 (Bytes.length buffer) [] in
-    if x > 0 && x <= Bytes.length buffer then
-      Ok (Cstruct.of_bytes buffer ~len:x)
-    else
-      Error (`Msg "Reading from NS socket failed")
+    try
+      let x = Unix.recv socket buffer 0 (Bytes.length buffer) [] in
+      if x > 0 && x <= Bytes.length buffer then
+        Ok (Cstruct.of_bytes buffer ~len:x)
+      else begin
+        safe_close socket;
+        Error (`Msg "Reading from NS socket failed")
+      end
+    with e ->
+      safe_close socket;
+      Error (`Msg (Printexc.to_string e))
 end
 
 (* Now that we have our {!Uflow} implementation we can include the logic
