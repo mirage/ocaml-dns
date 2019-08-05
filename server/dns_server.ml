@@ -479,7 +479,7 @@ module Notification = struct
         cs'
       end
     | Some None ->
-      Log.info (fun m -> m "adding zone %a with key %a and IP %a (was no key)"
+      Log.info (fun m -> m "adding zone %a (key %a) IP %a (previously no key)"
                    Domain_name.pp zone Domain_name.pp key Ipaddr.V4.pp ip);
       cs'
 
