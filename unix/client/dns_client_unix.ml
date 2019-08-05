@@ -29,18 +29,23 @@ module Uflow : Dns_client_flow.S
   let close socket = try Unix.close socket with _ -> ()
 
   let connect ?nameserver:ns t =
-    let proto, (server, port) = match ns with None -> nameserver t | Some x -> x in
-    begin match proto with
-      | `UDP -> Ok Unix.((getprotobyname "udp").p_proto)
-      | `TCP -> Ok Unix.((getprotobyname "tcp").p_proto)
-    end >>= fun proto_number ->
-    let socket = Unix.socket PF_INET SOCK_STREAM proto_number in
-    let addr = Unix.ADDR_INET (server, port) in
+    let proto, (server, port) =
+      match ns with None -> nameserver t | Some x -> x
+    in
     try
-      Unix.connect socket addr ;
-      Ok socket
+      begin match proto with
+        | `UDP -> Ok Unix.((getprotobyname "udp").p_proto)
+        | `TCP -> Ok Unix.((getprotobyname "tcp").p_proto)
+      end >>= fun proto_number ->
+      let socket = Unix.socket PF_INET SOCK_STREAM proto_number in
+      let addr = Unix.ADDR_INET (server, port) in
+      try
+        Unix.connect socket addr ;
+        Ok socket
+      with e ->
+        close socket ;
+        Error (`Msg (Printexc.to_string e))
     with e ->
-      close socket ;
       Error (`Msg (Printexc.to_string e))
 
   let send (socket:flow) (tx:Cstruct.t) =

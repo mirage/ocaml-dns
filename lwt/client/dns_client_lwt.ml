@@ -53,23 +53,28 @@ module Uflow : Dns_client_flow.S
   let lift = Lwt.return
 
   let connect ?nameserver:ns t =
-    let (proto, (server, port)) = match ns with None -> nameserver t | Some x -> x in
-    begin match proto with
-      | `UDP ->
-        Lwt_unix.((getprotobyname "udp") >|= fun x -> x.p_proto,
-                                                      SOCK_DGRAM)
-      | `TCP ->
-        Lwt_unix.((getprotobyname "tcp") >|= fun x -> x.p_proto,
-                                                      SOCK_STREAM)
-    end >>= fun (proto_number, socket_type) ->
-    let socket = Lwt_unix.socket PF_INET socket_type proto_number in
-    let addr = Lwt_unix.ADDR_INET (server, port) in
+    let (proto, (server, port)) =
+      match ns with None -> nameserver t | Some x -> x
+    in
     Lwt.catch (fun () ->
-      Lwt_unix.connect socket addr >|= fun () ->
-      Ok socket)
-    (fun e ->
-      close socket >|= fun () ->
-      Error (`Msg (Printexc.to_string e)))
+        begin match proto with
+          | `UDP ->
+            Lwt_unix.((getprotobyname "udp") >|= fun x -> x.p_proto,
+                                                          SOCK_DGRAM)
+          | `TCP ->
+            Lwt_unix.((getprotobyname "tcp") >|= fun x -> x.p_proto,
+                                                          SOCK_STREAM)
+        end >>= fun (proto_number, socket_type) ->
+        let socket = Lwt_unix.socket PF_INET socket_type proto_number in
+        let addr = Lwt_unix.ADDR_INET (server, port) in
+        Lwt.catch (fun () ->
+            Lwt_unix.connect socket addr >|= fun () ->
+            Ok socket)
+          (fun e ->
+             close socket >|= fun () ->
+             Error (`Msg (Printexc.to_string e))))
+      (fun e ->
+         Lwt_result.fail (`Msg (Printexc.to_string e)))
 end
 
 (* Now that we have our {!Uflow} implementation we can include the logic
