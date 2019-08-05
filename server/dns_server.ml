@@ -32,8 +32,9 @@ module Authentication = struct
     | `Transfer -> "_transfer"
 
   let is_op op name =
-    let lbl = operation_to_string op in
-    match Domain_name.(find_label name (equal_label lbl)) with
+    match
+      Domain_name.(find_label name (equal_label (operation_to_string op)))
+    with
     | None -> false
     | Some _ -> true
 
@@ -45,20 +46,23 @@ module Authentication = struct
     match Domain_name.find_label ~rev:true name is_transfer with
     | None -> None
     | Some idx ->
-      let arr = Domain_name.to_array name in
-      let zone_idx = Array.length arr - succ idx in
-      let zone = Domain_name.of_array (Array.sub arr 0 zone_idx) in
-      let start = succ zone_idx in
+      let amount = succ idx in
+      let zone = Domain_name.drop_label_exn ~amount name in
+      let len = Domain_name.count_labels name in
       let ip start =
-        try
-          let subarr = Array.sub arr start 4 in
-          let host = Domain_name.of_array subarr in
-          match Ipaddr.V4.of_string (Domain_name.to_string host) with
+        if start >= 0 && start + 4 < len then
+          let a = Domain_name.get_label_exn name start
+          and b = Domain_name.get_label_exn name (start + 1)
+          and c = Domain_name.get_label_exn name (start + 2)
+          and d = Domain_name.get_label_exn name (start + 3)
+          in
+          match Ipaddr.V4.of_string (String.concat "." [ a ; b ; c ; d ]) with
           | Error _ -> None
           | Ok ip -> Some ip
-        with Invalid_argument _ -> None
+        else
+          None
       in
-      match ip (start + 4), ip start with
+      match ip (idx - 8), ip (idx - 4) with
       | _, None -> None
       | None, Some ip -> Some (zone, ip, None)
       | Some primary, Some secondary -> Some (zone, primary, Some secondary)
@@ -78,22 +82,16 @@ module Authentication = struct
 
   let primaries t zone = find_ns `P t zone
 
-  let all_operations =
-    List.map operation_to_string [ `Update ; `Transfer ]
-
   let zone name =
-    let arr = Domain_name.to_array name in
-    let len = Array.length arr in
-    let rec go idx =
-      if idx = len then
-        len
-      else if List.exists (String.equal (Array.get arr idx)) all_operations then
-        idx
-      else
-        go (succ idx)
+    let is_op lbl =
+      Domain_name.equal_label lbl (operation_to_string `Update) ||
+      Domain_name.equal_label lbl (operation_to_string `Transfer)
     in
-    let zidx = go 0 in
-    Domain_name.(host_exn (of_array (Array.sub arr 0 zidx)))
+    match Domain_name.find_label ~rev:true name is_op with
+    | None -> Domain_name.host_exn name
+    | Some idx ->
+      let amount = succ idx in
+      Domain_name.host_exn (Domain_name.drop_label_exn ~amount name)
 
   let soa name =
     let nameserver = Domain_name.prepend_label_exn name "ns"
@@ -193,11 +191,9 @@ let text name data =
         map
     in
     let is_special name _ =
-      (* if only domain-name had proper types *)
-      let arr = Domain_name.to_array name in
-      match Array.get arr (pred (Array.length arr)) with
-      | exception Invalid_argument _ -> false
-      | lbl -> try String.get lbl 0 = '_' with Not_found -> false
+      match Domain_name.get_label name 0 with
+      | Error _ -> false
+      | Ok lbl -> String.get lbl 0 = '_'
     in
     let service, entries = Domain_name.Map.partition is_special map in
     out entries ;
