@@ -8,7 +8,7 @@ module type S = sig
   type flow
   (** A flow is a connection produced by {!U.connect} *)
 
-  type (+'ok,+'err) io constraint 'err = [> `Msg of string]
+  type +'a io
   (** [io] is the type of an effect. ['err] is a polymorphic variant. *)
 
   type io_addr
@@ -40,22 +40,22 @@ module type S = sig
       the underlying flow, can be used if the user does not want to
       bother with configuring their own.*)
 
-  val connect : ?nameserver:ns_addr -> t -> (flow,'err) io
+  val connect : ?nameserver:ns_addr -> t -> (flow, [> `Msg of string ]) result io
   (** [connect addr] is a new connection ([flow]) to [addr], or an error. *)
 
-  val send : flow -> Cstruct.t -> (unit,'err) io
+  val send : flow -> Cstruct.t -> (unit, [> `Msg of string ]) result io
   (** [send flow buffer] sends [buffer] to the [flow] upstream.*)
 
-  val recv : flow -> (Cstruct.t, 'err) io
+  val recv : flow -> (Cstruct.t, [> `Msg of string ]) result io
   (** [recv flow] tries to read a [buffer] from the [flow] downstream.*)
 
-  val resolve : ('ok,'err) io -> ('ok -> ('next,'err) result) -> ('next,'err) io
-  (** a.k.a. [>|=] *)
+  val close : flow -> unit io
+  (** [close flow] closes the [flow], freeing up resources. *)
 
-  val map : ('ok,'err) io -> ('ok -> ('next,'err) io) -> ('next,'err) io
+  val bind : 'a io -> ('a -> 'b io) -> 'b io
   (** a.k.a. [>>=] *)
 
-  val lift : ('ok, 'err) result -> ('ok,'err) io
+  val lift : 'a -> 'a io
 end
 
 module Make : functor (U : S) ->
@@ -68,7 +68,7 @@ sig
   (** [nameserver t] returns the default nameserver to be used. *)
 
   val getaddrinfo : U.t -> ?nameserver:U.ns_addr -> 'response Dns.Rr_map.key ->
-    'a Domain_name.t -> ('response, 'err) U.io
+    'a Domain_name.t -> ('response, [> `Msg of string ]) result U.io
   (** [getaddrinfo nameserver query_type name] is the [query_type]-dependent
       response from [nameserver] regarding [name], or an [Error _] message.
       See {!Dns_client.query_state} for more information about the
@@ -76,7 +76,7 @@ sig
   *)
 
   val gethostbyname : U.t -> ?nameserver:U.ns_addr -> [ `host ] Domain_name.t ->
-    (Ipaddr.V4.t, 'err) U.io
+    (Ipaddr.V4.t, [> `Msg of string ]) result U.io
     (** [gethostbyname state ~nameserver domain] is the IPv4 address of [domain]
         resolved via the [state] and [nameserver] specified.
         If the query fails, or if the [domain] does not have any IPv4 addresses,
@@ -87,7 +87,7 @@ sig
     *)
 
   val gethostbyname6 : U.t -> ?nameserver:U.ns_addr -> [ `host ] Domain_name.t ->
-    (Ipaddr.V6.t, 'err) U.io
+    (Ipaddr.V6.t, [> `Msg of string ]) result U.io
     (** [gethostbyname6 state ~nameserver domain] is the IPv6 address of
         [domain] resolved via the [state] and [nameserver] specified.
 
