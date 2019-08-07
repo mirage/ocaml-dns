@@ -161,7 +161,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       let elapsed = M.elapsed_ns () in
       let state', out = Dns_server.Secondary.closed !state now elapsed ip in
       state := state' ;
-      Lwt_list.iter_s request out
+      request (ip, out)
     and read_and_handle ip f =
       Dns.read_tcp f >>= function
       | Error () ->
@@ -170,7 +170,7 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
         (* re-send once *)
         begin match Dns.IM.find ip !tcp_packet_transit with
           | None -> Lwt.return_unit
-          | Some data -> request ~record:false data
+          | Some (ip, data) -> request ~record:false (ip, data)
         end
       | Ok data ->
         let now = Ptime.v (P.now_d_ps ()) in
@@ -187,14 +187,16 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
              Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp ip) ;
              close ip >|= fun () -> Error ()
            | Ok () -> Lwt.return (Ok ())) >>= fun r ->
-        Lwt_list.iter_s request out >>= fun () ->
+        (match out with
+         | None -> Lwt.return_unit
+         | Some (ip, data) -> request_one (ip, data)) >>= fun () ->
         match r with
         | Ok () -> read_and_handle ip f
         | Error () -> Lwt.return_unit
-    and request ?(record = true) (proto, ip, data) =
+    and request ?(record = true) (ip, data) =
       let dport = 53 in
       if record then
-        tcp_packet_transit := Dns.IM.add ip (proto, ip, data) !tcp_packet_transit;
+        tcp_packet_transit := Dns.IM.add ip (ip, data) !tcp_packet_transit;
       match Dns.IM.find ip !tcp_out with
       | None ->
         begin
@@ -209,30 +211,35 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
             Lwt.return_unit
           | Ok flow ->
             tcp_out := Dns.IM.add ip flow !tcp_out ;
-            Dns.send_tcp flow data >>= function
+            Dns.send_tcp_multiple flow data >>= function
             | Error () -> close ip
             | Ok () ->
               Lwt.async (fun () -> read_and_handle ip (Dns.of_flow flow)) ;
               Lwt.return_unit
         end
       | Some flow ->
-        Dns.send_tcp flow data >>= function
+        Dns.send_tcp_multiple flow data >>= function
         | Ok () -> Lwt.return_unit
         | Error () ->
           Log.warn (fun m -> m "closing tcp flow to %a:%d, retrying request"
                        Ipaddr.V4.pp ip dport) ;
           T.close flow >>= fun () ->
           tcp_out := Dns.IM.remove ip !tcp_out ;
-          request (proto, ip, data)
+          request (ip, data)
+    and request_one ?record (ip, d) = request ?record (ip, [ d ])
     in
 
     let udp_cb ~src ~dst:_ ~src_port buf =
       Log.info (fun m -> m "udp frame from %a:%d" Ipaddr.V4.pp src src_port) ;
       let now = Ptime.v (P.now_d_ps ()) in
       let elapsed = M.elapsed_ns () in
-      let t, answer, out = Dns_server.Secondary.handle_buf !state now elapsed `Udp src buf in
+      let t, answer, out =
+        Dns_server.Secondary.handle_buf !state now elapsed `Udp src buf
+      in
       maybe_update_state t >>= fun () ->
-      List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
+      (match out with
+       | None -> ()
+       | Some (ip, cs) -> Lwt.async (fun () -> request_one (ip, cs))) ;
       match answer with
       | None -> Lwt.return_unit
       | Some out -> Dns.send_udp stack port src src_port out
@@ -255,7 +262,9 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
             Dns_server.Secondary.handle_buf !state now elapsed `Tcp dst_ip data
           in
           maybe_update_state t >>= fun () ->
-          List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
+          (match out with
+           | None -> ()
+           | Some (ip, cs) -> Lwt.async (fun () -> request_one (ip, cs)));
           match answer with
           | None ->
             Log.warn (fun m -> m "no TCP output") ;
@@ -275,7 +284,8 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
       let elapsed = M.elapsed_ns () in
       let t, out = Dns_server.Secondary.timer !state now elapsed in
       maybe_update_state t >>= fun () ->
-      List.iter (fun x -> Lwt.async (fun () -> request x)) out ;
+      List.iter (fun (ip, cs) ->
+          Lwt.async (fun () -> request (ip, cs))) out ;
       TIME.sleep_ns (Duration.of_sec timer) >>= fun () ->
       time ()
     in

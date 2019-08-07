@@ -127,20 +127,20 @@ module Secondary : sig
 
   val handle_packet : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
     Packet.t -> 'a Domain_name.t option ->
-    s * Packet.t option * (proto * Ipaddr.V4.t * Cstruct.t) list
+    s * Packet.t option * (Ipaddr.V4.t * Cstruct.t) option
   (** [handle_packet s now ts ip proto key t] handles the incoming packet. *)
 
   val handle_buf : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> Cstruct.t ->
-    s * Cstruct.t option * (proto * Ipaddr.V4.t * Cstruct.t) list
+    s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t) option
   (** [handle_buf s now ts proto src buf] decodes [buf], processes with
       {!handle_packet}, and encodes the results. *)
 
   val timer : s -> Ptime.t -> int64 ->
-    s * (proto * Ipaddr.V4.t * Cstruct.t) list
+    s * (Ipaddr.V4.t * Cstruct.t list) list
   (** [timer s now ts] may request SOA or retransmit AXFR. *)
 
   val closed : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
-    s * (proto * Ipaddr.V4.t * Cstruct.t) list
-  (** [closed s now ts ip] marks [ip] as closed. *)
-
+    s * Cstruct.t list
+  (** [closed s now ts ip] marks [ip] as closed, the returned buffers (SOA
+      requests) should be sent to [ip]. *)
 end
