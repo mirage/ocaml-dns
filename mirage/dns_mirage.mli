@@ -32,7 +32,12 @@ module Make (S : Mirage_stack_lwt.V4) : sig
 
   val send_tcp : S.TCPV4.flow -> Cstruct.t -> (unit, unit) result Lwt.t
   (** [send_tcp flow buf] sends the buffer, either succeeds or fails (logs
-     actual error). *)
+      actual error). *)
+
+  val send_tcp_multiple : S.TCPV4.flow -> Cstruct.t list ->
+    (unit, unit) result Lwt.t
+  (** [send_tcp_multiple flow bufs] sends the buffers, either succeeds or fails
+      (logs actual error). *)
 
   val send_udp : S.t -> int -> Ipaddr.V4.t -> int -> Cstruct.t -> unit Lwt.t
   (** [send_udp stack source_port dst dst_port buf] sends the [buf] as UDP

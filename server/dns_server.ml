@@ -7,7 +7,13 @@ open Dns
 let src = Logs.Src.create "dns_server" ~doc:"DNS server"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module IPM = Map.Make(Ipaddr.V4)
+module IPM = struct
+  include Map.Make(Ipaddr.V4)
+
+  let union_append a b =
+    let f _ a b = Some (a @ b) in
+    union f a b
+end
 
 let guard p err = if p then Ok () else Error err
 
@@ -529,7 +535,7 @@ module Notification = struct
   let retransmit server ns now ts =
     let max = pred (Array.length retransmit) in
     IPM.fold (fun ip map (new_ns, out) ->
-        let new_map, out =
+        let new_map, out' =
           Domain_name.Host_map.fold
             (fun name (oldts, count, packet, key, mac) (new_map, outs) ->
                if Int64.sub ts retransmit.(count) > oldts then
@@ -541,17 +547,15 @@ module Notification = struct
                    end else
                     let v = oldts, succ count, packet, key, mac in
                     Domain_name.Host_map.add name v new_map),
-                 (ip, out) :: outs
+                 out :: outs
                else
                  let v = oldts, count, packet, key, mac in
                  Domain_name.Host_map.add name v new_map, outs)
-            map (Domain_name.Host_map.empty, out)
+            map (Domain_name.Host_map.empty, [])
         in
-        (if Domain_name.Host_map.is_empty new_map then
-           new_ns
-         else
-           IPM.add ip new_map new_ns),
-        out)
+        (if Domain_name.Host_map.is_empty new_map then new_ns
+         else IPM.add ip new_map new_ns),
+        (ip, out') :: out)
       ns (IPM.empty, [])
 
   let notify_one ns server now ts zone soa ip key =
@@ -572,7 +576,7 @@ module Notification = struct
     in
     let out, mac = encode_and_sign key server now packet in
     let ns = add_to_ns ns ip key mac in
-    (ns, (ip, out))
+    (ns, out)
 
   let notify conn ns server now ts zone soa =
     let remotes = to_notify conn ~data:server.data ~auth:server.auth zone in
@@ -583,8 +587,8 @@ module Notification = struct
                   (IPM.bindings remotes));
     IPM.fold (fun ip key (ns, outs) ->
         let ns, out = notify_one ns server now ts zone soa ip key in
-        ns, out :: outs)
-      remotes (ns, [])
+        ns, IPM.add ip [ out ] outs)
+      remotes (ns, IPM.empty)
 
   let received_reply ns ip reply =
     match IPM.find_opt ip ns with
@@ -739,7 +743,7 @@ module Primary = struct
         Domain_name.Map.empty
 
   let with_data (t, m, l, n) now ts data =
-    (* we're the primary and need to notify our friends! *)
+    (* need to notify secondaries of new, updated, and removed zones! *)
     let n', out =
       Dns_trie.fold Soa data
         (fun name soa (n, outs) ->
@@ -750,14 +754,17 @@ module Primary = struct
            | Ok zone ->
              match Dns_trie.lookup name Soa t.data with
              | Error _ ->
+               (* a new zone appeared *)
                let n', outs' = Notification.notify l n t now ts zone soa in
-               (n', outs @ outs')
+               (n', IPM.union_append outs outs')
              | Ok old when Soa.newer ~old soa ->
+               (* a zone was modified (its Soa increased) *)
                let n', outs' = Notification.notify l n t now ts zone soa in
-               (n', outs @ outs')
+               (n', IPM.union_append outs outs')
              | Ok _ -> (n, outs))
-        (n, [])
+        (n, IPM.empty)
     in
+    (* zone removal - present in t.data, absent in data *)
     let n'', out' =
       Dns_trie.fold Soa t.data (fun name soa (n, outs) ->
           match Domain_name.host name with
@@ -769,12 +776,12 @@ module Primary = struct
             | Error _ ->
               let soa' = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
               let n', outs' = Notification.notify l n t now ts zone soa' in
-              (n', outs @ outs')
+              (n', IPM.union_append outs outs')
             | Ok _ -> (n, outs))
-        (n', [])
+        (n', out)
     in
     let m' = update_trie_cache m t.data in
-    ({ t with data }, m', l, n''), out @ out'
+    ({ t with data }, m', l, n''), IPM.bindings out'
 
   let with_keys (t, m, l, n) now ts keys =
     let auth = Authentication.of_keys keys in
@@ -813,7 +820,7 @@ module Primary = struct
     let n'', outs =
       Domain_name.Set.fold (fun key (ns, out) ->
           match Authentication.find_zone_ips key with
-          | Some (zone, _, Some secondary) ->
+          | Some (zone, _, Some sec) ->
             let notify =
               if Domain_name.(equal zone root) then
                 Dns_trie.fold Soa t'.data (fun name soa n -> (name, soa)::n) []
@@ -822,19 +829,22 @@ module Primary = struct
                 | Error _ -> []
                 | Ok soa -> [zone, soa]
             in
-            List.fold_left (fun (ns, outs) (name, soa) ->
-                match Domain_name.host name with
-                | Error (`Msg msg) ->
-                  Log.warn (fun m -> m "non-hostname notification %a: %s"
-                               Domain_name.pp name msg);
-                  ns, outs
-                | Ok host ->
-                  let ns, out =
-                    let key = Some key in
-                    Notification.notify_one ns t' now ts host soa secondary key
-                  in
-                  ns, out :: outs)
-              (ns, out) notify
+            let ns, out_notifications =
+              List.fold_left (fun (ns, outs) (name, soa) ->
+                  match Domain_name.host name with
+                  | Error (`Msg msg) ->
+                    Log.warn (fun m -> m "non-hostname notification %a: %s"
+                                 Domain_name.pp name msg);
+                    ns, outs
+                  | Ok host ->
+                    let ns, out =
+                      let key = Some key in
+                      Notification.notify_one ns t' now ts host soa sec key
+                    in
+                    ns, out :: outs)
+                (ns, []) notify
+            in
+            ns, (sec, out_notifications) :: out
           | _ -> ns, out)
         added (n', [])
     in
@@ -901,7 +911,7 @@ module Primary = struct
                 ns, out :: outs)
               (ns, []) notify
           in
-          l', ns, outs, Some `Keep
+          l', ns, [ ip, outs ], Some `Keep
         | _ -> l, ns, [], None
       in
       let answer =
@@ -925,11 +935,11 @@ module Primary = struct
       and m' = update_trie_cache m data
       in
       let ns, out = match stuff with
-        | None -> ns, []
+        | None -> ns, IPM.empty
         | Some (zone, soa) -> Notification.notify l ns t' now ts zone soa
       in
       let answer' = Packet.create (fst p.header, flags) p.question answer in
-      (t', m', l, ns), Some answer', out, None
+      (t', m', l, ns), Some answer', IPM.bindings out, None
     | `Axfr_request ->
       let flags, answer = match axfr t proto key p.question with
         | Ok data -> authoritative, `Axfr_reply data

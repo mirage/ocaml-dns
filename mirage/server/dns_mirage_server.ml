@@ -37,17 +37,18 @@ module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : 
     let send_notify recv_task (ip, data) =
       let connect_and_send ip =
         connect recv_task ip >>= function
-        | Ok flow -> Dns.send_tcp flow data
+        | Ok flow -> Dns.send_tcp_multiple flow data
         | Error () -> Lwt.return (Error ())
       in
       (match Dns.IM.find ip !tcp_out with
        | None -> connect_and_send ip
-       | Some f -> Dns.send_tcp f data >>= function
+       | Some f -> Dns.send_tcp_multiple f data >>= function
          | Ok () -> Lwt.return (Ok ())
          | Error () -> drop ip ; connect_and_send ip) >>= function
       | Ok () -> Lwt.return_unit
       | Error () ->
-        drop ip ; Dns.send_udp stack port ip 53 data
+        drop ip;
+        Lwt_list.iter_p (Dns.send_udp stack port ip 53) data
     in
 
     let maybe_update_state t =

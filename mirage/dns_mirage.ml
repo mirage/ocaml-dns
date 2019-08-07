@@ -76,6 +76,13 @@ module Make (S : Mirage_stack_lwt.V4) = struct
       T.close flow >|= fun () ->
       Error ()
 
+  let send_tcp_multiple flow datas =
+    Lwt_list.fold_left_s (fun acc d ->
+        match acc with
+        | Error () -> Lwt.return (Error ())
+        | Ok () -> send_tcp flow d)
+      (Ok ()) datas
+
   let read_tcp flow =
     read_exactly flow 2 >>= function
     | Error () -> Lwt.return (Error ())
