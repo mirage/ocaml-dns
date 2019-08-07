@@ -13,13 +13,19 @@ module Uflow : Dns_client_flow.S
   type ns_addr = [`TCP | `UDP] * io_addr
   type stack = unit
   type flow = Unix.file_descr
-  type t = { nameserver : ns_addr }
+  type t = {
+    rng : int -> Cstruct.t ;
+    nameserver : ns_addr ;
+  }
   type +'a io = 'a
 
-  let create ?(nameserver = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)) () =
-    { nameserver }
+  let create
+      ?(rng = Dns_client_flow.stdlib_random)
+      ?(nameserver = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)) () =
+    { rng ; nameserver }
 
-  let nameserver { nameserver } = nameserver
+  let nameserver { nameserver ; _ } = nameserver
+  let rng { rng ; _ } = rng
 
   let bind a b = b a
   let lift v = v
