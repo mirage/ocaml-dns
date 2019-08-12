@@ -537,7 +537,7 @@ module Notification = struct
      - a (signed?) notify response came in, drop it from outstanding *)
   let retransmit =
     Array.map Duration.of_sec
-      [| 1 ; 2 ; 3 ; 7 ; 20 ; 40 ; 60 ; 180 ; 600 ; 1500 ; 3600 ; 3600 * 24 |]
+      [| 1 ; 1 ; 1 ; 4 ; 13 ; 20 ; 20 ; 120 ; 420 ; 900 ; 2100 ; 3600 * 23 |]
 
   let retransmit server ns now ts =
     let max = pred (Array.length retransmit) in
@@ -545,14 +545,14 @@ module Notification = struct
         let new_map, out' =
           Domain_name.Host_map.fold
             (fun name (oldts, count, packet, key, mac) (new_map, outs) ->
-               if Int64.sub ts retransmit.(count) > oldts then
+               if Int64.sub ts retransmit.(count) >= oldts then
                  let out, mac = encode_and_sign key server now packet in
                  (if count = max then begin
                      Log.warn (fun m -> m "retransmit notify to %a last time %a"
                                   Ipaddr.V4.pp ip Packet.pp packet);
                      new_map
                    end else
-                    let v = oldts, succ count, packet, key, mac in
+                    let v = ts, succ count, packet, key, mac in
                     Domain_name.Host_map.add name v new_map),
                  out :: outs
                else
@@ -560,9 +560,11 @@ module Notification = struct
                  Domain_name.Host_map.add name v new_map, outs)
             map (Domain_name.Host_map.empty, [])
         in
-        (if Domain_name.Host_map.is_empty new_map then new_ns
-         else IPM.add ip new_map new_ns),
-        (ip, out') :: out)
+        (if Domain_name.Host_map.is_empty new_map then
+           new_ns
+         else
+           IPM.add ip new_map new_ns),
+        (match out' with [] -> out | _ -> (ip, out') :: out))
       ns (IPM.empty, [])
 
   let notify_one ns server now ts zone soa ip key =

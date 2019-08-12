@@ -601,6 +601,38 @@ module S = struct
      - interaction of/with secondary (bootup, IXFR/AXFR, add/remove zone for root transfer keys, ...)
   *)
 
+  let multiple_zones () =
+    let keys =
+      [ n_of_s "1.2.3.4.9.10.11.12._transfer",
+        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+    in
+    let data' =
+      let ns = Domain_name.(host_exn (n_of_s "ns.one.com")) in
+      let ns' = Domain_name.Host_set.singleton ns
+      and soa = Soa.create ~serial:1l ns
+      in
+      Dns_trie.insert (n_of_s "two.com") Rr_map.Ns (300l, ns')
+        (Dns_trie.insert (n_of_s "two.com") Rr_map.Soa soa data)
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data' in
+    let s', notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 1 (List.length notifications));
+    Alcotest.(check int __LOC__ 2 (List.length (snd (List.hd notifications))));
+    let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
+    Alcotest.(check int __LOC__ 1 (List.length tbn));
+    let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "two.com")) in
+    Alcotest.(check int __LOC__ 1 (List.length tbn));
+    let s'', notifications = Dns_server.Primary.timer s' Ptime.epoch (Int64.add ts 1L) in
+    Alcotest.(check int __LOC__ 0 (List.length notifications));
+    let _, notifications = Dns_server.Primary.timer s' Ptime.epoch (Int64.add ts (Duration.of_ms 700)) in
+    Alcotest.(check int __LOC__ 0 (List.length notifications));
+    let _, notifications = Dns_server.Primary.timer s' Ptime.epoch (Int64.add ts (Duration.of_sec 1)) in
+    Alcotest.(check int __LOC__ 1 (List.length notifications));
+    Alcotest.(check int __LOC__ 2 (List.length (snd (List.hd notifications))));
+    let _, notifications = Dns_server.Primary.timer s'' Ptime.epoch (Int64.add ts (Duration.of_sec 2)) in
+    Alcotest.(check int __LOC__ 1 (List.length notifications));
+    Alcotest.(check int __LOC__ 2 (List.length (snd (List.hd notifications))))
+
   let tests = [
     "simple", `Quick, simple ;
     "secondary", `Quick, secondary ;
@@ -612,6 +644,7 @@ module S = struct
     "secondary via root key", `Quick, secondary_via_root_key ;
     "secondaries and keys", `Quick, secondaries_and_keys ;
     "secondaries and keys dups", `Quick, secondaries_and_keys_dups ;
+    "multiple zones", `Quick, multiple_zones ;
   ]
 end
 
