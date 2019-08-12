@@ -1,3 +1,11 @@
+
+let stdlib_random n =
+  let b = Cstruct.create n in
+  for i = 0 to pred n do
+    Cstruct.set_uint8 b i (Random.int 256)
+  done;
+  b
+
 module type S = sig
   type flow
   type +'a io
@@ -6,9 +14,10 @@ module type S = sig
   type stack
   type t
 
-  val create : ?nameserver:ns_addr -> stack -> t
+  val create : ?rng:(int -> Cstruct.t) -> ?nameserver:ns_addr -> stack -> t
 
   val nameserver : t -> ns_addr
+  val rng : t -> (int -> Cstruct.t)
 
   val connect : ?nameserver:ns_addr -> t -> (flow, [> `Msg of string ]) result io
   val send : flow -> Cstruct.t -> (unit, [> `Msg of string ]) result io
@@ -22,7 +31,7 @@ end
 module Make = functor (Uflow:S) ->
 struct
 
-  let create ?nameserver stack = Uflow.create ?nameserver stack
+  let create ?rng ?nameserver stack = Uflow.create ?rng ?nameserver stack
 
   let nameserver t = Uflow.nameserver t
 
@@ -41,7 +50,7 @@ struct
     : (requested, [> `Msg of string]) result Uflow.io =
     let proto, _ = match nameserver with None -> Uflow.nameserver t | Some x -> x in
     let tx, state =
-      Dns_client.make_query
+      Dns_client.make_query (Uflow.rng t)
         (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
     in
     Uflow.connect ?nameserver t >>| fun socket ->

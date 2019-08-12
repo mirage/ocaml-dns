@@ -3,7 +3,7 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_mirage_client" ~doc:"effectful DNS client layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (S : Mirage_stack_lwt.V4) = struct
+module Make (R : Mirage_random.C) (S : Mirage_stack_lwt.V4) = struct
 
   module Uflow : Dns_client_flow.S
     with type flow = S.TCPV4.flow
@@ -16,14 +16,20 @@ module Make (S : Mirage_stack_lwt.V4) = struct
     type ns_addr = [`TCP | `UDP] * io_addr
     type +'a io = 'a Lwt.t
     type t = {
+      rng : (int -> Cstruct.t) ;
       nameserver : ns_addr ;
       stack : stack ;
     }
 
-    let create ?(nameserver = `TCP, (Ipaddr.V4.of_string_exn "91.239.100.100", 53)) stack =
-      { nameserver ; stack }
+    let create
+        ?rng
+        ?(nameserver = `TCP, (Ipaddr.V4.of_string_exn "91.239.100.100", 53))
+        stack =
+      let rng = match rng with None -> R.generate ?g:None | Some x -> x in
+      { rng ; nameserver ; stack }
 
     let nameserver { nameserver ; _ } = nameserver
+    let rng { rng ; _ } = rng
 
     let bind = Lwt.bind
     let lift = Lwt.return

@@ -4,6 +4,13 @@
          better solution presents itself.
 *)
 
+val stdlib_random : int -> Cstruct.t
+(** [stdlib_random len] is a buffer of size [len], filled with random data.
+    This function is used by default (in the Unix and Lwt implementations) for
+    filling the ID field of the DNS packet. Internally, the {!Random} module
+    from the OCaml standard library is used, which is not cryptographically
+    secure. If desired {!Nocrypto.Rng.generate} can be passed to {!S.create}. *)
+
 module type S = sig
   type flow
   (** A flow is a connection produced by {!U.connect} *)
@@ -32,13 +39,16 @@ module type S = sig
   type t
   (** The abstract state of a DNS client. *)
 
-  val create : ?nameserver:ns_addr -> stack -> t
-  (** [create ~nameserver stack] creates the state record of the DNS client. *)
+  val create : ?rng:(int -> Cstruct.t) -> ?nameserver:ns_addr -> stack -> t
+  (** [create ~rng ~nameserver stack] creates the state record of the DNS client. *)
 
   val nameserver : t -> ns_addr
   (** The address of a nameserver that is supposed to work with
       the underlying flow, can be used if the user does not want to
       bother with configuring their own.*)
+
+  val rng : t -> (int -> Cstruct.t)
+  (** [rng t] is a random number generator. *)
 
   val connect : ?nameserver:ns_addr -> t -> (flow, [> `Msg of string ]) result io
   (** [connect addr] is a new connection ([flow]) to [addr], or an error. *)
@@ -61,8 +71,8 @@ end
 module Make : functor (U : S) ->
 sig
 
-  val create : ?nameserver:U.ns_addr -> U.stack -> U.t
-  (** [create ~nameserver stack] creates the state of the DNS client. *)
+  val create : ?rng:(int -> Cstruct.t) -> ?nameserver:U.ns_addr -> U.stack -> U.t
+  (** [create ~rng ~nameserver stack] creates the state of the DNS client. *)
 
   val nameserver : U.t -> U.ns_addr
   (** [nameserver t] returns the default nameserver to be used. *)

@@ -18,18 +18,12 @@ type 'key query_state constraint 'key = 'a Dns.Rr_map.key
 *)
 
 val make_query :
-  Dns.proto -> 'a Domain_name.t ->
+  (int -> Cstruct.t) -> Dns.proto -> 'a Domain_name.t ->
   'query_type Dns.Rr_map.key ->
   Cstruct.t * 'query_type Dns.Rr_map.key query_state
-(** [make_query protocol name query_type] is [query, query_state]
+(** [make_query rng protocol name query_type] is [query, query_state]
     where [query] is the serialized DNS query to send to the name server,
-    and [query_state] is the information required to validate the response.
-
-    NB: When querying for [TLSA] records, it is important to use the optional
-    [~hostname:false] parameter with the conversion functions within {!Domain_name}
-    when constructing the {!Domain_name.t} for the search, since these contain
-    labels prefixed with underscores.
-*)
+    and [query_state] is the information required to validate the response. *)
 
 val parse_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
   ('query_type, [`Msg of string | `Partial]) result

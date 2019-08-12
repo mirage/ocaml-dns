@@ -16,12 +16,18 @@ module Uflow : Dns_client_flow.S
   type ns_addr = [`TCP | `UDP] * io_addr
   type +'a io = 'a Lwt.t
   type stack = unit
-  type t = { nameserver : ns_addr }
+  type t = {
+    rng : (int -> Cstruct.t) ;
+    nameserver : ns_addr ;
+  }
 
-  let create ?(nameserver = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)) () =
-    { nameserver }
+  let create
+    ?(rng = Dns_client_flow.stdlib_random)
+    ?(nameserver = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)) () =
+    { rng ; nameserver }
 
-  let nameserver { nameserver } = nameserver
+  let nameserver { nameserver ; _ } = nameserver
+  let rng { rng ; _ } = rng
 
   let close socket =
     Lwt.catch (fun () -> Lwt_unix.close socket) (fun _ -> Lwt.return_unit)
