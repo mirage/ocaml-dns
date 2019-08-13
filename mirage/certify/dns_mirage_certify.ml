@@ -112,11 +112,12 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
     in
     let public_key = `RSA (Nocrypto.Rsa.pub_of_priv private_key) in
     let extensions =
-      if Domain_name.Set.is_empty additionals then
-        X509.Signing_request.Ext.empty
-      else
+      match additionals with
+      | [] -> X509.Signing_request.Ext.empty
+      | _ ->
         let ext =
-          let gn = X509.General_name.(singleton DNS additionals) in
+          let additional = List.map Domain_name.to_string additionals in
+          let gn = X509.General_name.(singleton DNS additional) in
           X509.Extension.(singleton Subject_alt_name (false, gn))
         in
         X509.Signing_request.Ext.(singleton Extensions ext)
@@ -163,7 +164,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         in
         wait_for_cert ()
 
-  let retrieve_certificate ?(ca = `Staging) stack ~dns_key ~hostname ?(additional_hostnames = Domain_name.Set.empty) ?key_seed dns port =
+  let retrieve_certificate ?(ca = `Staging) stack ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
     (match ca with
      | `Staging -> Logs.warn (fun m -> m "staging environment - test use only")
      | `Production -> Logs.warn (fun m -> m "production environment - take care what you do"));
@@ -175,7 +176,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       | Error (`Msg m) -> invalid_arg ("failed to parse dnskey: " ^ m)
     in
     let not_sub subdomain = not (Domain_name.is_subdomain ~subdomain ~domain:zone) in
-    if not_sub hostname || Domain_name.Set.exists not_sub additional_hostnames then
+    if not_sub hostname || List.exists not_sub additional_hostnames then
       Lwt.fail_with "hostname not a subdomain of zone provided by dns_key"
     else
       let priv, pub, csr =
