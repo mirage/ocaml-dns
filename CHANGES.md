@@ -1,7 +1,6 @@
-### v2.0.0 (dev)
+### v4.0.0 (2019-08-15)
 
 * Switch to uDNS implementation.
-  TODO more details.
 
 ### v1.1.2 (2019-02-28)
 
