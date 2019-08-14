@@ -15,6 +15,7 @@ depends: [
   "duration"
   "alcotest" {with-test}
   "nocrypto" {with-test}
+  "dns-tsig" {with-test}
 ]
 
 build: [
