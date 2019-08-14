@@ -62,12 +62,12 @@ module Primary : sig
   (** [data s] is the data store of [s]. *)
 
   val with_data : s -> Ptime.t -> int64 -> Dns_trie.t ->
-    s * (Ipaddr.V4.t * Cstruct.t) list
+    s * (Ipaddr.V4.t * Cstruct.t list) list
   (** [with_data s now ts trie] replaces the current data with [trie] in [s].
       The returned notifications should be send out. *)
 
   val with_keys : s -> Ptime.t -> int64 -> ('a Domain_name.t * Dnskey.t) list ->
-    s * (Ipaddr.V4.t * Cstruct.t) list
+    s * (Ipaddr.V4.t * Cstruct.t list) list
   (** [with_keys s now ts keys] replaces the current keys with [keys] in [s],
       and generates notifications. *)
 
@@ -79,7 +79,7 @@ module Primary : sig
 
   val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> int ->
     Packet.t -> 'a Domain_name.t option ->
-    s * Packet.t option * (Ipaddr.V4.t * Cstruct.t) list *
+    s * Packet.t option * (Ipaddr.V4.t * Cstruct.t list) list *
     [> `Notify of Soa.t option | `Keep ] option
   (** [handle_packet s now ts src src_port proto key packet] handles the given
      [packet], returning new state, an answer, and potentially notify packets to
@@ -87,7 +87,7 @@ module Primary : sig
 
   val handle_buf : s -> Ptime.t -> int64 -> proto ->
     Ipaddr.V4.t -> int -> Cstruct.t ->
-    s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t) list *
+    s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t list) list *
     [ `Notify of Soa.t option | `Signed_notify of Soa.t option | `Keep ] option
   (** [handle_buf s now ts proto src src_port buffer] decodes the [buffer],
      processes the DNS frame using {!handle_packet}, and encodes the reply. *)
@@ -95,7 +95,8 @@ module Primary : sig
   val closed : s -> Ipaddr.V4.t -> s
   (** [closed s ip] marks the connection to [ip] closed. *)
 
-  val timer : s -> Ptime.t -> int64 -> s * (Ipaddr.V4.t * Cstruct.t) list
+  val timer : s -> Ptime.t -> int64 ->
+    s * (Ipaddr.V4.t * Cstruct.t list) list
   (** [timer s now ts] may encode some notifications to secondary name servers
      if previous ones were not acknowledged. *)
 
@@ -105,7 +106,6 @@ module Primary : sig
      tsig key name of the servers to be notified for a zone change.  This list
      is based on (a) NS entries for the zone, (b) registered TSIG transfer keys,
      and (c) active connection (which transmitted a signed SOA). *)
-
 end
 
 module Secondary : sig
@@ -127,20 +127,20 @@ module Secondary : sig
 
   val handle_packet : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
     Packet.t -> 'a Domain_name.t option ->
-    s * Packet.t option * (proto * Ipaddr.V4.t * Cstruct.t) list
+    s * Packet.t option * (Ipaddr.V4.t * Cstruct.t) option
   (** [handle_packet s now ts ip proto key t] handles the incoming packet. *)
 
   val handle_buf : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> Cstruct.t ->
-    s * Cstruct.t option * (proto * Ipaddr.V4.t * Cstruct.t) list
+    s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t) option
   (** [handle_buf s now ts proto src buf] decodes [buf], processes with
       {!handle_packet}, and encodes the results. *)
 
   val timer : s -> Ptime.t -> int64 ->
-    s * (proto * Ipaddr.V4.t * Cstruct.t) list
+    s * (Ipaddr.V4.t * Cstruct.t list) list
   (** [timer s now ts] may request SOA or retransmit AXFR. *)
 
   val closed : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
-    s * (proto * Ipaddr.V4.t * Cstruct.t) list
-  (** [closed s now ts ip] marks [ip] as closed. *)
-
+    s * Cstruct.t list
+  (** [closed s now ts ip] marks [ip] as closed, the returned buffers (SOA
+      requests) should be sent to [ip]. *)
 end
