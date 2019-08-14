@@ -366,7 +366,6 @@ module Trie = struct
                 (Ok (Rr_map.B (Rr_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
                 (lookup_b (n_of_s "foo.com") Ns t'))
 
-
   let tests = [
     "simple", `Quick, simple ;
     "basic", `Quick, basic ;
@@ -633,6 +632,25 @@ module S = struct
     Alcotest.(check int __LOC__ 1 (List.length notifications));
     Alcotest.(check int __LOC__ 2 (List.length (snd (List.hd notifications))))
 
+  let test_secondary () =
+    let keys =
+      let key = Nocrypto.Base64.encode (Cstruct.create 32) in
+      [ n_of_s "1.2.3.4.9.10.11.12._transfer.one.com",
+        { Dnskey.flags = 0 ; algorithm = SHA256 ; key } ]
+    in
+    let s =
+      Dns_server.Secondary.create ~rng:Nocrypto.Rng.generate
+        ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign keys
+    in
+    let s', reqs = Dns_server.Secondary.timer s Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 1 (List.length reqs));
+    Alcotest.(check int __LOC__ 1 (List.length (snd (List.hd reqs))));
+    let s'', reqs' = Dns_server.Secondary.timer s' Ptime.epoch (Int64.add ts (Duration.of_sec 2)) in
+    Alcotest.(check int __LOC__ 0 (List.length reqs'));
+    let _s'', reqs'' = Dns_server.Secondary.timer s'' Ptime.epoch (Int64.add ts (Duration.of_sec 3)) in
+    Alcotest.(check int __LOC__ 1 (List.length reqs''));
+    Alcotest.(check int __LOC__ 1 (List.length (snd (List.hd reqs''))))
+
   let tests = [
     "simple", `Quick, simple ;
     "secondary", `Quick, secondary ;
@@ -645,6 +663,7 @@ module S = struct
     "secondaries and keys", `Quick, secondaries_and_keys ;
     "secondaries and keys dups", `Quick, secondaries_and_keys_dups ;
     "multiple zones", `Quick, multiple_zones ;
+    "secondary create", `Quick, test_secondary ;
   ]
 end
 

@@ -1079,7 +1079,6 @@ module Secondary = struct
   let with_data (t, zones) data = ({ t with data }, zones)
 
   let create ?(a = []) ?primary ~tsig_verify ~tsig_sign ~rng keylist =
-    (* two kinds of keys: aaa._key-management and ip1.ip2._transfer.zone *)
     let keys = Authentication.of_keys keylist in
     let zones =
       let f name _ zones =
@@ -1167,11 +1166,12 @@ module Secondary = struct
           the zone anymore
 
        - axfr (once soa is through and we know we have stale data) is retried
-          every 5 seconds
-       - if we don't have a soa yet for the zone, retry every 5 seconds as well
+          every 3 seconds
+       - if we don't have a soa yet for the zone, retry every 3 seconds as well
+       - TODO exponential backoff for that
     *)
     Log.debug (fun m -> m "secondary timer");
-    let five_sec = Duration.of_sec 5 in
+    let three_sec = Duration.of_sec 3 in
     let t, out =
       Domain_name.Host_map.fold (fun zone (st, ip, name) ((t, zones), map) ->
           Log.debug (fun m -> m "secondary timer zone %a ip %a name %a"
@@ -1185,16 +1185,15 @@ module Secondary = struct
           in
           match Dns_trie.lookup zone Rr_map.Soa t.data, st with
           | Ok soa, Transferred ts ->
-            (* TODO: integer overflows (Int64.add) *)
             let r = Duration.of_sec (Int32.to_int soa.Soa.refresh) in
             maybe_out
-              (if Int64.add ts r < now then
+              (if Int64.sub now r >= ts then
                  query_soa t p_now now zone name
                else
                  None)
           | Ok soa, Requested_soa (ts, _, retry, _) ->
             let expiry = Duration.of_sec (Int32.to_int soa.Soa.expiry) in
-            if Int64.add ts expiry < now then begin
+            if Int64.sub now expiry >= ts then begin
               Log.warn (fun m -> m "expiry expired, dropping zone %a"
                            Domain_name.pp zone);
               let data = Dns_trie.remove_zone zone t.data in
@@ -1203,26 +1202,26 @@ module Secondary = struct
               let retry = succ retry in
               let e = Duration.of_sec (retry * Int32.to_int soa.Soa.retry) in
               maybe_out
-                (if Int64.add ts e < now then
-                   query_soa ~retry t p_now ts zone name
+                (if Int64.sub now e >= ts then
+                   query_soa ~retry t p_now now zone name
                  else
                    None)
           | Error _, Requested_soa (ts, _, retry, _) ->
             maybe_out
-              (if Int64.add ts five_sec < now || ts = 0L then
-                 query_soa ~retry:(succ retry) t p_now ts zone name
+              (if Int64.sub now three_sec >= ts then
+                 query_soa ~retry:(succ retry) t p_now now zone name
                else
                  None)
           | _, Requested_axfr (ts, _, _) ->
             maybe_out
-              (if Int64.add ts five_sec < now then
-                 axfr t p_now ts zone name
+              (if Int64.sub now three_sec >= ts then
+                 axfr t p_now now zone name
                else
                  None)
           | _, Requested_ixfr (ts, _, soa, _) ->
             maybe_out
-              (if Int64.add ts five_sec < now then
-                 ixfr t p_now ts zone soa name
+              (if Int64.sub now three_sec >= ts then
+                 ixfr t p_now now zone soa name
                else
                  None)
           | Error e, _ ->
