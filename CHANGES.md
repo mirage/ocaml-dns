@@ -10,22 +10,22 @@
 * The API does not leak exceptions, but uses the result type where appropriate.
 * TCP transport is well supported and used widely (client uses it by default)
 * Naming: client is a DNS client, resolver is the recursive resolver
-* The DNS library is split into the following opam packages:
+* The DNS library is split into the following opam packages and sublibraries:
   - `dns` - the core library
   - `dns-tsig` - transaction signatures
   - `dns-zone` - zone file parser (mostly taken from the 1.x series)
   - `dns-cli` - command line utilities (odig, onotify, ..)
   - `dns-client` - pure client implementation
-    - `dns-client-unix` - DNS client using the Unix module for communication
-    - `dns-client-lwt` - DNS client using Lwt_unix for communication
-    - `dns-client-mirage` - DNS client using MirageOS for communication
+    - `.unix` - DNS client using the Unix module for communication
+    - `.lwt` - DNS client using Lwt_unix for communication
+    - `.mirage` - DNS client using MirageOS for communication
   - `dns-certify` - helpers for let's encrypt provisioning
-    - `dns-certify-mirage` - certificate provisioning with MirageOS
+    - `.mirage` - certificate provisioning with MirageOS
   - `dns-mirage` - generic MirageOS communication layer
   - `dns-server` - pure server implementation
-    - `dns-server-mirage` - MirageOS primary and secondary server
+    - `.mirage` - MirageOS primary and secondary server
   - `dns-resolver` - pure recursive resolver implementation
-    - `dns-resolver-mirage` - MirageOS recursive resolver
+    - `.mirage` - MirageOS recursive resolver
 * Only OCaml 4.07.0 and above are supported
 * Multicast DNS has been dropped for now
 * A client using async from JS has not been implemented yet

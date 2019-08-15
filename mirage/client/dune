@@ -1,6 +1,6 @@
 (library
   (name        dns_client_mirage)
-  (public_name dns-client-mirage)
+  (public_name dns-client.mirage)
   (libraries   domain-name ipaddr mirage-random mirage-stack-lwt dns-client)
   (wrapped     false)
 )

@@ -22,6 +22,10 @@ depends: [
   "mirage-flow"
   "randomconv"
   "domain-name" {>= "0.3.0"}
+  "ipaddr" {>= "3.0.0"}
+  "lwt"
+  "mirage-stack-lwt"
+  "mirage-random"
 ]
 synopsis: "Pure DNS resolver API"
 description: """

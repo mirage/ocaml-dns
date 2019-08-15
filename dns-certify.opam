@@ -12,9 +12,16 @@ depends: [
   "ocaml" {>= "4.07.0"}
   "dns" {= version}
   "dns-tsig" {= version}
+  "dns-mirage" {= version}
   "randomconv"
   "duration"
   "x509" {>= "0.7.1"}
+  "lwt"
+  "tls"
+  "mirage-random"
+  "mirage-time-lwt"
+  "mirage-clock-lwt" {>= "2.0.0"}
+  "mirage-stack-lwt"
 ]
 
 build: [

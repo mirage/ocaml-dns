@@ -1,7 +1,7 @@
 (library
   (name        dns_client_unix)
   (modules     dns_client_unix)
-  (public_name dns-client-unix)
+  (public_name dns-client.unix)
   (libraries   domain-name ipaddr dns-client rresult unix)
   (wrapped     false)
 )
@@ -9,7 +9,7 @@
 (executable
   (name         ohost)
   (modules      ohost)
-  (package      dns-client-unix)
-  (public_name  dns-client-unix)
-  (libraries    fmt dns-client-unix)
+  (package      dns-client)
+  (public_name  dns-client.unix)
+  (libraries    fmt dns-client.unix)
 )

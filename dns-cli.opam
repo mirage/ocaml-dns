@@ -12,8 +12,7 @@ depends: [
   "ocaml" {>= "4.07.0"}
   "dns" {= version}
   "dns-tsig" {= version}
-  "dns-client-lwt" {= version}
-  "dns-zone" {= version}
+  "dns-client" {= version}
   "dns-server" {= version}
   "dns-certify" {= version}
   "rresult"

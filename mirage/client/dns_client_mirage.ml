@@ -72,7 +72,7 @@ let config : 'a Mirage.impl =
     method ty : 'a typ = Type Dns_client
     method! packages : package list value =
       (Key.match_ Key.(value target) @@ begin function
-          | `Unix -> [package "dns-client-unix"]
+          | `Unix -> [package "dns-client.unix"]
           | _ -> []
         end
       )

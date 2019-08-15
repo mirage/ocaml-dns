@@ -1,6 +1,6 @@
 (library
   (name        dns_client_lwt)
   (modules     dns_client_lwt)
-  (public_name dns-client-lwt)
+  (public_name dns-client.lwt)
   (libraries   lwt lwt.unix dns dns-client)
   (wrapped     false))

@@ -11,10 +11,15 @@ depends: [
   "dune" {build & >= "1.2.0"}
   "ocaml" {>= "4.07.0"}
   "dns" {= version}
+  "dns-mirage" {= version}
   "randomconv"
   "duration"
-  "alcotest" {with-test}
+  "lwt"
+  "mirage-time-lwt"
+  "mirage-clock-lwt"
+  "mirage-stack-lwt"
   "nocrypto" {with-test}
+  "alcotest" {with-test}
   "dns-tsig" {with-test}
 ]
 
