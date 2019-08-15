@@ -1,6 +1,6 @@
 (library
- (name dns_mirage_resolver)
+ (name dns_resolver_mirage)
  (synopsis "A Domain Name system (DNS) library, MirageOS resolver integration")
- (public_name dns-mirage-resolver)
+ (public_name dns-resolver-mirage)
  (wrapped false)
  (libraries dns dns-resolver dns-server dns-mirage lwt duration mirage-time-lwt mirage-clock-lwt mirage-stack-lwt mirage-random))
