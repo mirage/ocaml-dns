@@ -97,10 +97,10 @@ API documentation [is available online](https://mirage.github.io/ocaml-dns/).
 
 ## Transition from older versions
 
-The pre-2.0.0 versions of ocaml-dns had a significantly different interface,
+The pre-4.0.0 versions of ocaml-dns had a significantly different interface,
 and so applications using them will need to be rewritten to follow the
-stricter coding style used in the post-2.0.0 branches.  The major improvements
-from 1.x to the 2.x series are:
+stricter coding style used in the post-4.0.0 branches.  The major improvements
+from 1.x to the 4.x series are:
 
 - data (rrset) is defined in a single GADT in `Rr_map`
 - add support for: notify, dynamic update, zone transfer, tsig (hmac authentication), edns
@@ -123,7 +123,7 @@ you will have to pin the same *version* for all of them:
 
 ```csh
 : csh syntax
-set version=2.0.0
+set version=4.0.0
 set repo=git+https://github.com/mirage/ocaml-dns.git
 
 # the -y parameter means "force" or
@@ -141,7 +141,7 @@ end
 
 ```bash
 : bash syntax
-version=2.0.0
+version=4.0.0
 repo=git+https://github.com/mirage/ocaml-dns.git
 
 for pkg in dns dns-{certify,cli,client{,-lwt,-unix}} \
