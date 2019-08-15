@@ -1,7 +1,7 @@
 ### v4.0.0 (2019-08-15)
 
 * Switch to uDNS implementation, developed from scratch since 2017, primarily
-  focussing on a recursive caching resolver. The server part supports dynamic
+  focusing on a recursive caching resolver. The server part supports dynamic
   updates (RFC 2135), transaction authentication with HMAC (RFC 2845), zone
   transfer (RFC 5936), incremental zone transfer (RFC 1995), change
   notifications (RFC 1996) amongst others.
@@ -9,7 +9,7 @@
   record type) specifies the value type.
 * The API does not leak exceptions, but uses the result type where appropriate.
 * TCP transport is well supported and used widely (client uses it by default)
-* Naming: client is a DNS client, resolver is the recursive resolver
+* Naming: client is a DNS client, resolver is the recursive resolver library
 * The DNS library is split into the following opam packages and sublibraries:
   - `dns` - the core library
   - `dns-tsig` - transaction signatures
