@@ -1,6 +1,5 @@
 (library
  (name dns_cli)
- (synopsis "A Domain Name system (DNS) library, unix applications")
  (public_name dns-cli)
  (wrapped false)
  (modules dns_cli)

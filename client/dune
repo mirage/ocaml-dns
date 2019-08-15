@@ -2,5 +2,5 @@
   (name        dns_client)
   (public_name dns-client)
   (modules     dns_client dns_client_flow)
-  (libraries   domain-name mirage-flow dns randomconv rresult)
+  (libraries   domain-name dns randomconv rresult)
   (wrapped     false))

@@ -14,13 +14,13 @@ depends: [
   "dns-server" {= version}
   "dns-mirage" {= version}
   "lru" {>= "0.3.0"}
-  "duration"
-  "randomconv"
-  "lwt"
-  "mirage-time-lwt"
-  "mirage-clock-lwt"
-  "mirage-random"
-  "mirage-stack-lwt"
+  "duration" {>= "0.1.2"}
+  "randomconv" {>= "0.1.2"}
+  "lwt" {>= "4.2.1"}
+  "mirage-time-lwt" {>= "1.3.0"}
+  "mirage-clock-lwt" {>= "2.0.0"}
+  "mirage-random" {>= "1.2.0"}
+  "mirage-stack-lwt" {>= "1.4.0"}
   "alcotest" {with-test}
 ]
 
