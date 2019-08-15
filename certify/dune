@@ -1,6 +1,5 @@
 (library
  (name dns_certify)
- (synopsis "A Domain Name system (DNS) library, certificate integration")
  (public_name dns-certify)
  (wrapped false)
  (libraries dns dns-tsig x509 randomconv))

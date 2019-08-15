@@ -6,22 +6,15 @@ services:
 sudo: false
 env:
   global:
-    - PINS="dns.dev:. dns-certify.dev:. dns-client.dev:. dns-client-lwt.dev:. dns-mirage-client.dev:. dns-client-unix.dev:. dns-resolver.dev:. dns-server.dev:. dns-tsig.dev:. dns-zone.dev:. dns-cli.dev:. dns-mirage.dev:. dns-mirage-resolver.dev:. dns-mirage-server.dev:. dns-mirage-certify.dev:."
+    - PINS="dns.dev:. dns-certify.dev:. dns-client.dev:. dns-resolver.dev:. dns-server.dev:. dns-tsig.dev:. dns-cli.dev:. dns-mirage.dev:."
   matrix:
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns"
-    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-zone"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-resolver"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage"
-    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage-resolver"
-    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage-server"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-certify"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-client"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-server"
-    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-client-lwt"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-tsig"
-    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage-certify"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-cli"
-    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-client-unix"
-    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-mirage-client"
 notifications:
   email: false

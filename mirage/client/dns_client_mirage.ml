@@ -1,6 +1,6 @@
 open Lwt.Infix
 
-let src = Logs.Src.create "dns_mirage_client" ~doc:"effectful DNS client layer"
+let src = Logs.Src.create "dns_client_mirage" ~doc:"effectful DNS client layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (R : Mirage_random.C) (S : Mirage_stack_lwt.V4) = struct
@@ -72,7 +72,7 @@ let config : 'a Mirage.impl =
     method ty : 'a typ = Type Dns_client
     method! packages : package list value =
       (Key.match_ Key.(value target) @@ begin function
-          | `Unix -> [package "dns-client-unix"]
+          | `Unix -> [package "dns-client.unix"]
           | _ -> []
         end
       )

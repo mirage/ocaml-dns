@@ -12,21 +12,20 @@ depends: [
   "ocaml" {>= "4.07.0"}
   "dns" {= version}
   "dns-tsig" {= version}
-  "dns-client-lwt" {= version}
-  "dns-zone" {= version}
+  "dns-client" {= version}
   "dns-server" {= version}
   "dns-certify" {= version}
-  "rresult"
-  "bos"
+  "rresult" {>= "0.6.0"}
+  "bos" {>= "0.2.0"}
   "cmdliner" {>= "1.0.0"}
-  "fpath"
+  "fpath" {>= "0.7.2"}
   "x509" {>= "0.7.1"}
-  "nocrypto"
-  "hex"
-  "ptime"
-  "logs"
-  "fmt"
-  "ipaddr" {>= "3.0.0"}
+  "nocrypto" {>= "0.5.4"}
+  "hex" {>= "1.4.0"}
+  "ptime" {>= "0.8.5"}
+  "logs" {>= "0.6.3"}
+  "fmt" {>= "0.8.8"}
+  "ipaddr" {>= "4.0.0"}
   "alcotest" {with-test}
 ]
 

@@ -2,7 +2,7 @@
 
 open Lwt.Infix
 
-let src = Logs.Src.create "dns_mirage_resolver" ~doc:"effectful DNS resolver"
+let src = Logs.Src.create "dns_resolver_mirage" ~doc:"effectful DNS resolver"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (TIME : Mirage_time_lwt.S) (S : Mirage_stack_lwt.V4) = struct

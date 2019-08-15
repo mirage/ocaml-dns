@@ -62,14 +62,14 @@
    needs to be called from a side-effecting layer.
 
     For the client library, several side-effecting layers are implemented:
-   [dns-client-unix] uses the blocking [Unix] API (distributed with the OCaml
-   runtime), [dns-client-lwt] uses the non-blocking [Lwt] API, and
-   [dns-mirage-client] using MirageOS interfaces. Unix command line utilities
+   [dns-client.unix] uses the blocking [Unix] API (distributed with the OCaml
+   runtime), [dns-client.lwt] uses the non-blocking [Lwt] API, and
+   [dns-client.mirage] using MirageOS interfaces. Unix command line utilities
    are provided in the [dns-cli] package.
 
     For the server and resolver components, side-effecting implementations
-   using MirageOS interfaces are provided in [dns-mirage-server] and
-   [dns-mirage-resolver].
+   using MirageOS interfaces are provided in [dns-server.mirage] and
+   [dns-resolver.mirage].
    {{:https://github.com/roburio/unikernels}Example unikernels} are provided
    externally, including authoritative primary and secondary servers, recursive
    and stub resolvers. The certificate authority

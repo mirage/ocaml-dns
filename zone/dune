@@ -1,7 +1,6 @@
 (library
  (name dns_zone)
- (synopsis "A tiny Domain Name system (DNS) library, zone format parser")
- (public_name dns-zone)
+ (public_name dns-server.zone)
  (private_modules dns_zone_state dns_zone_parser dns_zone_lexer)
  (libraries dns)
  (wrapped false))

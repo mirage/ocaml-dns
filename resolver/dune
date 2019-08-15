@@ -1,6 +1,5 @@
 (library
  (name dns_resolver)
- (synopsis "A tiny Domain Name system (DNS) library, resolver part")
  (public_name dns-resolver)
  (wrapped false)
  (libraries dns dns-server lru duration randomconv))

@@ -11,9 +11,9 @@ depends: [
   "dune" {build & >= "1.2.0"}
   "ocaml" {>= "4.07.0"}
   "dns" {= version}
-  "ipaddr"
-  "lwt"
-  "mirage-stack-lwt"
+  "ipaddr" {>= "4.0.0"}
+  "lwt" {>= "4.2.1"}
+  "mirage-stack-lwt" {>= "1.4.0"}
 ]
 
 build: [
