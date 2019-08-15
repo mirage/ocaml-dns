@@ -13,7 +13,6 @@
 * The DNS library is split into the following opam packages and sublibraries:
   - `dns` - the core library
   - `dns-tsig` - transaction signatures
-  - `dns-zone` - zone file parser (mostly taken from the 1.x series)
   - `dns-cli` - command line utilities (odig, onotify, ..)
   - `dns-client` - pure client implementation
     - `.unix` - DNS client using the Unix module for communication
@@ -24,11 +23,14 @@
   - `dns-mirage` - generic MirageOS communication layer
   - `dns-server` - pure server implementation
     - `.mirage` - MirageOS primary and secondary server
+    - `.zone` - zone file parser (mostly taken from the 1.x series)
   - `dns-resolver` - pure recursive resolver implementation
     - `.mirage` - MirageOS recursive resolver
 * Only OCaml 4.07.0 and above are supported
 * Multicast DNS has been dropped for now
 * A client using async from JS has not been implemented yet
+* The default recursive resolver, used by the client implementations, is
+  uncensoreddns.org
 
 ### v1.1.2 (2019-02-28)
 
