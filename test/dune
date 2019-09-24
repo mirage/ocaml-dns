@@ -27,3 +27,9 @@
  (package dns-client)
  (libraries dns-client alcotest)
  (modules client))
+
+(test
+ (name client_flow)
+ (package dns-client)
+ (libraries dns-client alcotest)
+ (modules client_flow))
