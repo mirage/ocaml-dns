@@ -21,3 +21,9 @@
  (package dns-resolver)
  (libraries dns-resolver alcotest)
  (modules resolver))
+
+(test
+ (name client)
+ (package dns-client)
+ (libraries dns-client alcotest)
+ (modules client))
