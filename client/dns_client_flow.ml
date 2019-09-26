@@ -63,11 +63,10 @@ struct
                       (Cstruct.len recv_buffer)) ;
        let buf = Cstruct.append acc recv_buffer in
        match Dns_client.parse_response state buf with
-       | Ok x -> Uflow.lift (Ok x)
-       | Error (`Msg xxx) -> Uflow.lift (Error (`Msg( "err: " ^ xxx)))
-       | Error `Partial -> begin match proto with
-           | `TCP -> recv_loop buf
-           | `UDP -> Uflow.lift (Error (`Msg "Truncated UDP response")) end
+       | `Ok x -> Uflow.lift (Ok x)
+       | `Msg xxx -> Uflow.lift (Error (`Msg( "err: " ^ xxx)))
+       | `Partial when proto = `TCP -> recv_loop buf
+       | `Partial -> Uflow.lift (Error (`Msg "Truncated UDP response"))
     in recv_loop Cstruct.empty) >>= fun r ->
     Uflow.close socket >>= fun () ->
     Uflow.lift r

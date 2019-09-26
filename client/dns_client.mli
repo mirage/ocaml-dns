@@ -26,9 +26,13 @@ val make_query :
     and [query_state] is the information required to validate the response. *)
 
 val parse_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
-  ('query_type, [`Msg of string | `Partial]) result
+  [ `Msg of string | `Ok of 'query_type | `Partial ]
 (** [parse_response query_state response] is the information contained in
     [response] parsed using [query_state] when the query was successful, or
-    an [Error _] if the [response] did not match the [query_state]
+    an [`Msg message] if the [response] did not match the [query_state]
     (or if the query failed).
+
+    In a TCP usage context the [`Partial] means there are more packets.
+    In a UDP usage context the [`Partial] means information was lost, due to an
+    incomplete packet.
 *)

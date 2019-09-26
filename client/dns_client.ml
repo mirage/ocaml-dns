@@ -23,26 +23,23 @@ let make_query rng protocol hostname
       Cstruct.concat [len_field ; cs]
   end, { protocol ; query ; key = record_type }
 
-let parse_response (type requested)
-  : requested Rr_map.key query_state -> Cstruct.t ->
-    (requested, [< `Partial | `Msg of string]) result =
-  fun state buf ->
+let consume_protocol_prefix buf =
+  function (* consume TCP two-byte length prefix: *)
+  | `Udp -> Ok buf
+  | `Tcp ->
+    match Cstruct.BE.get_uint16 buf 0 with
+      | exception Invalid_argument _ -> Error () (* TODO *)
+      | pkt_len when pkt_len > Cstruct.len buf -2 ->
+        Logs.debug (fun m -> m "Partial: %d >= %d-2"
+                        pkt_len (Cstruct.len buf));
+        Error () (* TODO return remaining # *)
+      | pkt_len ->
+        if 2 + pkt_len < Cstruct.len buf then
+          Logs.warn (fun m -> m "Extraneous data in DNS response");
+        Ok (Cstruct.sub buf 2 pkt_len)
+
+let consume_rest_of_buffer state buf =
   let open Rresult in
-  begin match state.protocol with (* consume TCP two-byte length prefix: *)
-    | `Udp -> Ok buf
-    | `Tcp ->
-      begin match Cstruct.BE.get_uint16 buf 0 with
-        | exception Invalid_argument _ -> Error `Partial (* TODO *)
-        | pkt_len when pkt_len > Cstruct.len buf -2 ->
-          Logs.debug (fun m -> m "Partial: %d >= %d-2"
-                         pkt_len (Cstruct.len buf));
-          Error `Partial (* TODO return remaining # *)
-        | pkt_len ->
-          if 2 + pkt_len < Cstruct.len buf then
-            Logs.warn (fun m -> m "Extraneous data in DNS response");
-          Ok (Cstruct.sub buf 2 pkt_len)
-      end
-  end >>= fun buf ->
   let to_msg t = function Ok a -> Ok a | Error e ->
     R.error_msgf
       "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a%a  opt:%a tsig:%B@,failed: %a@,@]"
@@ -56,8 +53,12 @@ let parse_response (type requested)
       Packet.pp_mismatch e
   in
   match Packet.decode buf with
+  | Error `Partial -> `Partial
+  | Error err ->
+    let kerr _ = `Msg (Format.flush_str_formatter ()) in
+    Format.kfprintf kerr Format.str_formatter "Error parsing response: %a" Packet.pp_err err
   | Ok t ->
-    begin
+    let r =
       to_msg t (Packet.reply_matches_request ~request:state.query t) >>= function
       | `Answer (answer, _) ->
         let rec follow_cname counter q_name =
@@ -82,6 +83,15 @@ let parse_response (type requested)
         in
         follow_cname 20 (fst state.query.question)
       | r -> Error (`Msg (Fmt.strf "Ok %a, expected answer" Packet.pp_reply r))
-    end
-  | Error `Partial as err -> err
-  | Error err -> R.error_msgf "Error parsing response: %a" Packet.pp_err err
+    in 
+    match r with
+    | Ok x -> `Ok x
+    | Error (`Msg x) -> `Msg x
+
+let parse_response (type requested)
+  : requested Rr_map.key query_state -> Cstruct.t ->
+    [`Ok of requested | `Partial | `Msg of string] =
+  fun state buf ->
+  match consume_protocol_prefix buf state.protocol with
+  | Ok buf -> consume_rest_of_buffer state buf
+  | Error () -> `Partial
