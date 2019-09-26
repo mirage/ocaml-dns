@@ -45,8 +45,9 @@ module Parse_response_tests = struct
     let name:'a Domain_name.t = Domain_name.of_string_exn "foo.com" in
     let _actual, state = Dns_client.make_query rng `Tcp name Dns.Rr_map.A in
     match Dns_client.parse_response state ipv4_buf with
-    | Ok _ -> () (* TODO: Alcotest TESTABLE for this return value *)
-    | Error _ -> ignore(failwith "error")
+    | `Ok _ -> () (* TODO: Alcotest TESTABLE for this return value *)
+    | `Msg _ -> ignore(failwith "error")
+    | `Partial -> ignore(failwith "error, partial")
 
   let fails_to_unpack_mismatched () =
     (* TODO: It is possible to use crowbar here, to generate the ipv4_buf *)
@@ -67,9 +68,9 @@ module Parse_response_tests = struct
     let name:'a Domain_name.t = Domain_name.of_string_exn "foo.com" in
     let _actual, state = Dns_client.make_query rng `Tcp name Dns.Rr_map.A in
     match Dns_client.parse_response state ipv4_buf with
-    | Ok _ -> ignore(failwith "should have rejected mismatched input") (* TODO: Alcotest TESTABLE for this return value *)
-    | Error _ -> ()
-
+    | `Ok _ -> failwith "should have rejected mismatched input" (* TODO: Alcotest TESTABLE for this return value *)
+    | `Msg _ -> ()
+    | `Partial -> failwith "should have rejected mismatched input"
 
   let tests = [
       "unpacks some kind of response", `Quick, unpacks_response;
