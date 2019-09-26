@@ -58,7 +58,7 @@ end
 include Dns_client_flow.Make(Uflow)
 
 module Gethostbyname_tests = struct
-  let gethostbyname_for_foo_com_is_valid () =
+  let foo_com_is_valid () =
     let domain_name = Domain_name.(of_string_exn "foo.com" |> host_exn) in
     (* Bytes 3, 4 are set to `00 00` - these represent query ID *)
     let ipv4_buf = Cstruct.of_hex
@@ -77,7 +77,7 @@ module Gethostbyname_tests = struct
     | Error _ -> failwith "foo.com should have been returned"
 
   let tests = [
-    "foo.com is valid", `Quick, gethostbyname_for_foo_com_is_valid;
+    "foo.com is valid", `Quick, foo_com_is_valid;
   ]
 end
 
