@@ -1,11 +1,11 @@
-(* {!Uflow} provides the implementation of the underlying flow
+(* {!Transport} provides the implementation of the underlying flow
    that is in turn used by {!Dns_client.Make} to provide the
    Lwt convenience module
 *)
 
 open Lwt.Infix
 
-module Uflow : Dns_client.S
+module Transport : Dns_client.S
   with type flow = Lwt_unix.file_descr
  and type io_addr = Lwt_unix.inet_addr * int
  and type +'a io = 'a Lwt.t
@@ -83,6 +83,6 @@ module Uflow : Dns_client.S
          Lwt_result.fail (`Msg (Printexc.to_string e)))
 end
 
-(* Now that we have our {!Uflow} implementation we can include the logic
+(* Now that we have our {!Transport} implementation we can include the logic
    that goes on top of it: *)
-include Dns_client.Make(Uflow)
+include Dns_client.Make(Transport)

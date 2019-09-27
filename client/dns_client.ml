@@ -131,48 +131,48 @@ module type S = sig
   val lift : 'a -> 'a io
 end
 
-module Make = functor (Uflow:S) ->
+module Make = functor (Transport:S) ->
 struct
 
-  let create ?rng ?nameserver stack = Uflow.create ?rng ?nameserver stack
+  let create ?rng ?nameserver stack = Transport.create ?rng ?nameserver stack
 
-  let nameserver t = Uflow.nameserver t
+  let nameserver t = Transport.nameserver t
 
-  let (>>=) = Uflow.bind
+  let (>>=) = Transport.bind
 
   (* result-bind *)
   let (>>|) a b =
     a >>= function
     | Ok a' -> b a'
-    | Error e -> Uflow.lift (Error e)
+    | Error e -> Transport.lift (Error e)
 
   (* result-bind-and-lift *)
-  let (>>|=) a f = a >>| fun b -> Uflow.lift (f b)
+  let (>>|=) a f = a >>| fun b -> Transport.lift (f b)
 
   let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
-    : (requested, [> `Msg of string]) result Uflow.io =
-    let proto, _ = match nameserver with None -> Uflow.nameserver t | Some x -> x in
+    : (requested, [> `Msg of string]) result Transport.io =
+    let proto, _ = match nameserver with None -> Transport.nameserver t | Some x -> x in
     let tx, state =
-      Pure.make_query (Uflow.rng t)
+      Pure.make_query (Transport.rng t)
         (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
     in
-    Uflow.connect ?nameserver t >>| fun socket ->
+    Transport.connect ?nameserver t >>| fun socket ->
     Logs.debug (fun m -> m "Connected to NS.");
-    (Uflow.send socket tx >>| fun () ->
+    (Transport.send socket tx >>| fun () ->
      Logs.debug (fun m -> m "Receiving from NS");
      let rec recv_loop acc =
-       Uflow.recv socket >>| fun recv_buffer ->
+       Transport.recv socket >>| fun recv_buffer ->
        Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
                       (Cstruct.len recv_buffer)) ;
        let buf = Cstruct.append acc recv_buffer in
        match Pure.parse_response state buf with
-       | `Ok x -> Uflow.lift (Ok x)
-       | `Msg xxx -> Uflow.lift (Error (`Msg( "err: " ^ xxx)))
+       | `Ok x -> Transport.lift (Ok x)
+       | `Msg xxx -> Transport.lift (Error (`Msg( "err: " ^ xxx)))
        | `Partial when proto = `TCP -> recv_loop buf
-       | `Partial -> Uflow.lift (Error (`Msg "Truncated UDP response"))
+       | `Partial -> Transport.lift (Error (`Msg "Truncated UDP response"))
     in recv_loop Cstruct.empty) >>= fun r ->
-    Uflow.close socket >>= fun () ->
-    Uflow.lift r
+    Transport.close socket >>= fun () ->
+    Transport.lift r
 
   let gethostbyname stack ?nameserver domain =
     getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>|= fun (_ttl, resp) ->

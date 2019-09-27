@@ -1,9 +1,9 @@
-(* {!Uflow} provides the implementation of the underlying flow
+(* {!Transport} provides the implementation of the underlying flow
    that is in turn used by {!Dns_client.Make} to provide the
    blocking Unix convenience module:
 *)
 
-module Uflow : Dns_client.S
+module Transport : Dns_client.S
   with type flow = Unix.file_descr
    and type io_addr = Unix.inet_addr * int
    and type stack = unit
@@ -77,6 +77,6 @@ module Uflow : Dns_client.S
       Error (`Msg (Printexc.to_string e))
 end
 
-(* Now that we have our {!Uflow} implementation we can include the logic
+(* Now that we have our {!Transport} implementation we can include the logic
    that goes on top of it: *)
-include Dns_client.Make(Uflow)
+include Dns_client.Make(Transport)
