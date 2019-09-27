@@ -40,17 +40,19 @@ let consume_protocol_prefix buf =
 
 let consume_rest_of_buffer state buf =
   let open Rresult in
-  let to_msg t = function Ok a -> Ok a | Error e ->
-    R.error_msgf
-      "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a%a  opt:%a tsig:%B@,failed: %a@,@]"
-      Packet.pp_header t
-      (fst t.header) (fst state.query.header)
-      (Packet.Question.compare t.question state.query.question = 0)
-      Packet.Question.pp t.question
-      Packet.pp_data t.data
-      (Fmt.option Dns.Edns.pp) t.edns
-      (match t.tsig with None -> false | Some _ -> true)
-      Packet.pp_mismatch e
+  let to_msg t = function
+    | Ok a -> Ok a
+    | Error e ->
+      R.error_msgf
+        "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a%a  opt:%a tsig:%B@,failed: %a@,@]"
+        Packet.pp_header t
+        (fst t.header) (fst state.query.header)
+        (Packet.Question.compare t.question state.query.question = 0)
+        Packet.Question.pp t.question
+        Packet.pp_data t.data
+        (Fmt.option Dns.Edns.pp) t.edns
+        (match t.tsig with None -> false | Some _ -> true)
+        Packet.pp_mismatch e
   in
   match Packet.decode buf with
   | Error `Partial -> `Partial
