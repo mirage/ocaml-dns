@@ -23,6 +23,26 @@ let make_query rng protocol hostname
       Cstruct.concat [len_field ; cs]
   end, { protocol ; query ; key = record_type }
 
+(* name: the originally requested domain name. *)
+let rec follow_cname name ~iterations:iterations_left ~answer ~state =
+  let open Rresult in
+  if iterations_left <= 0 then Error (`Msg "CNAME recursion too deep")
+  else
+    Domain_name.Map.find_opt name answer
+    |> R.of_option ~none:(fun () ->
+        R.error_msgf "Can't find relevant map in response:@ %a in [%a]"
+          Domain_name.pp name
+          Name_rr_map.pp answer
+      ) >>= fun relevant_map ->
+    match Rr_map.find state.key relevant_map with
+      | Some response -> Ok response
+      | None ->
+        match Rr_map.(find Cname relevant_map) with
+          | None -> Error (`Msg "Invalid DNS response")
+          | Some (_ttl, redirected_host) ->
+            let iterations = pred iterations_left in
+            follow_cname redirected_host ~iterations ~answer ~state
+
 let consume_protocol_prefix buf =
   function (* consume TCP two-byte length prefix: *)
   | `Udp -> Ok buf
@@ -62,28 +82,7 @@ let consume_rest_of_buffer state buf =
   | Ok t ->
     let r =
       to_msg t (Packet.reply_matches_request ~request:state.query t) >>= function
-      | `Answer (answer, _) ->
-        let rec follow_cname counter q_name =
-          if counter <= 0 then Error (`Msg "CNAME recursion too deep")
-          else
-            Domain_name.Map.find_opt q_name answer
-            |> R.of_option ~none:(fun () ->
-                R.error_msgf "Can't find relevant map in response:@ \
-                              %a in [%a]"
-                  Domain_name.pp q_name
-                  Name_rr_map.pp answer
-              ) >>= fun relevant_map ->
-            begin match Rr_map.find state.key relevant_map with
-              | Some response -> Ok response
-              | None ->
-                begin match Rr_map.(find Cname relevant_map) with
-                  | None -> Error (`Msg "Invalid DNS response")
-                  | Some (_ttl, redirected_host) ->
-                    follow_cname (pred counter) redirected_host
-                end
-            end
-        in
-        follow_cname 20 (fst state.query.question)
+      | `Answer (answer, _) -> follow_cname (fst state.query.question) ~iterations:20 ~answer ~state
       | r -> Error (`Msg (Fmt.strf "Ok %a, expected answer" Packet.pp_reply r))
     in 
     match r with
