@@ -159,35 +159,43 @@ struct
 
   let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string]) result Transport.io =
-    let proto, _ = match nameserver with None -> Transport.nameserver t.transport | Some x -> x in
-    let tx, state =
-      Pure.make_query (Transport.rng t.transport)
-        (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
-    in
-    Transport.connect ?nameserver t.transport >>| fun socket ->
-    Logs.debug (fun m -> m "Connected to NS.");
-    (Transport.send socket tx >>| fun () ->
-     Logs.debug (fun m -> m "Receiving from NS");
-     let rec recv_loop acc =
-       Transport.recv socket >>| fun recv_buffer ->
-       Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
-                      (Cstruct.len recv_buffer)) ;
-       let buf = Cstruct.append acc recv_buffer in
-       match Pure.parse_response state buf with
-       | `Ok x ->
-         let domain_name = (Domain_name.raw name) in
-         let entry = `Entry (Rr_map.B (query_type, x)) in
-         let rank = Dns_cache.NonAuthoritativeAnswer in
-         (* TODO: clock! 0L should be current time *)
-         let ts = 0L in
-         t.cache <- Dns_cache.set t.cache ts domain_name query_type rank entry;
-         Transport.lift (Ok x)
-       | `Msg xxx -> Transport.lift (Error (`Msg( "err: " ^ xxx)))
-       | `Partial when proto = `TCP -> recv_loop buf
-       | `Partial -> Transport.lift (Error (`Msg "Truncated UDP response"))
-    in recv_loop Cstruct.empty) >>= fun r ->
-    Transport.close socket >>= fun () ->
-    Transport.lift r
+    (* TODO: clock! 0L should be current time *)
+    let ts = 0L in
+    let domain_name = (Domain_name.raw name) in
+
+    match Dns_cache.get t.cache ts domain_name query_type with
+    | Ok (`Entry B (query_type', value), cache) ->
+      t.cache <- cache;
+      assert (query_type' = Obj.magic query_type);
+      Transport.lift @@ Ok(Obj.magic value)
+    | Ok _
+    | Error _ ->
+      let proto, _ = match nameserver with None -> Transport.nameserver t.transport | Some x -> x in
+      let tx, state =
+        Pure.make_query (Transport.rng t.transport)
+          (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
+      in
+      Transport.connect ?nameserver t.transport >>| fun socket ->
+      Logs.debug (fun m -> m "Connected to NS.");
+      (Transport.send socket tx >>| fun () ->
+      Logs.debug (fun m -> m "Receiving from NS");
+      let rec recv_loop acc =
+        Transport.recv socket >>| fun recv_buffer ->
+        Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
+                        (Cstruct.len recv_buffer)) ;
+        let buf = Cstruct.append acc recv_buffer in
+        match Pure.parse_response state buf with
+        | `Ok x ->
+          let entry = `Entry (Rr_map.B (query_type, x)) in
+          let rank = Dns_cache.NonAuthoritativeAnswer in
+          t.cache <- Dns_cache.set t.cache ts domain_name query_type rank entry;
+          Transport.lift (Ok x)
+        | `Msg xxx -> Transport.lift (Error (`Msg( "err: " ^ xxx)))
+        | `Partial when proto = `TCP -> recv_loop buf
+        | `Partial -> Transport.lift (Error (`Msg "Truncated UDP response"))
+      in recv_loop Cstruct.empty) >>= fun r ->
+      Transport.close socket >>= fun () ->
+      Transport.lift r
 
   let gethostbyname stack ?nameserver domain =
     getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>|= fun (_ttl, resp) ->
