@@ -140,8 +140,27 @@ module Getaddrinfo_tests = struct
         ])
     | Error _ -> failwith "foo.com should have been returned"
 
+  let fails_on_partial_udp_packet () =
+    let domain_name = Domain_name.(of_string_exn "google.com" |> host_exn) in
+    (* A partial google.com MX record
+       first two bytes identify this as a TCP packet - dropped here
+       bytes 3,4 are set to the query ID 00 00
+     *)
+    let udp_buf = Cstruct.of_hex
+      "     00 00 81 80 00 01  00 05 00 04 00 0f 06 67
+      6f 6f 67 6c 65 03 63 6f  " in
+    let mock_state = Uflow.create () in
+    let ns = `UDP, ref [udp_buf] in
+    match getaddrinfo mock_state Dns.Rr_map.Mx domain_name ~nameserver:ns with
+    | Ok (_, _) ->
+      failwith("Should have reported the Truncated UDP packet")
+    | Error `Msg actual ->
+      let expected = "Truncated UDP response" in
+      Alcotest.(check string "reports the truncated UDP packet failure" expected actual)
+
   let tests = [
     "supports_mx_packets", `Quick, supports_mx_packets;
+    "a partial UDP response packet fails", `Quick, fails_on_partial_udp_packet;
   ]
 end
 
