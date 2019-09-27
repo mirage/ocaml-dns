@@ -13,7 +13,7 @@ val stdlib_random : int -> Cstruct.t
 
 module type S = sig
   type flow
-  (** A flow is a connection produced by {!T.connect} *)
+  (** A flow is a network connection initialized by {!T.connect} *)
 
   type +'a io
   (** [io] is the type of an effect. ['err] is a polymorphic variant. *)
