@@ -5,7 +5,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (R : Mirage_random.C) (S : Mirage_stack_lwt.V4) = struct
 
-  module Uflow : Dns_client_flow.S
+  module Uflow : Dns_client.S
     with type flow = S.TCPV4.flow
      and type stack = S.t
      and type +'a io = 'a Lwt.t
@@ -57,7 +57,7 @@ module Make (R : Mirage_random.C) (S : Mirage_stack_lwt.V4) = struct
       | Ok () -> Ok ()
   end
 
-  include Dns_client_flow.Make(Uflow)
+  include Dns_client.Make(Uflow)
 
 end
 

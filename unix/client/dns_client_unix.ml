@@ -1,9 +1,9 @@
 (* {!Uflow} provides the implementation of the underlying flow
-   that is in turn used by {!Dns_client_flow.Make} to provide the
+   that is in turn used by {!Dns_client.Make} to provide the
    blocking Unix convenience module:
 *)
 
-module Uflow : Dns_client_flow.S
+module Uflow : Dns_client.S
   with type flow = Unix.file_descr
    and type io_addr = Unix.inet_addr * int
    and type stack = unit
@@ -20,7 +20,7 @@ module Uflow : Dns_client_flow.S
   type +'a io = 'a
 
   let create
-      ?(rng = Dns_client_flow.stdlib_random)
+      ?(rng = Dns_client.stdlib_random)
       ?(nameserver = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)) () =
     { rng ; nameserver }
 
@@ -79,4 +79,4 @@ end
 
 (* Now that we have our {!Uflow} implementation we can include the logic
    that goes on top of it: *)
-include Dns_client_flow.Make(Uflow)
+include Dns_client.Make(Uflow)
