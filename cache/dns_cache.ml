@@ -46,10 +46,10 @@ module RRMap = Map.Make(struct
     let compare = Rr_map.comparek
   end)
 
-module V = struct
+module Entry = struct
   type meta = int64 * rank
-  let pp_meta ppf (crea, rank) =
-    Fmt.pf ppf "%a created %Lu" pp_rank rank crea
+  let pp_meta ppf (ts, rank) =
+    Fmt.pf ppf "%a created %Lu" pp_rank rank ts
 
   type rr_map_entry =
     | Entry of Rr_map.b
@@ -59,11 +59,11 @@ module V = struct
     | Entry b -> Fmt.pf ppf "entry %a" Rr_map.pp_b b
     | No_data (name, soa) -> Fmt.pf ppf "no data %a SOA %a" Domain_name.pp name Soa.pp soa
     | Serv_fail (name, soa) -> Fmt.pf ppf "server fail %a SOA %a" Domain_name.pp name Soa.pp soa
-  let to_res = function
+  let to_entry = function
     | Entry b -> `Entry b
     | No_data (name, soa) -> `No_data (name, soa)
     | Serv_fail (name, soa) -> `Serv_fail (name, soa)
-  let of_res = function
+  let of_entry = function
     | `Entry b -> Entry b
     | `No_data (name, soa) -> No_data (name, soa)
     | `Serv_fail (name, soa) -> Serv_fail (name, soa)
@@ -92,17 +92,14 @@ module V = struct
         (RRMap.bindings rr)
 end
 
-module D = struct
+module Key = struct
   type t = [ `raw ] Domain_name.t
   let compare = Domain_name.compare
 end
 
-module LRU = Lru.F.Make(D)(V)
+module LRU = Lru.F.Make(Key)(Entry)
 
 type t = LRU.t
-
-let pp_question ppf (name, typ) =
-  Fmt.pf ppf "%a (%a)" Domain_name.pp name Packet.Question.pp_qtype typ
 
 type stats = {
   hit : int ;
@@ -111,14 +108,12 @@ type stats = {
   insert : int ;
 }
 
-let s = ref { hit = 0 ; miss = 0 ; drop = 0 ; insert = 0 }
+let stats = ref { hit = 0 ; miss = 0 ; drop = 0 ; insert = 0 }
 
 let _pp_stats pf s =
   Fmt.pf pf "cache: %d hits %d misses %d drops %d inserts" s.hit s.miss s.drop s.insert
 
-let _stats () = !s
-
-(* this could need a `Timeout error result *)
+let _stats () = !stats
 
 let empty = LRU.empty
 
@@ -126,7 +121,7 @@ let size = LRU.size
 
 let capacity = LRU.capacity
 
-let pp = LRU.pp Fmt.(pair ~sep:(unit ": ") Domain_name.pp V.pp)
+let pp = LRU.pp Fmt.(pair ~sep:(unit ": ") Domain_name.pp Entry.pp)
 
 module N = Domain_name.Set
 
@@ -164,49 +159,50 @@ let with_ttl ttl = function
   | `No_domain (name, soa) -> `No_domain (name, { soa with Soa.minimum = ttl })
   | `Serv_fail (name, soa) -> `Serv_fail (name, { soa with Soa.minimum = ttl })
 
-let find_lru t name typ =
-  match LRU.find name t with
+let find cache name query_type =
+  match LRU.find name cache with
   | None -> None, Error `Cache_miss
   | Some Alias (meta, ttl, alias) -> None, Ok (meta, `Alias (ttl, alias))
   | Some No_domain (meta, name, soa) -> None, Ok (meta, `No_domain (name, soa))
-  | Some Rr_map tm ->
-    Some tm,
+  | Some Rr_map resource_records ->
+    Some resource_records,
     try
-      let meta, entry = RRMap.find (K typ) tm in
-      Ok (meta, V.to_res entry)
+      let meta, entry = RRMap.find (K query_type) resource_records in
+      Ok (meta, Entry.to_entry entry)
     with
     | Not_found -> Error `Cache_miss
 
-let insert_lru t ?map name typ created rank res =
-  s := { !s with insert = succ !s.insert };
-  let meta = created, rank in
-  let t' = match res with
-    | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) t
-    | `Alias (ttl, alias) -> LRU.add name (Alias (meta, ttl, alias)) t
+let insert cache ?map ts name query_type rank entry =
+  stats := { !stats with insert = succ !stats.insert };
+  let meta = ts, rank in
+  let cache' = match entry with
+    | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) cache
+    | `Alias (ttl, alias) -> LRU.add name (Alias (meta, ttl, alias)) cache
     | `Entry _ | `No_data _ | `Serv_fail _ ->
       let map = match map with None -> RRMap.empty | Some x -> x in
-      let map' = RRMap.add (K typ) (meta, V.of_res res) map in
-      LRU.add name (Rr_map map') t
+      let map' = RRMap.add (K query_type) (meta, Entry.of_entry entry) map in
+      LRU.add name (Rr_map map') cache
   in
-  LRU.trim t'
+  (* Make sure we are within memory bounds *)
+  LRU.trim cache'
 
-let update_ttl_res e ~created ~now =
-  let ttl = get_ttl e in
+let update_ttl entry ~created ~now =
+  let ttl = get_ttl entry in
   let updated_ttl = update_ttl ~created ~now ttl in
-  if updated_ttl < 0l then Error `Cache_drop else Ok (with_ttl updated_ttl e)
+  if updated_ttl < 0l then Error `Cache_drop else Ok (with_ttl updated_ttl entry)
 
-let get t ts typ nam =
-  match snd (find_lru t nam typ) with
+let get cache ts name query_type =
+  match snd (find cache name query_type) with
   | Error e ->
-    s := { !s with miss = succ !s.miss };
+    stats := { !stats with miss = succ !stats.miss };
     Error e
-  | Ok ((created, _), e) ->
-    match update_ttl_res e ~created ~now:ts with
-    | Ok e' ->
-      s := { !s with hit = succ !s.hit };
-      Ok (e', LRU.promote nam t)
+  | Ok ((created, _), entry) ->
+    match update_ttl entry ~created ~now:ts with
+    | Ok entry' ->
+      stats := { !stats with hit = succ !stats.hit };
+      Ok (entry', LRU.promote name cache)
     | Error e ->
-      s := { !s with drop = succ !s.drop };
+      stats := { !stats with drop = succ !stats.drop };
       Error e
 
 (* according to RFC1035, section 7.3, a TTL of a week is a good maximum value! *)
@@ -234,20 +230,24 @@ and 1035 6.2:
 *)
 let week = Int32.of_int Duration.(to_sec (of_day 7))
 
-let smooth_ttl e =
-  let ttl = get_ttl e in
-  if ttl < week then e else with_ttl week e
+let clip_ttl_to_week entry =
+  let ttl = get_ttl entry in
+  if ttl < week then entry else with_ttl week entry
 
-let set t ts typ nam rank e  =
-  let entry = smooth_ttl e in
-  match find_lru t nam typ with
+let pp_query ppf (name, query_type) =
+  Fmt.pf ppf "%a (%a)" Domain_name.pp name Packet.Question.pp_qtype query_type
+
+let set cache ts name query_type rank entry  =
+  let entry' = clip_ttl_to_week entry in
+  let cache' map = insert cache ?map ts name query_type rank entry' in 
+  match find cache name query_type with
   | map, Error _ ->
-    Logs.debug (fun m -> m "maybe_insert: %a nothing found, adding: %a"
-                   pp_question (nam, `K (K typ)) pp_entry entry);
-    insert_lru ?map t nam typ ts rank entry
-  | map, Ok ((_, rank'), entry) ->
-    Logs.debug (fun m -> m "maybe_insert: %a found rank %a insert rank %a: %d"
-                   pp_question (nam, `K (K typ)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
+    Logs.debug (fun m -> m "set: %a nothing found, adding: %a"
+                   pp_query (name, `K (K query_type)) pp_entry entry');
+    cache' map
+  | map, Ok ((_, rank'), _) ->
+    Logs.debug (fun m -> m "set: %a found rank %a insert rank %a: %d"
+                   pp_query (name, `K (K query_type)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
     match compare_rank rank' rank with
-    | 1 -> t
-    | _ -> insert_lru ?map t nam typ ts rank entry
+    | 1 -> cache
+    | _ -> cache' map
