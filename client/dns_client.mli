@@ -13,7 +13,7 @@ val stdlib_random : int -> Cstruct.t
 
 module type S = sig
   type flow
-  (** A flow is a connection produced by {!U.connect} *)
+  (** A flow is a connection produced by {!T.connect} *)
 
   type +'a io
   (** [io] is the type of an effect. ['err] is a polymorphic variant. *)
@@ -68,25 +68,25 @@ module type S = sig
   val lift : 'a -> 'a io
 end
 
-module Make : functor (U : S) ->
+module Make : functor (T : S) ->
 sig
 
-  val create : ?rng:(int -> Cstruct.t) -> ?nameserver:U.ns_addr -> U.stack -> U.t
+  val create : ?rng:(int -> Cstruct.t) -> ?nameserver:T.ns_addr -> T.stack -> T.t
   (** [create ~rng ~nameserver stack] creates the state of the DNS client. *)
 
-  val nameserver : U.t -> U.ns_addr
+  val nameserver : T.t -> T.ns_addr
   (** [nameserver t] returns the default nameserver to be used. *)
 
-  val getaddrinfo : U.t -> ?nameserver:U.ns_addr -> 'response Dns.Rr_map.key ->
-    'a Domain_name.t -> ('response, [> `Msg of string ]) result U.io
+  val getaddrinfo : T.t -> ?nameserver:T.ns_addr -> 'response Dns.Rr_map.key ->
+    'a Domain_name.t -> ('response, [> `Msg of string ]) result T.io
   (** [getaddrinfo nameserver query_type name] is the [query_type]-dependent
       response from [nameserver] regarding [name], or an [Error _] message.
       See {!Dns_client.query_state} for more information about the
       result types.
   *)
 
-  val gethostbyname : U.t -> ?nameserver:U.ns_addr -> [ `host ] Domain_name.t ->
-    (Ipaddr.V4.t, [> `Msg of string ]) result U.io
+  val gethostbyname : T.t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
+    (Ipaddr.V4.t, [> `Msg of string ]) result T.io
     (** [gethostbyname state ~nameserver domain] is the IPv4 address of [domain]
         resolved via the [state] and [nameserver] specified.
         If the query fails, or if the [domain] does not have any IPv4 addresses,
@@ -96,8 +96,8 @@ sig
         in the distribution of this package.
     *)
 
-  val gethostbyname6 : U.t -> ?nameserver:U.ns_addr -> [ `host ] Domain_name.t ->
-    (Ipaddr.V6.t, [> `Msg of string ]) result U.io
+  val gethostbyname6 : T.t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
+    (Ipaddr.V6.t, [> `Msg of string ]) result T.io
     (** [gethostbyname6 state ~nameserver domain] is the IPv6 address of
         [domain] resolved via the [state] and [nameserver] specified.
 
