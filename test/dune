@@ -27,3 +27,9 @@
  (package dns-client)
  (libraries dns-client alcotest)
  (modules client))
+
+(test
+ (name cache)
+ (package dns)
+ (libraries dns.cache alcotest)
+ (modules cache))
