@@ -134,9 +134,17 @@ end
 module Make = functor (Transport:S) ->
 struct
 
-  let create ?rng ?nameserver stack = Transport.create ?rng ?nameserver stack
+  type t = {
+    mutable cache : Dns_cache.t ;
+    transport : Transport.t ;
+  }
 
-  let nameserver t = Transport.nameserver t
+  let create ?(size=1000) ?rng ?nameserver stack =
+    { cache = Dns_cache.empty size ;
+      transport = Transport.create ?rng ?nameserver stack
+    }
+
+  let nameserver { transport; _ } = Transport.nameserver transport
 
   let (>>=) = Transport.bind
 
@@ -151,12 +159,12 @@ struct
 
   let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string]) result Transport.io =
-    let proto, _ = match nameserver with None -> Transport.nameserver t | Some x -> x in
+    let proto, _ = match nameserver with None -> Transport.nameserver t.transport | Some x -> x in
     let tx, state =
-      Pure.make_query (Transport.rng t)
+      Pure.make_query (Transport.rng t.transport)
         (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
     in
-    Transport.connect ?nameserver t >>| fun socket ->
+    Transport.connect ?nameserver t.transport >>| fun socket ->
     Logs.debug (fun m -> m "Connected to NS.");
     (Transport.send socket tx >>| fun () ->
      Logs.debug (fun m -> m "Receiving from NS");
@@ -166,7 +174,14 @@ struct
                       (Cstruct.len recv_buffer)) ;
        let buf = Cstruct.append acc recv_buffer in
        match Pure.parse_response state buf with
-       | `Ok x -> Transport.lift (Ok x)
+       | `Ok x ->
+         let domain_name = (Domain_name.raw name) in
+         let entry = `Entry (Rr_map.B (query_type, x)) in
+         let rank = Dns_cache.NonAuthoritativeAnswer in
+         (* TODO: clock! 0L should be current time *)
+         let ts = 0L in
+         t.cache <- Dns_cache.set t.cache ts domain_name query_type rank entry;
+         Transport.lift (Ok x)
        | `Msg xxx -> Transport.lift (Error (`Msg( "err: " ^ xxx)))
        | `Partial when proto = `TCP -> recv_loop buf
        | `Partial -> Transport.lift (Error (`Msg "Truncated UDP response"))

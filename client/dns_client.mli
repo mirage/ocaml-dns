@@ -71,13 +71,15 @@ end
 module Make : functor (T : S) ->
 sig
 
-  val create : ?rng:(int -> Cstruct.t) -> ?nameserver:T.ns_addr -> T.stack -> T.t
-  (** [create ~rng ~nameserver stack] creates the state of the DNS client. *)
+  type t
 
-  val nameserver : T.t -> T.ns_addr
+  val create : ?size:int -> ?rng:(int -> Cstruct.t) -> ?nameserver:T.ns_addr -> T.stack -> t
+  (** [create ~size ~rng ~nameserver stack] creates the state of the DNS client. *)
+
+  val nameserver : t -> T.ns_addr
   (** [nameserver t] returns the default nameserver to be used. *)
 
-  val getaddrinfo : T.t -> ?nameserver:T.ns_addr -> 'response Dns.Rr_map.key ->
+  val getaddrinfo : t -> ?nameserver:T.ns_addr -> 'response Dns.Rr_map.key ->
     'a Domain_name.t -> ('response, [> `Msg of string ]) result T.io
   (** [getaddrinfo nameserver query_type name] is the [query_type]-dependent
       response from [nameserver] regarding [name], or an [Error _] message.
@@ -85,7 +87,7 @@ sig
       result types.
   *)
 
-  val gethostbyname : T.t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
+  val gethostbyname : t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
     (Ipaddr.V4.t, [> `Msg of string ]) result T.io
     (** [gethostbyname state ~nameserver domain] is the IPv4 address of [domain]
         resolved via the [state] and [nameserver] specified.
@@ -96,7 +98,7 @@ sig
         in the distribution of this package.
     *)
 
-  val gethostbyname6 : T.t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
+  val gethostbyname6 : t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
     (Ipaddr.V6.t, [> `Msg of string ]) result T.io
     (** [gethostbyname6 state ~nameserver domain] is the IPv6 address of
         [domain] resolved via the [state] and [nameserver] specified.

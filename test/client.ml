@@ -149,7 +149,7 @@ module Gethostbyname_tests = struct
        ae 00 06 03 6e 73 32 c0  39 c0 35 00 01 00 01 00
        02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
        02 40 8a 00 04 17 15 f3  77" in
-    let t = Transport.create () in
+    let t = create () in
     let ns = `TCP, ref [ipv4_buf] in
     match gethostbyname t domain_name ~nameserver:ns with
     | Ok _ip -> ()
@@ -199,7 +199,7 @@ module Getaddrinfo_tests = struct
       79 ea 00 10 20 01 48 60  48 02 00 36 00 00 00 00
       00 00 00 0a c0 a6 00 1c  00 01 00 01 d1 ba 00 10
       20 01 48 60 48 02 00 38  00 00 00 00 00 00 00 0a" in
-    let mock_state = Transport.create () in
+    let mock_state = create () in
     let ns = `TCP, ref [ipv4_buf] in
     match getaddrinfo mock_state Dns.Rr_map.Mx domain_name ~nameserver:ns with
     | Ok (_ttl, mx_set) ->
@@ -229,7 +229,7 @@ module Getaddrinfo_tests = struct
     let udp_buf = Cstruct.of_hex
       "     00 00 81 80 00 01  00 05 00 04 00 0f 06 67
       6f 6f 67 6c 65 03 63 6f  " in
-    let mock_state = Transport.create () in
+    let mock_state = create () in
     let ns = `UDP, ref [udp_buf] in
     match getaddrinfo mock_state Dns.Rr_map.Mx domain_name ~nameserver:ns with
     | Ok (_, _) ->
