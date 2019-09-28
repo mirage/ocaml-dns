@@ -161,8 +161,7 @@ struct
 
   let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string]) result Transport.io =
-    (* TODO: clock! 0L should be current time *)
-    let ts = 0L in
+    let ts = t.clock () in
     let domain_name = (Domain_name.raw name) in
 
     match Dns_cache.get t.cache ts domain_name query_type with

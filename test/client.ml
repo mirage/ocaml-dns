@@ -128,7 +128,7 @@ module Transport : Dns_client.S
     Fmt.epr "dnsclient unix recv: %a\n%!"
             Cstruct.hexdump_pp cool; *)
     match !mock_responses with
-      | [] -> failwith("nothing to recv")
+      | [] -> failwith("nothing to recv from the wire")
       | hd::tail -> mock_responses := tail; Ok hd
 end
 
@@ -156,8 +156,62 @@ module Gethostbyname_tests = struct
     | Ok _ip -> ()
     | Error _ -> failwith "foo.com should have been returned"
 
+  let returns_from_the_cache () =
+    let domain_name = Domain_name.(of_string_exn "foo.com" |> host_exn) in
+    (* Bytes 3, 4 are set to `00 00` - these represent query ID *)
+    let ipv4_buf = Cstruct.of_hex
+      "00 77 00 00 81 80 00 01  00 01 00 02 00 02 03 66
+       6f 6f 03 63 6f 6d 00 00  01 00 01 c0 0c 00 01 00
+       01 00 00 02 2a 00 04 17  17 56 2c c0 0c 00 02 00
+       01 00 01 87 ae 00 10 03  6e 73 31 09 64 69 67 69
+       6d 65 64 69 61 c0 10 c0  0c 00 02 00 01 00 01 87
+       ae 00 06 03 6e 73 32 c0  39 c0 35 00 01 00 01 00
+       02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
+       02 40 8a 00 04 17 15 f3  77" in
+    let clock () = 0L in
+    let t = create ~clock () in
+    let ns = `TCP, ref [ipv4_buf] in
+    match gethostbyname t domain_name ~nameserver:ns with
+    | Error _ -> failwith "foo.com should have been returned"
+    | Ok _ip ->
+      let empty_ns_responses = `TCP, ref [] in
+      match gethostbyname t domain_name ~nameserver:empty_ns_responses with
+      | Error _ -> failwith "should have been cached"
+      | Ok _ -> () (* we returned content, but the wire stayed silent *)
+
+  let uses_network_when_cache_evicted () =
+    let domain_name = Domain_name.(of_string_exn "foo.com" |> host_exn) in
+    (* Bytes 3, 4 are set to `00 00` - these represent query ID *)
+    let ipv4_buf = Cstruct.of_hex
+      "00 77 00 00 81 80 00 01  00 01 00 02 00 02 03 66
+       6f 6f 03 63 6f 6d 00 00  01 00 01 c0 0c 00 01 00
+       01 00 00 02 2a 00 04 17  17 56 2c c0 0c 00 02 00
+       01 00 01 87 ae 00 10 03  6e 73 31 09 64 69 67 69
+       6d 65 64 69 61 c0 10 c0  0c 00 02 00 01 00 01 87
+       ae 00 06 03 6e 73 32 c0  39 c0 35 00 01 00 01 00
+       02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
+       02 40 8a 00 04 17 15 f3  77" in
+    let timestamps = ref [0L; Duration.of_sec 601] in
+    let time_machine () =
+      match !timestamps with
+      | [] -> assert false
+      | head::tail -> timestamps := tail; head
+    in
+    let t = create ~clock:time_machine () in
+    let ns = `TCP, ref [ipv4_buf] in
+    match gethostbyname t domain_name ~nameserver:ns with
+    | Error _ -> failwith "foo.com should have been returned"
+    | Ok _ip ->
+      let empty_ns_responses = `TCP, ref [ipv4_buf] in
+      match gethostbyname t domain_name ~nameserver:empty_ns_responses with
+      | Error _ -> failwith "should have been cached"
+      | Ok _ -> (* we returned content, AND the wire was used *)
+        assert (!(snd empty_ns_responses) = [])
+
   let tests = [
     "foo.com is valid", `Quick, foo_com_is_valid;
+    "when cache is populated, return from cache", `Quick, returns_from_the_cache;
+    "when content evicted, use network", `Quick, uses_network_when_cache_evicted;
   ]
 end
 
