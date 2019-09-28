@@ -202,11 +202,11 @@ module Gethostbyname_tests = struct
     match gethostbyname t domain_name ~nameserver:ns with
     | Error _ -> failwith "foo.com should have been returned"
     | Ok _ip ->
-      let empty_ns_responses = `TCP, ref [ipv4_buf] in
-      match gethostbyname t domain_name ~nameserver:empty_ns_responses with
+      let mock_ns_responses = `TCP, ref [ipv4_buf] in
+      match gethostbyname t domain_name ~nameserver:mock_ns_responses with
       | Error _ -> failwith "should have been cached"
       | Ok _ -> (* we returned content, AND the wire was used *)
-        assert (!(snd empty_ns_responses) = [])
+        assert (!(snd mock_ns_responses) = [])
 
   let tests = [
     "foo.com is valid", `Quick, foo_com_is_valid;
