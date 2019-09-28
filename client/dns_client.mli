@@ -73,8 +73,8 @@ sig
 
   type t
 
-  val create : ?size:int -> ?rng:(int -> Cstruct.t) -> ?nameserver:T.ns_addr -> T.stack -> t
-  (** [create ~size ~rng ~nameserver stack] creates the state of the DNS client. *)
+  val create : ?size:int -> ?rng:(int -> Cstruct.t) -> ?nameserver:T.ns_addr -> clock:(unit -> int64) -> T.stack -> t
+  (** [create ~size ~rng ~nameserver ~clock stack] creates the state of the DNS client. *)
 
   val nameserver : t -> T.ns_addr
   (** [nameserver t] returns the default nameserver to be used. *)

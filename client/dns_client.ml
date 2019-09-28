@@ -136,11 +136,13 @@ struct
 
   type t = {
     mutable cache : Dns_cache.t ;
+    clock : unit -> int64 ;
     transport : Transport.t ;
   }
 
-  let create ?(size=1000) ?rng ?nameserver stack =
+  let create ?(size=1000) ?rng ?nameserver ~clock stack =
     { cache = Dns_cache.empty size ;
+      clock = clock ;
       transport = Transport.create ?rng ?nameserver stack
     }
 
