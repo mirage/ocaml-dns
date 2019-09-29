@@ -17,6 +17,7 @@ depends: [
   "ipaddr" {>= "3.0.0"}
   "alcotest" {with-test}
   "lru" {>= "0.3.0"}
+  "duration" {>= "0.1.2"}
 ]
 build: [
   ["dune" "subst"] {pinned}
