@@ -16,6 +16,7 @@ depends: [
   "cstruct" {>= "3.2.0"}
   "ipaddr" {>= "3.0.0"}
   "alcotest" {with-test}
+  "lru" {>= "0.3.0"}
 ]
 build: [
   ["dune" "subst"] {pinned}
