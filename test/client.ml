@@ -79,7 +79,7 @@ end
 
 (* {!Transport} provides a mock implementation of the transport used by
    Dns_client.Make. The mock data is passed as type flow and io_addr in
-   connect/recv/send by suppling the optional ?nameserver argument.
+   connect/recv/send by supplying the optional ?nameserver argument.
 *)
 
 type debug_info = Cstruct.t list ref
