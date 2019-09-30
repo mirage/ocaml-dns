@@ -2,5 +2,5 @@
   (name        dns_cache)
   (public_name dns.cache)
   (modules     dns_cache)
-  (libraries   domain-name dns duration lru randomconv)
+  (libraries   domain-name dns duration lru)
   (wrapped     false))

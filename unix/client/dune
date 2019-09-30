@@ -10,4 +10,4 @@
   (modules      ohost)
   (package      dns-client)
   (public_name  dns-client.unix)
-  (libraries    fmt dns-client.unix mirage-clock-unix))
+  (libraries    fmt dns-client.unix mtime.clock.os))

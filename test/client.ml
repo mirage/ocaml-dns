@@ -45,9 +45,8 @@ module Parse_response_tests = struct
     let name:'a Domain_name.t = Domain_name.of_string_exn "foo.com" in
     let _actual, state = Dns_client.Pure.make_query rng `Tcp name Dns.Rr_map.A in
     match Dns_client.Pure.parse_response state ipv4_buf with
-    | `Ok _ -> () (* TODO: Alcotest TESTABLE for this return value *)
-    | `Msg _ -> ignore(failwith "error")
-    | `Partial -> ignore(failwith "error, partial")
+    | Ok `Data _ -> () (* TODO: Alcotest TESTABLE for this return value *)
+    | _ -> ignore(failwith "error")
 
   let fails_to_unpack_mismatched () =
     (* TODO: It is possible to use crowbar here, to generate the ipv4_buf *)
@@ -68,9 +67,9 @@ module Parse_response_tests = struct
     let name:'a Domain_name.t = Domain_name.of_string_exn "foo.com" in
     let _actual, state = Dns_client.Pure.make_query rng `Tcp name Dns.Rr_map.A in
     match Dns_client.Pure.parse_response state ipv4_buf with
-    | `Ok _ -> failwith "should have rejected mismatched input" (* TODO: Alcotest TESTABLE for this return value *)
-    | `Msg _ -> ()
-    | `Partial -> failwith "should have rejected mismatched input"
+    | Error `Msg _ -> ()
+    | __ -> failwith "should have rejected mismatched input"
+    (* TODO: Alcotest TESTABLE for this return value *)
 
   let tests = [
       "unpacks some kind of response", `Quick, unpacks_response;
@@ -78,9 +77,9 @@ module Parse_response_tests = struct
   ]
 end
 
-(* {!Transport} provides the implementation of the underlying flow
-   that is in turn used by {!Dns_client.Make} to provide the
-   blocking Unix convenience module:
+(* {!Transport} provides a mock implementation of the transport used by
+   Dns_client.Make. The mock data is passed as type flow and io_addr in
+   connect/recv/send by supplying the optional ?nameserver argument.
 *)
 
 type debug_info = Cstruct.t list ref
@@ -124,9 +123,6 @@ module Transport : Dns_client.S
     Ok ()
 
   let recv (mock_responses:flow) =
-    (* let cool = (Cstruct.of_string "hello") in
-    Fmt.epr "dnsclient unix recv: %a\n%!"
-            Cstruct.hexdump_pp cool; *)
     match !mock_responses with
       | [] -> failwith("nothing to recv from the wire")
       | hd::tail -> mock_responses := tail; Ok hd
@@ -191,7 +187,8 @@ module Gethostbyname_tests = struct
        ae 00 06 03 6e 73 32 c0  39 c0 35 00 01 00 01 00
        02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
        02 40 8a 00 04 17 15 f3  77" in
-    let timestamps = ref [0L; Duration.of_sec 601] in
+    (* the timestamps are for: cache lookup1, cache upate, cache lookup2, cache update2 *)
+    let timestamps = ref [0L; 0L; Duration.of_sec 601 ; Duration.of_sec 601] in
     let time_machine () =
       match !timestamps with
       | [] -> assert false
