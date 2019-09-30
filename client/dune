@@ -4,7 +4,6 @@
   (modules     dns_client)
   (libraries   dns.cache domain-name dns randomconv rresult)
   (wrapped     false))
-
 (library
   (name        dns_client_tls)
   (public_name dns-client.tls)
