@@ -6,7 +6,6 @@
   (wrapped     false))
 (library
   (name        dns_client_tls)
-  (public_name dns-client.tls)
   (modules     dns_client_tls)
   (libraries   domain-name mirage-flow dns dns-client randomconv rresult tls)
   (wrapped     false))
