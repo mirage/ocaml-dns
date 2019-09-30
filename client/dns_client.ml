@@ -60,13 +60,21 @@ module Pure = struct
             Logs.warn (fun m -> m "Extraneous data in DNS response");
           Ok (Cstruct.sub buf 2 pkt_len)
 
+  let find_soa authority =
+    Domain_name.Map.fold (fun k rr_map acc ->
+        match Rr_map.(find Soa rr_map) with
+        | Some soa -> Some (Domain_name.raw k, soa)
+        | None -> acc)
+      authority None
+
   let consume_rest_of_buffer state buf =
     let open Rresult in
     let to_msg t = function
       | Ok a -> Ok a
       | Error e ->
         R.error_msgf
-          "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a%a  opt:%a tsig:%B@,failed: %a@,@]"
+          "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a%a \
+           opt:%a tsig:%B@,failed: %a@,@]"
           Packet.pp_header t
           (fst t.header) (fst state.query.header)
           (Packet.Question.compare t.question state.query.question = 0)
@@ -77,27 +85,38 @@ module Pure = struct
           Packet.pp_mismatch e
     in
     match Packet.decode buf with
-    | Error `Partial -> `Partial
+    | Error `Partial -> Ok `Partial
     | Error err ->
-      let kerr _ = `Msg (Format.flush_str_formatter ()) in
-      Format.kfprintf kerr Format.str_formatter "Error parsing response: %a" Packet.pp_err err
+      Rresult.R.error_msgf "Error parsing response: %a" Packet.pp_err err
     | Ok t ->
-      let r =
-        to_msg t (Packet.reply_matches_request ~request:state.query t) >>= function
-        | `Answer (answer, _) -> follow_cname (fst state.query.question) ~iterations:20 ~answer ~state
-        | r -> Error (`Msg (Fmt.strf "Ok %a, expected answer" Packet.pp_reply r))
-      in 
-      match r with
-      | Ok x -> `Ok x
-      | Error (`Msg x) -> `Msg x
+      to_msg t (Packet.reply_matches_request ~request:state.query t)
+      >>= function
+      | `Answer (answer, _) when not (Domain_name.Map.is_empty answer) ->
+        follow_cname (fst state.query.question) ~iterations:20 ~answer ~state
+        >>| fun x -> `Data x
+      | `Answer (_, authority) ->
+        begin match find_soa authority with
+          | Some soa -> Ok (`No_data soa)
+          | None -> Error (`Msg "invalid reply, no SOA in nodomain")
+        end
+      | `Rcode_error (NXDomain, Query, Some (_answer, authority)) ->
+        begin match find_soa authority with
+          | Some soa -> Ok (`No_domain soa)
+          | None -> Error (`Msg "invalid reply, no SOA in nodomain")
+        end
+      | r ->
+        Error (`Msg (Fmt.strf "Ok %a, expected answer" Packet.pp_reply r))
 
   let parse_response (type requested)
     : requested Rr_map.key query_state -> Cstruct.t ->
-      [`Ok of requested | `Partial | `Msg of string] =
+      ( [ `Data of requested | `Partial
+        | `No_data of [`raw] Domain_name.t * Soa.t
+        | `No_domain of [`raw] Domain_name.t * Soa.t ],
+        [`Msg of string]) result =
     fun state buf ->
     match consume_protocol_prefix buf state.protocol with
     | Ok buf -> consume_rest_of_buffer state buf
-    | Error () -> `Partial
+    | Error () -> Ok `Partial
 
 end
 
@@ -140,7 +159,7 @@ struct
     transport : Transport.t ;
   }
 
-  let create ?(size=1000) ?rng ?nameserver ~clock stack =
+  let create ?(size=32) ?rng ?nameserver ~clock stack =
     { cache = Dns_cache.empty size ;
       clock = clock ;
       transport = Transport.create ?rng ?nameserver stack
@@ -161,17 +180,34 @@ struct
 
   let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string]) result Transport.io =
-    let ts = t.clock () in
     let domain_name = (Domain_name.raw name) in
 
-    match Dns_cache.get t.cache ts domain_name query_type with
+    match Dns_cache.get t.cache (t.clock ()) domain_name query_type with
     | Ok (`Entry B (query_type', value), cache) ->
       t.cache <- cache;
-      assert (query_type' = Obj.magic query_type);
-      Transport.lift @@ Ok(Obj.magic value)
-    | Ok _
+      (* to satisfy the type checker, we need to prove that
+         - query_type (we are looking for) = query_type' (in the cache)
+         The Dns_cache does not carry this proof at the moment (using an
+         Rr_map.B : B of 'a query_type * 'a instead.
+         We do (instead of an Obj.magic) a compare of the keys, which exposes
+         the necessary proof. *)
+      begin match Dns.Rr_map.K.compare query_type' query_type with
+        | Gmap.Order.Eq -> Transport.lift @@ Ok value
+        | _ -> Transport.lift @@
+          Rresult.R.error_msgf "should not happen request_type <> request_type'"
+      end
+    | Ok (`No_data (name, _soa), cache) ->
+      t.cache <- cache ;
+      Rresult.R.error_msgf "No_data for %a" Domain_name.pp name
+      |> Transport.lift
+    | Ok (`No_domain (name, _soa), cache) ->
+      t.cache <- cache ;
+      Rresult.R.error_msgf "No_domain for %a" Domain_name.pp name
+      |> Transport.lift
+    | Ok (`Serv_fail _, _)
     | Error _ ->
-      let proto, _ = match nameserver with None -> Transport.nameserver t.transport | Some x -> x in
+      let proto, _ = match nameserver with
+        | None -> Transport.nameserver t.transport | Some x -> x in
       let tx, state =
         Pure.make_query (Transport.rng t.transport)
           (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
@@ -179,21 +215,32 @@ struct
       Transport.connect ?nameserver t.transport >>| fun socket ->
       Logs.debug (fun m -> m "Connected to NS.");
       (Transport.send socket tx >>| fun () ->
-      Logs.debug (fun m -> m "Receiving from NS");
-      let rec recv_loop acc =
-        Transport.recv socket >>| fun recv_buffer ->
-        Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
+       Logs.debug (fun m -> m "Receiving from NS");
+       let update_cache entry =
+         let rank = Dns_cache.NonAuthoritativeAnswer in
+         t.cache <- Dns_cache.set t.cache (t.clock ()) domain_name query_type rank entry
+       in
+       let rec recv_loop acc =
+         Transport.recv socket >>| fun recv_buffer ->
+         Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
                         (Cstruct.len recv_buffer)) ;
-        let buf = Cstruct.append acc recv_buffer in
-        match Pure.parse_response state buf with
-        | `Ok x ->
-          let entry = `Entry (Rr_map.B (query_type, x)) in
-          let rank = Dns_cache.NonAuthoritativeAnswer in
-          t.cache <- Dns_cache.set t.cache ts domain_name query_type rank entry;
+         let buf =
+           if Cstruct.(equal empty acc)
+           then recv_buffer
+           else Cstruct.append acc recv_buffer
+         in
+         match Pure.parse_response state buf with
+         | Ok `Data x ->
+          update_cache (`Entry (Rr_map.B (query_type, x)));
           Transport.lift (Ok x)
-        | `Msg xxx -> Transport.lift (Error (`Msg( "err: " ^ xxx)))
-        | `Partial when proto = `TCP -> recv_loop buf
-        | `Partial -> Transport.lift (Error (`Msg "Truncated UDP response"))
+        | Ok ((`No_data _ | `No_domain _) as nodom) ->
+          update_cache nodom;
+          Transport.lift @@
+          Rresult.R.error_msgf "resolution of %a failed (no domain / no data)"
+            Domain_name.pp domain_name
+        | Error `Msg xxx -> Transport.lift (Error (`Msg xxx))
+        | Ok `Partial when proto = `TCP -> recv_loop buf
+        | Ok `Partial -> Transport.lift (Error (`Msg "Truncated UDP response"))
       in recv_loop Cstruct.empty) >>= fun r ->
       Transport.close socket >>= fun () ->
       Transport.lift r

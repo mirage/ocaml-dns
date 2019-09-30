@@ -70,20 +70,17 @@ module Entry = struct
     | _ -> assert false
 
   type t =
-    | Alias of meta * int32 * [ `raw ] Domain_name.t
     | No_domain of meta * [ `raw ] Domain_name.t * Soa.t
     | Rr_map of (meta * rr_map_entry) RRMap.t
 
   (* Part of the LRU.Weighted interface *)
   let weight = function
-    | Alias _ | No_domain _ -> 1
+    | No_domain _ -> 1
     | Rr_map tm -> RRMap.cardinal tm
 
   let pp_entry ppf (meta, entry) = Fmt.pf ppf "e (%a) %a" pp_meta meta pp_map_entry entry
 
   let pp ppf = function
-    | Alias (meta, ttl, a) ->
-      Fmt.pf ppf "alias (%a) TTL %lu %a" pp_meta meta ttl Domain_name.pp a
     | No_domain (meta, name, soa) ->
       Fmt.pf ppf "no domain (%a) %a SOA %a" pp_meta meta Domain_name.pp name Soa.pp soa
     | Rr_map rr ->
@@ -129,7 +126,6 @@ let update_ttl ~created ~now ttl =
   Int32.sub ttl (Int32.of_int (Duration.to_sec (Int64.sub now created)))
 
 type entry = [
-  | `Alias of int32 * [ `raw ] Domain_name.t
   | `Entry of Rr_map.b
   | `No_data of [ `raw ] Domain_name.t * Soa.t
   | `No_domain of [ `raw ] Domain_name.t * Soa.t
@@ -139,21 +135,18 @@ type entry = [
 let pp_entry ppf entry =
   let pp_ns ppf (name, soa) = Fmt.pf ppf "%a SOA %a" Domain_name.pp name Soa.pp soa in
   match entry with
-  | `Alias (ttl, name) -> Fmt.pf ppf "alias TTL %lu %a" ttl Domain_name.pp name
   | `Entry b -> Fmt.pf ppf "entry %a" Rr_map.pp_b b
   | `No_data ns -> Fmt.(prefix (unit "no data ") pp_ns) ppf ns
   | `No_domain ns -> Fmt.(prefix (unit "no domain ") pp_ns) ppf ns
   | `Serv_fail ns -> Fmt.(prefix (unit "serv fail ") pp_ns) ppf ns
 
 let get_ttl = function
-  | `Alias (ttl, _) -> ttl
   | `Entry b -> Rr_map.get_ttl b
   | `No_data (_, soa) -> soa.Soa.minimum
   | `No_domain (_, soa) -> soa.Soa.minimum
   | `Serv_fail (_, soa) -> soa.Soa.minimum
 
 let with_ttl ttl = function
-  | `Alias (_, name) -> `Alias (ttl, name)
   | `Entry b -> `Entry (Rr_map.with_ttl b ttl)
   | `No_data (name, soa) -> `No_data (name, { soa with Soa.minimum = ttl })
   | `No_domain (name, soa) -> `No_domain (name, { soa with Soa.minimum = ttl })
@@ -162,7 +155,6 @@ let with_ttl ttl = function
 let find cache name query_type =
   match LRU.find name cache with
   | None -> None, Error `Cache_miss
-  | Some Alias (meta, ttl, alias) -> None, Ok (meta, `Alias (ttl, alias))
   | Some No_domain (meta, name, soa) -> None, Ok (meta, `No_domain (name, soa))
   | Some Rr_map resource_records ->
     Some resource_records,
@@ -177,7 +169,6 @@ let insert cache ?map ts name query_type rank entry =
   let meta = ts, rank in
   let cache' = match entry with
     | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) cache
-    | `Alias (ttl, alias) -> LRU.add name (Alias (meta, ttl, alias)) cache
     | `Entry _ | `No_data _ | `Serv_fail _ ->
       let map = match map with None -> RRMap.empty | Some x -> x in
       let map' = RRMap.add (K query_type) (meta, Entry.of_entry entry) map in
@@ -205,7 +196,6 @@ let get cache ts name query_type =
       stats := { !stats with drop = succ !stats.drop };
       Error e
 
-(* according to RFC1035, section 7.3, a TTL of a week is a good maximum value! *)
 (* XXX: we may want to define a minimum as well (5 minutes? 30 minutes?
    use SOA expiry?) MS used to use 24 hours in internet explorer
 
@@ -228,6 +218,8 @@ and 1035 6.2:
    copied into a response.  This will allow future dynamic update protocols to
    change the SOA MINIMUM field without ambiguous semantics.
 *)
+(* according to RFC1035, section 7.3, a TTL of a week is a good
+   maximum value! *)
 let week = Int32.of_int Duration.(to_sec (of_day 7))
 
 let clip_ttl_to_week entry =
@@ -239,7 +231,7 @@ let pp_query ppf (name, query_type) =
 
 let set cache ts name query_type rank entry  =
   let entry' = clip_ttl_to_week entry in
-  let cache' map = insert cache ?map ts name query_type rank entry' in 
+  let cache' map = insert cache ?map ts name query_type rank entry' in
   match find cache name query_type with
   | map, Error _ ->
     Logs.debug (fun m -> m "set: %a nothing found, adding: %a"

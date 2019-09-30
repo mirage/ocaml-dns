@@ -25,7 +25,6 @@ val capacity : t -> int
 val pp : t Fmt.t
 
 type entry = [
-  | `Alias of int32 * [ `raw ] Domain_name.t
   | `Entry of Rr_map.b
   | `No_data of [ `raw ] Domain_name.t * Soa.t
   | `No_domain of [ `raw ] Domain_name.t * Soa.t
@@ -34,7 +33,7 @@ type entry = [
 
 val pp_entry : entry Fmt.t
 
-val get : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key -> 
+val get : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key ->
   (entry * t, [ `Cache_miss | `Cache_drop ]) result
 (** [get lru_cache timestamp request_type name] *)
 

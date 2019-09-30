@@ -685,7 +685,9 @@ module Rr_map : sig
      a server or resolver. Resource records that are only meant for a single
      transaction (such as EDNS or TSIG) are not in this GADT, neither is the
      query type ANY (which answer is computed on the fly), or zone transfer
-     operations (AXFR/IXFR). *)
+      operations (AXFR/IXFR). *)
+
+  module K : Gmap.KEY with type 'a t = 'a rr
 
   include Gmap.S with type 'a key = 'a rr
 
