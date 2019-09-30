@@ -29,7 +29,7 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Dns.Tlsa.t)) =
       in loop [] 0)
 
 let do_a nameserver domains _ =
-  let clock = Mclock.elapsed_ns in
+  let clock = Mtime_clock.elapsed_ns in
   let t = Dns_client_lwt.create ?nameserver ~clock () in
   let (_, (ns_ip, _)) = Dns_client_lwt.nameserver t in
   Logs.info (fun m -> m "querying NS %s for A records of %a"
@@ -60,7 +60,7 @@ let for_all_domains nameserver ~domains typ f =
   (* [for_all_domains] is a utility function that lets us avoid duplicating
      this block of code in all the subcommands.
      We leave {!do_a} simple to provide a more readable example. *)
-  let clock = Mclock.elapsed_ns in
+  let clock = Mtime_clock.elapsed_ns in
   let t = Dns_client_lwt.create ?nameserver ~clock () in
   let _, (ns_ip, _) = Dns_client_lwt.nameserver t in
   Logs.info (fun m -> m "NS: %s" @@ Unix.string_of_inet_addr ns_ip);
