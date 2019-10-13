@@ -34,8 +34,9 @@ type entry = [
 val pp_entry : entry Fmt.t
 
 val get : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key ->
-  (entry * t, [ `Cache_miss | `Cache_drop ]) result
+  (entry, [ `Cache_miss | `Cache_drop ]) result
 (** [get lru_cache timestamp request_type name] *)
 
-val set : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key -> rank -> entry -> t
+val set : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key -> rank ->
+  entry -> unit
 (** [set lru_cache timestamp request_type name rank value] *)

@@ -154,7 +154,7 @@ module Make = functor (Transport:S) ->
 struct
 
   type t = {
-    mutable cache : Dns_cache.t ;
+    cache : Dns_cache.t ;
     clock : unit -> int64 ;
     transport : Transport.t ;
   }
@@ -183,8 +183,7 @@ struct
     let domain_name = (Domain_name.raw name) in
 
     match Dns_cache.get t.cache (t.clock ()) domain_name query_type with
-    | Ok (`Entry B (query_type', value), cache) ->
-      t.cache <- cache;
+    | Ok `Entry (B (query_type', value)) ->
       (* to satisfy the type checker, we need to prove that
          - query_type (we are looking for) = query_type' (in the cache)
          The Dns_cache does not carry this proof at the moment (using an
@@ -196,15 +195,13 @@ struct
         | _ -> Transport.lift @@
           Rresult.R.error_msgf "should not happen request_type <> request_type'"
       end
-    | Ok (`No_data (name, _soa), cache) ->
-      t.cache <- cache ;
+    | Ok `No_data (name, _soa) ->
       Rresult.R.error_msgf "No_data for %a" Domain_name.pp name
       |> Transport.lift
-    | Ok (`No_domain (name, _soa), cache) ->
-      t.cache <- cache ;
+    | Ok `No_domain (name, _soa) ->
       Rresult.R.error_msgf "No_domain for %a" Domain_name.pp name
       |> Transport.lift
-    | Ok (`Serv_fail _, _)
+    | Ok (`Serv_fail _)
     | Error _ ->
       let proto, _ = match nameserver with
         | None -> Transport.nameserver t.transport | Some x -> x in
@@ -218,7 +215,7 @@ struct
        Logs.debug (fun m -> m "Receiving from NS");
        let update_cache entry =
          let rank = Dns_cache.NonAuthoritativeAnswer in
-         t.cache <- Dns_cache.set t.cache (t.clock ()) domain_name query_type rank entry
+         Dns_cache.set t.cache (t.clock ()) domain_name query_type rank entry
        in
        let rec recv_loop acc =
          Transport.recv socket >>| fun recv_buffer ->

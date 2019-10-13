@@ -91,10 +91,11 @@ end
 
 module Key = struct
   type t = [ `raw ] Domain_name.t
-  let compare = Domain_name.compare
+  let equal a b = Domain_name.equal a b
+  let hash r v = Hashtbl.seeded_hash r v
 end
 
-module LRU = Lru.F.Make(Key)(Entry)
+module LRU = Lru.M.MakeSeeded(Key)(Entry)
 
 type t = LRU.t
 
@@ -112,7 +113,7 @@ let _pp_stats pf s =
 
 let _stats () = !stats
 
-let empty = LRU.empty
+let empty size = LRU.create ~random:true size
 
 let size = LRU.size
 
@@ -167,15 +168,14 @@ let find cache name query_type =
 let insert cache ?map ts name query_type rank entry =
   stats := { !stats with insert = succ !stats.insert };
   let meta = ts, rank in
-  let cache' = match entry with
-    | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) cache
-    | `Entry _ | `No_data _ | `Serv_fail _ ->
-      let map = match map with None -> RRMap.empty | Some x -> x in
-      let map' = RRMap.add (K query_type) (meta, Entry.of_entry entry) map in
-      LRU.add name (Rr_map map') cache
-  in
+  (match entry with
+   | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) cache
+   | `Entry _ | `No_data _ | `Serv_fail _ ->
+     let map = match map with None -> RRMap.empty | Some x -> x in
+     let map' = RRMap.add (K query_type) (meta, Entry.of_entry entry) map in
+     LRU.add name (Rr_map map') cache);
   (* Make sure we are within memory bounds *)
-  LRU.trim cache'
+  LRU.trim cache
 
 let update_ttl entry ~created ~now =
   let ttl = get_ttl entry in
@@ -191,7 +191,8 @@ let get cache ts name query_type =
     match update_ttl entry ~created ~now:ts with
     | Ok entry' ->
       stats := { !stats with hit = succ !stats.hit };
-      Ok (entry', LRU.promote name cache)
+      LRU.promote name cache;
+      Ok entry'
     | Error e ->
       stats := { !stats with drop = succ !stats.drop };
       Error e
@@ -241,5 +242,5 @@ let set cache ts name query_type rank entry  =
     Logs.debug (fun m -> m "set: %a found rank %a insert rank %a: %d"
                    pp_query (name, `K (K query_type)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
     match compare_rank rank' rank with
-    | 1 -> cache
+    | 1 -> ()
     | _ -> cache' map
