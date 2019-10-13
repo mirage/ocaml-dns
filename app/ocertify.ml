@@ -56,7 +56,7 @@ let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
     | false ->
       find_or_generate_key key_filename bits seed >>= fun key ->
       let cn =
-        X509.Distinguished_name.(singleton CN (Domain_name.to_string hostname))
+        [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN (Domain_name.to_string hostname))) ]
       in
       let req = X509.Signing_request.create cn key in
       let pem = X509.Signing_request.encode_pem req in

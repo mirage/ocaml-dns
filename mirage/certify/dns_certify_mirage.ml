@@ -123,7 +123,8 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
         X509.Signing_request.Ext.(singleton Extensions ext)
     in
     let csr =
-      X509.(Signing_request.create Distinguished_name.(singleton CN hostname)
+      X509.(Signing_request.create
+              [ Distinguished_name.(Relative_distinguished_name.singleton (CN hostname)) ]
               ~extensions (`RSA private_key))
     in
     (private_key, public_key, csr)
