@@ -1,6 +1,6 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-module Make (S : Mirage_stack_lwt.V4) : sig
+module Make (S : Mirage_stack.V4) : sig
 
   module IS : Set.S with type elt = Ipaddr.V4.t
   (** [IS] is a set of [ipaddr]. *)

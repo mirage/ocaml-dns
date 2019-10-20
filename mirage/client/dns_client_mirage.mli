@@ -1,5 +1,5 @@
 
-module Make (R : Mirage_random.C) (S : Mirage_stack_lwt.V4) : sig
+module Make (R : Mirage_random.S) (S : Mirage_stack.V4) : sig
   module Transport : Dns_client.S
     with type flow = S.TCPV4.flow
      and type io_addr = Ipaddr.V4.t * int

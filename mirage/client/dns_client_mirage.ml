@@ -3,7 +3,7 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_client_mirage" ~doc:"effectful DNS client layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.C) (S : Mirage_stack_lwt.V4) = struct
+module Make (R : Mirage_random.S) (S : Mirage_stack.V4) = struct
 
   module Transport : Dns_client.S
     with type flow = S.TCPV4.flow
