@@ -1,6 +1,6 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-module Make (P : Mirage_clock_lwt.PCLOCK) (M : Mirage_clock_lwt.MCLOCK) (T : Mirage_time_lwt.S) (S : Mirage_stack_lwt.V4) : sig
+module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (T : Mirage_time.S) (S : Mirage_stack.V4) : sig
 
   val primary : ?on_update:(old:Dns_trie.t -> Dns_server.Primary.s -> unit Lwt.t) ->
     ?on_notify:([ `Notify of Dns.Soa.t option | `Signed_notify of Dns.Soa.t option ] ->

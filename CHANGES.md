@@ -1,3 +1,17 @@
+### v4.1.0 (2019-11-01)
+
+* Client improvements (#191 #192 @olleolleolle @linse @cfcs @hannesm in marrakesh September)
+ - new sublibrary dns.cache providing an LRU cache, mostly copied from resolver
+ - it uses a LRU cache now (defaults to 32 entries) from dns.cache
+   - since #195 a mutable LRU.M.t
+ - tests were added
+ - Dns_client_flow has been migrated to Dns_client
+ - various code cleanups (extracted functions), better naming, improved docstrings
+ - Uflow is now known as Transport
+ - requires a monotonic clock on creation
+* adapt to x509 0.8.0 API changes (#193 @hannesm)
+* adapt to newer MirageOS interfaces (#196 @hannesm)
+
 ### v4.0.0 (2019-08-15)
 
 * Switch to uDNS implementation, developed from scratch since 2017, primarily

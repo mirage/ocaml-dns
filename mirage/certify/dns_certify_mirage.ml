@@ -5,7 +5,7 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_certify_mirage" ~doc:"effectful DNS certify"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.C) (P : Mirage_clock_lwt.PCLOCK) (TIME : Mirage_time_lwt.S) (S : Mirage_stack_lwt.V4) = struct
+module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.S) (S : Mirage_stack.V4) = struct
 
   module D = Dns_mirage.Make(S)
 
