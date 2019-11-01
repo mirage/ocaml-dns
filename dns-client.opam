@@ -25,6 +25,7 @@ depends: [
   "lwt" {>= "4.2.1"}
   "mirage-stack" {>= "2.0.0"}
   "mirage-random" {>= "2.0.0"}
+  "mirage-clock" {>= "3.0.0"}
   "mtime" {>= "1.2.0"}
 ]
 synopsis: "Pure DNS resolver API"

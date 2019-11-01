@@ -1,5 +1,5 @@
 
-module Make (R : Mirage_random.S) (S : Mirage_stack.V4) : sig
+module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4) : sig
   module Transport : Dns_client.S
     with type flow = S.TCPV4.flow
      and type io_addr = Ipaddr.V4.t * int
@@ -7,6 +7,11 @@ module Make (R : Mirage_random.S) (S : Mirage_stack.V4) : sig
      and type stack = S.t
 
   include module type of Dns_client.Make(Transport)
+
+  val create : ?size:int -> ?nameserver:Transport.ns_addr -> S.t -> t
+  (** [create ~size ~nameserver stack] uses [R.generate] and [C.elapsed_ns] as
+      random number generator and timestamp source, and calls the generic
+      [Dns_client.Make.create]. *)
 end
 
 (*
