@@ -55,26 +55,11 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
       X509.Signing_request.decode_pem (Cstruct.of_string data)
     | false ->
       find_or_generate_key key_filename bits seed >>= fun key ->
-      let host = Domain_name.to_string hostname in
-      let extensions =
-        match more_hostnames with
-        | [] -> X509.Signing_request.Ext.empty
-        | _ ->
-          let ext =
-            let adds = List.map Domain_name.to_string more_hostnames in
-            let gn = X509.General_name.(singleton DNS (host :: adds)) in
-            X509.Extension.(singleton Subject_alt_name (false, gn))
-          in
-          X509.Signing_request.Ext.(singleton Extensions ext)
-      in
-      let cn =
-        [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN host)) ]
-      in
-      let req = X509.Signing_request.create ~extensions cn key in
-      let pem = X509.Signing_request.encode_pem req in
+      let csr = Dns_certify.signing_request hostname ~more_hostnames key in
+      let pem = X509.Signing_request.encode_pem csr in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
-      Ok req) >>= fun req ->
-  let public_key = X509.Signing_request.((info req).public_key) in
+      Ok csr) >>= fun csr ->
+  let public_key = X509.Signing_request.((info csr).public_key) in
   (* before doing anything, let's check whether cert_filename is present, matches public key, and is valid *)
   let tomorrow =
     let (d, ps) = Ptime_clock.now_d_ps () in
@@ -119,7 +104,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
     match dns_key_opt with
     | None -> Error (`Msg "no dnskey provided, but required for uploading CSR")
     | Some (keyname, zone, dnskey) ->
-      nsupdate_csr sock hostname keyname zone dnskey req >>= fun () ->
+      nsupdate_csr sock hostname keyname zone dnskey csr >>= fun () ->
       let rec request retries =
         match query_certificate sock public_key hostname with
         | Error (`Msg msg) -> Error (`Msg msg)

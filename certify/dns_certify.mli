@@ -1,5 +1,13 @@
 open Dns
 
+val signing_request : [`host] Domain_name.t ->
+  ?more_hostnames:([`host] Domain_name.t list) ->
+  X509.Private_key.t -> X509.Signing_request.t
+(** [signing_request name ~more_hostnames key] creates a X509 signing request
+    where [name] will be the common name in its subject, and if [more_hostnames]
+    is provided and non-empty, [name :: more_hostnames] will be the value of a
+    subjectAlternativeName extension. *)
+
 val letsencrypt_name : 'a Domain_name.t ->
   ([ `raw ] Domain_name.t, [> `Msg of string ]) result
 (** [letsencrypt_name host] is the service name at which we store let's encrypt
