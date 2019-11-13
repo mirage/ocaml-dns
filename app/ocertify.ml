@@ -97,8 +97,9 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
        Ok true
      | Error (`Msg m) -> Error (`Msg m)
      | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
-       Error (`Msg (Fmt.strf "error %a while parsing TLSA reply" Dns_certify.pp_q_err e)))
-  >>= function
+       Error (`Msg (Fmt.strf "error %a while parsing TLSA reply"
+                      Dns_certify.pp_q_err e)))
+  >>= (function
   | false -> Ok ()
   | true ->
     match dns_key_opt with
@@ -120,7 +121,9 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
           request (pred retries)
         | Ok x -> write_certificate x
       in
-      request 10
+      request 10) >>| fun () ->
+  Logs.app (fun m -> m "success! your certificate is stored in %a (private key %a, csr %a)"
+               Fpath.pp cert_filename Fpath.pp key_filename Fpath.pp csr_filename)
 
 open Cmdliner
 
