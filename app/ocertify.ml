@@ -144,7 +144,7 @@ let hostname =
   Arg.(required & pos 1 (some Dns_cli.name_c) None & info [] ~doc ~docv:"HOSTNAME")
 
 let more_hostnames =
-  let doc = "Additional hostnames to be part of the certificate" in
+  let doc = "Additional hostnames to be included in the certificate as SubjectAlternativeName extension" in
   Arg.(value & opt_all Dns_cli.name_c [] & info ["additional"] ~doc ~docv:"HOSTNAME")
 
 let csr =
