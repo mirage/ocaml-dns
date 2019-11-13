@@ -39,7 +39,7 @@ let nsupdate_csr sock host keyname zone dnskey csr =
     | Ok () -> Ok ()
     | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Dns_certify.pp_u_err e))
 
-let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
+let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits cert force =
   Nocrypto_entropy_unix.initialize ();
   let fn suffix = function
     | None -> Fpath.(v (Domain_name.to_string hostname) + suffix)
@@ -55,10 +55,22 @@ let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
       X509.Signing_request.decode_pem (Cstruct.of_string data)
     | false ->
       find_or_generate_key key_filename bits seed >>= fun key ->
-      let cn =
-        [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN (Domain_name.to_string hostname))) ]
+      let host = Domain_name.to_string hostname in
+      let extensions =
+        match more_hostnames with
+        | [] -> X509.Signing_request.Ext.empty
+        | _ ->
+          let ext =
+            let adds = List.map Domain_name.to_string more_hostnames in
+            let gn = X509.General_name.(singleton DNS (host :: adds)) in
+            X509.Extension.(singleton Subject_alt_name (false, gn))
+          in
+          X509.Signing_request.Ext.(singleton Extensions ext)
       in
-      let req = X509.Signing_request.create cn key in
+      let cn =
+        [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN host)) ]
+      in
+      let req = X509.Signing_request.create ~extensions cn key in
       let pem = X509.Signing_request.encode_pem req in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
       Ok req) >>= fun req ->
@@ -143,6 +155,10 @@ let hostname =
   let doc = "Hostname (FQDN) to issue a certificate for" in
   Arg.(required & pos 1 (some Dns_cli.name_c) None & info [] ~doc ~docv:"HOSTNAME")
 
+let more_hostnames =
+  let doc = "Additional hostnames to be part of the certificate" in
+  Arg.(value & opt_all Dns_cli.name_c [] & info ["additional"] ~doc ~docv:"HOSTNAME")
+
 let csr =
   let doc = "certificate signing request filename (defaults to hostname.req)" in
   Arg.(value & opt (some string) None & info [ "csr" ] ~doc)
@@ -170,7 +186,7 @@ let force =
 let ocertify =
   let doc = "ocertify requests a signed certificate" in
   let man = [ `S "BUGS"; `P "Submit bugs to me";] in
-  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ hostname $ dns_key $ csr $ key $ seed $ bits $ cert $ force)),
+  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ hostname $ more_hostnames $ dns_key $ csr $ key $ seed $ bits $ cert $ force)),
   Term.info "ocertify" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () = match Term.eval ocertify with `Ok () -> exit 0 | _ -> exit 1

@@ -117,7 +117,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       | _ ->
         let ext =
           let additional = List.map Domain_name.to_string additionals in
-          let gn = X509.General_name.(singleton DNS additional) in
+          let gn = X509.General_name.(singleton DNS (hostname :: additional)) in
           X509.Extension.(singleton Subject_alt_name (false, gn))
         in
         X509.Signing_request.Ext.(singleton Extensions ext)
