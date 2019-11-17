@@ -8,9 +8,12 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (T : Mirage_time
                 Dns_server.Primary.s ->
                 (Dns_trie.t * ([ `raw ] Domain_name.t * Dns.Dnskey.t) list) option Lwt.t) ->
     ?timer:int -> ?port:int -> S.t -> Dns_server.Primary.s -> unit
-  (** [primary ~on_update ~timer ~port stack primary] starts a primary server on [port]
-     (default 53, both TCP and UDP) with the given [primary] configuration. [timer] is the
-     DNS notify timer in seconds, and defaults to 2 seconds. *)
+  (** [primary ~on_update ~timer ~port stack primary] starts a primary server on
+     [port] (default 53, both TCP and UDP) with the given [primary]
+     configuration. [timer] is the DNS notify timer in seconds, and defaults to
+     2 seconds. [on_update ~old key ip s] is a callback if the data served by
+     the primary server got updated by a potentially authenticated nsupdate
+     packet, the used [key] and source [ip] are passed to the callback. *)
 
   val secondary :
     ?on_update:(old:Dns_trie.t -> Dns_server.Secondary.s -> unit Lwt.t) ->
