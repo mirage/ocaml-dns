@@ -2,7 +2,8 @@
 
 module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (T : Mirage_time.S) (S : Mirage_stack.V4) : sig
 
-  val primary : ?on_update:(old:Dns_trie.t -> Dns_server.Primary.s -> unit Lwt.t) ->
+  val primary :
+    ?on_update:(old:Dns_trie.t -> [`raw] Domain_name.t option -> Ipaddr.V4.t -> Dns_server.Primary.s -> unit Lwt.t) ->
     ?on_notify:([ `Notify of Dns.Soa.t option | `Signed_notify of Dns.Soa.t option ] ->
                 Dns_server.Primary.s ->
                 (Dns_trie.t * ([ `raw ] Domain_name.t * Dns.Dnskey.t) list) option Lwt.t) ->

@@ -991,7 +991,7 @@ module Primary = struct
       Log.warn (fun m -> m "error %a while %a sent %a, answering with %a"
                    Rcode.pp rcode Ipaddr.V4.pp ip Cstruct.hexdump_pp buf
                    Fmt.(option ~none:(unit "no") Cstruct.hexdump_pp) answer);
-      t, answer, [], None
+      t, answer, [], None, None
     | Ok p ->
       let handle_inner keyname =
         let t, answer, out, notify =
@@ -1016,14 +1016,14 @@ module Primary = struct
       match handle_tsig ?mac server now p buf with
       | Error (e, data) ->
         Log.err (fun m -> m "error %a while handling tsig" Tsig_op.pp_e e);
-        t, data, [], None
+        t, data, [], None, None
       | Ok None ->
         let t, answer, out, notify = handle_inner None in
         let answer' = match answer with
           | None -> None
           | Some (_, (cs, _)) -> Some cs
         in
-        (t, answer', out, notify)
+        t, answer', out, notify, None
       | Ok (Some (name, tsig, mac, key)) ->
         let n = function
           | Some (`Notify n) -> Some (`Signed_notify n)
@@ -1042,7 +1042,7 @@ module Primary = struct
               None
             | Some (buf, _) -> Some buf
         in
-        (t', answer', out, n notify)
+        t', answer', out, n notify, Some name
 
   let closed (t, m, l, ns) ip =
     let l' = Notification.remove l ip in

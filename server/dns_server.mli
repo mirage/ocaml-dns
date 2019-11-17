@@ -88,7 +88,8 @@ module Primary : sig
   val handle_buf : s -> Ptime.t -> int64 -> proto ->
     Ipaddr.V4.t -> int -> Cstruct.t ->
     s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t list) list *
-    [ `Notify of Soa.t option | `Signed_notify of Soa.t option | `Keep ] option
+    [ `Notify of Soa.t option | `Signed_notify of Soa.t option | `Keep ] option *
+    [ `raw ] Domain_name.t option
   (** [handle_buf s now ts proto src src_port buffer] decodes the [buffer],
      processes the DNS frame using {!handle_packet}, and encodes the reply. *)
 
