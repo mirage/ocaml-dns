@@ -93,7 +93,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
           | Error e -> Error e
           | Ok cert -> Ok cert
 
-  let initialise_csr hostname additionals seed =
+  let initialise_csr hostname more_hostnames seed =
     let private_key =
       let g, print =
         match seed with
@@ -105,28 +105,11 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
       let key = Nocrypto.Rsa.generate ?g 4096 in
       (if print then
          let pem = X509.Private_key.encode_pem (`RSA key) in
-         Log.info (fun m -> m "using private key@.%s" (Cstruct.to_string pem))
-       else
-         ()) ;
+         Log.info (fun m -> m "using private key@.%s" (Cstruct.to_string pem)));
       key
     in
+    let csr = Dns_certify.signing_request hostname ~more_hostnames (`RSA private_key) in
     let public_key = `RSA (Nocrypto.Rsa.pub_of_priv private_key) in
-    let extensions =
-      match additionals with
-      | [] -> X509.Signing_request.Ext.empty
-      | _ ->
-        let ext =
-          let additional = List.map Domain_name.to_string additionals in
-          let gn = X509.General_name.(singleton DNS additional) in
-          X509.Extension.(singleton Subject_alt_name (false, gn))
-        in
-        X509.Signing_request.Ext.(singleton Extensions ext)
-    in
-    let csr =
-      X509.(Signing_request.create
-              [ Distinguished_name.(Relative_distinguished_name.singleton (CN hostname)) ]
-              ~extensions (`RSA private_key))
-    in
     (private_key, public_key, csr)
 
   let query_certificate_or_csr flow pub hostname keyname zone dnskey csr =
@@ -180,10 +163,7 @@ KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
     if not_sub hostname || List.exists not_sub additional_hostnames then
       Lwt.fail_with "hostname not a subdomain of zone provided by dns_key"
     else
-      let priv, pub, csr =
-        let host = Domain_name.to_string hostname in
-        initialise_csr host additional_hostnames key_seed
-      in
+      let priv, pub, csr = initialise_csr hostname additional_hostnames key_seed in
       S.TCPV4.create_connection (S.tcpv4 stack) (dns, port) >>= function
       | Error e ->
         Log.err (fun m -> m "error %a while connecting to name server, shutting down" S.TCPV4.pp_error e) ;

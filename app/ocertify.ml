@@ -39,7 +39,7 @@ let nsupdate_csr sock host keyname zone dnskey csr =
     | Ok () -> Ok ()
     | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Dns_certify.pp_u_err e))
 
-let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
+let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits cert force =
   Nocrypto_entropy_unix.initialize ();
   let fn suffix = function
     | None -> Fpath.(v (Domain_name.to_string hostname) + suffix)
@@ -55,14 +55,11 @@ let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
       X509.Signing_request.decode_pem (Cstruct.of_string data)
     | false ->
       find_or_generate_key key_filename bits seed >>= fun key ->
-      let cn =
-        [ X509.Distinguished_name.(Relative_distinguished_name.singleton (CN (Domain_name.to_string hostname))) ]
-      in
-      let req = X509.Signing_request.create cn key in
-      let pem = X509.Signing_request.encode_pem req in
+      let csr = Dns_certify.signing_request hostname ~more_hostnames key in
+      let pem = X509.Signing_request.encode_pem csr in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
-      Ok req) >>= fun req ->
-  let public_key = X509.Signing_request.((info req).public_key) in
+      Ok csr) >>= fun csr ->
+  let public_key = X509.Signing_request.((info csr).public_key) in
   (* before doing anything, let's check whether cert_filename is present, matches public key, and is valid *)
   let tomorrow =
     let (d, ps) = Ptime_clock.now_d_ps () in
@@ -100,14 +97,15 @@ let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
        Ok true
      | Error (`Msg m) -> Error (`Msg m)
      | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
-       Error (`Msg (Fmt.strf "error %a while parsing TLSA reply" Dns_certify.pp_q_err e)))
-  >>= function
+       Error (`Msg (Fmt.strf "error %a while parsing TLSA reply"
+                      Dns_certify.pp_q_err e)))
+  >>= (function
   | false -> Ok ()
   | true ->
     match dns_key_opt with
     | None -> Error (`Msg "no dnskey provided, but required for uploading CSR")
     | Some (keyname, zone, dnskey) ->
-      nsupdate_csr sock hostname keyname zone dnskey req >>= fun () ->
+      nsupdate_csr sock hostname keyname zone dnskey csr >>= fun () ->
       let rec request retries =
         match query_certificate sock public_key hostname with
         | Error (`Msg msg) -> Error (`Msg msg)
@@ -123,7 +121,9 @@ let jump _ server_ip port hostname dns_key_opt csr key seed bits cert force =
           request (pred retries)
         | Ok x -> write_certificate x
       in
-      request 10
+      request 10) >>| fun () ->
+  Logs.app (fun m -> m "success! your certificate is stored in %a (private key %a, csr %a)"
+               Fpath.pp cert_filename Fpath.pp key_filename Fpath.pp csr_filename)
 
 open Cmdliner
 
@@ -142,6 +142,10 @@ let dns_key =
 let hostname =
   let doc = "Hostname (FQDN) to issue a certificate for" in
   Arg.(required & pos 1 (some Dns_cli.name_c) None & info [] ~doc ~docv:"HOSTNAME")
+
+let more_hostnames =
+  let doc = "Additional hostnames to be included in the certificate as SubjectAlternativeName extension" in
+  Arg.(value & opt_all Dns_cli.name_c [] & info ["additional"] ~doc ~docv:"HOSTNAME")
 
 let csr =
   let doc = "certificate signing request filename (defaults to hostname.req)" in
@@ -170,7 +174,7 @@ let force =
 let ocertify =
   let doc = "ocertify requests a signed certificate" in
   let man = [ `S "BUGS"; `P "Submit bugs to me";] in
-  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ hostname $ dns_key $ csr $ key $ seed $ bits $ cert $ force)),
+  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ hostname $ more_hostnames $ dns_key $ csr $ key $ seed $ bits $ cert $ force)),
   Term.info "ocertify" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () = match Term.eval ocertify with `Ok () -> exit 0 | _ -> exit 1
