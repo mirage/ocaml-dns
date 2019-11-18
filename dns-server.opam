@@ -21,6 +21,7 @@ depends: [
   "nocrypto" {with-test}
   "alcotest" {with-test}
   "dns-tsig" {with-test}
+  "metrics"
 ]
 
 build: [
