@@ -142,6 +142,7 @@ let lookup_glue name t =
 
 let zone name t =
   match lookup_aux name t with
+  | Error (`NotFound (zone, soa)) -> Ok (zone, soa)
   | Error e -> Error e
   | Ok (zone, _, _) ->
     match check_zone zone with
