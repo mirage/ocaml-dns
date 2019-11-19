@@ -3,7 +3,7 @@
 module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (T : Mirage_time.S) (S : Mirage_stack.V4) : sig
 
   val primary :
-    ?on_update:(old:Dns_trie.t -> [`raw] Domain_name.t option -> Ipaddr.V4.t -> Dns_server.Primary.s -> unit Lwt.t) ->
+    ?on_update:(old:Dns_trie.t -> authenticated_key:[`raw] Domain_name.t option -> update_source:Ipaddr.V4.t -> Dns_server.Primary.s -> unit Lwt.t) ->
     ?on_notify:([ `Notify of Dns.Soa.t option | `Signed_notify of Dns.Soa.t option ] ->
                 Dns_server.Primary.s ->
                 (Dns_trie.t * ([ `raw ] Domain_name.t * Dns.Dnskey.t) list) option Lwt.t) ->
@@ -11,9 +11,10 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (T : Mirage_time
   (** [primary ~on_update ~timer ~port stack primary] starts a primary server on
      [port] (default 53, both TCP and UDP) with the given [primary]
      configuration. [timer] is the DNS notify timer in seconds, and defaults to
-     2 seconds. [on_update ~old key ip s] is a callback if the data served by
-     the primary server got updated by a potentially authenticated nsupdate
-     packet, the used [key] and source [ip] are passed to the callback. *)
+     2 seconds. [on_update ~old ~authenticated_key ~update_source s] is a
+     callback if the data served by the primary server [s] got updated by a
+     potentially authenticated nsupdate packet, the used [authenticated_key]
+     and source [update_source] are passed to the callback. *)
 
   val secondary :
     ?on_update:(old:Dns_trie.t -> Dns_server.Secondary.s -> unit Lwt.t) ->

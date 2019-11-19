@@ -45,7 +45,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
     let src = counter_metrics ~f "dns-server-mirage" in
     (fun x -> Metrics.add src (fun x -> x) (fun d -> d x))
 
-  let primary ?(on_update = fun ~old:_ _ _ _ -> Lwt.return_unit) ?(on_notify = fun _ _ -> Lwt.return None) ?(timer = 2) ?(port = 53) stack t =
+  let primary ?(on_update = fun ~old:_ ~authenticated_key:_ ~update_source:_ _ -> Lwt.return_unit) ?(on_notify = fun _ _ -> Lwt.return None) ?(timer = 2) ?(port = 53) stack t =
     let state = ref t in
     let tcp_out = ref Dns.IM.empty in
 
@@ -98,7 +98,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
       if Dns_trie.equal (trie t) (trie old) then
         Lwt.return_unit
       else begin
-        inc `On_update ; on_update ~old:(trie old) key ip t
+        inc `On_update ; on_update ~old:(trie old) ~authenticated_key:key ~update_source:ip t
       end
     and maybe_notify recv_task t now ts = function
       | None -> Lwt.return_unit
