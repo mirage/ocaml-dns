@@ -35,13 +35,13 @@ module Packet = struct
                 (Error (`Not_implemented (0, "UnsupportedClass 0")))
                 (decode cs)) ;
     let cs = Cstruct.of_hex "0000 0100 0001 0000 0000 0000 0000 0000 01" in
+    let header = (0, Flags.singleton `Recursion_desired) in
     let res =
       let i = match Rr_map.I.of_int 0 with
         | Error _ -> Alcotest.fail "expected ok"
         | Ok i -> i
       in
-      let header = (0, Flags.singleton `Recursion_desired)
-      and question = Question.create Domain_name.root (Unknown i)
+      let question = Question.create Domain_name.root (Unknown i)
       and data = `Query
       in
       Packet.create header question data
@@ -49,13 +49,20 @@ module Packet = struct
     Alcotest.(check (result t_ok p_err) "question with unsupported typ"
                 (Ok res) (decode cs)) ;
     let cs = Cstruct.of_hex "0000 0100 0001 0000 0000 0000 0000 2100 01" in
-    Alcotest.(check (result t_ok p_err) "question with bad SRV"
-                (Error (`Malformed (0, "BadContent")))
-                (decode cs)) ;
+    let r =
+      let question = Question.create Domain_name.root Srv in
+      Packet.create header question `Query
+    in
+    Alcotest.(check (result t_ok p_err) "question with SRV ()"
+                (Ok r) (decode cs)) ;
     let cs = Cstruct.of_hex "0000 0100 0001 0000 0000 0000 0102 0000 0200 01" in
-    Alcotest.(check (result t_ok p_err) "question with bad hostname"
-                (Error (`Malformed (0, "BadContent")))
-                (decode cs))
+    let r =
+      let name = Domain_name.of_string_exn "\002." in
+      let question = Question.create name Ns in
+      Packet.create header question `Query
+    in
+    Alcotest.(check (result t_ok p_err) "question with name that is not a hostname"
+                (Ok r) (decode cs))
 
   let regression0 () =
     let data = Cstruct.of_hex
@@ -181,7 +188,7 @@ module Packet = struct
     and edns = Edns.create ~payload_size:4096 ()
     in
     let res =
-      create ~edns (0x9FCA, Flags.empty) question
+      create ~edns (0x9FCA, Flags.singleton `Authoritative) question
         (`Rcode_error (Rcode.NXDomain, Opcode.Query, Some (Name_rr_map.empty, authority)))
     in
     Alcotest.(check (result t_ok p_err) "regression 4 decodes"
@@ -591,7 +598,7 @@ b0 42 00 30 00 00 23 00  55 00 00 00 65 00 00 29
     "regression1", `Quick, regression1 ;
     "regression2", `Quick, regression2 ;
     (* "regression3", `Quick, regression3 ; *)
-    (* "regression4", `Quick, regression4 ; *)
+    "regression4", `Quick, regression4 ;
     "regression5", `Quick, regression5 ;
     "regression6", `Quick, regression6 ;
     "regression7", `Quick, regression7 ;

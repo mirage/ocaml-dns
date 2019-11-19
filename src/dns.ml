@@ -2227,7 +2227,7 @@ module Packet = struct
       Cstruct.BE.set_uint16 buf 0 id ;
       Cstruct.BE.set_uint16 buf 2 header
 
-(*
+    (*
     let%expect_test "encode_decode_header" =
       let eq (hdr, query, op, rc) (hdr', query', op', rc') =
         compare hdr hdr' = 0 && rc = rc' && query = query' && op = op'
@@ -2307,8 +2307,7 @@ module Packet = struct
       let data = Cstruct.of_hex "0000 000e 0000 0000 0000 0000" in
       test_err (decode data);
       [%expect {|ok|}]
-   *)
-
+      *)
   end
 
   let decode_ntc names buf off =
@@ -2325,31 +2324,9 @@ module Packet = struct
     | x when x = Rr_map.ixfr_rtyp -> Ok ((name, `Ixfr, cls), names, off + 4)
     | x when x = Rr_map.axfr_rtyp -> Ok ((name, `Axfr, cls), names, off + 4)
     | x when x = Rr_map.any_rtyp -> Ok ((name, `Any, cls), names, off + 4)
-    | x -> Rr_map.of_int x >>= fun (K k) ->
-      match k with
-      | Rr_map.Dnskey -> Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
-      | Rr_map.Txt -> Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
-      | Rr_map.Cname -> Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
-      | Rr_map.Tlsa ->
-        begin match Domain_name.host name, Domain_name.service name with
-          | Ok _, _ | _, Ok _ -> Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
-          | Error _, _ ->
-            let m = Fmt.strf "invalid name for TLSA %a" Domain_name.pp name in
-            Error (`Malformed (off, m))
-        end
-      | Rr_map.Srv ->
-        begin match Domain_name.service name with
-          | Ok _ -> Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
-          | Error _ ->
-            Error (`Malformed (off, Fmt.strf "SRV must be a service name %a"
-                                 Domain_name.pp name))
-        end
-      | _ ->
-        match Domain_name.host name with
-        | Ok _ -> Ok ((name, `K (Rr_map.K k), cls), names, off + 4)
-        | Error _ ->
-          Error (`Malformed (off, Fmt.strf "record %a must be a hostname %a"
-                               Rr_map.ppk (K k) Domain_name.pp name))
+    | x ->
+      Rr_map.of_int x >>| fun k ->
+      (name, `K k, cls), names, off + 4
 
   module Question = struct
     type qtype = [ `Any | `K of Rr_map.k ]
