@@ -14,7 +14,10 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (T : Mirage_time
      2 seconds. [on_update ~old ~authenticated_key ~update_source s] is a
      callback if the data served by the primary server [s] got updated by a
      potentially authenticated nsupdate packet, the used [authenticated_key]
-     and source [update_source] are passed to the callback. *)
+     and source [update_source] are passed to the callback. The
+     [on_notify notify s] callback is executed when a notify request is received
+     by the primary DNS server (may be used for signaling of a (hidden) DNS
+     secondary server). *)
 
   val secondary :
     ?on_update:(old:Dns_trie.t -> Dns_server.Secondary.s -> unit Lwt.t) ->
