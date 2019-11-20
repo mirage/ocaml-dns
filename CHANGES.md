@@ -1,3 +1,34 @@
+### v4.2.0 (2019-11-20)
+
+* dns
+  relax resource record parsing, don't require the name to be a hostname it
+  used to be strict on the parser, but that violates RFC 2181 Sec 11
+  > The DNS itself places only one restriction on the particular labels that can
+  > be used to identify resource records.  That one restriction relates to the
+  > length of the label and the full name.
+  previous code had already exceptions for DNSKEY, TXT, CNAME, TLSA (service
+  name or host name), SRV (service name) (#201 @hannesm)
+* dns-certify
+  BUGFIX provide signing_request to create certificate signing requests,
+         now including all hostnames in subjectAlternativeName (previously, the
+         common name was left out which is not what RFC 5280 recommends)
+         (#198 @hannesm)
+* dns-server.mirage
+  - provide metrics (using the metrics library) of connections and actions (#199 @hannesm)
+  - BREAKING the `on_update` callback passed to `primary` has more arguments (#200 @hannesm)
+    `~authenticated_key` : [`raw] Domain_name.t option
+    `~update_source` : Ipaddr.V4.t
+* dns-server
+  - BREAKING handle_buf: returns Domain_name.t of key used for authentication (#200 @hannesm)
+  - BUGFIX handle_update: allow modification of multiple zones at once
+           still, each name must be within the zone given in Query.name (which
+           is authenticated against), allowing hidden let's encrypt secondary
+           for multiple zones, using a keys authorized for the root zone (#200 @hannesm)
+  - BUGFIX Dns_trie.zone returns the zone (Domain_name.t * Soa.t) of a
+           provided Domain_name.t, it now works for non-existing names, tests
+           were added (#200 @hannesm)
+* dns-mirage: log packets on debug level instead of info (#198 @hannesm)
+
 ### v4.1.0 (2019-11-01)
 
 * Client improvements (#191 #192 @olleolleolle @linse @cfcs @hannesm in marrakesh September)
