@@ -82,11 +82,11 @@ You may want to follow the [mirage installation
 instructions](https://mirage.io/wiki/install) to get `mirage` installed on your
 computer.
 
-To lower the amount of run-time dependencies for each individual functionality,
-the library is split across a number of opam packages.
-
-µDNS is not released yet, but you can install it and its dependencies via opam,
-see [Development](#Development).
+To minimize the amount of run-time dependencies for each individual
+functionality, the library is split into multiple opam packages (core, server,
+client, resolver, cli, certify), with multiple ocamlfind libraries for the
+different backends (no optional dependencies) -- i.e. `dns-server.mirage`
+contains the MirageOS-specific DNS server code.
 
 Now the µDNS library is installed, and you can try out the examples.  Find some
 examples at the [unikernel repository](https://github.com/roburio/unikernels).
@@ -103,12 +103,11 @@ stricter coding style used in the post-4.0.0 branches.  The major improvements
 from 1.x to the 4.x series are:
 
 - data (rrset) is defined in a single GADT in `Rr_map`
-- add support for: notify, dynamic update, zone transfer, tsig (hmac authentication), edns
-- no mutable datastructures to make reasoning about library state easier
-- switches to an independent `domain_name` library which uses a faster and more
+- added support for: notify, dynamic update, zone transfer, tsig (hmac authentication), edns
+- no mutable data structures, leading to easier reasoning about library state
+- switched to an independent `domain_name` library which uses a faster and more
   compact `string array` instead of `string list` for storing domain names
 - integration with LetsEncrypt for provisioning valid X.509 certificates
-- more strict hostname validation
 - no use of exceptions, instead preferring explicit result values from API functions
 
 Please get in touch on <mirageos-devel@lists.xenproject.org> or on the Discuss forum
@@ -123,7 +122,7 @@ you will have to pin the same *version* for all of them:
 
 ```csh
 : csh syntax
-set version=4.0.0
+set version=4.99.0
 set repo=git+https://github.com/mirage/ocaml-dns.git
 
 # the -y parameter means "force" or
@@ -139,7 +138,7 @@ end
 
 ```bash
 : bash syntax
-version=4.0.0
+version=4.99.0
 repo=git+https://github.com/mirage/ocaml-dns.git
 
 for pkg in dns dns-{certify,cli,client,resolver,server,mirage,tsig}

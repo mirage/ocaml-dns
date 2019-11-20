@@ -366,12 +366,49 @@ module Trie = struct
                 (Ok (Rr_map.B (Rr_map.Ns, (10l, sn (n_of_s "ns1.foo.com")))))
                 (lookup_b (n_of_s "foo.com") Ns t'))
 
+  let zone_ok =
+    let module M = struct
+      type t = [ `raw ] Domain_name.t * Soa.t
+      let pp ppf (zone, soa) =
+        Fmt.pf ppf "zone %a soa %a" Domain_name.pp zone Soa.pp soa
+      let equal (zone, soa) (zone', soa') =
+        Domain_name.equal zone zone' && Soa.compare soa soa' = 0
+    end in
+    (module M: Alcotest.TESTABLE with type t = M.t)
+
+  let zone () =
+    let soa = {
+      Soa.nameserver = n_of_s "ns1.foo.com" ;
+      hostmaster = n_of_s "hs.foo.com" ;
+      serial = 1l ; refresh = 10l ; retry = 5l ; expiry = 3l ; minimum = 4l
+    } in
+    let myzone = n_of_s "foo.com" in
+    let t =
+      ins_zone myzone soa 10l (sn (n_of_s "ns1.foo.com")) empty
+    in
+    Alcotest.(check (result zone_ok e) __LOC__
+                (Ok (myzone, soa))
+                (zone myzone t));
+    Alcotest.(check (result zone_ok e) __LOC__
+                (Ok (myzone, soa))
+                (zone (n_of_s "foobar.boo.bar.foo.com") t));
+    Alcotest.(check (result zone_ok e) __LOC__
+                (Ok (myzone, soa))
+                (zone (n_of_s "_bar.foo.com") t));
+    Alcotest.(check (result zone_ok e) __LOC__
+                (Error `NotAuthoritative)
+                (zone Domain_name.root t));
+    Alcotest.(check (result zone_ok e) __LOC__
+                (Error `NotAuthoritative)
+                (zone (n_of_s "bar.com") t))
+
   let tests = [
     "simple", `Quick, simple ;
     "basic", `Quick, basic ;
     "alias", `Quick, alias ;
     "delegation", `Quick, dele ;
     "rmzone", `Quick, rmzone ;
+    "zone", `Quick, zone ;
   ]
 end
 
