@@ -287,11 +287,10 @@ module Getaddrinfo_tests = struct
     let mock_state = create ~clock () in
     let ns = `UDP, ref [udp_buf] in
     match getaddrinfo mock_state Dns.Rr_map.Mx domain_name ~nameserver:ns with
-    | Ok (_, _) ->
-      failwith("Should have reported the Truncated UDP packet")
     | Error `Msg actual ->
       let expected = "Truncated UDP response" in
       Alcotest.(check string "reports the truncated UDP packet failure" expected actual)
+    | _ -> failwith("Should have reported the Truncated UDP packet")
 
   let tests = [
     "supports_mx_packets", `Quick, supports_mx_packets;

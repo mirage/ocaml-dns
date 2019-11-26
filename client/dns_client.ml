@@ -180,8 +180,7 @@ struct
 
   let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string]) result Transport.io =
-    let domain_name = (Domain_name.raw name) in
-
+    let domain_name = Domain_name.raw name in
     match Dns_cache.get t.cache (t.clock ()) domain_name query_type with
     | Ok `Entry (B (query_type', value)) ->
       (* to satisfy the type checker, we need to prove that
@@ -195,12 +194,8 @@ struct
         | _ -> Transport.lift @@
           Rresult.R.error_msgf "should not happen request_type <> request_type'"
       end
-    | Ok `No_data (name, _soa) ->
-      Rresult.R.error_msgf "No_data for %a" Domain_name.pp name
-      |> Transport.lift
-    | Ok `No_domain (name, _soa) ->
-      Rresult.R.error_msgf "No_domain for %a" Domain_name.pp name
-      |> Transport.lift
+    | Ok (`No_data _ as nodata) -> Error nodata |> Transport.lift
+    | Ok (`No_domain _ as nodom) -> Error nodom |> Transport.lift
     | Ok (`Serv_fail _)
     | Error _ ->
       let proto, _ = match nameserver with
@@ -229,27 +224,33 @@ struct
          match Pure.parse_response state buf with
          | Ok `Data x ->
           update_cache (`Entry (Rr_map.B (query_type, x)));
-          Transport.lift (Ok x)
+          Ok x |> Transport.lift
         | Ok ((`No_data _ | `No_domain _) as nodom) ->
           update_cache nodom;
-          Transport.lift @@
-          Rresult.R.error_msgf "resolution of %a failed (no domain / no data)"
-            Domain_name.pp domain_name
-        | Error `Msg xxx -> Transport.lift (Error (`Msg xxx))
+          Error nodom |> Transport.lift
+        | Error `Msg xxx -> Error (`Msg xxx) |> Transport.lift
         | Ok `Partial when proto = `TCP -> recv_loop buf
-        | Ok `Partial -> Transport.lift (Error (`Msg "Truncated UDP response"))
+        | Ok `Partial -> Error (`Msg "Truncated UDP response") |> Transport.lift
       in recv_loop Cstruct.empty) >>= fun r ->
       Transport.close socket >>= fun () ->
       Transport.lift r
 
+  let lift_cache_error m =
+    (match m with
+     | Ok a -> Ok a
+     | Error `Msg msg -> Error (`Msg msg)
+     | Error (#Dns_cache.entry as e) ->
+       Rresult.R.error_msgf "DNS cache error %a" Dns_cache.pp_entry e)
+    |> Transport.lift
+
   let gethostbyname stack ?nameserver domain =
-    getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>|= fun (_ttl, resp) ->
+    getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>= lift_cache_error >>|=  fun (_ttl, resp) ->
     match Dns.Rr_map.Ipv4_set.choose_opt resp with
     | None -> Error (`Msg "No A record found")
     | Some ip -> Ok ip
 
   let gethostbyname6 stack ?nameserver domain =
-    getaddrinfo stack ?nameserver Dns.Rr_map.Aaaa domain >>|= fun (_ttl, res) ->
+    getaddrinfo stack ?nameserver Dns.Rr_map.Aaaa domain >>= lift_cache_error >>|= fun (_ttl, res) ->
     match Dns.Rr_map.Ipv6_set.choose_opt res with
     | None -> Error (`Msg "No AAAA record found")
     | Some ip -> Ok ip

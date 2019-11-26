@@ -80,7 +80,11 @@ sig
   (** [nameserver t] returns the default nameserver to be used. *)
 
   val getaddrinfo : t -> ?nameserver:T.ns_addr -> 'response Dns.Rr_map.key ->
-    'a Domain_name.t -> ('response, [> `Msg of string ]) result T.io
+    'a Domain_name.t ->
+    ('response,
+     [> `Msg of string
+     | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+     | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result T.io
   (** [getaddrinfo nameserver query_type name] is the [query_type]-dependent
       response from [nameserver] regarding [name], or an [Error _] message.
       See {!Dns_client.query_state} for more information about the
