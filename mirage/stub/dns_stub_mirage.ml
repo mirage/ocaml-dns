@@ -40,7 +40,8 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
         Lwt.return None
 
   let create ?size stack =
-    let client = Client.create ?size stack in
+    let nameserver = `TCP, (Ipaddr.V4.of_string_exn "141.1.1.1", 53) in
+    let client = Client.create ?size ~nameserver stack in
     let t = { client } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       handle t `Udp buf >>= function
