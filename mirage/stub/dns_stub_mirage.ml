@@ -8,6 +8,39 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4) = struct
 
+  (* data in the wild:
+     - a request comes in hdr, q
+       - q to be found in cache
+       - q not found in cache (to be forwarded to the recursive resolver)
+         - unless q in transit:
+         - a fresh hdr, q is generated and sent to the recursive resolver
+         - now hdr, q is registered to be awaited for
+         -- we can either signal the request task once we found something,
+            or preserve the original hdr, q together with ip and port
+     - a reply goes out hdr, q, answer
+
+     the "Client" is only concerned about the connection to the resolver, with
+     multiplexing.
+
+     the current API is:
+      dns_client calls connect .. -> flow
+                       send flow data
+                       recv flow (* potentially multiple times *)
+
+     i.e. our flow being (int * _):
+       connect creates a unique identifier
+       send (id, _) data <- registers in map M M[id] := DNS_id
+       recv (id, _) <- registers M[id] (=DNS_id) in N[DNS_id] := this task
+
+     or phrased differently:
+       a recv_loop reads continously, whenever a full packet is received,
+        N[DNS_id] is woken up with the packet
+  *)
+  module IM = Map.Make(struct
+      type t = int
+      let compare : int -> int -> int = fun a b -> compare a b
+    end)
+
   module Client = struct
     module Transport : Dns_client.S
       with type stack = S.t
@@ -17,20 +50,22 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
       type io_addr = Ipaddr.V4.t * int
       type ns_addr = [`TCP | `UDP] * io_addr
       type +'a io = 'a Lwt.t
+
       type t = {
         rng : (int -> Cstruct.t) ;
         nameserver : ns_addr ;
         stack : stack ;
         mutable flow : S.TCPV4.flow option ;
+        mutable requests : (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t IM.t ;
       }
-      type flow = t
+      type flow = { t : t ; mutable id : int }
 
       let create
           ?rng
           ?(nameserver = `TCP, (Ipaddr.V4.of_string_exn "91.239.100.100", 53))
           stack =
         let rng = match rng with None -> R.generate ?g:None | Some x -> x in
-        { rng ; nameserver ; stack ; flow = None }
+        { rng ; nameserver ; stack ; flow = None ; requests = IM.empty }
 
       let nameserver { nameserver ; _ } = nameserver
       let rng { rng ; _ } = rng
@@ -38,9 +73,45 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
       let bind = Lwt.bind
       let lift = Lwt.return
 
+      let cancel_all t =
+        IM.iter (fun _id cond ->
+            Lwt_condition.broadcast cond (Error (`Msg "disconnected")))
+          t.requests
+
+      let rec read_loop ?(linger = Cstruct.empty) t flow =
+        S.TCPV4.read flow >>= function
+        | Error e ->
+          t.flow <- None;
+          Log.err (fun m -> m "error %a reading from resolver" S.TCPV4.pp_error e);
+          cancel_all t;
+          Lwt.return_unit
+        | Ok `Eof ->
+          t.flow <- None;
+          Log.warn (fun m -> m "end of file reading from resolver");
+          cancel_all t;
+          Lwt.return_unit
+        | Ok (`Data cs) ->
+          let rec handle_data data =
+            let cs_len = Cstruct.len data in
+            if cs_len > 2 then
+              let len = Cstruct.BE.get_uint16 data 0 in
+              if cs_len - 2 >= len then
+                let packet, rest = Cstruct.split data (len + 2) in
+                let id = Cstruct.BE.get_uint16 packet 2 in
+                (match IM.find_opt id t.requests with
+                 | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
+                 | Some cond -> Lwt_condition.broadcast cond (Ok packet));
+                handle_data rest
+              else
+                read_loop ~linger:data t flow
+            else
+              read_loop ~linger:data t flow
+          in
+          handle_data (if Cstruct.len linger = 0 then cs else Cstruct.append linger cs)
+
       let connect ?nameserver:ns t =
         match t.flow with
-        | Some _ -> Lwt.return (Ok t)
+        | Some _ -> Lwt.return (Ok ({ t ; id = 0 }))
         | None ->
           let _proto, addr = match ns with None -> nameserver t | Some x -> x in
           S.TCPV4.create_connection (S.tcpv4 t.stack) addr >|= function
@@ -49,43 +120,34 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
                         S.TCPV4.pp_error e) ;
             Error (`Msg "connect failure")
           | Ok flow ->
+            Lwt.async (fun () -> read_loop t flow);
             t.flow <- Some flow;
-            Ok t
+            Ok ({ t ; id = 0 })
 
       let close _f =
         (* ignoring this here *)
         Lwt.return_unit
 
-      let recv t =
-        match t.flow with
-        | None -> Lwt.return (Error (`Msg "no connected flow"))
-        | Some flow ->
-          S.TCPV4.read flow >|= function
-          | Error e -> t.flow <- None; Error (`Msg (Fmt.to_to_string S.TCPV4.pp_error e))
-          | Ok (`Data cs) -> Ok cs
-          | Ok `Eof -> Ok Cstruct.empty
+      let recv { t ; id } =
+        let cond = Lwt_condition.create () in
+        t.requests <- IM.add id cond t.requests;
+        Lwt_condition.wait cond >|= fun data ->
+        t.requests <- IM.remove id t.requests;
+        match data with
+        | Ok cs -> Ok cs
+        | Error `Msg m -> Error (`Msg m)
 
-      let send t s =
-        let rec connected ?(first = true) () =
-          match t.flow with
-          | Some flow -> Lwt.return (Ok flow)
-          | None when first -> connect t >>= fun _ -> connected ~first:false ()
-          | None -> Lwt.return (Error (`Msg "couldn't establish connection to resolver"))
-        in
-        let rec resolve ?(first = true) () =
-          connected () >>= function
-          | Error e -> Lwt.return (Error e)
-          | Ok flow ->
-            S.TCPV4.write flow s >>= function
-            | Error e ->
-              t.flow <- None;
-              if first then
-                resolve ~first:false ()
-              else
-                Lwt.return (Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e)))
-            | Ok () -> Lwt.return (Ok ())
-        in
-        resolve ()
+      let send f s =
+        match f.t.flow with
+        | None -> Lwt.return (Error (`Msg "no connection to resolver"))
+        | Some flow ->
+          let id = Cstruct.BE.get_uint16 s 2 in
+          f.id <- id;
+          S.TCPV4.write flow s >>= function
+          | Error e ->
+            f.t.flow <- None;
+            Lwt.return (Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e)))
+          | Ok () -> Lwt.return (Ok ())
     end
 
     include Dns_client.Make(Transport)
