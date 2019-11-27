@@ -66,22 +66,26 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
           | Ok `Eof -> Ok Cstruct.empty
 
       let send t s =
-        (match t.flow with
-         | Some flow -> Lwt.return (Ok flow)
-         | None -> connect t >|= function
-           | Ok _ ->
-             begin match t.flow with
-               | Some flow -> Ok flow
-               | None -> Error (`Msg "couldn't establish connection to resolver")
-             end
-           | Error e -> Error e) >>= function
-        | Error e -> Lwt.return (Error e)
-        | Ok flow ->
-          S.TCPV4.write flow s >|= function
-          | Error e ->
-            t.flow <- None;
-            Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e))
-          | Ok () -> Ok ()
+        let rec connected ?(first = true) () =
+          match t.flow with
+          | Some flow -> Lwt.return (Ok flow)
+          | None when first -> connect t >>= fun _ -> connected ~first:false ()
+          | None -> Lwt.return (Error (`Msg "couldn't establish connection to resolver"))
+        in
+        let rec resolve ?(first = true) () =
+          connected () >>= function
+          | Error e -> Lwt.return (Error e)
+          | Ok flow ->
+            S.TCPV4.write flow s >>= function
+            | Error e ->
+              t.flow <- None;
+              if first then
+                resolve ~first:false ()
+              else
+                Lwt.return (Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e)))
+            | Ok () -> Lwt.return (Ok ())
+        in
+        resolve ()
     end
 
     include Dns_client.Make(Transport)
