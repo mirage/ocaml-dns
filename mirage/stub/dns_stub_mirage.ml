@@ -12,7 +12,7 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
      - a request comes in hdr, q
        - q to be found in cache
        - q not found in cache (to be forwarded to the recursive resolver)
-         - unless q in transit:
+         - unless q in transit (this to-be-done if it is worth it (is it?))
          - a fresh hdr, q is generated and sent to the recursive resolver
          - now hdr, q is registered to be awaited for
          -- we can either signal the request task once we found something,
@@ -28,13 +28,13 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
                        recv flow (* potentially multiple times *)
 
      i.e. our flow being (int * _):
-       connect creates a unique identifier
-       send (id, _) data <- registers in map M M[id] := DNS_id
-       recv (id, _) <- registers M[id] (=DNS_id) in N[DNS_id] := this task
+       connect <nothing>
+       send (id, _) data <- id <- data[2..3]
+       recv (id, _) <- registers condition in N[id] ; waits ; removes condition
 
      or phrased differently:
        a recv_loop reads continously, whenever a full packet is received,
-        N[DNS_id] is woken up with the packet
+        N[id] is woken up with the packet
   *)
   module IM = Map.Make(struct
       type t = int
@@ -169,14 +169,55 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
      -> need to remember outstanding requests and signal to clients
   *)
 
-  (* multiplex TCP connection to resolver *)
-
   (* take multiple resolver IPs and round-robin / ask both (take first answer,
      ignoring ServFail etc.) *)
 
+  (* timeout of resolver, retransmission (to another resolver / another flow) *)
+
   type t = {
     client : Client.t ;
+    server : Dns_server.t ; (* not yet sure about this *)
   }
+
+  let lookup_server t question data build_reply =
+    match Dns_server.handle_question t.server question with
+    | Ok (_flags, answer, additional) ->
+      (* TODO do sth with flags *)
+      Some (build_reply ?additional (`Answer answer))
+    | Error (Rcode.NotAuth, _) -> None
+    | Error (rcode, answer) ->
+      let data = `Rcode_error (rcode, Packet.opcode_data data, answer) in
+      Some (build_reply ?additional:None data)
+
+  let resolve t question data build_reply =
+    let name = fst question in
+    match data, snd question with
+    | `Query, `K Rr_map.K key ->
+      begin Client.getaddrinfo t.client key name >|= function
+        | Error `Msg msg ->
+          (* TODO send error to user *)
+          Logs.err (fun m -> m "couldn't resolve %s" msg);
+          let data = `Rcode_error (Rcode.ServFail, Opcode.Query, None) in
+          Some (build_reply data)
+        | Error `No_data (domain, soa) ->
+          let answer = (Name_rr_map.empty, Name_rr_map.singleton domain Soa soa) in
+          let data = `Answer answer in
+          Some (build_reply data)
+        | Error `No_domain (domain, soa) ->
+          let answer = (Name_rr_map.empty, Name_rr_map.singleton domain Soa soa) in
+          let data = `Rcode_error (Rcode.NXDomain, Opcode.Query, Some answer) in
+          Some (build_reply data)
+        | Ok reply ->
+          let answer = (Name_rr_map.singleton name key reply, Name_rr_map.empty) in
+          let data = `Answer answer in
+          Some (build_reply data)
+      end
+    | _ ->
+      Logs.err (fun m -> m "not implemented %a, data %a"
+                   Dns.Packet.Question.pp question
+                   Dns.Packet.pp_data data);
+      let data = `Rcode_error (Rcode.NotImp, Packet.opcode_data data, None) in
+      Lwt.return (Some (build_reply data))
 
   let handle t proto data =
     match Packet.decode data with
@@ -186,32 +227,23 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
       Lwt.return None
     | Ok packet ->
       (* check header flags: recursion desired (and send recursion available) *)
-      let name = fst packet.Packet.question in
-      match packet.Packet.data, snd packet.Packet.question with
-      | `Query, `K K key ->
-        begin Client.getaddrinfo t.client key name >|= function
-            (* TODO reply based on error type, nodomain, nodata *)
-          | Error `Msg msg ->
-            (* TODO send error to user *)
-            Logs.err (fun m -> m "couldn't resolve %s" msg);
-            None
-          | Ok reply ->
-            let my_reply = (* data with response content *)
-              let answer = (Name_rr_map.singleton name key reply, Name_rr_map.empty) in
-              let data = `Answer answer in
-              Packet.create packet.header packet.question data
-            in
-            Some (fst (Packet.encode proto my_reply))
-        end
-      | _ ->
-        Logs.err (fun m -> m "not handling packet %a"
-                     Dns.Packet.pp packet);
-        Lwt.return None
+      let build_reply ?additional data =
+        let packet = Packet.create ?additional packet.header packet.question data in
+        fst (Packet.encode proto packet)
+      in
+      let question, data = packet.Packet.question, packet.Packet.data in
+      match lookup_server t question data build_reply with
+      | Some data -> Lwt.return (Some data)
+      | None -> resolve t question data build_reply
 
   let create ?size stack =
     let nameserver = `TCP, (Ipaddr.V4.of_string_exn "141.1.1.1", 53) in
     let client = Client.create ?size ~nameserver stack in
-    let t = { client } in
+    let server =
+      let prim = Dns_server.Primary.create ~rng:R.generate Dns_resolver_root.reserved in
+      Dns_server.Primary.server prim
+    in
+    let t = { client ; server } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       handle t `Udp buf >>= function
       | None -> Lwt.return_unit

@@ -13,6 +13,7 @@ depends: [
   "dns" {= version}
   "dns-client" {= version}
   "dns-mirage" {= version}
+  "dns-resolver" {= version}
   "duration" {>= "0.1.2"}
   "randomconv" {>= "0.1.2"}
   "lwt" {>= "4.2.1"}
