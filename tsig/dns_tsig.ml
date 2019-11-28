@@ -145,13 +145,13 @@ let pp_s ppf = function
   | `Tsig_creation -> Fmt.pf ppf "failed to create tsig"
   | `Sign -> Fmt.pf ppf "failed to sign"
 
-let encode_and_sign ?(proto = `Udp) p now key keyname =
+let encode_and_sign ?(proto = `Udp) ?mac p now key keyname =
   let b, _ = Packet.encode proto p in
   match Tsig.dnskey_to_tsig_algo key with
   | Error _ -> Error (`Key_algorithm key)
   | Ok algorithm -> match Tsig.tsig ~algorithm ~signed:now () with
     | None -> Error `Tsig_creation
-    | Some tsig -> match sign (Domain_name.raw keyname) ~key tsig p b with
+    | Some tsig -> match sign ?mac (Domain_name.raw keyname) ~key tsig p b with
       | None -> Error `Sign
       | Some r -> Ok r
 

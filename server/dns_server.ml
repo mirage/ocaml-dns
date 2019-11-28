@@ -391,7 +391,7 @@ let handle_question t (name, typ) =
   match typ with
   (* this won't happen, decoder constructs `Axfr *)
   | `Axfr | `Ixfr -> Error (Rcode.NotImp, None)
-  | (`K _ | `Any) as k -> lookup t.data (name, k)
+  | (`K _ | `Any) as k -> lookup t (name, k)
 (*  | r ->
     Log.err (fun m -> m "refusing query type %a" Rr.pp r);
     Error (Rcode.Refused, None) *)
@@ -992,7 +992,7 @@ module Primary = struct
         | _ -> l, ns, [], None
       in
       let answer =
-        let flags, data, additional = match handle_question t p.question with
+        let flags, data, additional = match handle_question t.data p.question with
           | Ok (flags, data, additional) -> flags, `Answer data, additional
           | Error (rcode, data) ->
             err_flags rcode, `Rcode_error (rcode, Opcode.Query, data), None
@@ -1590,7 +1590,7 @@ module Secondary = struct
     in
     match p.Packet.data with
     | `Query ->
-      let flags, data, additional = match handle_question t p.question with
+      let flags, data, additional = match handle_question t.data p.question with
         | Ok (flags, data, additional) -> flags, `Answer data, additional
         | Error (rcode, data) ->
           err_flags rcode, `Rcode_error (rcode, Opcode.Query, data), None

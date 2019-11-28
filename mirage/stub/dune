@@ -2,4 +2,4 @@
  (name dns_stub_mirage)
  (public_name dns-stub.mirage)
  (wrapped false)
- (libraries dns dns-stub dns-server dns-resolver dns-mirage dns-client.mirage lwt mirage-time mirage-clock mirage-stack mirage-random))
+ (libraries dns dns-stub dns-server dns-tsig dns-resolver dns-mirage dns-client.mirage lwt mirage-time mirage-clock mirage-stack mirage-random))

@@ -21,8 +21,8 @@ type s = [ `Key_algorithm of Dnskey.t | `Tsig_creation | `Sign ]
 val pp_s : s Fmt.t
 (** [pp_s ppf s] pretty-prints [s] on [ppf]. *)
 
-val encode_and_sign : ?proto:proto -> Packet.t -> Ptime.t -> Dns.Dnskey.t ->
-  'a Domain_name.t -> (Cstruct.t * Cstruct.t, s) result
+val encode_and_sign : ?proto:proto -> ?mac:Cstruct.t -> Packet.t -> Ptime.t ->
+  Dns.Dnskey.t -> 'a Domain_name.t -> (Cstruct.t * Cstruct.t, s) result
 (** [encode_and_sign ~proto t now dnskey name] signs and encodes the DNS
     packet. *)
 

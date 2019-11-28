@@ -59,10 +59,10 @@ val with_data : t -> Dns_trie.t -> t
 val text : 'a Domain_name.t -> Dns_trie.t -> (string, [> `Msg of string ]) result
 (** [text name trie] results in a string representation (zonefile) of the trie. *)
 
-val handle_question : t -> Packet.Question.t ->
+val handle_question : Dns_trie.t -> Packet.Question.t ->
   (Packet.Flags.t * Packet.Answer.t * Name_rr_map.t option,
    Rcode.t * Packet.Answer.t option) result
-(** [handle_question t question] handles the DNS query [question] by looking
+(** [handle_question trie question] handles the DNS query [question] by looking
     it up in the trie of [t]. *)
 
 val handle_update : t -> proto -> [ `raw ] Domain_name.t option ->

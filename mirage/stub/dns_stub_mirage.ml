@@ -6,7 +6,7 @@ open Dns
 let src = Logs.Src.create "dns_stub_mirage" ~doc:"effectful DNS stub layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4) = struct
+module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4) = struct
 
   (* data in the wild:
      - a request comes in hdr, q
@@ -174,13 +174,16 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
 
   (* timeout of resolver, retransmission (to another resolver / another flow) *)
 
+  module Dns_flow = Dns_mirage.Make(S)
+
   type t = {
     client : Client.t ;
-    server : Dns_server.t ; (* not yet sure about this *)
+    mutable server : Dns_server.t ;
+    on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.V4.t -> Dns_trie.t -> unit Lwt.t ;
   }
 
-  let lookup_server t question data build_reply =
-    match Dns_server.handle_question t.server question with
+  let query_server trie question data build_reply =
+    match Dns_server.handle_question trie question with
     | Ok (_flags, answer, additional) ->
       (* TODO do sth with flags *)
       Some (build_reply ?additional (`Answer answer))
@@ -189,13 +192,58 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
       let data = `Rcode_error (rcode, Packet.opcode_data data, answer) in
       Some (build_reply ?additional:None data)
 
+  let update_server t proto ip packet question u buf build_reply =
+    let server = t.server in
+    match Dns_server.handle_tsig server (Ptime.v (P.now_d_ps ())) packet buf with
+    | Error _ ->
+      let data =
+        `Rcode_error (Rcode.Refused, Packet.opcode_data packet.Packet.data, None)
+      in
+      Lwt.return (Some (build_reply data))
+    | Ok k ->
+      let key =
+        match k with None -> None | Some (keyname, _, _, _) -> Some keyname
+      in
+      let sign data =
+        let packet =
+          Packet.create packet.Packet.header packet.Packet.question data
+        in
+        match k with
+        | None -> Some (fst (Packet.encode proto packet))
+        | Some (keyname, _tsig, mac, dnskey) ->
+          let now = Ptime.v (P.now_d_ps ()) in
+          match Dns_tsig.encode_and_sign ~proto ~mac packet now dnskey keyname with
+          | Error s -> Log.err (fun m -> m "error %a while signing answer" Dns_tsig.pp_s s); None
+          | Ok (cs, _) -> Some cs
+      in
+      match Dns_server.handle_update server proto key question u with
+      | Ok (trie, _) ->
+        let old = server.data in
+        let server' = Dns_server.with_data server trie in
+        t.server <- server';
+        t.on_update ~old ?authenticated_key:key ~update_source:ip trie >|= fun () ->
+        sign `Update_ack
+      | Error rcode ->
+        Lwt.return (sign (`Rcode_error (rcode, Opcode.Update, None)))
+
+  let server t proto ip packet buf build_reply =
+    let question, data = packet.Packet.question, packet.Packet.data in
+    match data with
+    | `Query -> Lwt.return (query_server t.server.data question data build_reply)
+    | `Update u ->
+      update_server t proto ip packet question u buf (build_reply ?additional:None)
+    | _ ->
+      let data =
+        `Rcode_error (Rcode.NotImp, Packet.opcode_data packet.Packet.data, None)
+      in
+      Lwt.return (Some (build_reply ?additional:None data))
+
   let resolve t question data build_reply =
     let name = fst question in
     match data, snd question with
     | `Query, `K Rr_map.K key ->
       begin Client.getaddrinfo t.client key name >|= function
         | Error `Msg msg ->
-          (* TODO send error to user *)
           Logs.err (fun m -> m "couldn't resolve %s" msg);
           let data = `Rcode_error (Rcode.ServFail, Opcode.Query, None) in
           Some (build_reply data)
@@ -219,7 +267,16 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
       let data = `Rcode_error (Rcode.NotImp, Packet.opcode_data data, None) in
       Lwt.return (Some (build_reply data))
 
-  let handle t proto data =
+  (* we're now doing up to three lookups for each request:
+    - in authoritative server (Dns_trie)
+    - in reserved trie (Dns_trie)
+    - in resolver cache (Dns_cache)
+    - asking a remote resolver
+
+     instead, on startup authoritative (from external) could be merged with
+     reserved (but that makes data store very big and not easy to understand
+     (lots of files for the reserved zones)) *)
+  let handle t proto ip data =
     match Packet.decode data with
     | Error err ->
       (* TODO send FormErr back *)
@@ -231,21 +288,22 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
         let packet = Packet.create ?additional packet.header packet.question data in
         fst (Packet.encode proto packet)
       in
-      let question, data = packet.Packet.question, packet.Packet.data in
-      match lookup_server t question data build_reply with
+      server t proto ip packet data build_reply >>= function
       | Some data -> Lwt.return (Some data)
-      | None -> resolve t question data build_reply
+      | None ->
+        (* next look in reserved trie! *)
+        let question, data = packet.Packet.question, packet.Packet.data in
+        match query_server Dns_resolver_root.reserved question data build_reply with
+        | Some data -> Lwt.return (Some data)
+        | None -> resolve t packet.Packet.question packet.Packet.data build_reply
 
-  let create ?size stack =
+  let create ?size ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
     let nameserver = `TCP, (Ipaddr.V4.of_string_exn "141.1.1.1", 53) in
     let client = Client.create ?size ~nameserver stack in
-    let server =
-      let prim = Dns_server.Primary.create ~rng:R.generate Dns_resolver_root.reserved in
-      Dns_server.Primary.server prim
-    in
-    let t = { client ; server } in
+    let server = Dns_server.Primary.server primary in
+    let t = { client ; server ; on_update } in
     let udp_cb ~src ~dst:_ ~src_port buf =
-      handle t `Udp buf >>= function
+      handle t `Udp src buf >>= function
       | None -> Lwt.return_unit
       | Some data ->
         S.UDPV4.write ~src_port:53 ~dst:src ~dst_port:src_port (S.udpv4 stack) data >|= function
@@ -254,6 +312,25 @@ module Make (R : Mirage_random.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4
         | Ok () -> ()
     in
     S.listen_udpv4 stack ~port:53 udp_cb ;
+    let tcp_cb flow =
+      let dst_ip, dst_port = S.TCPV4.dst flow in
+      Log.debug (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp dst_ip dst_port) ;
+      let f = Dns_flow.of_flow flow in
+      let rec loop () =
+        Dns_flow.read_tcp f >>= function
+        | Error () -> Lwt.return_unit
+        | Ok data ->
+          handle t `Tcp dst_ip data >>= function
+          | None ->
+            Log.warn (fun m -> m "no TCP output") ;
+            loop ()
+          | Some data ->
+            Dns_flow.send_tcp flow data >>= function
+            | Ok () -> loop ()
+            | Error () -> Lwt.return_unit
+      in
+      loop ()
+    in
+    S.listen_tcpv4 stack ~port:53 tcp_cb;
     t
-
 end
