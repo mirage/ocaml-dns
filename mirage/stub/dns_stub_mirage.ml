@@ -36,6 +36,48 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
        a recv_loop reads continously, whenever a full packet is received,
         N[id] is woken up with the packet
   *)
+
+
+  let create ~f =
+    let data : (string, int) Hashtbl.t = Hashtbl.create 7 in
+    (fun x ->
+       let key = f x in
+       let cur = match Hashtbl.find_opt data key with None -> 0 | Some x -> x in
+       Hashtbl.replace data key (succ cur)),
+    (fun () ->
+       Hashtbl.fold (fun key value acc -> Metrics.uint key value :: acc) data [])
+
+  let counter_metrics ~f name =
+    let open Metrics in
+    let doc = "Counter metrics" in
+    let incr, get = create ~f in
+    let data thing = incr thing; Data.v (get ()) in
+    Src.v ~doc ~tags:Metrics.Tags.[] ~data name
+
+  let inc =
+    let f = function
+      | `Udp_queries -> "udp-queries"
+      | `Tcp_queries -> "tcp-queries"
+      | `Queries -> "queries"
+      | `Decoding_errors -> "decoding-errors"
+      | `Tcp_connections -> "tcp-connections"
+      | `Recursive_queries -> "recursive-questions"
+      | `Recursive_answers -> "recursive-answers"
+      | `Recursive_connections -> "recursive-connections"
+      | `Authoritative_answers -> "authoritative-answers"
+      | `Authoritative_errors -> "authoritative-errors"
+      | `Reserved_answers -> "reserved-answers"
+      | `On_update -> "on-update"
+      | `Resolver_queries -> "resolver-queries"
+      | `Resolver_answers -> "resolver-answers"
+      | `Resolver_nodata -> "resolver-nodata"
+      | `Resolver_nodomain -> "resolver-nodomain"
+      | `Resolver_servfail -> "resolver-servfail"
+      | `Resolver_notimp -> "resolver-notimplemented"
+    in
+    let metrics = counter_metrics ~f "stub-resolver" in
+    (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
+
   module IM = Map.Make(struct
       type t = int
       let compare : int -> int -> int = fun a b -> compare a b
@@ -100,7 +142,9 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
                 let id = Cstruct.BE.get_uint16 packet 2 in
                 (match IM.find_opt id t.requests with
                  | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
-                 | Some cond -> Lwt_condition.broadcast cond (Ok packet));
+                 | Some cond ->
+                   inc `Recursive_answers;
+                   Lwt_condition.broadcast cond (Ok packet));
                 handle_data rest
               else
                 read_loop ~linger:data t flow
@@ -120,6 +164,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
                         S.TCPV4.pp_error e) ;
             Error (`Msg "connect failure")
           | Ok flow ->
+            inc `Recursive_connections;
             Lwt.async (fun () -> read_loop t flow);
             t.flow <- Some flow;
             Ok ({ t ; id = 0 })
@@ -147,7 +192,9 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
           | Error e ->
             f.t.flow <- None;
             Lwt.return (Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e)))
-          | Ok () -> Lwt.return (Ok ())
+          | Ok () ->
+            inc `Recursive_queries;
+            Lwt.return (Ok ())
     end
 
     include Dns_client.Make(Transport)
@@ -186,9 +233,11 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
     match Dns_server.handle_question trie question with
     | Ok (_flags, answer, additional) ->
       (* TODO do sth with flags *)
+      inc `Authoritative_answers;
       Some (build_reply ?additional (`Answer answer))
     | Error (Rcode.NotAuth, _) -> None
     | Error (rcode, answer) ->
+      inc `Authoritative_errors;
       let data = `Rcode_error (rcode, Packet.opcode_data data, answer) in
       Some (build_reply ?additional:None data)
 
@@ -221,6 +270,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
         let old = server.data in
         let server' = Dns_server.with_data server trie in
         t.server <- server';
+        inc `On_update;
         t.on_update ~old ?authenticated_key:key ~update_source:ip trie >|= fun () ->
         sign `Update_ack
       | Error rcode ->
@@ -239,6 +289,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
       Lwt.return (Some (build_reply ?additional:None data))
 
   let resolve t question data build_reply =
+    inc `Resolver_queries;
     let name = fst question in
     match data, snd question with
     | `Query, `K Rr_map.K key ->
@@ -246,18 +297,22 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
         | Error `Msg msg ->
           Logs.err (fun m -> m "couldn't resolve %s" msg);
           let data = `Rcode_error (Rcode.ServFail, Opcode.Query, None) in
+          inc `Resolver_servfail;
           Some (build_reply data)
         | Error `No_data (domain, soa) ->
           let answer = (Name_rr_map.empty, Name_rr_map.singleton domain Soa soa) in
           let data = `Answer answer in
+          inc `Resolver_nodata;
           Some (build_reply data)
         | Error `No_domain (domain, soa) ->
           let answer = (Name_rr_map.empty, Name_rr_map.singleton domain Soa soa) in
           let data = `Rcode_error (Rcode.NXDomain, Opcode.Query, Some answer) in
+          inc `Resolver_nodomain;
           Some (build_reply data)
         | Ok reply ->
           let answer = (Name_rr_map.singleton name key reply, Name_rr_map.empty) in
           let data = `Answer answer in
+          inc `Resolver_answers;
           Some (build_reply data)
       end
     | _ ->
@@ -265,6 +320,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
                    Dns.Packet.Question.pp question
                    Dns.Packet.pp_data data);
       let data = `Rcode_error (Rcode.NotImp, Packet.opcode_data data, None) in
+      inc `Resolver_notimp;
       Lwt.return (Some (build_reply data))
 
   (* we're now doing up to three lookups for each request:
@@ -279,10 +335,12 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
   let handle t proto ip data =
     match Packet.decode data with
     | Error err ->
+      inc `Decoding_errors;
       (* TODO send FormErr back *)
       Logs.err (fun m -> m "couldn't decode %a" Packet.pp_err err);
       Lwt.return None
     | Ok packet ->
+      inc `Queries;
       (* check header flags: recursion desired (and send recursion available) *)
       let build_reply ?additional data =
         let packet = Packet.create ?additional packet.header packet.question data in
@@ -294,7 +352,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
         (* next look in reserved trie! *)
         let question, data = packet.Packet.question, packet.Packet.data in
         match query_server Dns_resolver_root.reserved question data build_reply with
-        | Some data -> Lwt.return (Some data)
+        | Some data -> inc `Reserved_answers ; Lwt.return (Some data)
         | None -> resolve t packet.Packet.question packet.Packet.data build_reply
 
   let create ?size ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
@@ -303,6 +361,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
     let server = Dns_server.Primary.server primary in
     let t = { client ; server ; on_update } in
     let udp_cb ~src ~dst:_ ~src_port buf =
+      inc `Udp_queries;
       handle t `Udp src buf >>= function
       | None -> Lwt.return_unit
       | Some data ->
@@ -313,6 +372,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
     in
     S.listen_udpv4 stack ~port:53 udp_cb ;
     let tcp_cb flow =
+      inc `Tcp_connections;
       let dst_ip, dst_port = S.TCPV4.dst flow in
       Log.debug (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp dst_ip dst_port) ;
       let f = Dns_flow.of_flow flow in
@@ -320,6 +380,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
         Dns_flow.read_tcp f >>= function
         | Error () -> Lwt.return_unit
         | Ok data ->
+          inc `Tcp_queries;
           handle t `Tcp dst_ip data >>= function
           | None ->
             Log.warn (fun m -> m "no TCP output") ;
