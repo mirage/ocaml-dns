@@ -99,19 +99,32 @@ module LRU = Lru.M.MakeSeeded(Key)(Entry)
 
 type t = LRU.t
 
-type stats = {
-  hit : int ;
-  miss : int ;
-  drop : int ;
-  insert : int ;
-}
+let create ~f =
+  let data : (string, int) Hashtbl.t = Hashtbl.create 7 in
+  (fun x ->
+     let key = f x in
+     let cur = match Hashtbl.find_opt data key with None -> 0 | Some x -> x in
+     Hashtbl.replace data key (succ cur)),
+  (fun () ->
+     Hashtbl.fold (fun key value acc -> Metrics.uint key value :: acc) data [])
 
-let stats = ref { hit = 0 ; miss = 0 ; drop = 0 ; insert = 0 }
+let counter_metrics ~f name =
+  let open Metrics in
+  let doc = "Counter metrics" in
+  let incr, get = create ~f in
+  let data thing = incr thing; Data.v (get ()) in
+  Src.v ~doc ~tags:Metrics.Tags.[] ~data name
 
-let _pp_stats pf s =
-  Fmt.pf pf "cache: %d hits %d misses %d drops %d inserts" s.hit s.miss s.drop s.insert
-
-let _stats () = !stats
+let inc =
+  let f = function
+    | `Lookup -> "lookups"
+    | `Hit -> "hits"
+    | `Miss -> "misses"
+    | `Drop -> "drops"
+    | `Insert -> "insertions"
+  in
+  let metrics = counter_metrics ~f "dns-cache" in
+  (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
 
 let empty size = LRU.create ~random:true size
 
@@ -159,14 +172,11 @@ let find cache name query_type =
   | Some No_domain (meta, name, soa) -> None, Ok (meta, `No_domain (name, soa))
   | Some Rr_map resource_records ->
     Some resource_records,
-    try
-      let meta, entry = RRMap.find (K query_type) resource_records in
-      Ok (meta, Entry.to_entry entry)
-    with
-    | Not_found -> Error `Cache_miss
+    match RRMap.find_opt (K query_type) resource_records with
+    | Some (meta, entry) -> Ok (meta, Entry.to_entry entry)
+    | None -> Error `Cache_miss
 
 let insert cache ?map ts name query_type rank entry =
-  stats := { !stats with insert = succ !stats.insert };
   let meta = ts, rank in
   (match entry with
    | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) cache
@@ -183,19 +193,13 @@ let update_ttl entry ~created ~now =
   if updated_ttl < 0l then Error `Cache_drop else Ok (with_ttl updated_ttl entry)
 
 let get cache ts name query_type =
+  inc `Lookup;
   match snd (find cache name query_type) with
-  | Error e ->
-    stats := { !stats with miss = succ !stats.miss };
-    Error e
+  | Error e -> inc `Miss; Error e
   | Ok ((created, _), entry) ->
     match update_ttl entry ~created ~now:ts with
-    | Ok entry' ->
-      stats := { !stats with hit = succ !stats.hit };
-      LRU.promote name cache;
-      Ok entry'
-    | Error e ->
-      stats := { !stats with drop = succ !stats.drop };
-      Error e
+    | Ok entry' -> inc `Hit; LRU.promote name cache; Ok entry'
+    | Error e -> inc `Drop; Error e
 
 (* XXX: we may want to define a minimum as well (5 minutes? 30 minutes?
    use SOA expiry?) MS used to use 24 hours in internet explorer
@@ -237,10 +241,10 @@ let set cache ts name query_type rank entry  =
   | map, Error _ ->
     Logs.debug (fun m -> m "set: %a nothing found, adding: %a"
                    pp_query (name, `K (K query_type)) pp_entry entry');
-    cache' map
+    inc `Insert; cache' map
   | map, Ok ((_, rank'), _) ->
     Logs.debug (fun m -> m "set: %a found rank %a insert rank %a: %d"
                    pp_query (name, `K (K query_type)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
     match compare_rank rank' rank with
     | 1 -> ()
-    | _ -> cache' map
+    | _ -> inc `Insert; cache' map
