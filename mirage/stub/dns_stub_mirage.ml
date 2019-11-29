@@ -241,14 +241,13 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
       let data = `Rcode_error (rcode, Packet.opcode_data data, answer) in
       Some (build_reply ?additional:None data)
 
-  let update_server t proto ip packet question u buf build_reply =
-    let server = t.server in
+  let tsig_decode_sign server proto packet buf build_reply =
     match Dns_server.handle_tsig server (Ptime.v (P.now_d_ps ())) packet buf with
     | Error _ ->
       let data =
         `Rcode_error (Rcode.Refused, Packet.opcode_data packet.Packet.data, None)
       in
-      Lwt.return (Some (build_reply data))
+      Error (build_reply data)
     | Ok k ->
       let key =
         match k with None -> None | Some (keyname, _, _, _) -> Some keyname
@@ -265,6 +264,24 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
           | Error s -> Log.err (fun m -> m "error %a while signing answer" Dns_tsig.pp_s s); None
           | Ok (cs, _) -> Some cs
       in
+      Ok (key, sign)
+
+  let axfr_server server proto packet question buf build_reply =
+    match tsig_decode_sign server proto packet buf build_reply with
+    | Error e -> Some e
+    | Ok (key, sign) ->
+      match Dns_server.handle_axfr_request server proto key question with
+      | Error rcode ->
+        let err = `Rcode_error (rcode, Packet.opcode_data packet.Packet.data, None) in
+        Some (build_reply err)
+      | Ok axfr ->
+        sign (`Axfr_reply axfr)
+
+  let update_server t proto ip packet question u buf build_reply =
+    let server = t.server in
+    match tsig_decode_sign server proto packet buf build_reply with
+    | Error e -> Lwt.return (Some e)
+    | Ok (key, sign) ->
       match Dns_server.handle_update server proto key question u with
       | Ok (trie, _) ->
         let old = server.data in
@@ -280,6 +297,8 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
     let question, data = packet.Packet.question, packet.Packet.data in
     match data with
     | `Query -> Lwt.return (query_server t.server.data question data build_reply)
+    | `Axfr_request ->
+      Lwt.return (axfr_server t.server proto packet question buf (build_reply ?additional:None))
     | `Update u ->
       update_server t proto ip packet question u buf (build_reply ?additional:None)
     | _ ->
