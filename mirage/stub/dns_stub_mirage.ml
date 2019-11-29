@@ -129,7 +129,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
           Lwt.return_unit
         | Ok `Eof ->
           t.flow <- None;
-          Log.warn (fun m -> m "end of file reading from resolver");
+          Log.info (fun m -> m "end of file reading from resolver");
           cancel_all t;
           Lwt.return_unit
         | Ok (`Data cs) ->
