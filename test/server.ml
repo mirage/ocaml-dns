@@ -975,6 +975,13 @@ module A = struct
     in
     Alcotest.(check (result (pair trie_test zone_test) rcode_test)
                 __LOC__ (Ok (old_trie, [ n_of_s "one.com", soa'' ]))
+                (handle_update server' `Udp (Some key) q up'));
+    let up' =
+      Domain_name.Map.empty,
+      Domain_name.Map.singleton (n_of_s "one.com") [ Packet.Update.Remove (Rr_map.K Soa) ]
+    in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (Dns_trie.empty, [ n_of_s "one.com", soa'' ]))
                 (handle_update server' `Udp (Some key) q up'))
 
   (* TODO test prereq and more updates *)

@@ -666,46 +666,43 @@ let update_data trie zone (prereq, update) =
         (Ok ()) prereqs)
     prereq (Ok ()) >>= fun () ->
   Domain_name.Map.fold (fun name updates acc ->
-      acc >>= fun (trie, zones) ->
+      acc >>= fun trie ->
       guard (in_zone name) Rcode.NotZone >>| fun () ->
-      let trie' = List.fold_left (handle_rr_update name) trie updates in
-      let zones' = match Dns_trie.zone name trie' with
-        | Error e ->
-          Log.warn (fun m -> m "error %a looking up zone for update %a"
-                       Dns_trie.pp_e e Domain_name.pp name);
-          zones
-        | Ok (z, _) -> Domain_name.Set.add z zones
-      in
-      trie', zones')
-    update (Ok (trie, Domain_name.Set.empty)) >>= fun (trie', zones) ->
+      List.fold_left (handle_rr_update name) trie updates)
+    update (Ok trie) >>= fun trie' ->
   (match Dns_trie.check trie' with
    | Ok () -> Ok ()
    | Error e ->
      Log.err (fun m -> m "check after update returned %a"
                  Dns_trie.pp_zone_check e);
-     Error Rcode.YXRRSet) >>= fun () ->
+     Error Rcode.YXRRSet) >>| fun () ->
   if Dns_trie.equal trie trie' then
     (* should this error out? - RFC 2136 3.4.2.7 says NoError at the end *)
-    Ok (trie, [])
+    trie, []
   else
-    Domain_name.Set.fold (fun zone acc ->
-        acc >>= fun (trie', zones) ->
+    let zones =
+      (* accumulate old and new zones *)
+      let one t s =
+        Dns_trie.fold Rr_map.Soa t (fun z _ s -> Domain_name.Set.add z s) s
+      in
+      one trie' (one trie Domain_name.Set.empty)
+    in
+    Domain_name.Set.fold (fun zone (trie', zones) ->
         match Dns_trie.lookup zone Soa trie, Dns_trie.lookup zone Soa trie' with
         | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa ->
-          Ok (trie', (zone, soa) :: zones)
+          trie', (zone, soa) :: zones
         | _, Ok soa ->
           let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
           let trie'' = Dns_trie.insert zone Soa soa trie' in
-          Ok (trie'', (zone, soa) :: zones)
+          trie'', (zone, soa) :: zones
         | Ok oldsoa, Error _ ->
-          (* zone removal!? *)
           let serial = Int32.succ oldsoa.Soa.serial in
-          Ok (trie', (zone, { oldsoa with Soa.serial }) :: zones)
+          trie', (zone, { oldsoa with Soa.serial }) :: zones
         | Error o, Error n ->
           Log.warn (fun m -> m "shouldn't happen: %a no soa in old %a and new %a"
                        Domain_name.pp zone Dns_trie.pp_e o Dns_trie.pp_e n);
-          Ok (trie', zones))
-      zones (Ok (trie', []))
+          trie', zones)
+      zones (trie', [])
 
 let handle_update t _proto key (zone, _) u =
   if Authentication.access `Update ?key ~zone then begin
@@ -754,7 +751,7 @@ module Primary = struct
      5 (well, 6) tries alive in memory *)
   (* TODO use LRU here! *)
   let update_trie_cache m trie =
-    Dns_trie.fold Soa trie (fun name soa acc ->
+    Dns_trie.fold Soa trie (fun name soa m ->
         let recorded = match Domain_name.Map.find name m with
           | None -> IM.empty
           | Some xs ->
@@ -764,9 +761,9 @@ module Primary = struct
             else
               xs
         in
-        let m' = IM.add soa.Soa.serial trie recorded in
-        Domain_name.Map.add name m' acc)
-        Domain_name.Map.empty
+        let im = IM.add soa.Soa.serial trie recorded in
+        Domain_name.Map.add name im m)
+        m
 
   let with_data (t, m, l, n) now ts data =
     (* need to notify secondaries of new, updated, and removed zones! *)
