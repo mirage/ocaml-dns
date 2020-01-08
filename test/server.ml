@@ -812,8 +812,8 @@ module A = struct
       (Dns_trie.insert_map example_zone Dns_trie.empty)
 
   let server ?unauthenticated_zone_transfer () =
-    let p = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ?unauthenticated_zone_transfer example_trie in
-    Dns_server.Primary.server p
+    let p = Primary.create ~rng:Nocrypto.Rng.generate ?unauthenticated_zone_transfer example_trie in
+    Primary.server p
 
   let answer_test = Alcotest.testable Packet.Answer.pp Packet.Answer.equal
 
@@ -927,6 +927,49 @@ module A = struct
                 (handle_axfr_request server `Udp key axfr_req));
     Alcotest.(check (result axfr_test rcode_test) __LOC__ (Ok axfr)
                 (handle_axfr_request server `Tcp None axfr_req))
+
+  let ixfr_test = Alcotest.testable Packet.Ixfr.pp Packet.Ixfr.equal
+
+  let ixfr () =
+    let primary = Primary.create ~rng:Nocrypto.Rng.generate example_trie in
+    let server = Primary.server primary in
+    let cache = Primary.trie_cache primary in
+    let key = Some (n_of_s "foo._transfer.one.com") in
+    let ixfr_req = Packet.Question.create (n_of_s "one.com") Soa in
+    Alcotest.(check (result ixfr_test rcode_test) __LOC__ (Ok (soa, `Empty))
+                (handle_ixfr_request server cache `Tcp key ixfr_req soa));
+    let soa' = { soa with serial = Int32.succ soa.serial } in
+    let foo, entry_k, entry_v = n_of_s "foo.one.com", Rr_map.A, (300l, Rr_map.Ipv4_set.singleton (ip_of_s "127.0.0.1")) in
+    let trie' =
+      Dns_trie.insert (n_of_s "one.com") Soa soa'
+        (Dns_trie.insert foo entry_k entry_v (Primary.data primary))
+    in
+    let primary', _ = Primary.with_data primary Ptime.epoch 0L trie' in
+    let server' = Primary.server primary' in
+    let cache' = Primary.trie_cache primary' in
+    let update =
+      `Difference (soa, Name_rr_map.empty, Name_rr_map.singleton foo entry_k entry_v)
+    in
+    Alcotest.(check (result ixfr_test rcode_test) __LOC__ (Ok (soa', update))
+                (handle_ixfr_request server' cache' `Tcp key ixfr_req soa));
+    let soa'' = { soa with serial = Int32.succ soa'.serial } in
+    let trie'' =
+      Dns_trie.insert (n_of_s "one.com") Soa soa''
+        (Dns_trie.remove foo entry_k entry_v trie')
+    in
+    let primary'', _ = Primary.with_data primary' Ptime.epoch 0L trie'' in
+    let server'' = Primary.server primary'' in
+    let cache'' = Primary.trie_cache primary'' in
+    let update = `Difference (soa, Name_rr_map.empty, Name_rr_map.empty) in
+    Alcotest.(check (result ixfr_test rcode_test) __LOC__ (Ok (soa'', update))
+                (handle_ixfr_request server'' cache'' `Tcp key ixfr_req soa));
+    let update' = `Difference (soa', Name_rr_map.singleton foo entry_k entry_v, Name_rr_map.empty) in
+    Alcotest.(check (result ixfr_test rcode_test) __LOC__ (Ok (soa'', update'))
+                (handle_ixfr_request server'' cache'' `Tcp key ixfr_req soa'));
+    let soa''' = { soa with serial = Int32.pred soa.serial } in
+    let update'' = `Full example_zone in
+    Alcotest.(check (result ixfr_test rcode_test) __LOC__ (Ok (soa'', update''))
+                (handle_ixfr_request server'' cache'' `Tcp key ixfr_req soa'''))
 
   let trie_test = Alcotest.testable Dns_trie.pp Dns_trie.equal
 
@@ -1050,6 +1093,7 @@ module A = struct
     "AXFR", `Quick, axfr ;
     "no AXFR", `Quick, no_axfr ;
     "unauthenticated AXFR", `Quick, unauthenticated_axfr ;
+    "ixfr", `Quick, ixfr ;
     "basic update", `Quick, basic_update ;
     "actual update", `Quick, actual_update ;
   ]

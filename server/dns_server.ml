@@ -307,6 +307,8 @@ let handle_axfr_request t proto key ((zone, _) as question) =
 
 module IM = Map.Make(Int32)
 
+type trie_cache = Dns_trie.t IM.t Domain_name.Map.t
+
 let find_trie m name serial =
   match Domain_name.Map.find name m with
   | None -> None
@@ -744,6 +746,8 @@ module Primary = struct
   let server (t, _, _, _) = t
 
   let data (t, _, _, _) = t.data
+
+  let trie_cache (_, m, _, _) = m
 
   (* TODO: not entirely sure how many old ones to keep. This keeps for each
      zone the most recent 5 serials. It does _not_ remove removed zones.

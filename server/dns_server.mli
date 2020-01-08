@@ -63,6 +63,14 @@ val handle_axfr_request : t -> proto -> [ `raw ] Domain_name.t option ->
     transfer request and processes it. If the request is valid, and the zone
     available, a zone transfer is returned. *)
 
+type trie_cache
+
+val handle_ixfr_request : t -> trie_cache -> proto -> [ `raw ] Domain_name.t option ->
+  Packet.Question.t -> Soa.t -> (Packet.Ixfr.t, Rcode.t) result
+(** [handle_ixfr_request t cache proto keyname question soa] authenticates the
+    incremental zone transfer request and processes it. If valid, an incremental
+    zone transfer is returned. *)
+
 val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.t ->
   Cstruct.t -> (([ `raw ] Domain_name.t * Tsig.t * Cstruct.t * Dnskey.t) option,
                 Tsig_op.e * Cstruct.t option) result
@@ -89,6 +97,8 @@ module Primary : sig
     s * (Ipaddr.V4.t * Cstruct.t list) list
   (** [with_keys s now ts keys] replaces the current keys with [keys] in [s],
       and generates notifications. *)
+
+  val trie_cache : s -> trie_cache
 
   val create : ?keys:('a Domain_name.t * Dnskey.t) list ->
     ?unauthenticated_zone_transfer:bool ->
