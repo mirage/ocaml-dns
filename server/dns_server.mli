@@ -18,8 +18,14 @@ module Authentication : sig
   (** The type of operations, sorted by highest ot lowest privileges, an
       [`Update] may as well carry out a [`Transfer]. *)
 
+  val all_ops : operation list
+
   type t
   (** The type for an authenticator. *)
+
+  val access : ?key:'a Domain_name.t -> zone:'b Domain_name.t -> operation -> bool
+  (** [access op ~key ~zone] checks whether [key] is authorised for [op] on
+      [zone]. *)
 end
 
 type t = private {
@@ -32,6 +38,10 @@ type t = private {
 }
 (** The state of a DNS server. *)
 
+val with_data : t -> Dns_trie.t -> t
+(** [with_data t data] is [t'] where the [data] field is updated with the
+    provided value. *)
+
 val text : 'a Domain_name.t -> Dns_trie.t -> (string, [> `Msg of string ]) result
 (** [text name trie] results in a string representation (zonefile) of the trie. *)
 
@@ -40,6 +50,18 @@ val handle_question : t -> Packet.Question.t ->
    Rcode.t * Packet.Answer.t option) result
 (** [handle_question t question] handles the DNS query [question] by looking
     it up in the trie of [t]. *)
+
+val handle_update : t -> proto -> [ `raw ] Domain_name.t option ->
+  Packet.Question.t -> Packet.Update.t ->
+  (Dns_trie.t * ([`raw] Domain_name.t * Soa.t) list, Rcode.t) result
+(** [handle_update t proto keyname question update] authenticates the update
+    request and processes the update. *)
+
+val handle_axfr_request : t -> proto -> [ `raw ] Domain_name.t option ->
+  Packet.Question.t -> (Packet.Axfr.t, Rcode.t) result
+(** [handle_axfr_request t proto keyname question] authenticates the zone
+    transfer request and processes it. If the request is valid, and the zone
+    available, a zone transfer is returned. *)
 
 val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.t ->
   Cstruct.t -> (([ `raw ] Domain_name.t * Tsig.t * Cstruct.t * Dnskey.t) option,

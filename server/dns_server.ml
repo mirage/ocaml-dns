@@ -183,6 +183,8 @@ type t = {
   tsig_sign : Tsig_op.sign ;
 }
 
+let with_data t data = { t with data }
+
 let text name data =
   match Dns_trie.entries name data with
   | Error e ->
@@ -290,7 +292,7 @@ let authorise_zone_transfer allow_unauthenticated proto key zone =
                   Domain_name.pp zone);
       Rcode.NotAuth)
 
-let axfr t proto key ((zone, _) as question) =
+let handle_axfr_request t proto key ((zone, _) as question) =
   authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone >>= fun () ->
   match Dns_trie.entries zone t.data with
   | Ok (soa, entries) ->
@@ -310,7 +312,7 @@ let find_trie m name serial =
   | None -> None
   | Some m' -> IM.find_opt serial m'
 
-let ixfr t m proto key ((zone, _) as question) soa =
+let handle_ixfr_request t m proto key ((zone, _) as question) soa =
   authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone >>= fun () ->
   Log.info (fun m -> m "transfer key %a authorised for IXFR %a"
                Fmt.(option ~none:(unit "none") Domain_name.pp) key
@@ -705,7 +707,7 @@ let update_data trie zone (prereq, update) =
           Ok (trie', zones))
       zones (Ok (trie', []))
 
-let handle_update t key (zone, _) u =
+let handle_update t _proto key (zone, _) u =
   if Authentication.access `Update ?key ~zone then begin
     Log.info (fun m -> m "update key %a authorised for update %a"
                  Fmt.(option ~none:(unit "none") Domain_name.pp) key
@@ -949,7 +951,7 @@ module Primary = struct
       (t, m, l', ns'), Some answer, outs, keep
     | `Update u ->
       let data, (flags, answer), stuff =
-        match handle_update t key p.question u with
+        match handle_update t proto key p.question u with
         | Ok (data, stuff) -> data, (authoritative, `Update_ack), stuff
         | Error rcode ->
           let err = `Rcode_error (rcode, Opcode.Update, None) in
@@ -973,7 +975,7 @@ module Primary = struct
       let answer' = Packet.create (fst p.header, flags) p.question answer in
       (t', m', l, ns), Some answer', IPM.bindings out, None
     | `Axfr_request ->
-      let flags, answer = match axfr t proto key p.question with
+      let flags, answer = match handle_axfr_request t proto key p.question with
         | Ok data -> authoritative, `Axfr_reply data
         | Error rcode ->
           err_flags rcode, `Rcode_error (rcode, Opcode.Query, None)
@@ -981,7 +983,7 @@ module Primary = struct
       let answer = Packet.create (fst p.header, flags) p.question answer in
       (t, m, l, ns), Some answer, [], None
     | `Ixfr_request soa ->
-      let flags, answer = match ixfr t m proto key p.question soa with
+      let flags, answer = match handle_ixfr_request t m proto key p.question soa with
         | Ok data -> authoritative, `Ixfr_reply data
         | Error rcode ->
           err_flags rcode, `Rcode_error (rcode, Opcode.Query, None)
