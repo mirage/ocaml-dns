@@ -704,9 +704,296 @@ module S = struct
   ]
 end
 
+module A = struct
+  open Dns_server
+
+  (* authentication tests *)
+  let simple_deny () =
+    List.iter (fun zone ->
+        List.iter (fun op ->
+            Alcotest.(check bool __LOC__ false
+                        (Authentication.access op ~zone)))
+          Authentication.all_ops)
+      [ Domain_name.root ; Domain_name.of_string_exn "example.com" ;
+        Domain_name.of_string_exn "foo.bar.com" ]
+
+  let simple_allow () =
+    List.iteri (fun i (op, zone, key, res) ->
+        Alcotest.(check bool ("simple allow " ^ string_of_int i) res
+                    (Authentication.access ~key ~zone op)))
+      (List.map
+         (fun (a, b, c, d) -> a, Domain_name.of_string_exn b, Domain_name.of_string_exn c, d)
+         [
+           (`Notify, "example.com", "foo._notify", true) ;
+           (`Transfer, "example.com", "foo._notify", false) ;
+           (`Update, "example.com", "foo._notify", false) ;
+           (`Notify, "example.com", "foo._transfer", true) ;
+           (`Transfer, "example.com", "foo._transfer", true) ;
+           (`Update, "example.com", "foo._transfer", false) ;
+           (`Notify, "example.com", "foo._update", true) ;
+           (`Transfer, "example.com", "foo._update", true) ;
+           (`Update, "example.com", "foo._update", true) ;
+
+           (`Notify, "example.com", "foo._notify.example.com", true) ;
+           (`Transfer, "example.com", "foo._notify.example.com", false) ;
+           (`Update, "example.com", "foo._notify.example.com", false) ;
+           (`Notify, "example.com", "foo._transfer.example.com", true) ;
+           (`Transfer, "example.com", "foo._transfer.example.com", true) ;
+           (`Update, "example.com", "foo._transfer.example.com", false) ;
+           (`Notify, "example.com", "foo._update.example.com", true) ;
+           (`Transfer, "example.com", "foo._update.example.com", true) ;
+           (`Update, "example.com", "foo._update.example.com", true) ;
+
+           (`Notify, "foo.example.com", "foo._notify.example.com", true) ;
+           (`Transfer, "foo.example.com", "foo._notify.example.com", false) ;
+           (`Update, "foo.example.com", "foo._notify.example.com", false) ;
+           (`Notify, "foo.example.com", "foo._transfer.example.com", true) ;
+           (`Transfer, "foo.example.com", "foo._transfer.example.com", true) ;
+           (`Update, "foo.example.com", "foo._transfer.example.com", false) ;
+           (`Notify, "foo.example.com", "foo._update.example.com", true) ;
+           (`Transfer, "foo.example.com", "foo._update.example.com", true) ;
+           (`Update, "foo.example.com", "foo._update.example.com", true) ;
+
+           (`Notify, "example2.com", "foo._notify.example.com", false) ;
+           (`Transfer, "example2.com", "foo._notify.example.com", false) ;
+           (`Update, "example2.com", "foo._notify.example.com", false) ;
+           (`Notify, "example2.com", "foo._transfer.example.com", false) ;
+           (`Transfer, "example2.com", "foo._transfer.example.com", false) ;
+           (`Update, "example2.com", "foo._transfer.example.com", false) ;
+           (`Notify, "example2.com", "foo._update.example.com", false) ;
+           (`Transfer, "example2.com", "foo._update.example.com", false) ;
+           (`Update, "example2.com", "foo._update.example.com", false) ;
+
+           (`Notify, "com", "foo._notify.example.com", false) ;
+           (`Transfer, "com", "foo._notify.example.com", false) ;
+           (`Update, "com", "foo._notify.example.com", false) ;
+           (`Notify, "com", "foo._transfer.example.com", false) ;
+           (`Transfer, "com", "foo._transfer.example.com", false) ;
+           (`Update, "com", "foo._transfer.example.com", false) ;
+           (`Notify, "com", "foo._update.example.com", false) ;
+           (`Transfer, "com", "foo._update.example.com", false) ;
+           (`Update, "com", "foo._update.example.com", false) ;
+
+           (`Notify, "", "foo._notify.example.com", false) ;
+           (`Transfer, "", "foo._notify.example.com", false) ;
+           (`Update, "", "foo._notify.example.com", false) ;
+           (`Notify, "", "foo._transfer.example.com", false) ;
+           (`Transfer, "", "foo._transfer.example.com", false) ;
+           (`Update, "", "foo._transfer.example.com", false) ;
+           (`Notify, "", "foo._update.example.com", false) ;
+           (`Transfer, "", "foo._update.example.com", false) ;
+           (`Update, "", "foo._update.example.com", false) ;
+         ])
+
+  let axfr_test = Alcotest.testable Packet.Axfr.pp Packet.Axfr.equal
+
+  let rcode_test = Alcotest.testable Rcode.pp (fun a b -> Rcode.compare a b = 0)
+
+  let ip_of_s = Ipaddr.V4.of_string_exn
+
+  let soa = Soa.create ~serial:1l (Domain_name.host_exn (n_of_s "ns.one.com"))
+
+  let example_zone =
+    let ns =
+      Domain_name.(Host_set.(add (host_exn (n_of_s "ns3.one.com"))
+                               (add (host_exn (n_of_s "ns2.one.com"))
+                                  (singleton (host_exn (n_of_s "ns.one.com"))))))
+    in
+    Name_rr_map.(add (n_of_s "one.com") Rr_map.Ns (300l, ns)
+                   (add (n_of_s "ns.one.com") Rr_map.A
+                      (300l, Rr_map.Ipv4_set.singleton (ip_of_s "1.2.3.4"))
+                      (add (n_of_s "ns2.one.com") Rr_map.A
+                         (300l, Rr_map.Ipv4_set.singleton (ip_of_s "5.6.7.8"))
+                         (add (n_of_s "ns3.one.com") Rr_map.A
+                            (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.1") (singleton (ip_of_s "192.168.1.1"))))
+                            empty))))
+
+  let example_trie =
+    Dns_trie.insert (n_of_s "one.com") Soa soa
+      (Dns_trie.insert_map example_zone Dns_trie.empty)
+
+  let server ?unauthenticated_zone_transfer () =
+    let p = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ?unauthenticated_zone_transfer example_trie in
+    Dns_server.Primary.server p
+
+  let axfr () =
+    let server = server () in
+    let axfr = soa, example_zone in
+    let axfr_req = n_of_s "one.com", `Axfr in
+    let key = Some (n_of_s "foo._transfer.one.com") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Ok axfr)
+                (handle_axfr_request server `Tcp key axfr_req));
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Error Rcode.Refused)
+                (handle_axfr_request server `Udp key axfr_req));
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Error Rcode.NotAuth)
+                (handle_axfr_request server `Tcp None axfr_req));
+    let key = Some (n_of_s "foo._notify.one.com") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Error Rcode.NotAuth)
+                (handle_axfr_request server `Tcp key axfr_req));
+    let key = Some (n_of_s "foo._update.one.com") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Ok axfr)
+                (handle_axfr_request server `Tcp key axfr_req));
+    let key = Some (n_of_s "foo._transfer.two.com") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Error Rcode.NotAuth)
+                (handle_axfr_request server `Tcp key axfr_req));
+    let key = Some (n_of_s "foo._transfer.com") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Ok axfr)
+                (handle_axfr_request server `Tcp key axfr_req));
+    let key = Some (n_of_s "foo._transfer") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Ok axfr)
+                (handle_axfr_request server `Tcp key axfr_req));
+    let key = Some (n_of_s "foo._transfer.sub.one.com") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Error Rcode.NotAuth)
+                (handle_axfr_request server `Tcp key axfr_req))
+
+  let no_axfr () =
+    let server = server () in
+    let axfr_req = n_of_s "two.com", `Axfr in
+    let key = Some (n_of_s "foo._transfer.one.com") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Error Rcode.NotAuth)
+                (handle_axfr_request server `Tcp key axfr_req));
+    let key = Some (n_of_s "foo._transfer.two.com") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Error Rcode.NotAuth)
+                (handle_axfr_request server `Tcp key axfr_req));
+    let key = Some (n_of_s "foo._transfer") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Error Rcode.NotAuth)
+                (handle_axfr_request server `Tcp key axfr_req))
+
+  let unauthenticated_axfr () =
+    let server = server ~unauthenticated_zone_transfer:true () in
+    let axfr = soa, example_zone in
+    let axfr_req = n_of_s "one.com", `Axfr in
+    let key = Some (n_of_s "foo._transfer.one.com") in
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Ok axfr)
+                (handle_axfr_request server `Tcp key axfr_req));
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Error Rcode.Refused)
+                (handle_axfr_request server `Udp key axfr_req));
+    Alcotest.(check (result axfr_test rcode_test) __LOC__ (Ok axfr)
+                (handle_axfr_request server `Tcp None axfr_req))
+
+  let trie_test = Alcotest.testable Dns_trie.pp Dns_trie.equal
+
+  let zone_test =
+    let module M = struct
+      type t = ([`raw] Domain_name.t * Soa.t) list
+      let pp =
+        let pp_one ppf (name, soa) =
+          Fmt.pf ppf "zone %a soa %a" Domain_name.pp name Soa.pp soa
+        in
+        Fmt.(list ~sep:(unit ", ") pp_one)
+      let equal a b =
+        List.length a = List.length b &&
+        List.for_all2 (fun (n,s) (n',s') ->
+            Domain_name.equal n n' && Soa.compare s s' = 0)
+          a b
+    end in
+    (module M: Alcotest.TESTABLE with type t = M.t)
+
+  let basic_update () =
+    let server = server () in
+    let q = Packet.Question.create (n_of_s "one.com") Soa in
+    let up = Domain_name.Map.empty, Domain_name.Map.empty in
+    let key = n_of_s "foo._update.one.com" in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (example_trie, []))
+                (handle_update server `Udp (Some key) q up));
+    let q' = Packet.Question.create (n_of_s "two.com") Soa in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Error Rcode.NotAuth)
+                (handle_update server `Udp (Some key) q' up));
+    let key = n_of_s "foo._update.com" in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (example_trie, []))
+                (handle_update server `Udp (Some key) q up));
+    (* reason for this is the update is empty, and the key may create zones *)
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (example_trie, []))
+                (handle_update server `Udp (Some key) q' up));
+    let key = n_of_s "foo._update" in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (example_trie, []))
+                (handle_update server `Udp (Some key) q up));
+    let key = n_of_s "foo._transfer.one.com" in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Error Rcode.NotAuth)
+                (handle_update server `Udp (Some key) q up));
+    let key = n_of_s "foo._notify.one.com" in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Error Rcode.NotAuth)
+                (handle_update server `Udp (Some key) q up));
+    let key = n_of_s "foo._update.two.com" in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Error Rcode.NotAuth)
+                (handle_update server `Udp (Some key) q up));
+    let key = n_of_s "foo._update.two.com" in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Error Rcode.NotAuth)
+                (handle_update server `Udp (Some key) q up))
+
+  let actual_update () =
+    let server = server () in
+    let q = Packet.Question.create (n_of_s "one.com") Soa in
+    let foo, entry_key, entry_val =
+      n_of_s "foo.one.com", Rr_map.A,
+      (300l, Rr_map.Ipv4_set.singleton (ip_of_s "127.0.0.1"))
+    in
+    let up =
+      Domain_name.Map.empty,
+      Domain_name.Map.singleton foo [
+        Packet.Update.Add Rr_map.(B (entry_key, entry_val))
+      ]
+    in
+    let key = n_of_s "foo._update.one.com" in
+    let soa' = { soa with serial = Int32.succ soa.serial } in
+    let trie' =
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Soa soa'
+        (Dns_trie.insert foo entry_key entry_val example_trie)
+    in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (trie', [ n_of_s "one.com", soa' ]))
+                (handle_update server `Udp (Some key) q up));
+    let soa'' = { soa' with serial = Int32.succ soa'.serial } in
+    let up' =
+      Domain_name.Map.empty,
+      Domain_name.Map.singleton foo [ Packet.Update.Remove_all ]
+    in
+    let server' = with_data server trie' in
+    let old_trie = Dns_trie.insert (n_of_s "one.com") Rr_map.Soa soa'' example_trie in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (old_trie, [ n_of_s "one.com", soa'' ]))
+                (handle_update server' `Udp (Some key) q up'));
+    let up' =
+      Domain_name.Map.empty,
+      Domain_name.Map.singleton foo [ Packet.Update.Remove (Rr_map.K entry_key) ]
+    in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (old_trie, [ n_of_s "one.com", soa'' ]))
+                (handle_update server' `Udp (Some key) q up'));
+    let up' =
+      Domain_name.Map.empty,
+      Domain_name.Map.singleton foo [ Packet.Update.Remove_single (Rr_map.B (entry_key, entry_val)) ]
+    in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (old_trie, [ n_of_s "one.com", soa'' ]))
+                (handle_update server' `Udp (Some key) q up'))
+
+  (* TODO test prereq and more updates *)
+
+  let tests = [
+    "simple deny auth", `Quick, simple_deny ;
+    "simple allow auth", `Quick, simple_allow ;
+    "AXFR", `Quick, axfr ;
+    "no AXFR", `Quick, no_axfr ;
+    "unauthenticated AXFR", `Quick, unauthenticated_axfr ;
+    "basic update", `Quick, basic_update ;
+    "actual update", `Quick, actual_update ;
+  ]
+end
+
 let tests = [
   "Trie", Trie.tests ;
   "Server", S.tests ;
+  "Authentication", A.tests ;
 ]
 
 let () =
