@@ -25,6 +25,7 @@ end
 type t = private {
   data : Dns_trie.t ;
   auth : Authentication.t ;
+  unauthenticated_zone_transfer : bool ;
   rng : int -> Cstruct.t ;
   tsig_verify : Tsig_op.verify ;
   tsig_sign : Tsig_op.sign ;
@@ -68,10 +69,12 @@ module Primary : sig
       and generates notifications. *)
 
   val create : ?keys:('a Domain_name.t * Dnskey.t) list ->
+    ?unauthenticated_zone_transfer:bool ->
     ?tsig_verify:Tsig_op.verify -> ?tsig_sign:Tsig_op.sign ->
     rng:(int -> Cstruct.t) -> Dns_trie.t -> s
-  (** [create ~keys ~tsig_verify ~tsig_sign ~rng data] creates a primary
-      server. *)
+  (** [create ~keys ~unauthenticated_zone_transfer ~tsig_verify ~tsig_sign ~rng
+     data] creates a primary server. If [unauthenticated_zone_transfer] is
+     provided and [true] (defaults to [false]), anyone can transfer the zones. *)
 
   val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> int ->
     Packet.t -> 'a Domain_name.t option ->

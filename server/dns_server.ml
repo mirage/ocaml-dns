@@ -177,6 +177,7 @@ end
 type t = {
   data : Dns_trie.t ;
   auth : Authentication.t ;
+  unauthenticated_zone_transfer : bool ;
   rng : int -> Cstruct.t ;
   tsig_verify : Tsig_op.verify ;
   tsig_sign : Tsig_op.sign ;
@@ -217,9 +218,9 @@ let text name data =
     out service;
     Ok (Buffer.contents buf)
 
-let create ?(tsig_verify = Tsig_op.no_verify) ?(tsig_sign = Tsig_op.no_sign)
+let create ?(unauthenticated_zone_transfer = false) ?(tsig_verify = Tsig_op.no_verify) ?(tsig_sign = Tsig_op.no_sign)
     data auth rng =
-  { data ; auth ; rng ; tsig_verify ; tsig_sign }
+  { data ; auth ; unauthenticated_zone_transfer ; rng ; tsig_verify ; tsig_sign }
 
 let find_glue trie names =
   Domain_name.Host_set.fold (fun name map ->
@@ -279,18 +280,18 @@ let lookup trie (name, typ) =
     Error (Rcode.NXDomain, Some (Name_rr_map.empty, authority))
   | Error `NotAuthoritative -> Error (Rcode.NotAuth, None)
 
-let authorise_zone_transfer proto key zone =
+let authorise_zone_transfer allow_unauthenticated proto key zone =
   guardf (proto = `Tcp) (fun () ->
       Log.err (fun m -> m "refusing zone transfer of %a via UDP"
                   Domain_name.pp zone);
       Rcode.Refused) >>= fun () ->
-  guardf (Authentication.access `Transfer ?key ~zone) (fun () ->
+  guardf (allow_unauthenticated || Authentication.access `Transfer ?key ~zone) (fun () ->
       Log.err (fun m -> m "refusing unauthorised zone transfer of %a"
                   Domain_name.pp zone);
       Rcode.NotAuth)
 
 let axfr t proto key ((zone, _) as question) =
-  authorise_zone_transfer proto key zone >>= fun () ->
+  authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone >>= fun () ->
   match Dns_trie.entries zone t.data with
   | Ok (soa, entries) ->
     Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
@@ -310,7 +311,7 @@ let find_trie m name serial =
   | Some m' -> IM.find_opt serial m'
 
 let ixfr t m proto key ((zone, _) as question) soa =
-  authorise_zone_transfer proto key zone >>= fun () ->
+  authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone >>= fun () ->
   Log.info (fun m -> m "transfer key %a authorised for IXFR %a"
                Fmt.(option ~none:(unit "none") Domain_name.pp) key
                Packet.Question.pp question);
@@ -873,9 +874,9 @@ module Primary = struct
     in
     (t', m, l', n''), outs
 
-  let create ?(keys = []) ?tsig_verify ?tsig_sign ~rng data =
+  let create ?(keys = []) ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign ~rng data =
     let keys = Authentication.of_keys keys in
-    let t = create ?tsig_verify ?tsig_sign data keys rng in
+    let t = create ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign data keys rng in
     let hm_empty = Domain_name.Host_map.empty in
     let notifications =
       let f name soa ns =
