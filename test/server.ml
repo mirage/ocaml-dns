@@ -793,13 +793,12 @@ module A = struct
 
   let soa = Soa.create ~serial:1l (Domain_name.host_exn (n_of_s "ns.one.com"))
 
+  let example_ns =
+    Domain_name.(Host_set.(add (host_exn (n_of_s "ns3.one.com"))
+                             (add (host_exn (n_of_s "ns2.one.com"))
+                                (singleton (host_exn (n_of_s "ns.one.com"))))))
   let example_zone =
-    let ns =
-      Domain_name.(Host_set.(add (host_exn (n_of_s "ns3.one.com"))
-                               (add (host_exn (n_of_s "ns2.one.com"))
-                                  (singleton (host_exn (n_of_s "ns.one.com"))))))
-    in
-    Name_rr_map.(add (n_of_s "one.com") Rr_map.Ns (300l, ns)
+    Name_rr_map.(add (n_of_s "one.com") Rr_map.Ns (300l, example_ns)
                    (add (n_of_s "ns.one.com") Rr_map.A
                       (300l, Rr_map.Ipv4_set.singleton (ip_of_s "1.2.3.4"))
                       (add (n_of_s "ns2.one.com") Rr_map.A
@@ -815,6 +814,64 @@ module A = struct
   let server ?unauthenticated_zone_transfer () =
     let p = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ?unauthenticated_zone_transfer example_trie in
     Dns_server.Primary.server p
+
+  let answer_test = Alcotest.testable Packet.Answer.pp Packet.Answer.equal
+
+  let h_q_test =
+    let fl_test =
+      let module M = struct
+        type t = Packet.Flags.t
+        let pp ppf t = Fmt.(list ~sep:(unit ",") Packet.Flag.pp) ppf (Packet.Flags.elements t)
+        let equal = Packet.Flags.equal
+      end in
+      (module M: Alcotest.TESTABLE with type t = M.t)
+    in
+    Alcotest.(result (pair fl_test answer_test)
+                (pair rcode_test (option answer_test)))
+
+  (* TODO test additional as well *)
+  let h_q t q =
+    match handle_question t q with Ok (a, b, _) -> Ok (a, b) | Error e -> Error e
+
+  let question () =
+    let server = server () in
+    let query = Packet.Question.create (n_of_s "one.com") Soa in
+    let answer = Name_rr_map.singleton (n_of_s "one.com") Soa soa
+    and auth = Name_rr_map.singleton (n_of_s "one.com") Ns (300l, example_ns)
+    in
+    Alcotest.(check h_q_test __LOC__
+                (Ok (Packet.Flags.singleton `Authoritative, (answer, auth)))
+                (h_q server query));
+    let query = Packet.Question.create (n_of_s "ns.one.com") A in
+    let answer =
+      Name_rr_map.singleton (n_of_s "ns.one.com") A
+        (300l, Rr_map.Ipv4_set.singleton (ip_of_s "1.2.3.4"))
+    in
+    Alcotest.(check h_q_test __LOC__
+                (Ok (Packet.Flags.singleton `Authoritative, (answer, auth)))
+                (h_q server query));
+    let query = Packet.Question.create (n_of_s "one.com") Mx in
+    let answer = Name_rr_map.empty
+    and auth = Name_rr_map.singleton (n_of_s "one.com") Soa soa
+    in
+    Alcotest.(check h_q_test __LOC__
+                (Ok (Packet.Flags.singleton `Authoritative, (answer, auth)))
+                (h_q server query));
+    let query = Packet.Question.create (n_of_s "foo.one.com") Mx in
+    Alcotest.(check h_q_test __LOC__
+                (Error (Rcode.NXDomain, Some (answer, auth)))
+                (h_q server query));
+    let query = Packet.Question.create (n_of_s "one.com") Ns in
+    let answer = Name_rr_map.singleton (n_of_s "one.com") Ns (300l, example_ns)
+    and auth = Name_rr_map.empty
+    in
+    Alcotest.(check h_q_test __LOC__
+                (Ok (Packet.Flags.singleton `Authoritative, (answer, auth)))
+                (h_q server query));
+    let query = Packet.Question.create (n_of_s "two.com") Ns in
+    Alcotest.(check h_q_test __LOC__
+                (Error (Rcode.NotAuth, None))
+                (h_q server query))
 
   let axfr () =
     let server = server () in
@@ -989,6 +1046,7 @@ module A = struct
   let tests = [
     "simple deny auth", `Quick, simple_deny ;
     "simple allow auth", `Quick, simple_allow ;
+    "question", `Quick, question ;
     "AXFR", `Quick, axfr ;
     "no AXFR", `Quick, no_axfr ;
     "unauthenticated AXFR", `Quick, unauthenticated_axfr ;
