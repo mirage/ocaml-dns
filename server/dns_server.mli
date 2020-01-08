@@ -6,21 +6,17 @@ open Dns
 
 (** Authentication, stored in a Dns_trie with privileges to operations embedded in the name. *)
 module Authentication : sig
+  (** A key is a pair of a [`raw Domain_name.t] and a [Dnskey.t]. In the name,
+      operation privileges and potentially IP addresses are encoded, e.g.
+      [foo._transfer.example.com] may do AXFR on [example.com]. *)
+
   type operation = [
     | `Update
     | `Transfer
+    | `Notify
   ]
-  (** The type of operations. *)
-
-  type a = Dns_trie.t -> proto -> ?key:[ `raw ] Domain_name.t -> operation -> zone:[ `raw ] Domain_name.t -> bool
-  (** The authentifier function signature *)
-
-  val tsig_auth : a
-  (** [tsig_auth trie proto keyname operation zone] checks that [keyname]
-     matches the [operation] and is in the [zone]: [foo._transfer.mirage] is
-     valid to [`Transfer] the [mirage] zone. A key without a zone
-     [foo._transfer] is valid for all zones! When using [tsig_auth], be aware
-     that it does no cryptographic verification of the tsig signature!  *)
+  (** The type of operations, sorted by highest ot lowest privileges, an
+      [`Update] may as well carry out a [`Transfer]. *)
 
   type t
   (** The type for an authenticator. *)
@@ -72,9 +68,9 @@ module Primary : sig
       and generates notifications. *)
 
   val create : ?keys:('a Domain_name.t * Dnskey.t) list ->
-    ?a:Authentication.a list -> ?tsig_verify:Tsig_op.verify ->
-    ?tsig_sign:Tsig_op.sign -> rng:(int -> Cstruct.t) -> Dns_trie.t -> s
-  (** [create ~keys ~a ~tsig_verify ~tsig_sign ~rng data] creates a primary
+    ?tsig_verify:Tsig_op.verify -> ?tsig_sign:Tsig_op.sign ->
+    rng:(int -> Cstruct.t) -> Dns_trie.t -> s
+  (** [create ~keys ~tsig_verify ~tsig_sign ~rng data] creates a primary
       server. *)
 
   val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> int ->
@@ -123,10 +119,10 @@ module Secondary : sig
   val with_data : s -> Dns_trie.t -> s
   (** [with_data s trie] is [s] with its data replaced by [trie]. *)
 
-  val create : ?a:Authentication.a list -> ?primary:Ipaddr.V4.t ->
+  val create : ?primary:Ipaddr.V4.t ->
    tsig_verify:Tsig_op.verify -> tsig_sign:Tsig_op.sign ->
     rng:(int -> Cstruct.t) -> ('a Domain_name.t * Dnskey.t) list -> s
-  (** [create ~a ~primary ~tsig_verify ~tsig_sign ~rng keys] creates a secondary
+  (** [create ~primary ~tsig_verify ~tsig_sign ~rng keys] creates a secondary
      DNS server state. *)
 
   val handle_packet : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
