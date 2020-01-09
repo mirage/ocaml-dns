@@ -36,9 +36,10 @@ module Authentication = struct
   let all_ops = [ `Notify ; `Transfer ; `Update ]
 
   let access_granted ~required key = match required, key with
-    | _, `Update -> true | `Update, _ -> false
-    | _, `Transfer  -> true | `Transfer, _ -> false
-    | `Notify, `Notify -> true
+    | `Update, `Update -> true
+    | `Transfer, (`Update | `Transfer) -> true
+    | `Notify, (`Update | `Transfer | `Notify) -> true
+    | _ -> false
 
   type t = Dns_trie.t
 
