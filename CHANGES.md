@@ -1,3 +1,27 @@
+### v4.3.0 (2020-01-09)
+
+* dns
+  - BUGFIX Name_rr_map.remove_sub remove empty maps (#205, @hannesm)
+* server (#205, @hannesm)
+  - authentication refactoring: given a key by its Domain_name.t (name._op.zone),
+    this is valid for operation `op` for `zone` and subdomains thereof. The
+    operation may be one of `update`, `transfer`, and `notify`, with an `update`
+    key being valid for any operation, and a `transfer` key valid for
+    notifications as well
+  - Primary.create has a new optional argument `unauthenticated_zone_transfer`
+    to allow unsigned zone transfer requests
+  - the type `Authentication.a` and value `Authentication.tsig_auth` are removed
+    - Primary.create and Secondary.create no longer have the `a` argument
+  - authentication uniformly uses `Authentication.access`
+  - handle_update / handle_axfr_request / handle_ixfr_request are provided and
+    under test
+  - tests for authentication and handle_question
+* client (#204, @hannesm)
+  - introduce get_resource_record which is the same as getaddrinfo, but returns
+    the error as variant instead of [ `Msg of string ]
+  - BUGFIX follow_cname handles replies with a cname and no data for the alias
+    appropriately (and a regression test has been developed)
+
 ### v4.2.0 (2019-11-20)
 
 * dns

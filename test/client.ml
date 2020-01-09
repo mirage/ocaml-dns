@@ -287,15 +287,45 @@ module Getaddrinfo_tests = struct
     let mock_state = create ~clock () in
     let ns = `UDP, ref [udp_buf] in
     match getaddrinfo mock_state Dns.Rr_map.Mx domain_name ~nameserver:ns with
-    | Ok (_, _) ->
-      failwith("Should have reported the Truncated UDP packet")
     | Error `Msg actual ->
       let expected = "Truncated UDP response" in
       Alcotest.(check string "reports the truncated UDP packet failure" expected actual)
+    | _ -> failwith "Should have reported the Truncated UDP packet"
+
+  let cname_and_nodata_packet () =
+    (* we request a non-existing record type of existing domain name, which is
+       an alias - the reply is a CNAME with NoData *)
+    (* concretely, requesting AAAA raw.githubusercontent.com, reply is
+       AN: raw.githubusercontent.com CNAME github.map.fastly.net
+       AU: SOA fastly.net *)
+    let domain_name =
+      Domain_name.(of_string_exn "raw.githubusercontent.com" |> host_exn)
+    in
+    let udp_buf = Cstruct.of_hex {|
+00 00 81 80 00 01 00 01 00 01 00 00 03 72
+61 77 11 67 69 74 68 75 62 75 73 65 72 63 6f 6e
+74 65 6e 74 03 63 6f 6d 00 00 1c 00 01 c0 0c 00
+05 00 01 00 00 00 16 00 17 06 67 69 74 68 75 62
+03 6d 61 70 06 66 61 73 74 6c 79 03 6e 65 74 00
+c0 42 00 06 00 01 00 00 00 14 00 2e 03 6e 73 31
+c0 42 0a 68 6f 73 74 6d 61 73 74 65 72 06 66 61
+73 74 6c 79 c0 22 78 39 c6 29 00 00 0e 10 00 00
+02 58 00 09 3a 80 00 00 00 1e|}
+    in
+    let clock () = 0L in
+    let mock_state = create ~clock () in
+    let ns = `UDP, ref [udp_buf] in
+    match getaddrinfo mock_state Dns.Rr_map.Aaaa domain_name ~nameserver:ns with
+    | Error `Msg actual ->
+      let expected = "DNS cache error no data fastly.net" in
+      let len = String.length expected in
+      Alcotest.(check string __LOC__ expected (Astring.String.with_range ~len actual))
+    | _ -> Alcotest.fail "Should have returned nodata"
 
   let tests = [
     "supports_mx_packets", `Quick, supports_mx_packets;
     "a partial UDP response packet fails", `Quick, fails_on_partial_udp_packet;
+    "cname and nodata in packet", `Quick, cname_and_nodata_packet;
   ]
 end
 

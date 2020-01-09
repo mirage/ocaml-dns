@@ -28,22 +28,20 @@ module Pure = struct
   (* name: the originally requested domain name. *)
   let rec follow_cname name ~iterations:iterations_left ~answer ~state =
     let open Rresult in
-    if iterations_left <= 0 then Error (`Msg "CNAME recursion too deep")
+    if iterations_left <= 0
+    then Error (`Msg "CNAME recursion too deep")
     else
-      Domain_name.Map.find_opt name answer
-      |> R.of_option ~none:(fun () ->
-          R.error_msgf "Can't find relevant map in response:@ %a in [%a]"
-            Domain_name.pp name
-            Name_rr_map.pp answer
-        ) >>= fun relevant_map ->
-      match Rr_map.find state.key relevant_map with
-        | Some response -> Ok response
+      match Domain_name.Map.find_opt name answer with
+      | None -> Ok (`Need_soa name)
+      | Some relevant_map ->
+        match Rr_map.find state.key relevant_map with
+        | Some response -> Ok (`Data response)
         | None ->
           match Rr_map.(find Cname relevant_map) with
-            | None -> Error (`Msg "Invalid DNS response")
-            | Some (_ttl, redirected_host) ->
-              let iterations = pred iterations_left in
-              follow_cname redirected_host ~iterations ~answer ~state
+          | None -> Error (`Msg "Invalid DNS response")
+          | Some (_ttl, redirected_host) ->
+            let iterations = pred iterations_left in
+            follow_cname redirected_host ~iterations ~answer ~state
 
   let consume_protocol_prefix buf =
     function (* consume TCP two-byte length prefix: *)
@@ -91,13 +89,22 @@ module Pure = struct
     | Ok t ->
       to_msg t (Packet.reply_matches_request ~request:state.query t)
       >>= function
-      | `Answer (answer, _) when not (Domain_name.Map.is_empty answer) ->
-        follow_cname (fst state.query.question) ~iterations:20 ~answer ~state
-        >>| fun x -> `Data x
+      | `Answer (answer, authority) when not (Domain_name.Map.is_empty answer) ->
+        begin
+          let q = fst state.query.question in
+          follow_cname q ~iterations:20 ~answer ~state >>= function
+          | `Data x -> Ok (`Data x)
+          | `Need_soa _name ->
+            (* should we retain CNAMEs (and send them to the client)? *)
+            (* should we 'adjust' the SOA name to be _name? *)
+            match find_soa authority with
+            | Some soa -> Ok (`No_data soa)
+            | None -> Error (`Msg "invalid reply, couldn't find SOA")
+        end
       | `Answer (_, authority) ->
         begin match find_soa authority with
           | Some soa -> Ok (`No_data soa)
-          | None -> Error (`Msg "invalid reply, no SOA in nodomain")
+          | None -> Error (`Msg "invalid reply, no SOA in no data")
         end
       | `Rcode_error (NXDomain, Query, Some (_answer, authority)) ->
         begin match find_soa authority with
@@ -178,10 +185,11 @@ struct
   (* result-bind-and-lift *)
   let (>>|=) a f = a >>| fun b -> Transport.lift (f b)
 
-  let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
-    : (requested, [> `Msg of string]) result Transport.io =
-    let domain_name = (Domain_name.raw name) in
-
+  let get_resource_record (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
+    : (requested, [> `Msg of string
+                  | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+                  | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result Transport.io =
+    let domain_name = Domain_name.raw name in
     match Dns_cache.get t.cache (t.clock ()) domain_name query_type with
     | Ok `Entry (B (query_type', value)) ->
       (* to satisfy the type checker, we need to prove that
@@ -195,12 +203,8 @@ struct
         | _ -> Transport.lift @@
           Rresult.R.error_msgf "should not happen request_type <> request_type'"
       end
-    | Ok `No_data (name, _soa) ->
-      Rresult.R.error_msgf "No_data for %a" Domain_name.pp name
-      |> Transport.lift
-    | Ok `No_domain (name, _soa) ->
-      Rresult.R.error_msgf "No_domain for %a" Domain_name.pp name
-      |> Transport.lift
+    | Ok (`No_data _ as nodata) -> Error nodata |> Transport.lift
+    | Ok (`No_domain _ as nodom) -> Error nodom |> Transport.lift
     | Ok (`Serv_fail _)
     | Error _ ->
       let proto, _ = match nameserver with
@@ -229,18 +233,28 @@ struct
          match Pure.parse_response state buf with
          | Ok `Data x ->
           update_cache (`Entry (Rr_map.B (query_type, x)));
-          Transport.lift (Ok x)
+          Ok x |> Transport.lift
         | Ok ((`No_data _ | `No_domain _) as nodom) ->
           update_cache nodom;
-          Transport.lift @@
-          Rresult.R.error_msgf "resolution of %a failed (no domain / no data)"
-            Domain_name.pp domain_name
-        | Error `Msg xxx -> Transport.lift (Error (`Msg xxx))
+          Error nodom |> Transport.lift
+        | Error `Msg xxx -> Error (`Msg xxx) |> Transport.lift
         | Ok `Partial when proto = `TCP -> recv_loop buf
-        | Ok `Partial -> Transport.lift (Error (`Msg "Truncated UDP response"))
+        | Ok `Partial -> Error (`Msg "Truncated UDP response") |> Transport.lift
       in recv_loop Cstruct.empty) >>= fun r ->
       Transport.close socket >>= fun () ->
       Transport.lift r
+
+  let lift_cache_error m =
+    (match m with
+     | Ok a -> Ok a
+     | Error `Msg msg -> Error (`Msg msg)
+     | Error (#Dns_cache.entry as e) ->
+       Rresult.R.error_msgf "DNS cache error @[%a@]" Dns_cache.pp_entry e)
+    |> Transport.lift
+
+  let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
+    : (requested, [> `Msg of string ]) result Transport.io =
+    get_resource_record t ?nameserver query_type name >>= lift_cache_error
 
   let gethostbyname stack ?nameserver domain =
     getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>|= fun (_ttl, resp) ->
