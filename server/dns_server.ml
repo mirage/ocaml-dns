@@ -91,27 +91,27 @@ module Authentication = struct
 
   let primaries t zone = find_ns `P t zone
 
-  let key_zone name =
+  let zone_and_operation name =
     let is_op lbl =
       List.exists
         (fun op -> Domain_name.equal_label lbl (operation_to_string op))
         all_ops
     in
     match Domain_name.find_label ~rev:true name is_op with
-    | None -> Domain_name.host_exn name
+    | None -> None
     | Some idx ->
       let amount = succ idx in
-      Domain_name.host_exn (Domain_name.drop_label_exn ~amount name)
-
-  let key_operation name =
-    let is_a op =
-      match
-        Domain_name.find_label ~rev:true name
-          (Domain_name.equal_label (operation_to_string op))
-      with
-      | None -> false | Some _ -> true
-    in
-    List.find_opt is_a all_ops
+      let dn = Domain_name.drop_label_exn ~amount name
+      and op_str = Domain_name.get_label_exn name idx
+      in
+      let op =
+        List.find
+          (fun o -> Domain_name.equal_label (operation_to_string o) op_str)
+          all_ops
+      in
+      match Domain_name.host dn with
+      | Error _ -> None
+      | Ok hn -> Some (hn, op)
 
   let soa name =
     let nameserver = Domain_name.prepend_label_exn name "ns"
@@ -121,25 +121,27 @@ module Authentication = struct
       retry = 2048l ; expiry = 1048576l ; minimum = 300l }
 
   let add_keys trie name keys =
-    let zone = key_zone name in
-    let soa =
-      match Dns_trie.lookup zone Rr_map.Soa trie with
-      | Ok soa -> { soa with Soa.serial = Int32.succ soa.Soa.serial }
-      | Error _ -> soa zone
-    in
-    let keys' = match Dns_trie.lookup name Rr_map.Dnskey trie with
-      | Error _ -> keys
-      | Ok (_, dnskeys) ->
-        Log.warn (fun m -> m "replacing Dnskeys (name %a, present %a, add %a)"
-                     Domain_name.pp name
-                     Fmt.(list ~sep:(unit ",") Dnskey.pp)
-                     (Rr_map.Dnskey_set.elements dnskeys)
-                     Fmt.(list ~sep:(unit ";") Dnskey.pp)
-                     (Rr_map.Dnskey_set.elements keys) );
-        keys
-    in
-    let trie' = Dns_trie.insert zone Rr_map.Soa soa trie in
-    Dns_trie.insert name Rr_map.Dnskey (0l, keys') trie'
+    match zone_and_operation name with
+    | None -> Log.warn (fun m -> m "key without zone %a" Domain_name.pp name); trie
+    | Some (zone, _) ->
+      let soa =
+        match Dns_trie.lookup zone Rr_map.Soa trie with
+        | Ok soa -> { soa with Soa.serial = Int32.succ soa.Soa.serial }
+        | Error _ -> soa zone
+      in
+      let keys' = match Dns_trie.lookup name Rr_map.Dnskey trie with
+        | Error _ -> keys
+        | Ok (_, dnskeys) ->
+          Log.warn (fun m -> m "replacing Dnskeys (name %a, present %a, add %a)"
+                       Domain_name.pp name
+                       Fmt.(list ~sep:(unit ",") Dnskey.pp)
+                       (Rr_map.Dnskey_set.elements dnskeys)
+                       Fmt.(list ~sep:(unit ";") Dnskey.pp)
+                       (Rr_map.Dnskey_set.elements keys) );
+          keys
+      in
+      let trie' = Dns_trie.insert zone Rr_map.Soa soa trie in
+      Dns_trie.insert name Rr_map.Dnskey (0l, keys') trie'
 
   let of_keys keys =
     List.fold_left (fun trie (name, key) ->
@@ -166,10 +168,9 @@ module Authentication = struct
     match key with
     | None -> false
     | Some keyname ->
-      let key_zone = key_zone keyname in
-      match key_operation keyname with
+      match zone_and_operation keyname with
       | None -> false
-      | Some op ->
+      | Some (key_zone, op) ->
         Domain_name.is_subdomain ~subdomain:zone ~domain:key_zone &&
         access_granted ~required op
 end
