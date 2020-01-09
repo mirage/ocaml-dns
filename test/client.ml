@@ -316,7 +316,10 @@ c0 42 0a 68 6f 73 74 6d 61 73 74 65 72 06 66 61
     let mock_state = create ~clock () in
     let ns = `UDP, ref [udp_buf] in
     match getaddrinfo mock_state Dns.Rr_map.Aaaa domain_name ~nameserver:ns with
-    | Error (`No_data _) -> ()
+    | Error `Msg actual ->
+      let expected = "DNS cache error no data fastly.net" in
+      let len = String.length expected in
+      Alcotest.(check string __LOC__ expected (Astring.String.with_range ~len actual))
     | _ -> Alcotest.fail "Should have returned nodata"
 
   let tests = [

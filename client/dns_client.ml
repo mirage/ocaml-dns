@@ -185,8 +185,10 @@ struct
   (* result-bind-and-lift *)
   let (>>|=) a f = a >>| fun b -> Transport.lift (f b)
 
-  let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
-    : (requested, [> `Msg of string]) result Transport.io =
+  let get_resource_record (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
+    : (requested, [> `Msg of string
+                  | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+                  | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result Transport.io =
     let domain_name = Domain_name.raw name in
     match Dns_cache.get t.cache (t.clock ()) domain_name query_type with
     | Ok `Entry (B (query_type', value)) ->
@@ -247,17 +249,21 @@ struct
      | Ok a -> Ok a
      | Error `Msg msg -> Error (`Msg msg)
      | Error (#Dns_cache.entry as e) ->
-       Rresult.R.error_msgf "DNS cache error %a" Dns_cache.pp_entry e)
+       Rresult.R.error_msgf "DNS cache error @[%a@]" Dns_cache.pp_entry e)
     |> Transport.lift
 
+  let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
+    : (requested, [> `Msg of string ]) result Transport.io =
+    get_resource_record t ?nameserver query_type name >>= lift_cache_error
+
   let gethostbyname stack ?nameserver domain =
-    getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>= lift_cache_error >>|=  fun (_ttl, resp) ->
+    getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>|= fun (_ttl, resp) ->
     match Dns.Rr_map.Ipv4_set.choose_opt resp with
     | None -> Error (`Msg "No A record found")
     | Some ip -> Ok ip
 
   let gethostbyname6 stack ?nameserver domain =
-    getaddrinfo stack ?nameserver Dns.Rr_map.Aaaa domain >>= lift_cache_error >>|= fun (_ttl, res) ->
+    getaddrinfo stack ?nameserver Dns.Rr_map.Aaaa domain >>|= fun (_ttl, res) ->
     match Dns.Rr_map.Ipv6_set.choose_opt res with
     | None -> Error (`Msg "No AAAA record found")
     | Some ip -> Ok ip

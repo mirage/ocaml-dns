@@ -34,9 +34,3 @@ let () =
       ( Fmt.epr "Host %a not found: @[<v>%s@]\n"
           Domain_name.pp domain msg ;
         exit 1)
-  | Some (Error (#Dns_cache.entry as err)) -> (* at least one error *)
-    if List.for_all is_error results then
-      (* Everything failed; print an error message *)
-      ( Fmt.epr "Host %a not found: @[<v>%a@]\n"
-          Domain_name.pp domain Dns_cache.pp_entry err ;
-        exit 1)

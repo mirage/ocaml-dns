@@ -51,9 +51,6 @@ let do_a nameserver domains _ =
         | Error (`Msg msg) ->
           Logs.err (fun m -> m "Failed to lookup %a: %s\n"
                        Domain_name.pp domain msg)
-        | Error (#Dns_cache.entry as err) ->
-          Logs.err (fun m -> m "Failed to lookup %a: %a\n"
-                       Domain_name.pp domain Dns_cache.pp_entry err)
       ) domains
   in
   match Lwt_main.run job with
@@ -73,20 +70,12 @@ let for_all_domains nameserver ~domains typ f =
              (fun domain ->
                 Dns_client_lwt.getaddrinfo t typ domain
                 >|= Rresult.R.reword_error
-                  (function
-                    | `Msg msg as res ->
-                      Logs.err (fun m ->
-                          m "Failed to lookup %a for %a: %s\n%!"
-                            Dns.Rr_map.ppk (Dns.Rr_map.K typ)
-                            Domain_name.pp domain msg) ;
-                      res
-                    | #Dns_cache.entry as err ->
-                      Logs.err (fun m ->
-                          m "Failed to lookup %a for %a: %a\n%!"
-                            Dns.Rr_map.ppk (Dns.Rr_map.K typ)
-                            Domain_name.pp domain
-                            Dns_cache.pp_entry err) ;
-                      err)
+                  (function `Msg msg as res ->
+                     Logs.err (fun m ->
+                         m "Failed to lookup %a for %a: %s\n%!"
+                           Dns.Rr_map.ppk (Dns.Rr_map.K typ)
+                           Domain_name.pp domain msg) ;
+                     res)
                 >|= f domain)
              domains) with
   | () -> Ok () (* TODO catch failed jobs *)
