@@ -26,30 +26,27 @@ let guard p err = if p then Ok () else Error err
 
 let guardf p err = if p then Ok () else Error (err ())
 
-type proto = [ `Tcp | `Udp ]
-
 module Authentication = struct
 
   type operation = [
     | `Update
     | `Transfer
+    | `Notify
   ]
+  let all_ops = [ `Notify ; `Transfer ; `Update ]
 
-  type a = Dns_trie.t -> proto -> ?key:[ `raw ] Domain_name.t -> operation ->
-    zone:[ `raw ] Domain_name.t -> bool
+  let access_granted ~required key = match required, key with
+    | `Update, `Update -> true
+    | `Transfer, (`Update | `Transfer) -> true
+    | `Notify, (`Update | `Transfer | `Notify) -> true
+    | _ -> false
 
-  type t = Dns_trie.t * a list
+  type t = Dns_trie.t
 
   let operation_to_string = function
     | `Update -> "_update"
     | `Transfer -> "_transfer"
-
-  let is_op op name =
-    match
-      Domain_name.(find_label name (equal_label (operation_to_string op)))
-    with
-    | None -> false
-    | Some _ -> true
+    | `Notify -> "_notify"
 
   let find_zone_ips name =
     (* the name of a key is primaryip.secondaryip._transfer.zone
@@ -80,7 +77,7 @@ module Authentication = struct
       | None, Some ip -> Some (zone, ip, None)
       | Some primary, Some secondary -> Some (zone, primary, Some secondary)
 
-  let find_ns s (trie, _) zone =
+  let find_ns s trie zone =
     let accumulate name _ acc =
       let matches_zone z = Domain_name.(equal z root || equal z zone) in
       match find_zone_ips name, s with
@@ -95,16 +92,27 @@ module Authentication = struct
 
   let primaries t zone = find_ns `P t zone
 
-  let zone name =
+  let zone_and_operation name =
     let is_op lbl =
-      Domain_name.equal_label lbl (operation_to_string `Update) ||
-      Domain_name.equal_label lbl (operation_to_string `Transfer)
+      List.exists
+        (fun op -> Domain_name.equal_label lbl (operation_to_string op))
+        all_ops
     in
     match Domain_name.find_label ~rev:true name is_op with
-    | None -> Domain_name.host_exn name
+    | None -> None
     | Some idx ->
       let amount = succ idx in
-      Domain_name.host_exn (Domain_name.drop_label_exn ~amount name)
+      let dn = Domain_name.drop_label_exn ~amount name
+      and op_str = Domain_name.get_label_exn name idx
+      in
+      let op =
+        List.find
+          (fun o -> Domain_name.equal_label (operation_to_string o) op_str)
+          all_ops
+      in
+      match Domain_name.host dn with
+      | Error _ -> None
+      | Ok hn -> Some (hn, op)
 
   let soa name =
     let nameserver = Domain_name.prepend_label_exn name "ns"
@@ -114,25 +122,27 @@ module Authentication = struct
       retry = 2048l ; expiry = 1048576l ; minimum = 300l }
 
   let add_keys trie name keys =
-    let zone = zone name in
-    let soa =
-      match Dns_trie.lookup zone Rr_map.Soa trie with
-      | Ok soa -> { soa with Soa.serial = Int32.succ soa.Soa.serial }
-      | Error _ -> soa zone
-    in
-    let keys' = match Dns_trie.lookup name Rr_map.Dnskey trie with
-      | Error _ -> keys
-      | Ok (_, dnskeys) ->
-        Log.warn (fun m -> m "replacing Dnskeys (name %a, present %a, add %a)"
-                     Domain_name.pp name
-                     Fmt.(list ~sep:(unit ",") Dnskey.pp)
-                     (Rr_map.Dnskey_set.elements dnskeys)
-                     Fmt.(list ~sep:(unit ";") Dnskey.pp)
-                     (Rr_map.Dnskey_set.elements keys) );
-        keys
-    in
-    let trie' = Dns_trie.insert zone Rr_map.Soa soa trie in
-    Dns_trie.insert name Rr_map.Dnskey (0l, keys') trie'
+    match zone_and_operation name with
+    | None -> Log.warn (fun m -> m "key without zone %a" Domain_name.pp name); trie
+    | Some (zone, _) ->
+      let soa =
+        match Dns_trie.lookup zone Rr_map.Soa trie with
+        | Ok soa -> { soa with Soa.serial = Int32.succ soa.Soa.serial }
+        | Error _ -> soa zone
+      in
+      let keys' = match Dns_trie.lookup name Rr_map.Dnskey trie with
+        | Error _ -> keys
+        | Ok (_, dnskeys) ->
+          Log.warn (fun m -> m "replacing Dnskeys (name %a, present %a, add %a)"
+                       Domain_name.pp name
+                       Fmt.(list ~sep:(unit ",") Dnskey.pp)
+                       (Rr_map.Dnskey_set.elements dnskeys)
+                       Fmt.(list ~sep:(unit ";") Dnskey.pp)
+                       (Rr_map.Dnskey_set.elements keys) );
+          keys
+      in
+      let trie' = Dns_trie.insert zone Rr_map.Soa soa trie in
+      Dns_trie.insert name Rr_map.Dnskey (0l, keys') trie'
 
   let of_keys keys =
     List.fold_left (fun trie (name, key) ->
@@ -140,7 +150,7 @@ module Authentication = struct
       Dns_trie.empty keys
 
   let find_key t name =
-    match Dns_trie.lookup name Rr_map.Dnskey (fst t) with
+    match Dns_trie.lookup name Rr_map.Dnskey t with
     | Ok (_, keys) ->
       if Rr_map.Dnskey_set.cardinal keys = 1 then
         Some (Rr_map.Dnskey_set.choose keys)
@@ -155,28 +165,27 @@ module Authentication = struct
                    Domain_name.pp name);
       None
 
-  let tsig_auth _ _ ?key op ~zone =
+  let access ?key ~zone required =
     match key with
     | None -> false
-    | Some subdomain ->
-      let op_string = operation_to_string op in
-      let root = Domain_name.of_string_exn op_string
-      and zone = Domain_name.prepend_label_exn zone op_string
-      in
-      Domain_name.is_subdomain ~subdomain ~domain:zone
-      || Domain_name.is_subdomain ~subdomain ~domain:root
-
-  let authorise (data, authorised) proto ?key ~zone operation =
-    List.exists (fun a -> a data proto ?key operation ~zone) authorised
+    | Some keyname ->
+      match zone_and_operation keyname with
+      | None -> false
+      | Some (key_zone, op) ->
+        Domain_name.is_subdomain ~subdomain:zone ~domain:key_zone &&
+        access_granted ~required op
 end
 
 type t = {
   data : Dns_trie.t ;
   auth : Authentication.t ;
+  unauthenticated_zone_transfer : bool ;
   rng : int -> Cstruct.t ;
   tsig_verify : Tsig_op.verify ;
   tsig_sign : Tsig_op.sign ;
 }
+
+let with_data t data = { t with data }
 
 let text name data =
   match Dns_trie.entries name data with
@@ -213,9 +222,9 @@ let text name data =
     out service;
     Ok (Buffer.contents buf)
 
-let create ?(tsig_verify = Tsig_op.no_verify) ?(tsig_sign = Tsig_op.no_sign)
+let create ?(unauthenticated_zone_transfer = false) ?(tsig_verify = Tsig_op.no_verify) ?(tsig_sign = Tsig_op.no_sign)
     data auth rng =
-  { data ; auth ; rng ; tsig_verify ; tsig_sign }
+  { data ; auth ; unauthenticated_zone_transfer ; rng ; tsig_verify ; tsig_sign }
 
 let find_glue trie names =
   Domain_name.Host_set.fold (fun name map ->
@@ -275,18 +284,18 @@ let lookup trie (name, typ) =
     Error (Rcode.NXDomain, Some (Name_rr_map.empty, authority))
   | Error `NotAuthoritative -> Error (Rcode.NotAuth, None)
 
-let authorise_zone_transfer auth proto key zone =
+let authorise_zone_transfer allow_unauthenticated proto key zone =
   guardf (proto = `Tcp) (fun () ->
       Log.err (fun m -> m "refusing zone transfer of %a via UDP"
                   Domain_name.pp zone);
       Rcode.Refused) >>= fun () ->
-  guardf (Authentication.authorise auth proto ?key ~zone `Transfer) (fun () ->
+  guardf (allow_unauthenticated || Authentication.access `Transfer ?key ~zone) (fun () ->
       Log.err (fun m -> m "refusing unauthorised zone transfer of %a"
                   Domain_name.pp zone);
       Rcode.NotAuth)
 
-let axfr t proto key ((zone, _) as question) =
-  authorise_zone_transfer t.auth proto key zone >>= fun () ->
+let handle_axfr_request t proto key ((zone, _) as question) =
+  authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone >>= fun () ->
   match Dns_trie.entries zone t.data with
   | Ok (soa, entries) ->
     Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
@@ -300,13 +309,15 @@ let axfr t proto key ((zone, _) as question) =
 
 module IM = Map.Make(Int32)
 
+type trie_cache = Dns_trie.t IM.t Domain_name.Map.t
+
 let find_trie m name serial =
   match Domain_name.Map.find name m with
   | None -> None
   | Some m' -> IM.find_opt serial m'
 
-let ixfr t m proto key ((zone, _) as question) soa =
-  authorise_zone_transfer t.auth proto key zone >>= fun () ->
+let handle_ixfr_request t m proto key ((zone, _) as question) soa =
+  authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone >>= fun () ->
   Log.info (fun m -> m "transfer key %a authorised for IXFR %a"
                Fmt.(option ~none:(unit "none") Domain_name.pp) key
                Packet.Question.pp question);
@@ -659,49 +670,46 @@ let update_data trie zone (prereq, update) =
         (Ok ()) prereqs)
     prereq (Ok ()) >>= fun () ->
   Domain_name.Map.fold (fun name updates acc ->
-      acc >>= fun (trie, zones) ->
+      acc >>= fun trie ->
       guard (in_zone name) Rcode.NotZone >>| fun () ->
-      let trie' = List.fold_left (handle_rr_update name) trie updates in
-      let zones' = match Dns_trie.zone name trie' with
-        | Error e ->
-          Log.warn (fun m -> m "error %a looking up zone for update %a"
-                       Dns_trie.pp_e e Domain_name.pp name);
-          zones
-        | Ok (z, _) -> Domain_name.Set.add z zones
-      in
-      trie', zones')
-    update (Ok (trie, Domain_name.Set.empty)) >>= fun (trie', zones) ->
+      List.fold_left (handle_rr_update name) trie updates)
+    update (Ok trie) >>= fun trie' ->
   (match Dns_trie.check trie' with
    | Ok () -> Ok ()
    | Error e ->
      Log.err (fun m -> m "check after update returned %a"
                  Dns_trie.pp_zone_check e);
-     Error Rcode.YXRRSet) >>= fun () ->
+     Error Rcode.YXRRSet) >>| fun () ->
   if Dns_trie.equal trie trie' then
     (* should this error out? - RFC 2136 3.4.2.7 says NoError at the end *)
-    Ok (trie, [])
+    trie, []
   else
-    Domain_name.Set.fold (fun zone acc ->
-        acc >>= fun (trie', zones) ->
+    let zones =
+      (* accumulate old and new zones *)
+      let one t s =
+        Dns_trie.fold Rr_map.Soa t (fun z _ s -> Domain_name.Set.add z s) s
+      in
+      one trie' (one trie Domain_name.Set.empty)
+    in
+    Domain_name.Set.fold (fun zone (trie', zones) ->
         match Dns_trie.lookup zone Soa trie, Dns_trie.lookup zone Soa trie' with
         | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa ->
-          Ok (trie', (zone, soa) :: zones)
+          trie', (zone, soa) :: zones
         | _, Ok soa ->
           let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
           let trie'' = Dns_trie.insert zone Soa soa trie' in
-          Ok (trie'', (zone, soa) :: zones)
+          trie'', (zone, soa) :: zones
         | Ok oldsoa, Error _ ->
-          (* zone removal!? *)
           let serial = Int32.succ oldsoa.Soa.serial in
-          Ok (trie', (zone, { oldsoa with Soa.serial }) :: zones)
+          trie', (zone, { oldsoa with Soa.serial }) :: zones
         | Error o, Error n ->
           Log.warn (fun m -> m "shouldn't happen: %a no soa in old %a and new %a"
                        Domain_name.pp zone Dns_trie.pp_e o Dns_trie.pp_e n);
-          Ok (trie', zones))
-      zones (Ok (trie', []))
+          trie', zones)
+      zones (trie', [])
 
-let handle_update t proto key (zone, _) u =
-  if Authentication.authorise t.auth proto ?key ~zone `Update then begin
+let handle_update t _proto key (zone, _) u =
+  if Authentication.access `Update ?key ~zone then begin
     Log.info (fun m -> m "update key %a authorised for update %a"
                  Fmt.(option ~none:(unit "none") Domain_name.pp) key
                  Packet.Update.pp u);
@@ -741,13 +749,15 @@ module Primary = struct
 
   let data (t, _, _, _) = t.data
 
+  let trie_cache (_, m, _, _) = m
+
   (* TODO: not entirely sure how many old ones to keep. This keeps for each
      zone the most recent 5 serials. It does _not_ remove removed zones.
      since it updates all zones with the new trie, there should be at most
      5 (well, 6) tries alive in memory *)
   (* TODO use LRU here! *)
   let update_trie_cache m trie =
-    Dns_trie.fold Soa trie (fun name soa acc ->
+    Dns_trie.fold Soa trie (fun name soa m ->
         let recorded = match Domain_name.Map.find name m with
           | None -> IM.empty
           | Some xs ->
@@ -757,9 +767,9 @@ module Primary = struct
             else
               xs
         in
-        let m' = IM.add soa.Soa.serial trie recorded in
-        Domain_name.Map.add name m' acc)
-        Domain_name.Map.empty
+        let im = IM.add soa.Soa.serial trie recorded in
+        Domain_name.Map.add name im m)
+        m
 
   let with_data (t, m, l, n) now ts data =
     (* need to notify secondaries of new, updated, and removed zones! *)
@@ -804,7 +814,7 @@ module Primary = struct
 
   let with_keys (t, m, l, n) now ts keys =
     let auth = Authentication.of_keys keys in
-    let old, au = t.auth in
+    let old = t.auth in
     (* need to diff the old and new keys *)
     let added =
       Dns_trie.fold Rr_map.Dnskey auth (fun name _ acc ->
@@ -834,7 +844,7 @@ module Primary = struct
         if Domain_name.Host_map.is_empty m' then acc else IPM.add ip m' acc)
         n IPM.empty
     in
-    let t' = { t with auth = (auth, au) } in
+    let t' = { t with auth } in
     (* for new transfer keys, send notifies out (with respective zone) *)
     let n'', outs =
       Domain_name.Set.fold (fun key (ns, out) ->
@@ -869,9 +879,9 @@ module Primary = struct
     in
     (t', m, l', n''), outs
 
-  let create ?(keys = []) ?(a = []) ?tsig_verify ?tsig_sign ~rng data =
+  let create ?(keys = []) ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign ~rng data =
     let keys = Authentication.of_keys keys in
-    let t = create ?tsig_verify ?tsig_sign data (keys, a) rng in
+    let t = create ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign data keys rng in
     let hm_empty = Domain_name.Host_map.empty in
     let notifications =
       let f name soa ns =
@@ -908,7 +918,7 @@ module Primary = struct
       (* if there was a (transfer-key) signed SOA, and tcp, we add to
          notification list! *)
       let l', ns', outs, keep = match tcp_soa_query proto p.question, key with
-        | Ok zone, Some key when Authentication.is_op `Transfer key ->
+        | Ok zone, Some key when Authentication.access `Transfer ~key ~zone ->
           let zones, notify =
             if Domain_name.(equal root zone) then
               Dns_trie.fold Soa t.data (fun name soa (zs, n) ->
@@ -968,7 +978,7 @@ module Primary = struct
       let answer' = Packet.create (fst p.header, flags) p.question answer in
       (t', m', l, ns), Some answer', IPM.bindings out, None
     | `Axfr_request ->
-      let flags, answer = match axfr t proto key p.question with
+      let flags, answer = match handle_axfr_request t proto key p.question with
         | Ok data -> authoritative, `Axfr_reply data
         | Error rcode ->
           err_flags rcode, `Rcode_error (rcode, Opcode.Query, None)
@@ -976,7 +986,7 @@ module Primary = struct
       let answer = Packet.create (fst p.header, flags) p.question answer in
       (t, m, l, ns), Some answer, [], None
     | `Ixfr_request soa ->
-      let flags, answer = match ixfr t m proto key p.question soa with
+      let flags, answer = match handle_ixfr_request t m proto key p.question soa with
         | Ok data -> authoritative, `Ixfr_reply data
         | Error rcode ->
           err_flags rcode, `Rcode_error (rcode, Opcode.Query, None)
@@ -989,10 +999,15 @@ module Primary = struct
     | `Notify soa ->
       Log.warn (fun m -> m "unsolicited notify request %a (replying anyways)"
                    Fmt.(option ~none:(unit "no") Soa.pp) soa);
-      let reply =
+      let action =
+        if Authentication.access `Notify ?key ~zone:(fst p.question) then
+          Some (`Notify soa)
+        else
+          None
+      and reply =
         Packet.create (fst p.header, authoritative) p.question `Notify_ack
       in
-      (t, m, l, ns), Some reply, [], Some (`Notify soa)
+      (t, m, l, ns), Some reply, [], action
     | p ->
       Log.err (fun m -> m "ignoring unsolicited %a" Packet.pp_data p);
       (t, m, l, ns), None, [], None
@@ -1096,7 +1111,7 @@ module Secondary = struct
 
   let with_data (t, zones) data = ({ t with data }, zones)
 
-  let create ?(a = []) ?primary ~tsig_verify ~tsig_sign ~rng keylist =
+  let create ?primary ~tsig_verify ~tsig_sign ~rng keylist =
     let keys = Authentication.of_keys keylist in
     let zones =
       let f name _ zones =
@@ -1106,7 +1121,7 @@ module Secondary = struct
           Log.warn (fun m -> m "zone %a not a hostname" Domain_name.pp name);
           zones
         | Ok zone ->
-          match Authentication.primaries (keys, []) name with
+          match Authentication.primaries keys name with
           | [] -> begin match primary with
               | None ->
                 Log.warn (fun m -> m "no nameserver found for %a"
@@ -1116,8 +1131,7 @@ module Secondary = struct
                 List.fold_left (fun zones (keyname, _) ->
                     let keyname = Domain_name.raw keyname in
                     if
-                      Authentication.is_op `Transfer keyname &&
-                      Domain_name.is_subdomain ~domain:name ~subdomain:keyname
+                      Authentication.access `Transfer ~key:keyname ~zone:name
                     then begin
                       Log.app (fun m -> m "adding zone %a with key %a and ip %a"
                                   Domain_name.pp name Domain_name.pp keyname
@@ -1142,7 +1156,7 @@ module Secondary = struct
       in
       Dns_trie.fold Rr_map.Soa keys f Domain_name.Host_map.empty
     in
-    (create ~tsig_verify ~tsig_sign Dns_trie.empty (keys, a) rng, zones)
+    (create ~tsig_verify ~tsig_sign Dns_trie.empty keys rng, zones)
 
   let header rng () = Randomconv.int16 rng, Packet.Flags.empty
 
@@ -1253,20 +1267,14 @@ module Secondary = struct
   let handle_notify t zones now ts ip zone typ notify keyname =
     match typ with
     | `K (Rr_map.K Soa) ->
-      let kzone = match keyname with
-        | None -> None
-        | Some key -> Some (key, Authentication.zone key)
-      in
-      begin match Domain_name.Host_map.find zone zones, kzone with
+      begin match Domain_name.Host_map.find zone zones, keyname with
         | None, None ->
           (* we don't know anything about the notified zone *)
           Log.warn (fun m -> m "ignoring notify for %a, no such zone"
                        Domain_name.pp zone);
           Error Rcode.Refused
-        | None, Some (kname, kzone) ->
-          if Domain_name.(equal root kzone || equal zone kzone) then
-            (* new zone, let's AXFR directly! *)
-            (* or old (forgotten) zone, but key zone matches *)
+        | None, Some kname ->
+          if Authentication.access `Notify ~key:kname ~zone then
             let r = match axfr t now ts zone kname with
               | None ->
                 Log.warn (fun m -> m "new zone %a, couldn't AXFR"
@@ -1278,9 +1286,8 @@ module Secondary = struct
             in
             Ok r
           else begin
-            Log.warn (fun m -> m "ignoring notify %a (key %a, kzone %a) no zone"
-                         Domain_name.pp zone Domain_name.pp kname
-                         Domain_name.pp kzone);
+            Log.warn (fun m -> m "ignoring notify %a (key %a) not authorised"
+                         Domain_name.pp zone Domain_name.pp kname);
             Error Rcode.Refused
           end
         | Some (Transferred _, ip', name), None ->
@@ -1363,17 +1370,6 @@ module Secondary = struct
                    Packet.Question.pp (Domain_name.raw zone, typ));
       Error Rcode.FormErr
 
-  let authorise should is =
-    let r = match is with
-      | None -> false
-      | Some x -> Domain_name.equal x should
-    in
-    if not r then
-      Log.warn (fun m -> m "%a is not authorised (should %a)"
-                   Fmt.(option ~none:(unit "no key") Domain_name.pp) is
-                   Domain_name.pp should);
-    r
-
   let authorise_zone zones keyname header zone =
     match Domain_name.Host_map.find zone zones with
     | None ->
@@ -1383,7 +1379,8 @@ module Secondary = struct
       (* TODO use NotAuth instead of Refused here? *)
       guard (match id st with None -> true | Some id' -> fst header = id')
         Rcode.Refused >>= fun () ->
-      guard (authorise name keyname) Rcode.Refused >>| fun () ->
+      guard (Authentication.access `Transfer ?key:keyname ~zone)
+        Rcode.Refused >>| fun () ->
       Log.debug (fun m -> m "authorized access to zone %a (with key %a)"
                     Domain_name.pp zone Domain_name.pp name);
       (st, ip, name)
@@ -1495,7 +1492,6 @@ module Secondary = struct
                       Domain_name.pp zone Ipaddr.V4.pp ip Name_rr_map.pp answer);
           Error Rcode.FormErr
         | Ok cached_soa, Some fresh ->
-          (* TODO: > with wraparound in mind *)
           if Soa.newer ~old:cached_soa fresh then
             match ixfr t now ts zone cached_soa name with
             | None ->

@@ -2092,7 +2092,9 @@ module Name_rr_map = struct
         | None -> map
         | Some rrs ->
           let rrs' = Rr_map.fold (fun (B (k, _)) map -> Rr_map.remove k map) rrmap rrs in
-          Domain_name.Map.add name rrs' map)
+          if Rr_map.is_empty rrs'
+          then Domain_name.Map.remove name map
+          else Domain_name.Map.add name rrs' map)
       sub map
 
   let singleton name k v =

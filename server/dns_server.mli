@@ -6,34 +6,41 @@ open Dns
 
 (** Authentication, stored in a Dns_trie with privileges to operations embedded in the name. *)
 module Authentication : sig
+  (** A key is a pair of a [`raw Domain_name.t] and a [Dnskey.t]. In the name,
+      operation privileges and potentially IP addresses are encoded, e.g.
+      [foo._transfer.example.com] may do AXFR on [example.com]. *)
+
   type operation = [
     | `Update
     | `Transfer
+    | `Notify
   ]
-  (** The type of operations. *)
+  (** The type of operations, sorted by highest ot lowest privileges, an
+      [`Update] may as well carry out a [`Transfer]. *)
 
-  type a = Dns_trie.t -> proto -> ?key:[ `raw ] Domain_name.t -> operation -> zone:[ `raw ] Domain_name.t -> bool
-  (** The authentifier function signature *)
-
-  val tsig_auth : a
-  (** [tsig_auth trie proto keyname operation zone] checks that [keyname]
-     matches the [operation] and is in the [zone]: [foo._transfer.mirage] is
-     valid to [`Transfer] the [mirage] zone. A key without a zone
-     [foo._transfer] is valid for all zones! When using [tsig_auth], be aware
-     that it does no cryptographic verification of the tsig signature!  *)
+  val all_ops : operation list
 
   type t
   (** The type for an authenticator. *)
+
+  val access : ?key:'a Domain_name.t -> zone:'b Domain_name.t -> operation -> bool
+  (** [access op ~key ~zone] checks whether [key] is authorised for [op] on
+      [zone]. *)
 end
 
 type t = private {
   data : Dns_trie.t ;
   auth : Authentication.t ;
+  unauthenticated_zone_transfer : bool ;
   rng : int -> Cstruct.t ;
   tsig_verify : Tsig_op.verify ;
   tsig_sign : Tsig_op.sign ;
 }
 (** The state of a DNS server. *)
+
+val with_data : t -> Dns_trie.t -> t
+(** [with_data t data] is [t'] where the [data] field is updated with the
+    provided value. *)
 
 val text : 'a Domain_name.t -> Dns_trie.t -> (string, [> `Msg of string ]) result
 (** [text name trie] results in a string representation (zonefile) of the trie. *)
@@ -43,6 +50,26 @@ val handle_question : t -> Packet.Question.t ->
    Rcode.t * Packet.Answer.t option) result
 (** [handle_question t question] handles the DNS query [question] by looking
     it up in the trie of [t]. *)
+
+val handle_update : t -> proto -> [ `raw ] Domain_name.t option ->
+  Packet.Question.t -> Packet.Update.t ->
+  (Dns_trie.t * ([`raw] Domain_name.t * Soa.t) list, Rcode.t) result
+(** [handle_update t proto keyname question update] authenticates the update
+    request and processes the update. *)
+
+val handle_axfr_request : t -> proto -> [ `raw ] Domain_name.t option ->
+  Packet.Question.t -> (Packet.Axfr.t, Rcode.t) result
+(** [handle_axfr_request t proto keyname question] authenticates the zone
+    transfer request and processes it. If the request is valid, and the zone
+    available, a zone transfer is returned. *)
+
+type trie_cache
+
+val handle_ixfr_request : t -> trie_cache -> proto -> [ `raw ] Domain_name.t option ->
+  Packet.Question.t -> Soa.t -> (Packet.Ixfr.t, Rcode.t) result
+(** [handle_ixfr_request t cache proto keyname question soa] authenticates the
+    incremental zone transfer request and processes it. If valid, an incremental
+    zone transfer is returned. *)
 
 val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.t ->
   Cstruct.t -> (([ `raw ] Domain_name.t * Tsig.t * Cstruct.t * Dnskey.t) option,
@@ -71,11 +98,15 @@ module Primary : sig
   (** [with_keys s now ts keys] replaces the current keys with [keys] in [s],
       and generates notifications. *)
 
+  val trie_cache : s -> trie_cache
+
   val create : ?keys:('a Domain_name.t * Dnskey.t) list ->
-    ?a:Authentication.a list -> ?tsig_verify:Tsig_op.verify ->
-    ?tsig_sign:Tsig_op.sign -> rng:(int -> Cstruct.t) -> Dns_trie.t -> s
-  (** [create ~keys ~a ~tsig_verify ~tsig_sign ~rng data] creates a primary
-      server. *)
+    ?unauthenticated_zone_transfer:bool ->
+    ?tsig_verify:Tsig_op.verify -> ?tsig_sign:Tsig_op.sign ->
+    rng:(int -> Cstruct.t) -> Dns_trie.t -> s
+  (** [create ~keys ~unauthenticated_zone_transfer ~tsig_verify ~tsig_sign ~rng
+     data] creates a primary server. If [unauthenticated_zone_transfer] is
+     provided and [true] (defaults to [false]), anyone can transfer the zones. *)
 
   val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> int ->
     Packet.t -> 'a Domain_name.t option ->
@@ -123,10 +154,10 @@ module Secondary : sig
   val with_data : s -> Dns_trie.t -> s
   (** [with_data s trie] is [s] with its data replaced by [trie]. *)
 
-  val create : ?a:Authentication.a list -> ?primary:Ipaddr.V4.t ->
+  val create : ?primary:Ipaddr.V4.t ->
    tsig_verify:Tsig_op.verify -> tsig_sign:Tsig_op.sign ->
     rng:(int -> Cstruct.t) -> ('a Domain_name.t * Dnskey.t) list -> s
-  (** [create ~a ~primary ~tsig_verify ~tsig_sign ~rng keys] creates a secondary
+  (** [create ~primary ~tsig_verify ~tsig_sign ~rng keys] creates a secondary
      DNS server state. *)
 
   val handle_packet : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
