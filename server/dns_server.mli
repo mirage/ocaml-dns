@@ -8,7 +8,8 @@ open Dns
 module Authentication : sig
   (** A key is a pair of a [`raw Domain_name.t] and a [Dnskey.t]. In the name,
       operation privileges and potentially IP addresses are encoded, e.g.
-      [foo._transfer.example.com] may do AXFR on [example.com]. *)
+      [foo._transfer.example.com] may do AXFR on [example.com] and any
+      subdomain, e.g. [foo.example.com]. *)
 
   type operation = [
     | `Update
@@ -19,13 +20,23 @@ module Authentication : sig
       [`Update] may as well carry out a [`Transfer]. *)
 
   val all_ops : operation list
+  (** [all_ops] is a list of all operations. *)
 
-  type t
-  (** The type for an authenticator. *)
+  val access_granted : required:operation -> operation -> bool
+  (** [access_granted ~required key_operation] is [true] if [key_operation] is
+      authorised for [required] operation. *)
+
+  val zone_and_operation : 'a Domain_name.t -> ([`host] Domain_name.t * operation) option
+  (** [zone_and_operation key] is [Some (zone, op)], the [zone] of the [key],
+      and its operation [op]. If the [key] is not in the expected format, [None]
+      is returned. *)
 
   val access : ?key:'a Domain_name.t -> zone:'b Domain_name.t -> operation -> bool
   (** [access op ~key ~zone] checks whether [key] is authorised for [op] on
       [zone]. *)
+
+  type t
+  (** Opaque type for storing authentication keys. *)
 end
 
 type t = private {
