@@ -74,6 +74,9 @@ val handle_axfr_request : t -> proto -> [ `raw ] Domain_name.t option ->
     transfer request and processes it. If the request is valid, and the zone
     available, a zone transfer is returned. *)
 
+val counter_metrics : f:('a -> string) ->
+  string -> (Metrics.field list, 'a -> Metrics.Data.t) Metrics.src
+
 type trie_cache
 
 val handle_ixfr_request : t -> trie_cache -> proto -> [ `raw ] Domain_name.t option ->
