@@ -718,24 +718,39 @@ let update_data trie zone (prereq, update) =
     trie, []
   else
     let zones =
-      (* accumulate old and new zones *)
-      let one t s =
-        Dns_trie.fold Rr_map.Soa t (fun z _ s -> Domain_name.Set.add z s) s
-      in
-      one trie' (one trie Domain_name.Set.empty)
+      (* figure out the zones where changes happened *)
+      (* for each element in the map of updates (domain_name -> update list),
+         figure out the zone of the domain_name. Since zone addition and
+         removal is supported, this name may be present in both the old trie and
+         the new trie' (update), only in the old trie (delete), only in the new
+         trie (add). *)
+      Domain_name.Map.fold (fun name _ acc ->
+          match Dns_trie.zone name trie, Dns_trie.zone name trie' with
+          | Ok (z, _), _ | _, Ok (z, _) -> Domain_name.Set.add z acc
+          | Error e, Error _ ->
+            Log.err (fun m -> m "couldn't find zone for %a in either trie: %a"
+                        Domain_name.pp name Dns_trie.pp_e e);
+            acc) update Domain_name.Set.empty
     in
+    (* now, for each modified zone, ensure the serial in the SOA increased, and
+       output the zone name and its zone. *)
     Domain_name.Set.fold (fun zone (trie', zones) ->
         match Dns_trie.lookup zone Soa trie, Dns_trie.lookup zone Soa trie' with
         | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa ->
+          (* serial is already increased in trie', nothing to do *)
           trie', (zone, soa) :: zones
         | _, Ok soa ->
+          (* serial was not increased, thus increase it now *)
           let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
           let trie'' = Dns_trie.insert zone Soa soa trie' in
           trie'', (zone, soa) :: zones
         | Ok oldsoa, Error _ ->
+          (* zone was removed, output a fake soa with an increased serial to
+             inform secondaries of this removal *)
           let serial = Int32.succ oldsoa.Soa.serial in
           trie', (zone, { oldsoa with Soa.serial }) :: zones
         | Error o, Error n ->
+          (* the zone neither exists in the old trie nor in the new trie' *)
           Log.warn (fun m -> m "shouldn't happen: %a no soa in old %a and new %a"
                        Domain_name.pp zone Dns_trie.pp_e o Dns_trie.pp_e n);
           trie', zones)
