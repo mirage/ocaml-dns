@@ -1084,6 +1084,110 @@ module A = struct
                 __LOC__ (Ok (Dns_trie.empty, [ n_of_s "one.com", soa'' ]))
                 (handle_update server' `Udp (Some key) q up'))
 
+  let actual_update_hostname_key () =
+    let server = server () in
+    let q = Packet.Question.create (n_of_s "foo.one.com") Soa in
+    let foo, entry_key, entry_val =
+      n_of_s "foo.one.com", Rr_map.A,
+      (300l, Rr_map.Ipv4_set.singleton (ip_of_s "127.0.0.1"))
+    in
+    let up =
+      Domain_name.Map.empty,
+      Domain_name.Map.singleton foo [
+        Packet.Update.Add Rr_map.(B (entry_key, entry_val))
+      ]
+    in
+    let key = n_of_s "mykey._update.foo.one.com" in
+    let soa' = { soa with serial = Int32.succ soa.serial } in
+    let trie' =
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Soa soa'
+        (Dns_trie.insert foo entry_key entry_val example_trie)
+    in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (trie', [ n_of_s "one.com", soa' ]))
+                (handle_update server `Udp (Some key) q up))
+
+  let trie_with_two trie =
+    Dns_trie.insert (n_of_s "two.com") Soa soa
+      (Dns_trie.insert (n_of_s "two.com") Ns (300l, example_ns) trie)
+
+  let update_zone_regression () =
+    (* implementation incremented serial of all zones for one update *)
+    let server =
+      let initial_server = server () in
+      Dns_server.with_data initial_server (trie_with_two initial_server.data)
+    in
+    let q = Packet.Question.create (n_of_s "one.com") Soa in
+    let foo, entry_key, entry_val =
+      n_of_s "foo.one.com", Rr_map.A,
+      (300l, Rr_map.Ipv4_set.singleton (ip_of_s "127.0.0.1"))
+    in
+    let up =
+      Domain_name.Map.empty,
+      Domain_name.Map.singleton foo [
+        Packet.Update.Add Rr_map.(B (entry_key, entry_val))
+      ]
+    in
+    let key = n_of_s "foo._update.one.com" in
+    let soa_plus_1 = { soa with serial = Int32.succ soa.serial } in
+    let trie_with_foo =
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Soa soa_plus_1
+        (Dns_trie.insert foo entry_key entry_val server.data)
+    in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (trie_with_foo, [ n_of_s "one.com", soa_plus_1 ]))
+                (handle_update server `Udp (Some key) q up));
+    let server_with_foo = Dns_server.with_data server trie_with_foo in
+    let soa_plus_2 = { soa_plus_1 with serial = Int32.succ soa_plus_1.serial } in
+    let trie_without_foo_soa_plus_2 =
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Soa soa_plus_2 server.data
+    in
+    let up =
+      Domain_name.Map.empty,
+      Domain_name.Map.singleton foo [ Packet.Update.Remove (Rr_map.K entry_key) ]
+    in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (trie_without_foo_soa_plus_2, [ n_of_s "one.com", soa_plus_2 ]))
+                (handle_update server_with_foo `Udp (Some key) q up));
+    let foo_two = n_of_s "foo.two.com" in
+    let key_two = n_of_s "foo._update.two.com" in
+    let q_two = Packet.Question.create (n_of_s "two.com") Soa in
+    let up =
+      Domain_name.Map.empty,
+      Domain_name.Map.singleton foo_two [
+        Packet.Update.Add Rr_map.(B (entry_key, entry_val))
+      ]
+    in
+    let server_without_foo_soa_plus2 =
+      Dns_server.with_data server_with_foo trie_without_foo_soa_plus_2
+    in
+    let trie_with_foo_two =
+      Dns_trie.insert (n_of_s "two.com") Rr_map.Soa soa_plus_1
+        (Dns_trie.insert foo_two entry_key entry_val trie_without_foo_soa_plus_2)
+    in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (trie_with_foo_two, [ n_of_s "two.com", soa_plus_1 ]))
+                (handle_update server_without_foo_soa_plus2 `Udp (Some key_two) q_two up));
+    let q_root = Packet.Question.create Domain_name.root Soa in
+    let up =
+      Domain_name.Map.empty,
+      Domain_name.Map.add foo [ Packet.Update.Remove (Rr_map.K entry_key) ]
+        (Domain_name.Map.singleton foo_two [ Packet.Update.Remove (Rr_map.K entry_key) ])
+    in
+    let server_with_foo_one_and_foo_two =
+      Dns_server.with_data server_without_foo_soa_plus2
+        (Dns_trie.insert foo entry_key entry_val trie_with_foo_two)
+    in
+    let key_root = n_of_s "foo._update" in
+    let soa_plus_3 = { soa_plus_2 with serial = Int32.succ soa_plus_2.serial } in
+    let exp_trie =
+      Dns_trie.insert (n_of_s "one.com") Soa soa_plus_3
+        (Dns_trie.insert (n_of_s "two.com") Soa soa_plus_2 trie_without_foo_soa_plus_2)
+    in
+    Alcotest.(check (result (pair trie_test zone_test) rcode_test)
+                __LOC__ (Ok (exp_trie, [ n_of_s "two.com", soa_plus_2 ; n_of_s "one.com", soa_plus_3 ]))
+                (handle_update server_with_foo_one_and_foo_two `Udp (Some key_root) q_root up))
+
   (* TODO test prereq and more updates *)
 
   let tests = [
@@ -1096,6 +1200,8 @@ module A = struct
     "ixfr", `Quick, ixfr ;
     "basic update", `Quick, basic_update ;
     "actual update", `Quick, actual_update ;
+    "actual update with hostname key", `Quick, actual_update_hostname_key ;
+    "update zone regression", `Quick, update_zone_regression ;
   ]
 end
 
