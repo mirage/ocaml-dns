@@ -176,6 +176,35 @@ module Authentication = struct
         access_granted ~required op
 end
 
+(* should be in metrics? *)
+let create_m ~f =
+  let data : (string, int) Hashtbl.t = Hashtbl.create 7 in
+  (fun x ->
+     let key = f x in
+     let cur = match Hashtbl.find_opt data key with None -> 0 | Some x -> x in
+     Hashtbl.replace data key (succ cur)),
+  (fun () ->
+     Hashtbl.fold (fun key value acc -> Metrics.uint key value :: acc) data [])
+
+let counter_metrics ~f name =
+  let open Metrics in
+  let doc = "Counter metrics" in
+  let incr, get = create_m ~f in
+  let data thing = incr thing; Data.v (get ()) in
+  Src.v ~doc ~tags:Metrics.Tags.[] ~data name
+
+let dns_rcode_stats name =
+  let f = function
+    | `Rcode_error (rc, _, _) -> Rcode.to_string rc
+    | #Packet.reply -> "reply"
+    | #Packet.request -> "request"
+  in
+  let src = counter_metrics ~f ("dns_server_stats_"^name) in
+  (fun r -> Metrics.add src (fun x -> x) (fun d -> d r))
+
+let tx_metrics = dns_rcode_stats "tx"
+let rx_metrics = dns_rcode_stats "rx"
+
 type t = {
   data : Dns_trie.t ;
   auth : Authentication.t ;
@@ -336,6 +365,7 @@ let safe_decode buf =
   match Packet.decode buf with
   | Error e ->
     Logs.err (fun m -> m "error %a while decoding, giving up" Packet.pp_err e);
+    rx_metrics (`Rcode_error (Rcode.FormErr, Opcode.Query, None));
     Error Rcode.FormErr
 (*  | Error `Partial ->
     Log.err (fun m -> m "partial frame (length %d)@.%a" (Cstruct.len buf) Cstruct.hexdump_pp buf);
@@ -352,7 +382,9 @@ let safe_decode buf =
     Log.err (fun m -> m "error %a while decoding@.%a"
                  Packet.pp_err e Cstruct.hexdump_pp buf);
     Error Dns_enum.FormErr *)
-  | Ok v -> Ok v
+  | Ok v ->
+    rx_metrics v.Packet.data;
+    Ok v
 
 let handle_question t (name, typ) =
   (* TODO white/blacklist of allowed qtypes? what about ANY and UDP? *)
@@ -526,6 +558,7 @@ module Notification = struct
       conn Domain_name.Host_map.empty
 
   let encode_and_sign key_opt server now packet =
+    tx_metrics packet.Packet.data;
     let buf, max_size = Packet.encode `Tcp packet in
     match key_opt with
     | None -> buf, None
@@ -685,24 +718,39 @@ let update_data trie zone (prereq, update) =
     trie, []
   else
     let zones =
-      (* accumulate old and new zones *)
-      let one t s =
-        Dns_trie.fold Rr_map.Soa t (fun z _ s -> Domain_name.Set.add z s) s
-      in
-      one trie' (one trie Domain_name.Set.empty)
+      (* figure out the zones where changes happened *)
+      (* for each element in the map of updates (domain_name -> update list),
+         figure out the zone of the domain_name. Since zone addition and
+         removal is supported, this name may be present in both the old trie and
+         the new trie' (update), only in the old trie (delete), only in the new
+         trie (add). *)
+      Domain_name.Map.fold (fun name _ acc ->
+          match Dns_trie.zone name trie, Dns_trie.zone name trie' with
+          | Ok (z, _), _ | _, Ok (z, _) -> Domain_name.Set.add z acc
+          | Error e, Error _ ->
+            Log.err (fun m -> m "couldn't find zone for %a in either trie: %a"
+                        Domain_name.pp name Dns_trie.pp_e e);
+            acc) update Domain_name.Set.empty
     in
+    (* now, for each modified zone, ensure the serial in the SOA increased, and
+       output the zone name and its zone. *)
     Domain_name.Set.fold (fun zone (trie', zones) ->
         match Dns_trie.lookup zone Soa trie, Dns_trie.lookup zone Soa trie' with
         | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa ->
+          (* serial is already increased in trie', nothing to do *)
           trie', (zone, soa) :: zones
         | _, Ok soa ->
+          (* serial was not increased, thus increase it now *)
           let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
           let trie'' = Dns_trie.insert zone Soa soa trie' in
           trie'', (zone, soa) :: zones
         | Ok oldsoa, Error _ ->
+          (* zone was removed, output a fake soa with an increased serial to
+             inform secondaries of this removal *)
           let serial = Int32.succ oldsoa.Soa.serial in
           trie', (zone, { oldsoa with Soa.serial }) :: zones
         | Error o, Error n ->
+          (* the zone neither exists in the old trie nor in the new trie' *)
           Log.warn (fun m -> m "shouldn't happen: %a no soa in old %a and new %a"
                        Domain_name.pp zone Dns_trie.pp_e o Dns_trie.pp_e n);
           trie', zones)
@@ -1024,6 +1072,7 @@ module Primary = struct
       Log.warn (fun m -> m "error %a while %a sent %a, answering with %a"
                    Rcode.pp rcode Ipaddr.V4.pp ip Cstruct.hexdump_pp buf
                    Fmt.(option ~none:(unit "no") Cstruct.hexdump_pp) answer);
+      tx_metrics (`Rcode_error (rcode, Opcode.Query, None));
       t, answer, [], None, None
     | Ok p ->
       let handle_inner keyname =
@@ -1035,6 +1084,7 @@ module Primary = struct
             let max_size, edns = Edns.reply p.edns in
             let answer = Packet.with_edns answer edns in
             (* be aware, this may be truncated... here AXFR gets assembled! *)
+            tx_metrics answer.Packet.data;
             let r = Packet.encode ?max_size proto answer in
             Some (answer, r)
           | None -> None
@@ -1165,6 +1215,7 @@ module Secondary = struct
     and question = (Domain_name.raw q_name, `Axfr)
     in
     let p = Packet.create header question `Axfr_request in
+    tx_metrics `Axfr_request;
     let buf, max_size = Packet.encode `Tcp p in
     match sign_outgoing ~max_size t name now p buf with
     | None -> None
@@ -1175,6 +1226,7 @@ module Secondary = struct
     and question = (Domain_name.raw q_name, `Ixfr)
     in
     let p = Packet.create header question (`Ixfr_request soa) in
+    tx_metrics (`Ixfr_request soa);
     let buf, max_size = Packet.encode `Tcp p in
     match sign_outgoing ~max_size t name now p buf with
     | None -> None
@@ -1185,6 +1237,7 @@ module Secondary = struct
     and question = Packet.Question.create q_name Soa
     in
     let p = Packet.create header question `Query in
+    tx_metrics `Query;
     let buf, max_size = Packet.encode `Tcp p in
     match sign_outgoing ~max_size t name now p buf with
     | None -> None
@@ -1708,7 +1761,9 @@ module Secondary = struct
                     Packet.pp res);
       res
     with
-    | Error rcode -> t, Packet.raw_error buf rcode, None
+    | Error rcode ->
+      tx_metrics (`Rcode_error (rcode, Query, None));
+      t, Packet.raw_error buf rcode, None
     | Ok p ->
       let handle_inner keyname =
         let t, answer, out = handle_packet t now ts ip p keyname in
@@ -1716,6 +1771,7 @@ module Secondary = struct
           | Some answer ->
             let max_size, edns = Edns.reply p.edns in
             let answer = Packet.with_edns answer edns in
+            tx_metrics answer.Packet.data;
             let r = Packet.encode ?max_size proto answer in
             Some (answer, r)
           | None -> None

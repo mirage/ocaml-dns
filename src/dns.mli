@@ -144,6 +144,9 @@ module Rcode : sig
   val compare : t -> t -> int
   (** [compare a b] compares the response code [a] with [b] using the
       RFC-specified integer representation of response codes. *)
+
+  val to_string : t -> string
+  (** [to_string t] is a string representation of [t]. *)
 end
 
 (** Start of authority
