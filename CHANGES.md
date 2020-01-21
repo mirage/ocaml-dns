@@ -1,3 +1,12 @@
+### v4.3.1 (2020-01-21)
+
+* server (#207, @hannesm, review by @cfcs)
+  - provide return code and request vs reply statistics
+  - BUGFIX update only increase SOA.serial of zones which changed (including regression tests)
+  - expose Authentication.access_granted, Authentication.zone_and_operation, Authentication.operation_to_string
+* dns (#207, @hannesm, review by @cfcs)
+  - expose Rcode.to_string for metrics above
+
 ### v4.3.0 (2020-01-09)
 
 * dns
