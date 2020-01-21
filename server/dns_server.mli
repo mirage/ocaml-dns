@@ -19,6 +19,9 @@ module Authentication : sig
   (** The type of operations, sorted by highest ot lowest privileges, an
       [`Update] may as well carry out a [`Transfer]. *)
 
+  val operation_to_string : operation -> string
+  (** [operation_to_string op] is the string representation of [op]. *)
+
   val all_ops : operation list
   (** [all_ops] is a list of all operations. *)
 

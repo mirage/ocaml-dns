@@ -707,6 +707,60 @@ end
 module A = struct
   open Dns_server
 
+  let access_granted () =
+    (* a list of "required" "provided" "expected result" *)
+    let operations_and_permissions = [
+      `Update, `Update, true ;
+      `Transfer, `Update, true ;
+      `Notify, `Update, true ;
+
+      `Update, `Transfer, false ;
+      `Transfer, `Transfer, true ;
+      `Notify, `Transfer, true ;
+
+      `Update, `Notify, false ;
+      `Transfer, `Notify, false ;
+      `Notify, `Notify, true ;
+    ] in
+    List.iteri (fun i (required, provided, exp) ->
+        Alcotest.(check bool (__LOC__ ^ " test #" ^ string_of_int i) exp
+                    (Authentication.access_granted ~required provided)))
+      operations_and_permissions
+
+  let test_zone_op =
+    let module M = struct
+      type t = [`host] Domain_name.t * Authentication.operation
+      let equal (n, op) (n', op') = Domain_name.equal n n' && op = op'
+      let pp ppf (n, op) =
+        Fmt.pf ppf "zone %a op %s" Domain_name.pp n
+          (Authentication.operation_to_string op)
+    end in
+    (module M: Alcotest.TESTABLE with type t = M.t)
+
+  let host n = n_of_s n |> Domain_name.host_exn
+
+  let zone_and_op () =
+    (* a list of Domain_name.t and the expected zone and operation, if any *)
+    let test_values = [
+      Domain_name.root, None ;
+      n_of_s "foo.com", None ;
+      n_of_s "this.is.my.transfer.or.update.or.notify.foo.com", None ;
+      n_of_s "this.is.my.transfer.or._update._or.notify.foo.com", None ;
+      n_of_s "this.is.my.transfer.or._update.or.notify.foo.com", Some (host "or.notify.foo.com", `Update) ;
+      n_of_s "_transfer.foo.com", Some (host "foo.com", `Transfer) ;
+      n_of_s "_update._transfer", Some (host "", `Transfer) ;
+      n_of_s "_update.foo._transfer.com", Some (host "com", `Transfer) ;
+      n_of_s "_notify.foo._update.com", Some (host "com", `Update) ;
+      n_of_s "_update.foo._notify.com", Some (host "com", `Notify) ;
+      n_of_s "_transfer.foo._notify.com", Some (host "com", `Notify) ;
+      n_of_s "_transfer.foo.notify.com", Some (host "foo.notify.com", `Transfer) ;
+    ] in
+    List.iteri (fun i (name, exp) ->
+        Alcotest.(check (option test_zone_op)
+                    (__LOC__ ^ " test #" ^ string_of_int i) exp
+                    (Authentication.zone_and_operation name)))
+      test_values
+
   (* authentication tests *)
   let simple_deny () =
     List.iter (fun zone ->
@@ -1191,6 +1245,8 @@ module A = struct
   (* TODO test prereq and more updates *)
 
   let tests = [
+    "access granted", `Quick, access_granted ;
+    "zone and operation", `Quick, zone_and_op ;
     "simple deny auth", `Quick, simple_deny ;
     "simple allow auth", `Quick, simple_allow ;
     "question", `Quick, question ;
