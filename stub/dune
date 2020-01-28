@@ -1,5 +1,0 @@
-(library
- (name dns_stub)
- (public_name dns-stub)
- (wrapped false)
- (libraries dns dns-client lru duration randomconv))
