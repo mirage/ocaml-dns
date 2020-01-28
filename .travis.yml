@@ -6,7 +6,7 @@ services:
 sudo: false
 env:
   global:
-    - PINS="dns.dev:. dns-certify.dev:. dns-client.dev:. dns-resolver.dev:. dns-server.dev:. dns-tsig.dev:. dns-cli.dev:. dns-mirage.dev:."
+    - PINS="dns.dev:. dns-certify.dev:. dns-client.dev:. dns-resolver.dev:. dns-server.dev:. dns-tsig.dev:. dns-cli.dev:. dns-mirage.dev:. dns-stub.dev:."
   matrix:
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-resolver"
@@ -16,5 +16,6 @@ env:
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-server"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-tsig"
     - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-cli"
+    - DISTRO=alpine OCAML_VERSION=4.07 PACKAGE="dns-stub"
 notifications:
   email: false
