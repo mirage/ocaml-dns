@@ -176,30 +176,13 @@ module Authentication = struct
         access_granted ~required op
 end
 
-(* should be in metrics? *)
-let create_m ~f =
-  let data : (string, int) Hashtbl.t = Hashtbl.create 7 in
-  (fun x ->
-     let key = f x in
-     let cur = match Hashtbl.find_opt data key with None -> 0 | Some x -> x in
-     Hashtbl.replace data key (succ cur)),
-  (fun () ->
-     Hashtbl.fold (fun key value acc -> Metrics.uint key value :: acc) data [])
-
-let counter_metrics ~f name =
-  let open Metrics in
-  let doc = "Counter metrics" in
-  let incr, get = create_m ~f in
-  let data thing = incr thing; Data.v (get ()) in
-  Src.v ~doc ~tags:Metrics.Tags.[] ~data name
-
 let dns_rcode_stats name =
   let f = function
     | `Rcode_error (rc, _, _) -> Rcode.to_string rc
     | #Packet.reply -> "reply"
     | #Packet.request -> "request"
   in
-  let src = counter_metrics ~f ("dns_server_stats_"^name) in
+  let src = Dns.counter_metrics ~f ("dns_server_stats_"^name) in
   (fun r -> Metrics.add src (fun x -> x) (fun d -> d r))
 
 let tx_metrics = dns_rcode_stats "tx"

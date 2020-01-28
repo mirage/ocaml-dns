@@ -23,7 +23,7 @@ val pp_s : s Fmt.t
 
 val encode_and_sign : ?proto:proto -> ?mac:Cstruct.t -> Packet.t -> Ptime.t ->
   Dns.Dnskey.t -> 'a Domain_name.t -> (Cstruct.t * Cstruct.t, s) result
-(** [encode_and_sign ~proto t now dnskey name] signs and encodes the DNS
+(** [encode_and_sign ~proto ~mac t now dnskey name] signs and encodes the DNS
     packet. *)
 
 type e = [

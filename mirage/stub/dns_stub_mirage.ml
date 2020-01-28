@@ -37,23 +37,6 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
         N[id] is woken up with the packet
   *)
 
-
-  let create ~f =
-    let data : (string, int) Hashtbl.t = Hashtbl.create 7 in
-    (fun x ->
-       let key = f x in
-       let cur = match Hashtbl.find_opt data key with None -> 0 | Some x -> x in
-       Hashtbl.replace data key (succ cur)),
-    (fun () ->
-       Hashtbl.fold (fun key value acc -> Metrics.uint key value :: acc) data [])
-
-  let counter_metrics ~f name =
-    let open Metrics in
-    let doc = "Counter metrics" in
-    let incr, get = create ~f in
-    let data thing = incr thing; Data.v (get ()) in
-    Src.v ~doc ~tags:Metrics.Tags.[] ~data name
-
   let inc =
     let f = function
       | `Udp_queries -> "udp-queries"
@@ -75,7 +58,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
       | `Resolver_servfail -> "resolver-servfail"
       | `Resolver_notimp -> "resolver-notimplemented"
     in
-    let metrics = counter_metrics ~f "stub-resolver" in
+    let metrics = Dns.counter_metrics ~f "stub-resolver" in
     (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
 
   module IM = Map.Make(struct
