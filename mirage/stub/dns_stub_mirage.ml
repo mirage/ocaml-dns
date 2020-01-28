@@ -225,6 +225,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
 
   type t = {
     client : Client.t ;
+    reserved : Dns_server.t ;
     mutable server : Dns_server.t ;
     on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.V4.t -> Dns_trie.t -> unit Lwt.t ;
   }
@@ -296,7 +297,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
   let server t proto ip packet buf build_reply =
     let question, data = packet.Packet.question, packet.Packet.data in
     match data with
-    | `Query -> Lwt.return (query_server t.server.data question data build_reply)
+    | `Query -> Lwt.return (query_server t.server question data build_reply)
     | `Axfr_request ->
       Lwt.return (axfr_server t.server proto packet question buf (build_reply ?additional:None))
     | `Update u ->
@@ -312,7 +313,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
     let name = fst question in
     match data, snd question with
     | `Query, `K Rr_map.K key ->
-      begin Client.getaddrinfo t.client key name >|= function
+      begin Client.get_resource_record t.client key name >|= function
         | Error `Msg msg ->
           Logs.err (fun m -> m "couldn't resolve %s" msg);
           let data = `Rcode_error (Rcode.ServFail, Opcode.Query, None) in
@@ -370,7 +371,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
       | None ->
         (* next look in reserved trie! *)
         let question, data = packet.Packet.question, packet.Packet.data in
-        match query_server Dns_resolver_root.reserved question data build_reply with
+        match query_server t.reserved question data build_reply with
         | Some data -> inc `Reserved_answers ; Lwt.return (Some data)
         | None -> resolve t packet.Packet.question packet.Packet.data build_reply
 
@@ -378,7 +379,8 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
     let nameserver = `TCP, (nameserver, 53) in
     let client = Client.create ~size ~nameserver stack in
     let server = Dns_server.Primary.server primary in
-    let t = { client ; server ; on_update } in
+    let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in
+    let t = { client ; reserved ; server ; on_update } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       inc `Udp_queries;
       handle t `Udp src buf >>= function

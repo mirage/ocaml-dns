@@ -252,7 +252,7 @@ let text name data =
     Ok (Buffer.contents buf)
 
 let create ?(unauthenticated_zone_transfer = false) ?(tsig_verify = Tsig_op.no_verify) ?(tsig_sign = Tsig_op.no_sign)
-    data auth rng =
+    ?(auth = Dns_trie.empty) data rng =
   { data ; auth ; unauthenticated_zone_transfer ; rng ; tsig_verify ; tsig_sign }
 
 let find_glue trie names =
@@ -391,7 +391,7 @@ let handle_question t (name, typ) =
   match typ with
   (* this won't happen, decoder constructs `Axfr *)
   | `Axfr | `Ixfr -> Error (Rcode.NotImp, None)
-  | (`K _ | `Any) as k -> lookup t (name, k)
+  | (`K _ | `Any) as k -> lookup t.data (name, k)
 (*  | r ->
     Log.err (fun m -> m "refusing query type %a" Rr.pp r);
     Error (Rcode.Refused, None) *)
@@ -928,8 +928,8 @@ module Primary = struct
     (t', m, l', n''), outs
 
   let create ?(keys = []) ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign ~rng data =
-    let keys = Authentication.of_keys keys in
-    let t = create ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign data keys rng in
+    let auth = Authentication.of_keys keys in
+    let t = create ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign ~auth data rng in
     let hm_empty = Domain_name.Host_map.empty in
     let notifications =
       let f name soa ns =
@@ -992,7 +992,7 @@ module Primary = struct
         | _ -> l, ns, [], None
       in
       let answer =
-        let flags, data, additional = match handle_question t.data p.question with
+        let flags, data, additional = match handle_question t p.question with
           | Ok (flags, data, additional) -> flags, `Answer data, additional
           | Error (rcode, data) ->
             err_flags rcode, `Rcode_error (rcode, Opcode.Query, data), None
@@ -1162,7 +1162,7 @@ module Secondary = struct
   let with_data (t, zones) data = ({ t with data }, zones)
 
   let create ?primary ~tsig_verify ~tsig_sign ~rng keylist =
-    let keys = Authentication.of_keys keylist in
+    let auth = Authentication.of_keys keylist in
     let zones =
       let f name _ zones =
         Log.debug (fun m -> m "soa found for %a" Domain_name.pp name);
@@ -1171,7 +1171,7 @@ module Secondary = struct
           Log.warn (fun m -> m "zone %a not a hostname" Domain_name.pp name);
           zones
         | Ok zone ->
-          match Authentication.primaries keys name with
+          match Authentication.primaries auth name with
           | [] -> begin match primary with
               | None ->
                 Log.warn (fun m -> m "no nameserver found for %a"
@@ -1204,9 +1204,9 @@ module Secondary = struct
                 Domain_name.Host_map.add zone v zones)
               zones primaries
       in
-      Dns_trie.fold Rr_map.Soa keys f Domain_name.Host_map.empty
+      Dns_trie.fold Rr_map.Soa auth f Domain_name.Host_map.empty
     in
-    (create ~tsig_verify ~tsig_sign Dns_trie.empty keys rng, zones)
+    (create ~tsig_verify ~tsig_sign Dns_trie.empty ~auth rng, zones)
 
   let header rng () = Randomconv.int16 rng, Packet.Flags.empty
 
@@ -1590,7 +1590,7 @@ module Secondary = struct
     in
     match p.Packet.data with
     | `Query ->
-      let flags, data, additional = match handle_question t.data p.question with
+      let flags, data, additional = match handle_question t p.question with
         | Ok (flags, data, additional) -> flags, `Answer data, additional
         | Error (rcode, data) ->
           err_flags rcode, `Rcode_error (rcode, Opcode.Query, data), None
