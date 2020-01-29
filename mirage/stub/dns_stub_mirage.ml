@@ -121,7 +121,11 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
             if cs_len > 2 then
               let len = Cstruct.BE.get_uint16 data 0 in
               if cs_len - 2 >= len then
-                let packet, rest = Cstruct.split data (len + 2) in
+                let packet, rest =
+                  if cs_len - 2 = len
+                  then data, Cstruct.empty
+                  else Cstruct.split data (len + 2)
+                in
                 let id = Cstruct.BE.get_uint16 packet 2 in
                 (match IM.find_opt id t.requests with
                  | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
