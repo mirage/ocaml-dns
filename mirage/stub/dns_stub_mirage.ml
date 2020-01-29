@@ -358,9 +358,9 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
         | Some data -> inc `Reserved_answers ; Lwt.return (Some data)
         | None -> resolve t packet.Packet.question packet.Packet.data build_reply
 
-  let create ?(nameserver = Ipaddr.V4.of_string_exn "141.1.1.1") ?(size = 10000) ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
-    let nameserver = `TCP, (nameserver, 53) in
-    let client = Client.create ~size ~nameserver stack in
+  let create ?nameserver ?(size = 10000) ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
+    let nameserver = match nameserver with None -> None | Some ns -> Some (`TCP, (ns, 53)) in
+    let client = Client.create ~size ?nameserver stack in
     let server = Dns_server.Primary.server primary in
     let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in
     let t = { client ; reserved ; server ; on_update } in
