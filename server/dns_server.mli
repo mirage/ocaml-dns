@@ -59,6 +59,9 @@ val create : ?unauthenticated_zone_transfer:bool ->
   Dns_trie.t ->
   (int -> Cstruct.t) ->
   t
+(** [create ~unauthenticated_zone_transfer ~tsig_verify ~tsig_sign ~auth data rng]
+    constructs a [t]. See {!Primary.create} and {!Secondary.create} for the
+    logic running a primary or secondary server. *)
 
 val with_data : t -> Dns_trie.t -> t
 (** [with_data t data] is [t'] where the [data] field is updated with the
