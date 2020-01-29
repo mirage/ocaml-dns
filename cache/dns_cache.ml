@@ -99,7 +99,7 @@ module LRU = Lru.M.MakeSeeded(Key)(Entry)
 
 type t = LRU.t
 
-let inc =
+let metrics =
   let f = function
     | `Lookup -> "lookups"
     | `Hit -> "hits"
@@ -177,13 +177,13 @@ let update_ttl entry ~created ~now =
   if updated_ttl < 0l then Error `Cache_drop else Ok (with_ttl updated_ttl entry)
 
 let get cache ts name query_type =
-  inc `Lookup;
+  metrics `Lookup;
   match snd (find cache name query_type) with
-  | Error e -> inc `Miss; Error e
+  | Error e -> metrics `Miss; Error e
   | Ok ((created, _), entry) ->
     match update_ttl entry ~created ~now:ts with
-    | Ok entry' -> inc `Hit; LRU.promote name cache; Ok entry'
-    | Error e -> inc `Drop; Error e
+    | Ok entry' -> metrics `Hit; LRU.promote name cache; Ok entry'
+    | Error e -> metrics `Drop; Error e
 
 (* XXX: we may want to define a minimum as well (5 minutes? 30 minutes?
    use SOA expiry?) MS used to use 24 hours in internet explorer
@@ -191,7 +191,7 @@ let get cache ts name query_type =
 from RFC1034 on this topic:
 The idea is that if cached data is known to come from a particular zone,
 and if an authoritative copy of the zone's SOA is obtained, and if the
-zone's SERIAL has not changed since the data was cached, then the TTL of
+zone's SERIAL has not changed smetricse the data was cached, then the TTL of
 the cached data can be reset to the zone MINIMUM value if it is smaller.
 This usage is mentioned for planning purposes only, and is not
 recommended as yet.
@@ -225,10 +225,10 @@ let set cache ts name query_type rank entry  =
   | map, Error _ ->
     Logs.debug (fun m -> m "set: %a nothing found, adding: %a"
                    pp_query (name, `K (K query_type)) pp_entry entry');
-    inc `Insert; cache' map
+    metrics `Insert; cache' map
   | map, Ok ((_, rank'), _) ->
     Logs.debug (fun m -> m "set: %a found rank %a insert rank %a: %d"
                    pp_query (name, `K (K query_type)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
     match compare_rank rank' rank with
     | 1 -> ()
-    | _ -> inc `Insert; cache' map
+    | _ -> metrics `Insert; cache' map
