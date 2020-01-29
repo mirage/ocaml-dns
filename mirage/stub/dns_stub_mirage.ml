@@ -226,7 +226,8 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
       Some (build_reply ?additional:None data)
 
   let tsig_decode_sign server proto packet buf build_reply =
-    match Dns_server.handle_tsig server (Ptime.v (P.now_d_ps ())) packet buf with
+    let now = Ptime.v (P.now_d_ps ()) in
+    match Dns_server.handle_tsig server now packet buf with
     | Error _ ->
       let data =
         `Rcode_error (Rcode.Refused, Packet.opcode_data packet.Packet.data, None)
@@ -243,7 +244,6 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
         match k with
         | None -> Some (fst (Packet.encode proto packet))
         | Some (keyname, _tsig, mac, dnskey) ->
-          let now = Ptime.v (P.now_d_ps ()) in
           match Dns_tsig.encode_and_sign ~proto ~mac packet now dnskey keyname with
           | Error s -> Log.err (fun m -> m "error %a while signing answer" Dns_tsig.pp_s s); None
           | Ok (cs, _) -> Some cs
