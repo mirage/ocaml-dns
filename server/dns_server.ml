@@ -176,30 +176,13 @@ module Authentication = struct
         access_granted ~required op
 end
 
-(* should be in metrics? *)
-let create_m ~f =
-  let data : (string, int) Hashtbl.t = Hashtbl.create 7 in
-  (fun x ->
-     let key = f x in
-     let cur = match Hashtbl.find_opt data key with None -> 0 | Some x -> x in
-     Hashtbl.replace data key (succ cur)),
-  (fun () ->
-     Hashtbl.fold (fun key value acc -> Metrics.uint key value :: acc) data [])
-
-let counter_metrics ~f name =
-  let open Metrics in
-  let doc = "Counter metrics" in
-  let incr, get = create_m ~f in
-  let data thing = incr thing; Data.v (get ()) in
-  Src.v ~doc ~tags:Metrics.Tags.[] ~data name
-
 let dns_rcode_stats name =
   let f = function
     | `Rcode_error (rc, _, _) -> Rcode.to_string rc
     | #Packet.reply -> "reply"
     | #Packet.request -> "request"
   in
-  let src = counter_metrics ~f ("dns_server_stats_"^name) in
+  let src = Dns.counter_metrics ~f ("dns_server_stats_"^name) in
   (fun r -> Metrics.add src (fun x -> x) (fun d -> d r))
 
 let tx_metrics = dns_rcode_stats "tx"
@@ -252,7 +235,7 @@ let text name data =
     Ok (Buffer.contents buf)
 
 let create ?(unauthenticated_zone_transfer = false) ?(tsig_verify = Tsig_op.no_verify) ?(tsig_sign = Tsig_op.no_sign)
-    data auth rng =
+    ?(auth = Dns_trie.empty) data rng =
   { data ; auth ; unauthenticated_zone_transfer ; rng ; tsig_verify ; tsig_sign }
 
 let find_glue trie names =
@@ -928,8 +911,8 @@ module Primary = struct
     (t', m, l', n''), outs
 
   let create ?(keys = []) ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign ~rng data =
-    let keys = Authentication.of_keys keys in
-    let t = create ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign data keys rng in
+    let auth = Authentication.of_keys keys in
+    let t = create ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign ~auth data rng in
     let hm_empty = Domain_name.Host_map.empty in
     let notifications =
       let f name soa ns =
@@ -1162,7 +1145,7 @@ module Secondary = struct
   let with_data (t, zones) data = ({ t with data }, zones)
 
   let create ?primary ~tsig_verify ~tsig_sign ~rng keylist =
-    let keys = Authentication.of_keys keylist in
+    let auth = Authentication.of_keys keylist in
     let zones =
       let f name _ zones =
         Log.debug (fun m -> m "soa found for %a" Domain_name.pp name);
@@ -1171,7 +1154,7 @@ module Secondary = struct
           Log.warn (fun m -> m "zone %a not a hostname" Domain_name.pp name);
           zones
         | Ok zone ->
-          match Authentication.primaries keys name with
+          match Authentication.primaries auth name with
           | [] -> begin match primary with
               | None ->
                 Log.warn (fun m -> m "no nameserver found for %a"
@@ -1204,9 +1187,9 @@ module Secondary = struct
                 Domain_name.Host_map.add zone v zones)
               zones primaries
       in
-      Dns_trie.fold Rr_map.Soa keys f Domain_name.Host_map.empty
+      Dns_trie.fold Rr_map.Soa auth f Domain_name.Host_map.empty
     in
-    (create ~tsig_verify ~tsig_sign Dns_trie.empty keys rng, zones)
+    (create ~tsig_verify ~tsig_sign Dns_trie.empty ~auth rng, zones)
 
   let header rng () = Randomconv.int16 rng, Packet.Flags.empty
 

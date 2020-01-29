@@ -4,6 +4,8 @@ open Dns
 
 (** DNS TSIG signatures *)
 
+(** As specified by {{:https://tools.ietf.org/html/rfc2845}RFC 2845} *)
+
 val sign : Tsig_op.sign
 (** [sign ~mac ~max_size name tsig ~key packet buffer] signs the given
     [buffer] with the provided [key], its [name], the [tsig]. The [mac]
@@ -21,10 +23,14 @@ type s = [ `Key_algorithm of Dnskey.t | `Tsig_creation | `Sign ]
 val pp_s : s Fmt.t
 (** [pp_s ppf s] pretty-prints [s] on [ppf]. *)
 
-val encode_and_sign : ?proto:proto -> Packet.t -> Ptime.t -> Dns.Dnskey.t ->
-  'a Domain_name.t -> (Cstruct.t * Cstruct.t, s) result
-(** [encode_and_sign ~proto t now dnskey name] signs and encodes the DNS
-    packet. *)
+val encode_and_sign : ?proto:proto -> ?mac:Cstruct.t -> Packet.t -> Ptime.t ->
+  Dns.Dnskey.t -> 'a Domain_name.t -> (Cstruct.t * Cstruct.t, s) result
+(** [encode_and_sign ~proto ~mac t now dnskey name] signs and encodes the DNS
+    packet. If a reply to a request is signed, the [mac] argument should be the
+    message authentication code from the request (needed to sign the reply).
+    The returned value is the encoded byte buffer and the mac of the packet
+    (useful for passing into {!decode_and_verify} when receiving a reply to the
+    signed request). *)
 
 type e = [
   | `Decode of Packet.err
@@ -41,9 +47,9 @@ val decode_and_verify : Ptime.t -> Dnskey.t -> 'a Domain_name.t ->
   ?mac:Cstruct.t -> Cstruct.t ->
   (Packet.t * Tsig.t * Cstruct.t, e) result
 (** [decode_and_verify now dnskey name ~mac buffer] decodes and verifies the
-   given buffer using the key material, resulting in a DNS packet and the mac,
-   or a failure. The optional [mac] argument should be provided if an answer to
-   a signed DNS packet is to be decoded. *)
+   given buffer using the key material, resulting in a DNS packet, a signature,
+   and the [mac], or a failure. The optional [mac] argument should be provided
+   if an answer to a signed DNS packet is to be decoded. *)
 
 (**/**)
 val compute_tsig : 'a Domain_name.t -> Tsig.t -> key:Cstruct.t ->

@@ -52,6 +52,17 @@ type t = private {
 }
 (** The state of a DNS server. *)
 
+val create : ?unauthenticated_zone_transfer:bool ->
+  ?tsig_verify:Tsig_op.verify ->
+  ?tsig_sign:Tsig_op.sign ->
+  ?auth:Authentication.t ->
+  Dns_trie.t ->
+  (int -> Cstruct.t) ->
+  t
+(** [create ~unauthenticated_zone_transfer ~tsig_verify ~tsig_sign ~auth data rng]
+    constructs a [t]. See {!Primary.create} and {!Secondary.create} for the
+    logic running a primary or secondary server. *)
+
 val with_data : t -> Dns_trie.t -> t
 (** [with_data t data] is [t'] where the [data] field is updated with the
     provided value. *)
@@ -76,9 +87,6 @@ val handle_axfr_request : t -> proto -> [ `raw ] Domain_name.t option ->
 (** [handle_axfr_request t proto keyname question] authenticates the zone
     transfer request and processes it. If the request is valid, and the zone
     available, a zone transfer is returned. *)
-
-val counter_metrics : f:('a -> string) ->
-  string -> (Metrics.field list, 'a -> Metrics.Data.t) Metrics.src
 
 type trie_cache
 

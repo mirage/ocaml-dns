@@ -290,7 +290,7 @@ module Getaddrinfo_tests = struct
     | Error `Msg actual ->
       let expected = "Truncated UDP response" in
       Alcotest.(check string "reports the truncated UDP packet failure" expected actual)
-    | _ -> failwith "Should have reported the Truncated UDP packet"
+    | Ok (_, _) -> failwith "Should have reported the Truncated UDP packet"
 
   let cname_and_nodata_packet () =
     (* we request a non-existing record type of existing domain name, which is
@@ -320,7 +320,7 @@ c0 42 0a 68 6f 73 74 6d 61 73 74 65 72 06 66 61
       let expected = "DNS cache error no data fastly.net" in
       let len = String.length expected in
       Alcotest.(check string __LOC__ expected (Astring.String.with_range ~len actual))
-    | _ -> Alcotest.fail "Should have returned nodata"
+    | Ok (_, _) -> Alcotest.fail "Should have returned nodata"
 
   let tests = [
     "supports_mx_packets", `Quick, supports_mx_packets;

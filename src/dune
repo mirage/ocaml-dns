@@ -2,7 +2,7 @@
  (name dns)
  (public_name dns)
  (wrapped false)
- (libraries rresult cstruct astring fmt ipaddr logs ptime gmap domain-name)
+ (libraries rresult cstruct astring fmt ipaddr logs ptime gmap domain-name metrics)
 ; (preprocess (pps ppx_expect)) ; once https://github.com/ocaml/dune/issues/897 is resolved
 ; (inline_tests)
 )

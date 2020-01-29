@@ -26,6 +26,14 @@ module Pure = struct
     end, { protocol ; query ; key = record_type }
 
   (* name: the originally requested domain name. *)
+  (* NOTE that this function compresses answers:
+     foo.example CNAME 500 bar.example
+     bar.example A 300 1.2.3.4
+     is compressed to:
+     foo.example A 300 1.2.3.4
+     -> which is fine for applications (i think so)
+     -> which is struggling for the cache (not entirely sure about this tbh)
+     -> it is not clear whether it meets the DNS specifications nicely *)
   let rec follow_cname name ~iterations:iterations_left ~answer ~state =
     let open Rresult in
     if iterations_left <= 0

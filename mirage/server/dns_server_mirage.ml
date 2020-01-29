@@ -7,10 +7,6 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_time.S) (S : Mirage_stack.V4) = struct
 
-  module Dns = Dns_mirage.Make(S)
-
-  module T = S.TCPV4
-
   let inc =
     let f = function
       | `Udp_query -> "udp queries"
@@ -26,8 +22,11 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
       | `Tcp_cache_add -> "tcp cache add"
       | `Tcp_cache_drop -> "tcp cache drop"
     in
-    let src = Dns_server.counter_metrics ~f "dns-server-mirage" in
+    let src = Dns.counter_metrics ~f "dns-server-mirage" in
     (fun x -> Metrics.add src (fun x -> x) (fun d -> d x))
+
+  module Dns = Dns_mirage.Make(S)
+  module T = S.TCPV4
 
   let primary ?(on_update = fun ~old:_ ~authenticated_key:_ ~update_source:_ _ -> Lwt.return_unit) ?(on_notify = fun _ _ -> Lwt.return None) ?(timer = 2) ?(port = 53) stack t =
     let state = ref t in

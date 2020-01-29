@@ -1126,3 +1126,7 @@ module Tsig_op : sig
   val no_sign : sign
   (** [no_sign] always returns [None]. *)
 end
+
+(**/**)
+val counter_metrics : f:('a -> string) ->
+  string -> (Metrics.field list, 'a -> Metrics.Data.t) Metrics.src
