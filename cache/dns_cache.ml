@@ -191,7 +191,7 @@ let get cache ts name query_type =
 from RFC1034 on this topic:
 The idea is that if cached data is known to come from a particular zone,
 and if an authoritative copy of the zone's SOA is obtained, and if the
-zone's SERIAL has not changed smetricse the data was cached, then the TTL of
+zone's SERIAL has not changed since the data was cached, then the TTL of
 the cached data can be reset to the zone MINIMUM value if it is smaller.
 This usage is mentioned for planning purposes only, and is not
 recommended as yet.
