@@ -131,7 +131,7 @@ set repo=git+https://github.com/mirage/ocaml-dns.git
 # the -n parameter means
 # "just register the pin, don't actually install it yet"
 
-foreach pkg ( dns dns-{certify,cli,client,resolver,server,mirage,tsig} )
+foreach pkg ( dns dns-{certify,cli,client,resolver,server,mirage,tsig,stub} )
   opam pin add -y -n $pkg.$version --dev $repo
 end
 ```
@@ -141,7 +141,7 @@ end
 version=4.99.0
 repo=git+https://github.com/mirage/ocaml-dns.git
 
-for pkg in dns dns-{certify,cli,client,resolver,server,mirage,tsig}
+for pkg in dns dns-{certify,cli,client,resolver,server,mirage,tsig,stub}
 do
   opam pin add -y -n $pkg.$version --dev $repo
 done
