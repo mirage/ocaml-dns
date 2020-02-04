@@ -23,7 +23,7 @@ module Transport : Dns_client.S
 
   let create
     ?(rng = Dns_client.stdlib_random)
-    ?(nameserver = `TCP, (Unix.inet_addr_of_string "91.239.100.100", 53)) () =
+    ?(nameserver = `TCP, (Unix.inet_addr_of_string Dns_client.default_resolver, 53)) () =
     { rng ; nameserver }
 
   let nameserver { nameserver ; _ } = nameserver

@@ -11,6 +11,11 @@ val stdlib_random : int -> Cstruct.t
     from the OCaml standard library is used, which is not cryptographically
     secure. If desired {!Nocrypto.Rng.generate} can be passed to {!S.create}. *)
 
+val default_resolver : string
+(** [default_resolver] is the IPv4 address in dotted-decimal form of the default
+    resolver. Currently it is the IP address of the UncensoredDNS.org anycast
+    service. *)
+
 module type S = sig
   type flow
   (** A flow is a network connection initialized by {!T.connect} *)
