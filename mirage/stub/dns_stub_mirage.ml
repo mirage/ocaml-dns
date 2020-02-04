@@ -87,7 +87,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
 
       let create
           ?rng
-          ?(nameserver = `TCP, (Ipaddr.V4.of_string_exn "91.239.100.100", 53))
+          ?(nameserver = `TCP, (Ipaddr.V4.of_string_exn Dns_client.default_resolver, 53))
           stack =
         let rng = match rng with None -> R.generate ?g:None | Some x -> x in
         { rng ; nameserver ; stack ; flow = None ; requests = IM.empty }

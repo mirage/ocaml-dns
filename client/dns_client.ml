@@ -143,6 +143,8 @@ let stdlib_random n =
   done;
   b
 
+let default_resolver = "91.239.100.100"
+
 module type S = sig
   type flow
   type +'a io
