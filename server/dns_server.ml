@@ -470,8 +470,8 @@ module Notification = struct
           match Dns_trie.lookup_glue ns trie with
           | Some (_, ips), _ -> Rr_map.Ipv4_set.union ips acc
           | _ ->
-            Log.err (fun m -> m "lookup for A %a returned nothing as well"
-                        Domain_name.pp ns);
+            Log.warn (fun m -> m "could not find an address record for the secondary %a (zone %a), it won't be notified"
+                         Domain_name.pp ns Domain_name.pp zone);
             acc)
         secondaries Rr_map.Ipv4_set.empty
     | _ -> Rr_map.Ipv4_set.empty
