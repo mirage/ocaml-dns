@@ -31,6 +31,31 @@ module Trie = struct
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
+  let glue_ok =
+    let module M = struct
+      type t = (int32 * Rr_map.Ipv4_set.t) option * (int32 * Rr_map.Ipv6_set.t) option
+      let pp ppf (v4, v6) =
+        let pp_v4 ppf v4 =
+          Fmt.(list ~sep:(unit ",") Ipaddr.V4.pp) ppf (Rr_map.Ipv4_set.elements v4)
+        and pp_v6 ppf v6 =
+          Fmt.(list ~sep:(unit ",") Ipaddr.V6.pp) ppf (Rr_map.Ipv6_set.elements v6)
+        in
+        Fmt.pf ppf "V4 %a@ V6 %a"
+          Fmt.(option ~none:(unit "none") (pair ~sep:(unit ", ") int32 pp_v4)) v4
+          Fmt.(option ~none:(unit "none") (pair ~sep:(unit ", ") int32 pp_v6)) v6
+      let equal a b = match a, b with
+        | (None, None), (None, None) -> true
+        | (Some (ttl, v4), None), (Some (ttl', v4'), None) ->
+          ttl = ttl' && Rr_map.Ipv4_set.equal v4 v4'
+        | (None, Some (ttl, v6)), (None, Some (ttl', v6')) ->
+          ttl = ttl' && Rr_map.Ipv6_set.equal v6 v6'
+        | (Some (ttl, v4), Some (ttl6, v6)), (Some (ttl', v4'), Some (ttl6', v6')) ->
+          ttl = ttl' && Rr_map.Ipv4_set.equal v4 v4' &&
+            ttl6 = ttl6' && Rr_map.Ipv6_set.equal v6 v6'
+        | _ -> false
+    end in
+    (module M: Alcotest.TESTABLE with type t = M.t)
+
   let l_ok =
     let module M = struct
       type t = Rr_map.b * ([ `raw ] Domain_name.t * int32 * Domain_name.Host_set.t)
@@ -402,6 +427,25 @@ module Trie = struct
                 (Error `NotAuthoritative)
                 (zone (n_of_s "bar.com") t))
 
+  let no_soa () =
+    let a_record = (23l, Rr_map.Ipv4_set.singleton (ip "1.4.5.2")) in
+    let t = insert (n_of_s "ns1.foo.com") Rr_map.A a_record empty in
+    Alcotest.(check (result b_ok e) "lookup_with_cname for NS foo.com without SOA fails"
+                (Error `NotAuthoritative)
+                (r_fst (lookup_with_cname (n_of_s "foo.com") Ns t))) ;
+    Alcotest.(check (result b_ok e) "lookup_with_cname for A ns1.foo.com without SOA fails"
+                (Error `NotAuthoritative)
+                (r_fst (lookup_with_cname (n_of_s "ns1.foo.com") A t))) ;
+    Alcotest.(check (result b_ok e) "lookup_b for NS foo.com without SOA fails"
+                (Error `NotAuthoritative)
+                (lookup_b (n_of_s "foo.com") Ns t)) ;
+    Alcotest.(check (result b_ok e) "lookup_b for A ns1.foo.com without SOA fails"
+                (Error `NotAuthoritative)
+                (lookup_b (n_of_s "ns1.foo.com") A t)) ;
+    Alcotest.(check glue_ok "lookup_glue for ns1.foo.com without SOA finds ip"
+                (Some a_record, None)
+                (Dns_trie.lookup_glue (n_of_s "ns1.foo.com") t))
+
   let tests = [
     "simple", `Quick, simple ;
     "basic", `Quick, basic ;
@@ -409,6 +453,7 @@ module Trie = struct
     "delegation", `Quick, dele ;
     "rmzone", `Quick, rmzone ;
     "zone", `Quick, zone ;
+    "no soa", `Quick, no_soa ;
   ]
 end
 
