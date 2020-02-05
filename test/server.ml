@@ -507,6 +507,23 @@ module S = struct
     Alcotest.(check int __LOC__ 1 (List.length tbn));
     Alcotest.check ipset __LOC__ [ip_of_s "10.0.0.2"] (List.map fst tbn)
 
+  let secondary_in_other_zone () =
+    let data =
+      let ns =
+        Domain_name.(Host_set.(add (host_exn (n_of_s "ns.one.com"))
+                                 (singleton (host_exn (n_of_s "ns2.two.com")))))
+      in
+      Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
+        (Dns_trie.insert (n_of_s "ns2.two.com") Rr_map.A
+           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2")) data)
+    in
+    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
+    Alcotest.(check int __LOC__ 1 (List.length notifications));
+    let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
+    Alcotest.(check int __LOC__ 1 (List.length tbn));
+    Alcotest.check ipset __LOC__ [ip_of_s "10.0.0.2"] (List.map fst tbn)
+
   let multiple_ips_secondary () =
     let data =
       let ns =
@@ -736,6 +753,7 @@ module S = struct
   let tests = [
     "simple", `Quick, simple ;
     "secondary", `Quick, secondary ;
+    "secondary in non-authoritative zone", `Quick, secondary_in_other_zone ;
     "multiple IPs of secondary", `Quick, multiple_ips_secondary ;
     "multiple secondaries", `Quick, multiple_secondaries ;
     "multiple secondaries with duplicates", `Quick, multiple_secondaries_dups ;
