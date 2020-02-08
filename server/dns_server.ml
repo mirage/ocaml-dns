@@ -466,6 +466,7 @@ module Notification = struct
         | Error _ -> ns
         | Ok prim -> Domain_name.Host_set.remove prim ns
       in
+      (* TODO AAAA records *)
       Domain_name.Host_set.fold (fun ns acc ->
           match Dns_trie.lookup_glue ns trie with
           | Some (_, ips), _ -> Rr_map.Ipv4_set.union ips acc
