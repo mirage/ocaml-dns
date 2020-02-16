@@ -120,13 +120,12 @@ let lookup_with_cname name ty t =
 let lookup name key t =
   match lookup_aux name t with
   | Error e -> Error e
-  | Ok (zone, _sub, map) ->
-    match Rr_map.find key map with
-    | Some v -> Ok v
-    | None -> match zone with
-      | None -> Error `NotAuthoritative
-      | Some (`Delegation (name, (ttl, ns))) -> Error (`Delegation (name, (ttl, ns)))
-      | Some (`Soa (z, zmap)) -> Error (ent z zmap)
+  | Ok (None, _sub, _map) -> Error `NotAuthoritative
+  | Ok (Some zone, _sub, map) ->
+    match Rr_map.find key map, zone with
+    | Some v, _ -> Ok v
+    | None, `Delegation (name, (ttl, ns)) -> Error (`Delegation (name, (ttl, ns)))
+    | None, `Soa (z, zmap) -> Error (ent z zmap)
 
 let lookup_any name t =
   match lookup_aux name t with
