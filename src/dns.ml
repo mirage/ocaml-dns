@@ -754,6 +754,9 @@ module Dnskey = struct
       Domain_name.of_string name >>= fun name ->
       of_string key >>| fun dnskey ->
       (name, dnskey)
+
+  let pp_name_key ppf (name, key) =
+    Fmt.pf ppf "%a %a" Domain_name.pp name pp key
 end
 
 (* certificate authority authorization *)
