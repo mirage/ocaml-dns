@@ -341,6 +341,9 @@ module Dnskey : sig
   val name_key_of_string : string -> ([ `raw ] Domain_name.t * t, [> `Msg of string ]) result
   (** [name_key_of_string str] attempts to parse [str] to a domain name and a
       dnskey. The colon character ([:]) is used as separator. *)
+
+  val pp_name_key : ([ `raw ] Domain_name.t * t) Fmt.t
+  (** [pp_name_key (name, key)] pretty-prints the dnskey and name pair. *)
 end
 
 (** Certificate authority authorization
