@@ -92,10 +92,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
         in
         wait_for_cert ()
 
-  let retrieve_certificate ?(ca = `Staging) stack ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
-    (match ca with
-     | `Staging -> Logs.warn (fun m -> m "staging environment - test use only")
-     | `Production -> Logs.warn (fun m -> m "production environment - take care what you do"));
+  let retrieve_certificate stack ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
     let keyname, zone, dnskey =
       match Dns.Dnskey.name_key_of_string dns_key with
       | Ok (name, key) ->
