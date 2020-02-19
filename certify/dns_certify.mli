@@ -13,6 +13,30 @@ val letsencrypt_name : 'a Domain_name.t ->
 (** [letsencrypt_name host] is the service name at which we store let's encrypt
     certificates for the [host]. *)
 
+val is_csr : Dns.Tlsa.t -> bool
+(** [is_csr tlsa] is true if [tlsa] is a certificate signing request of
+    interest for this library. *)
+
+val csr : X509.Signing_request.t -> Dns.Tlsa.t
+(** [csr req] is the signing request [req] encoded as TLSA record. *)
+
+val is_certificate : Dns.Tlsa.t -> bool
+(** [is_certificate tlsa] is true if [tlsa] is a certificate of interest for
+    this library. *)
+
+val certificate : X509.Certificate.t -> Dns.Tlsa.t
+(** [certificate crt] is the certificate [crt] encoded as TLSA record. *)
+
+val is_ca_certificate : Dns.Tlsa.t -> bool
+(** [is_ca_certificate tlsa] is true if [tlsa] is a CA certificate of interest
+    for this library. *)
+
+val ca_certificate : Cstruct.t -> Dns.Tlsa.t
+(** [ca_certificate data] is the CA certificate [data] encoded as TLSA record. *)
+
+val is_name : 'a Domain_name.t -> bool
+(** [is_name domain_name] is true if it contains the prefix used in this library. *)
+
 type u_err = [
   | `Tsig of Dns_tsig.e
   | `Bad_reply of Packet.mismatch * Packet.t
@@ -49,8 +73,9 @@ val pp_q_err : q_err Fmt.t
 
 val query : (int -> Cstruct.t) -> X509.Public_key.t ->
   [ `host ] Domain_name.t ->
-  (Cstruct.t * (Cstruct.t -> (X509.Certificate.t, [> q_err ]) result),
+  (Cstruct.t *
+   (Cstruct.t -> (X509.Certificate.t * X509.Certificate.t list, [> q_err ]) result),
    [> `Msg of string ]) result
 (** [query rng pubkey name] is a [buffer] with a DNS TLSA query for the given
    [name], and a function that decodes a given answer, either returning a X.509
-   certificate or an error. *)
+   certificate and a chain, or an error. *)

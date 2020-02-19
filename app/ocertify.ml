@@ -79,18 +79,18 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
       | _ -> Ok ()) >>= fun () ->
   (* strategy: unless force is provided, we can request DNS, and if a
      certificate is present, compare its public key with csr public key *)
-  let write_certificate cert =
-    let cert = X509.Certificate.encode_pem cert in
+  let write_certificate certs =
+    let data = X509.Certificate.encode_pem_multiple certs in
     Bos.OS.File.delete cert_filename >>= fun () ->
-    Bos.OS.File.write cert_filename (Cstruct.to_string cert)
+    Bos.OS.File.write cert_filename (Cstruct.to_string data)
   in
   let sock = Dns_cli.connect_tcp server_ip port in
   (if force then
      Ok true
    else match query_certificate sock public_key hostname with
-     | Ok x ->
+     | Ok (server, chain) ->
        Logs.app (fun m -> m "found cached certificate in DNS");
-       write_certificate x >>| fun () ->
+       write_certificate (server :: chain) >>| fun () ->
        false
      | Error `No_tlsa ->
        Logs.debug (fun m -> m "no TLSA found, sending update");
@@ -119,7 +119,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
           Logs.err (fun m -> m "error %a while handling TLSA reply (retrying)"
                        Dns_certify.pp_q_err e);
           request (pred retries)
-        | Ok x -> write_certificate x
+        | Ok (server, chain) -> write_certificate (server :: chain)
       in
       request 10) >>| fun () ->
   Logs.app (fun m -> m "success! your certificate is stored in %a (private key %a, csr %a)"

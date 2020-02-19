@@ -1,5 +1,44 @@
 open Dns
 
+let tlsa_is usage sel typ t =
+  t.Tlsa.cert_usage = usage &&
+  t.Tlsa.selector = sel &&
+  t.Tlsa.matching_type = typ
+
+let is_csr t =
+  tlsa_is Tlsa.Domain_issued_certificate Tlsa.Private Tlsa.No_hash t
+
+let csr req =
+  let data = X509.Signing_request.encode_der req in
+  {
+    Tlsa.matching_type = Tlsa.No_hash ;
+    cert_usage = Tlsa.Domain_issued_certificate ;
+    selector = Tlsa.Private ;
+    data
+  }
+
+let is_certificate t =
+  tlsa_is Tlsa.Domain_issued_certificate Tlsa.Full_certificate Tlsa.No_hash t
+
+let certificate cert =
+  let data = X509.Certificate.encode_der cert in
+  {
+    Tlsa.matching_type = Tlsa.No_hash ;
+    cert_usage = Tlsa.Domain_issued_certificate ;
+    selector = Tlsa.Full_certificate ;
+    data
+  }
+
+let is_ca_certificate t =
+  tlsa_is Tlsa.CA_constraint Tlsa.Full_certificate Tlsa.No_hash t
+
+let ca_certificate data = {
+  Tlsa.matching_type = Tlsa.No_hash ;
+  cert_usage = Tlsa.CA_constraint ;
+  selector = Tlsa.Full_certificate ;
+  data
+}
+
 let signing_request hostname ?(more_hostnames = []) key =
   let host = Domain_name.to_string hostname in
   let extensions =
@@ -21,9 +60,19 @@ let dns_header rng =
   let id = Randomconv.int16 rng in
   (id, Packet.Flags.empty)
 
+let le_label = "_letsencrypt"
+and p_label = "_tcp"
+
+let is_name name =
+  if Domain_name.count_labels name < 2 then
+    false
+  else
+    Domain_name.(equal_label le_label (get_label_exn name 0) &&
+                 equal_label p_label (get_label_exn name 1))
+
 let letsencrypt_name name =
-  match Domain_name.(prepend_label (raw name) "_tcp") with
-  | Ok name' -> Domain_name.prepend_label name' "_letsencrypt"
+  match Domain_name.(prepend_label (raw name) p_label) with
+  | Ok name' -> Domain_name.prepend_label name' le_label
   | Error e -> Error e
 
 type u_err = [ `Tsig of Dns_tsig.e | `Bad_reply of Packet.mismatch * Packet.t | `Unexpected_reply of Packet.reply ]
@@ -33,17 +82,11 @@ let pp_u_err ppf = function
   | `Bad_reply (e, res) -> Fmt.pf ppf "bad reply %a: %a" Packet.pp_mismatch e Packet.pp res
   | `Unexpected_reply r -> Fmt.pf ppf "unexpected reply %a" Packet.pp_reply r
 
-let nsupdate rng now ~host ~keyname ~zone dnskey csr =
+let nsupdate rng now ~host ~keyname ~zone dnskey request =
   match letsencrypt_name host with
   | Error e -> Error e
   | Ok host ->
-    let tlsa =
-      { Tlsa.cert_usage = Domain_issued_certificate ;
-        selector = Private ;
-        matching_type = No_hash ;
-        data = X509.Signing_request.encode_der csr ;
-      }
-    in
+    let tlsa = csr request in
     let zone = Packet.Question.create zone Soa
     and update =
       let up =
@@ -83,26 +126,39 @@ let pp_q_err ppf = function
   | `Unexpected_reply r -> Fmt.pf ppf "unexpected reply %a" Packet.pp_reply r
   | `No_tlsa -> Fmt.pf ppf "No TLSA record found"
 
+let tlsas_to_certchain host public_key tlsas =
+  let certificates, ca_certificates =
+    Rr_map.Tlsa_set.fold (fun tlsa (certs, cacerts as acc) ->
+        if is_certificate tlsa || is_ca_certificate tlsa then
+          match X509.Certificate.decode_der tlsa.Tlsa.data with
+          | Error (`Msg msg) ->
+            Logs.warn (fun m -> m "couldn't decode tlsa record %a: %s (%a)"
+                          Domain_name.pp host msg
+                          Cstruct.hexdump_pp tlsa.Tlsa.data);
+            acc
+          | Ok cert ->
+            match is_certificate tlsa, is_ca_certificate tlsa with
+            | true, _ -> (cert :: certs, cacerts)
+            | _, true -> (certs, cert :: cacerts)
+            | _ -> acc
+        else acc)
+      tlsas ([], [])
+  in
+  let matches_public_key cert =
+    let key = X509.Certificate.public_key cert in
+    Cstruct.equal (X509.Public_key.id key) (X509.Public_key.id public_key)
+  in
+  match List.find_opt matches_public_key certificates with
+  | None -> Error `No_tlsa
+  | Some server_cert ->
+    match List.rev (X509.Validation.build_paths server_cert ca_certificates) with
+    | (_server :: chain) :: _ -> Ok (server_cert, chain)
+    | _ -> Ok (server_cert, []) (* build_paths always returns the server_cert *)
+
 let query rng public_key host =
   match letsencrypt_name host with
   | Error e -> Error e
   | Ok host ->
-    let good_tlsa tlsa =
-      tlsa.Tlsa.cert_usage = Domain_issued_certificate
-      && tlsa.selector = Full_certificate
-      && tlsa.matching_type = No_hash
-    in
-    let parse tlsa =
-      match X509.Certificate.decode_der tlsa.Tlsa.data with
-      | Ok cert ->
-        let keys_equal a b =
-          Cstruct.equal (X509.Public_key.id a) (X509.Public_key.id b) in
-        if keys_equal (X509.Certificate.public_key cert) public_key then
-          Some cert
-        else
-          None
-      | _ -> None
-    in
     let header = dns_header rng
     and question = Packet.Question.create host Tlsa
     in
@@ -116,11 +172,7 @@ let query rng public_key host =
         | Ok (`Answer (answer, _)) ->
           begin match Name_rr_map.find host Tlsa answer with
             | None -> Error `No_tlsa
-            | Some (_, tlsas) ->
-              Rr_map.Tlsa_set.(fold (fun tlsa r ->
-                  match parse tlsa, r with Some c, _ -> Ok c | None, x -> x)
-                  (filter good_tlsa tlsas)
-                  (Error `No_tlsa))
+            | Some (_, tlsas) -> tlsas_to_certchain host public_key tlsas
           end
         | Ok (`Rcode_error (Rcode.NXDomain, Opcode.Query, _)) -> Error `No_tlsa
         | Ok reply -> Error (`Unexpected_reply reply)
