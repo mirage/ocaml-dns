@@ -14,28 +14,32 @@ val letsencrypt_name : 'a Domain_name.t ->
     certificates for the [host]. *)
 
 val is_csr : Dns.Tlsa.t -> bool
-(** [is_csr tlsa] is true if [tlsa] is a certificate signing request of
-    interest for this library. *)
+(** [is_csr tlsa] is true if [tlsa] is a certificate signing request (cert_usage
+    is Domain_issued_certificate, selector is Private, and matching_type is
+    No_hash). *)
 
 val csr : X509.Signing_request.t -> Dns.Tlsa.t
 (** [csr req] is the signing request [req] encoded as TLSA record. *)
 
 val is_certificate : Dns.Tlsa.t -> bool
-(** [is_certificate tlsa] is true if [tlsa] is a certificate of interest for
-    this library. *)
+(** [is_certificate tlsa] is true if [tlsa] is a certificate (cert_usage is
+    Domain_issued_certificate, selector is Full_certificate, and matching_type
+    is No_hash). *)
 
 val certificate : X509.Certificate.t -> Dns.Tlsa.t
 (** [certificate crt] is the certificate [crt] encoded as TLSA record. *)
 
 val is_ca_certificate : Dns.Tlsa.t -> bool
-(** [is_ca_certificate tlsa] is true if [tlsa] is a CA certificate of interest
-    for this library. *)
+(** [is_ca_certificate tlsa] is true if [tlsa] is a CA certificate (cert_usage
+    is CA_constraint, selector is Full_certificate, and matching_type is
+    No_hash). *)
 
 val ca_certificate : Cstruct.t -> Dns.Tlsa.t
 (** [ca_certificate data] is the CA certificate [data] encoded as TLSA record. *)
 
 val is_name : 'a Domain_name.t -> bool
-(** [is_name domain_name] is true if it contains the prefix used in this library. *)
+(** [is_name domain_name] is true if it contains the prefix used in this
+    library ("_letsencrypt._tcp"). *)
 
 type u_err = [
   | `Tsig of Dns_tsig.e
@@ -57,8 +61,8 @@ val nsupdate : (int -> Cstruct.t) -> (unit -> Ptime.t) ->
    TLSA record containing the certificate signing request. It also returns a
    function which decodes a given answer, checks it to be a valid reply, and
    returns either unit or an error. The outgoing packet is signed with the
-    provided [dnskey], the answer is checked to be signed by the same key. If
-    the sign operation fails, [nsupdate] returns an error. *)
+   provided [dnskey], the answer is checked to be signed by the same key. If
+   the sign operation fails, [nsupdate] returns an error. *)
 
 type q_err = [
   | `Decode of Packet.err
