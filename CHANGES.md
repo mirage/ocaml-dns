@@ -1,3 +1,19 @@
+### v4.4.0 (2020-03-13)
+
+* dns-stub, a new opam package, is a stub resolver #209 @hannesm, review by
+  @cfcs
+* embed IP address of recursive resolver only once #214 @hannesm, fixes #210,
+  review by @cfcs
+* Dns_trie.lookup returns NotAuthoritative if no SOA is present #217 @hannesm,
+  review by @cfcs
+* Secondary server is looked up in trie properly (may be in another zone, which
+  primary is not authoritative for the other zone) #217 @hannesm, review by
+  @cfcs
+* new function Dns.Dnskey.pp_name_key #218 @hannesm, review by @cfcs
+* dns-certify uses new ACME protocol (where the intermediate certificate is
+  part of the issuance process) #219 @hannesm, review by @cfcs
+* dns-certify/dns-tsig/dns-cli: use mirage-crypto #219 @hannesm, review by @cfcs
+
 ### v4.3.1 (2020-01-21)
 
 * server (#207, @hannesm, review by @cfcs)
