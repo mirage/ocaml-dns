@@ -13,16 +13,16 @@ let find_or_generate_key key_filename bits seed =
         | None -> None
         | Some seed ->
           let seed = Cstruct.of_string seed in
-          Some Nocrypto.Rng.(create ~seed (module Generators.Fortuna))
+          Some Mirage_crypto_rng.(create ~seed (module Fortuna))
       in
-      `RSA (Nocrypto.Rsa.generate ?g bits)
+      `RSA (Mirage_crypto_pk.Rsa.generate ?g ~bits ())
     in
     let pem = X509.Private_key.encode_pem key in
     Bos.OS.File.write ~mode:0o600 key_filename (Cstruct.to_string pem) >>= fun () ->
     Ok key
 
 let query_certificate sock public_key fqdn =
-  match Dns_certify.query Nocrypto.Rng.generate public_key fqdn with
+  match Dns_certify.query Mirage_crypto_rng.generate public_key fqdn with
   | Error e -> Error e
   | Ok (out, cb) ->
     Dns_cli.send_tcp sock out;
@@ -30,7 +30,7 @@ let query_certificate sock public_key fqdn =
     cb data
 
 let nsupdate_csr sock host keyname zone dnskey csr =
-  match Dns_certify.nsupdate Nocrypto.Rng.generate Ptime_clock.now ~host ~keyname ~zone dnskey csr with
+  match Dns_certify.nsupdate Mirage_crypto_rng.generate Ptime_clock.now ~host ~keyname ~zone dnskey csr with
   | Error s -> Error s
   | Ok (out, cb) ->
     Dns_cli.send_tcp sock out;
@@ -40,7 +40,7 @@ let nsupdate_csr sock host keyname zone dnskey csr =
     | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Dns_certify.pp_u_err e))
 
 let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits cert force =
-  Nocrypto_entropy_unix.initialize ();
+  Mirage_crypto_rng_unix.initialize ();
   let fn suffix = function
     | None -> Fpath.(v (Domain_name.to_string hostname) + suffix)
     | Some x -> Fpath.v x

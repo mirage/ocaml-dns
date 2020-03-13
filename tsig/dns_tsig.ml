@@ -19,7 +19,7 @@ let compute_tsig name tsig ~key buf =
   let h = algorithm_to_nc tsig.Tsig.algorithm
   and data = Tsig.encode_raw raw_name tsig
   in
-  Nocrypto.Hash.mac h ~key (Cstruct.append buf data)
+  Mirage_crypto.Hash.mac h ~key (Cstruct.append buf data)
 
 let guard p err = if p then Ok () else Error err
 
@@ -39,9 +39,10 @@ let mac_to_prep = function
     Cstruct.append l mac
 
 let sign ?mac ?max_size name tsig ~key p buf =
-  match Nocrypto.Base64.decode key.Dnskey.key with
-  | None -> None
-  | Some key ->
+  match Base64.decode (Cstruct.to_string key.Dnskey.key) with
+  | Error _ -> None
+  | Ok key ->
+    let key = Cstruct.of_string key in
     let prep = mac_to_prep mac in
     let mac = compute_tsig name tsig ~key (Cstruct.append prep buf) in
     let tsig = Tsig.with_mac tsig mac in
@@ -81,11 +82,12 @@ let sign ?mac ?max_size name tsig ~key p buf =
 
 let verify_raw ?mac now name ~key tsig tbs =
   let name = Domain_name.raw name in
-  Rresult.R.of_option ~none:(fun () -> Error (`Bad_key (name, tsig)))
-    (Nocrypto.Base64.decode key.Dnskey.key) >>= fun priv ->
+  Rresult.R.reword_error (function _ -> `Bad_key (name, tsig))
+    (Base64.decode (Cstruct.to_string key.Dnskey.key)) >>= fun priv ->
   let ac = Cstruct.BE.get_uint16 tbs 10 in
   Cstruct.BE.set_uint16 tbs 10 (pred ac) ;
   let prep = mac_to_prep mac in
+  let priv = Cstruct.of_string priv in
   let computed = compute_tsig name tsig ~key:priv (Cstruct.append prep tbs) in
   let mac = tsig.Tsig.mac in
   guard (Cstruct.len mac = Cstruct.len computed) (`Bad_truncation (name, tsig)) >>= fun () ->

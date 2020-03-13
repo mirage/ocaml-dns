@@ -44,16 +44,16 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
         | None -> (None, true)
         | Some seed ->
           let seed = Cstruct.of_string seed in
-          Some (Nocrypto.Rng.(create ~seed (module Generators.Fortuna))), false
+          Some (Mirage_crypto_rng.(create ~seed (module Fortuna))), false
       in
-      let key = Nocrypto.Rsa.generate ?g 4096 in
+      let key = Mirage_crypto_pk.Rsa.generate ?g ~bits:4096 () in
       (if print then
          let pem = X509.Private_key.encode_pem (`RSA key) in
          Log.info (fun m -> m "using private key@.%s" (Cstruct.to_string pem)));
       key
     in
     let csr = Dns_certify.signing_request hostname ~more_hostnames (`RSA private_key) in
-    let public_key = `RSA (Nocrypto.Rsa.pub_of_priv private_key) in
+    let public_key = `RSA (Mirage_crypto_pk.Rsa.pub_of_priv private_key) in
     (private_key, public_key, csr)
 
   let query_certificate_or_csr flow pub hostname keyname zone dnskey csr =
