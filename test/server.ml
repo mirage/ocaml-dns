@@ -733,7 +733,7 @@ module S = struct
 
   let test_secondary () =
     let keys =
-      let key = Cstruct.(create 32 |> to_string |>  Base64.encode_string |> of_string) in
+      let key = String.make 32 '\000' |> Base64.encode_string |> Cstruct.of_string in
       [ n_of_s "1.2.3.4.9.10.11.12._transfer.one.com",
         { Dnskey.flags = 0 ; algorithm = SHA256 ; key } ]
     in
