@@ -19,8 +19,9 @@ depends: [
   "bos" {>= "0.2.0"}
   "cmdliner" {>= "1.0.0"}
   "fpath" {>= "0.7.2"}
-  "x509" {>= "0.8.0"}
-  "nocrypto" {>= "0.5.4"}
+  "x509" {>= "0.10.0"}
+  "mirage-crypto"
+  "mirage-crypto-rng"
   "hex" {>= "1.4.0"}
   "ptime" {>= "0.8.5"}
   "mtime" {>= "1.2.0"}

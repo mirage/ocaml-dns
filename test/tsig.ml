@@ -17,16 +17,13 @@ let msg =
     (module M: Alcotest.TESTABLE with type t = M.t)
 
 let key =
-  match
-    Nocrypto.Base64.decode
-      (Cstruct.of_string "GSnQJ+fHuzwj5yKzCOkXdISyGQXBUxMrjEjL4Kr1WIs=")
-  with
-  | None -> assert false
-  | Some x -> x
+  match Base64.decode "GSnQJ+fHuzwj5yKzCOkXdISyGQXBUxMrjEjL4Kr1WIs=" with
+  | Error _ -> assert false
+  | Ok x -> Cstruct.of_string x
 
 let key_name = Domain_name.of_string_exn "mykey.bla.example"
 
-let of_h = Nocrypto.Uncommon.Cs.of_hex
+let of_h = Cstruct.of_hex
 
 let tsig ?(fudge = 300) algorithm signed =
   let fudge = Ptime.Span.of_int_s fudge in

@@ -10,21 +10,21 @@
   (public_name ocertify)
   (package dns-cli)
   (modules ocertify)
-  (libraries dns dns-certify dns-cli bos fpath x509 ptime ptime.clock.os nocrypto nocrypto.unix))
+  (libraries dns dns-certify dns-cli bos fpath x509 ptime ptime.clock.os mirage-crypto-pk mirage-crypto-rng mirage-crypto-rng.unix))
 
 (executable
   (name oupdate)
   (public_name oupdate)
   (package dns-cli)
   (modules oupdate)
-  (libraries dns dns-tsig dns-cli ptime ptime.clock.os nocrypto nocrypto.unix))
+  (libraries dns dns-tsig dns-cli ptime ptime.clock.os mirage-crypto mirage-crypto-rng.unix))
 
 (executable
   (name onotify)
   (public_name onotify)
   (package dns-cli)
   (modules onotify)
-  (libraries dns dns-tsig dns-cli ptime ptime.clock.os nocrypto nocrypto.unix))
+  (libraries dns dns-tsig dns-cli ptime ptime.clock.os mirage-crypto mirage-crypto-rng.unix))
 
 (executable
   (name ozone)

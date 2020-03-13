@@ -482,7 +482,7 @@ module S = struct
             Dns_trie.empty))
 
   let simple () =
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 0 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -500,7 +500,7 @@ module S = struct
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
            (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2")) data)
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 1 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -517,7 +517,7 @@ module S = struct
         (Dns_trie.insert (n_of_s "ns2.two.com") Rr_map.A
            (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2")) data)
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 1 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -535,7 +535,7 @@ module S = struct
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A (300l, ips) data)
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 2 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -556,7 +556,7 @@ module S = struct
               (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.3"))
               data))
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data' in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data' in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 2 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -578,7 +578,7 @@ module S = struct
               (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.3") (singleton (ip_of_s "10.0.0.4"))))
               data))
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data' in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data' in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 3 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -609,7 +609,7 @@ module S = struct
                           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.4"))
                           Dns_trie.empty))))))
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate data in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 2 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -622,7 +622,7 @@ module S = struct
       [ n_of_s "1.2.3.4.5.6.7.8._transfer.one.com",
         { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 1 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -634,7 +634,7 @@ module S = struct
       [ n_of_s "1.2.3.4.5.6.7.8._transfer",
         { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 1 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -659,7 +659,7 @@ module S = struct
               (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.1") (singleton (ip_of_s "192.168.1.1"))))
               data))
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data' in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data' in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 4 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -685,7 +685,7 @@ module S = struct
               (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.1") (singleton (ip_of_s "192.168.1.1"))))
               data))
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data' in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data' in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 3 (List.length notifications));
     let tbn = Dns_server.Primary.to_be_notified server (Domain_name.host_exn (n_of_s "one.com")) in
@@ -712,7 +712,7 @@ module S = struct
       Dns_trie.insert (n_of_s "two.com") Rr_map.Ns (300l, ns')
         (Dns_trie.insert (n_of_s "two.com") Rr_map.Soa soa data)
     in
-    let server = Dns_server.Primary.create ~rng:Nocrypto.Rng.generate ~keys data' in
+    let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data' in
     let s', notifications = Dns_server.Primary.timer server Ptime.epoch ts in
     Alcotest.(check int __LOC__ 1 (List.length notifications));
     Alcotest.(check int __LOC__ 2 (List.length (snd (List.hd notifications))));
@@ -733,12 +733,12 @@ module S = struct
 
   let test_secondary () =
     let keys =
-      let key = Nocrypto.Base64.encode (Cstruct.create 32) in
+      let key = String.make 32 '\000' |> Base64.encode_string |> Cstruct.of_string in
       [ n_of_s "1.2.3.4.9.10.11.12._transfer.one.com",
         { Dnskey.flags = 0 ; algorithm = SHA256 ; key } ]
     in
     let s =
-      Dns_server.Secondary.create ~rng:Nocrypto.Rng.generate
+      Dns_server.Secondary.create ~rng:Mirage_crypto_rng.generate
         ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign keys
     in
     let s', reqs = Dns_server.Secondary.timer s Ptime.epoch ts in
@@ -929,7 +929,7 @@ module A = struct
       (Dns_trie.insert_map example_zone Dns_trie.empty)
 
   let server ?unauthenticated_zone_transfer () =
-    let p = Primary.create ~rng:Nocrypto.Rng.generate ?unauthenticated_zone_transfer example_trie in
+    let p = Primary.create ~rng:Mirage_crypto_rng.generate ?unauthenticated_zone_transfer example_trie in
     Primary.server p
 
   let answer_test = Alcotest.testable Packet.Answer.pp Packet.Answer.equal
@@ -1048,7 +1048,7 @@ module A = struct
   let ixfr_test = Alcotest.testable Packet.Ixfr.pp Packet.Ixfr.equal
 
   let ixfr () =
-    let primary = Primary.create ~rng:Nocrypto.Rng.generate example_trie in
+    let primary = Primary.create ~rng:Mirage_crypto_rng.generate example_trie in
     let server = Primary.server primary in
     let cache = Primary.trie_cache primary in
     let key = Some (n_of_s "foo._transfer.one.com") in
@@ -1331,5 +1331,5 @@ let tests = [
 ]
 
 let () =
-  Nocrypto_entropy_unix.initialize ();
+  Mirage_crypto_rng_unix.initialize ();
   Alcotest.run "DNS server tests" tests

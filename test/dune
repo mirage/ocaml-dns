@@ -7,7 +7,7 @@
 (test
  (name server)
  (package dns-server)
- (libraries dns-server dns-tsig alcotest nocrypto.unix)
+ (libraries base64 dns-server dns-tsig alcotest mirage-crypto-rng.unix)
  (modules server))
 
 (test
