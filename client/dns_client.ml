@@ -167,6 +167,24 @@ module type S = sig
   val lift : 'a -> 'a io
 end
 
+let localhost = Domain_name.of_string_exn "localhost"
+let localsoa = Soa.create (Domain_name.prepend_label_exn localhost "ns")
+let invalid = Domain_name.of_string_exn "invalid"
+let invalidsoa = Soa.create (Domain_name.prepend_label_exn invalid "ns")
+
+let rfc6761_special (type req) q_name (q_typ : req Dns.Rr_map.key) : (Dns_cache.entry, unit) result =
+  if Domain_name.is_subdomain ~domain:localhost ~subdomain:q_name then
+    let open Dns.Rr_map in
+    match q_typ with
+    | A -> Ok (`Entry (B (A, (300l, Ipv4_set.singleton Ipaddr.V4.localhost))))
+    | Aaaa ->
+      Ok (`Entry (B (Aaaa, (300l, Ipv6_set.singleton Ipaddr.V6.localhost))))
+    | _ -> Ok (`No_domain (localhost, localsoa))
+  else if Domain_name.is_subdomain ~domain:invalid ~subdomain:q_name then
+    Ok (`No_domain (invalid, invalidsoa))
+  else
+    Error ()
+
 module Make = functor (Transport:S) ->
 struct
 
@@ -195,64 +213,78 @@ struct
   (* result-bind-and-lift *)
   let (>>|=) a f = a >>| fun b -> Transport.lift (f b)
 
+  let lift_ok (type req) (query_type : req Dns.Rr_map.key) :
+    (Dns_cache.entry, 'a) result ->
+    (req, [> `Msg of string
+          | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+          | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result
+    = function
+      | Ok `Entry (Dns.Rr_map.B (query_type', value)) ->
+        (* to satisfy the type checker, we need to prove that
+           - query_type (we are looking for) = query_type' (in the cache)
+           The Dns_cache does not carry this proof at the moment (using an
+           Rr_map.B : B of 'a query_type * 'a instead.
+           We do (instead of an Obj.magic) a compare of the keys, which exposes
+           the necessary proof. *)
+        begin match Dns.Rr_map.K.compare query_type' query_type with
+          | Gmap.Order.Eq -> Ok value
+          | _ ->
+            Rresult.R.error_msgf "should not happen request_type <> request_type'"
+        end
+      | Ok (`No_data _ as nodata) -> Error nodata
+      | Ok (`No_domain _ as nodom) -> Error nodom
+      | Ok (`Serv_fail _)
+      | Error _ -> Error (`Msg "")
+
   let get_resource_record (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string
                   | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
                   | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result Transport.io =
     let domain_name = Domain_name.raw name in
-    match Dns_cache.get t.cache (t.clock ()) domain_name query_type with
-    | Ok `Entry (B (query_type', value)) ->
-      (* to satisfy the type checker, we need to prove that
-         - query_type (we are looking for) = query_type' (in the cache)
-         The Dns_cache does not carry this proof at the moment (using an
-         Rr_map.B : B of 'a query_type * 'a instead.
-         We do (instead of an Obj.magic) a compare of the keys, which exposes
-         the necessary proof. *)
-      begin match Dns.Rr_map.K.compare query_type' query_type with
-        | Gmap.Order.Eq -> Transport.lift @@ Ok value
-        | _ -> Transport.lift @@
-          Rresult.R.error_msgf "should not happen request_type <> request_type'"
-      end
-    | Ok (`No_data _ as nodata) -> Error nodata |> Transport.lift
-    | Ok (`No_domain _ as nodom) -> Error nodom |> Transport.lift
-    | Ok (`Serv_fail _)
-    | Error _ ->
-      let proto, _ = match nameserver with
-        | None -> Transport.nameserver t.transport | Some x -> x in
-      let tx, state =
-        Pure.make_query (Transport.rng t.transport)
-          (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
-      in
-      Transport.connect ?nameserver t.transport >>| fun socket ->
-      Logs.debug (fun m -> m "Connected to NS.");
-      (Transport.send socket tx >>| fun () ->
-       Logs.debug (fun m -> m "Receiving from NS");
-       let update_cache entry =
-         let rank = Dns_cache.NonAuthoritativeAnswer in
-         Dns_cache.set t.cache (t.clock ()) domain_name query_type rank entry
-       in
-       let rec recv_loop acc =
-         Transport.recv socket >>| fun recv_buffer ->
-         Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
-                        (Cstruct.len recv_buffer)) ;
-         let buf =
-           if Cstruct.(equal empty acc)
-           then recv_buffer
-           else Cstruct.append acc recv_buffer
+    match rfc6761_special domain_name query_type |> lift_ok query_type with
+    | Ok _ as ok -> Transport.lift ok
+    | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
+    | Error `Msg _ ->
+      match Dns_cache.get t.cache (t.clock ()) domain_name query_type |> lift_ok query_type with
+      | Ok _ as ok -> Transport.lift ok
+      | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
+      | Error `Msg _ ->
+        let proto, _ = match nameserver with
+          | None -> Transport.nameserver t.transport | Some x -> x in
+        let tx, state =
+          Pure.make_query (Transport.rng t.transport)
+            (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
+        in
+        Transport.connect ?nameserver t.transport >>| fun socket ->
+        Logs.debug (fun m -> m "Connected to NS.");
+        (Transport.send socket tx >>| fun () ->
+         Logs.debug (fun m -> m "Receiving from NS");
+         let update_cache entry =
+           let rank = Dns_cache.NonAuthoritativeAnswer in
+           Dns_cache.set t.cache (t.clock ()) domain_name query_type rank entry
          in
-         match Pure.parse_response state buf with
-         | Ok `Data x ->
-          update_cache (`Entry (Rr_map.B (query_type, x)));
-          Ok x |> Transport.lift
-        | Ok ((`No_data _ | `No_domain _) as nodom) ->
-          update_cache nodom;
-          Error nodom |> Transport.lift
-        | Error `Msg xxx -> Error (`Msg xxx) |> Transport.lift
-        | Ok `Partial when proto = `TCP -> recv_loop buf
-        | Ok `Partial -> Error (`Msg "Truncated UDP response") |> Transport.lift
-      in recv_loop Cstruct.empty) >>= fun r ->
-      Transport.close socket >>= fun () ->
-      Transport.lift r
+         let rec recv_loop acc =
+           Transport.recv socket >>| fun recv_buffer ->
+           Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
+                          (Cstruct.len recv_buffer)) ;
+           let buf =
+             if Cstruct.(equal empty acc)
+             then recv_buffer
+             else Cstruct.append acc recv_buffer
+           in
+           match Pure.parse_response state buf with
+           | Ok `Data x ->
+             update_cache (`Entry (Rr_map.B (query_type, x)));
+             Ok x |> Transport.lift
+           | Ok ((`No_data _ | `No_domain _) as nodom) ->
+             update_cache nodom;
+             Error nodom |> Transport.lift
+           | Error `Msg xxx -> Error (`Msg xxx) |> Transport.lift
+           | Ok `Partial when proto = `TCP -> recv_loop buf
+           | Ok `Partial -> Error (`Msg "Truncated UDP response") |> Transport.lift
+         in recv_loop Cstruct.empty) >>= fun r ->
+        Transport.close socket >>= fun () ->
+        Transport.lift r
 
   let lift_cache_error m =
     (match m with
