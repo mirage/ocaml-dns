@@ -1,3 +1,9 @@
+### v4.4.1 (2020-03-29)
+
+* client: treat '*.localhost' and '*.invalid' special, as specified in RFC 6761
+  and let-localhost-be-localhost. #221 @hannesm, review by @cfcs (who reported
+  #220, original report roburio/openvpn#28)
+
 ### v4.4.0 (2020-03-13)
 
 * dns-stub, a new opam package, is a stub resolver #209 @hannesm, review by
