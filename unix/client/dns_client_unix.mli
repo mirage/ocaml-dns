@@ -3,10 +3,12 @@
 *)
 
 
-(** A flow module based on blocking I/O on top of the Unix socket API. *)
+(** A flow module based on blocking I/O on top of the Unix socket API.
+
+    TODO: Implement the connect timeout.
+*)
 module Transport : Dns_client.S
-  with type flow = Unix.file_descr
-   and type io_addr = Unix.inet_addr * int
+  with type io_addr = Unix.inet_addr * int
    and type stack = unit
    and type +'a io = 'a
 

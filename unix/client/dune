@@ -2,7 +2,7 @@
   (name        dns_client_unix)
   (modules     dns_client_unix)
   (public_name dns-client.unix)
-  (libraries   domain-name ipaddr dns-client rresult unix)
+  (libraries   domain-name ipaddr dns-client rresult unix mtime.clock.os mirage-crypto-rng.unix)
   (wrapped     false))
 
 (executable

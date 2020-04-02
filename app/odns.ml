@@ -33,9 +33,8 @@ let ns ip is_udp = match ip with
   | Some ip -> if is_udp then Some (`UDP, ip) else Some (`TCP, ip)
 
 let do_a nameserver is_udp domains _ =
-  let clock = Mtime_clock.elapsed_ns in
   let nameserver = ns nameserver is_udp in
-  let t = Dns_client_lwt.create ?nameserver ~clock () in
+  let t = Dns_client_lwt.create ?nameserver () in
   let (_, (ns_ip, _)) = Dns_client_lwt.nameserver t in
   Logs.info (fun m -> m "querying NS %s for A records of %a"
                 (Unix.string_of_inet_addr ns_ip)
@@ -65,9 +64,8 @@ let for_all_domains nameserver is_udp ~domains typ f =
   (* [for_all_domains] is a utility function that lets us avoid duplicating
      this block of code in all the subcommands.
      We leave {!do_a} simple to provide a more readable example. *)
-  let clock = Mtime_clock.elapsed_ns in
   let nameserver = ns nameserver is_udp in
-  let t = Dns_client_lwt.create ?nameserver ~clock () in
+  let t = Dns_client_lwt.create ?nameserver () in
   let _, (ns_ip, _) = Dns_client_lwt.nameserver t in
   Logs.info (fun m -> m "NS: %s" @@ Unix.string_of_inet_addr ns_ip);
   let open Lwt in

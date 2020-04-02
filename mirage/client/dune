@@ -1,5 +1,5 @@
 (library
   (name        dns_client_mirage)
   (public_name dns-client.mirage)
-  (libraries   domain-name ipaddr mirage-random mirage-stack mirage-clock dns-client)
+  (libraries   domain-name ipaddr mirage-random mirage-time mirage-stack mirage-clock dns-client)
   (wrapped     false))

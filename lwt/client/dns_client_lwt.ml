@@ -1,58 +1,64 @@
-(* {!Transport} provides the implementation of the underlying flow
-   that is in turn used by {!Dns_client.Make} to provide the
-   Lwt convenience module
-*)
-
 open Lwt.Infix
 
 module Transport : Dns_client.S
-  with type flow = Lwt_unix.file_descr
- and type io_addr = Lwt_unix.inet_addr * int
+ with type io_addr = Lwt_unix.inet_addr * int
  and type +'a io = 'a Lwt.t
  and type stack = unit
 = struct
   type io_addr = Lwt_unix.inet_addr * int
-  type flow = Lwt_unix.file_descr
   type ns_addr = [`TCP | `UDP] * io_addr
   type +'a io = 'a Lwt.t
   type stack = unit
   type t = {
-    rng : (int -> Cstruct.t) ;
     nameserver : ns_addr ;
+    timeout_ns : int64 ;
   }
+  type context = { t : t ; fd : Lwt_unix.file_descr ; timeout_ns : int64 ref }
 
   let create
-    ?(rng = Dns_client.stdlib_random)
-    ?(nameserver = `TCP, (Unix.inet_addr_of_string Dns_client.default_resolver, 53)) () =
-    { rng ; nameserver }
+    ?(nameserver = `TCP, (Unix.inet_addr_of_string Dns_client.default_resolver, 53))
+    ~timeout () =
+    Mirage_crypto_rng_unix.initialize ();
+    { nameserver ; timeout_ns = timeout }
 
   let nameserver { nameserver ; _ } = nameserver
-  let rng { rng ; _ } = rng
+  let rng = Mirage_crypto_rng.generate ?g:None
+  let clock = Mtime_clock.elapsed_ns
 
-  let close socket =
-    Lwt.catch (fun () -> Lwt_unix.close socket) (fun _ -> Lwt.return_unit)
+  let with_timeout ctx f =
+    let timeout = Lwt_unix.sleep (Duration.to_f !(ctx.timeout_ns)) >|= fun () -> Error (`Msg "DNS request timeout") in
+    let start = clock () in
+    Lwt.pick [ f ; timeout ] >|= fun result ->
+    let stop = clock () in
+    ctx.timeout_ns := Int64.sub !(ctx.timeout_ns) (Int64.sub stop start);
+    result
 
-  let send socket tx =
+  let close { fd ; _ } =
+    Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
+
+  let send ctx tx =
     let open Lwt in
     Lwt.catch (fun () ->
-      Lwt_unix.send socket (Cstruct.to_bytes tx) 0
+      with_timeout ctx
+      (Lwt_unix.send ctx.fd (Cstruct.to_bytes tx) 0
         (Cstruct.len tx) [] >>= fun res ->
       if res <> Cstruct.len tx then
         Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
       else
-        Lwt_result.return ())
+        Lwt_result.return ()))
      (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
 
-  let recv socket =
+  let recv ctx =
     let open Lwt in
     let recv_buffer = Bytes.make 2048 '\000' in
     Lwt.catch (fun () ->
-      Lwt_unix.recv socket recv_buffer 0 (Bytes.length recv_buffer) []
-      >>= fun read_len ->
-      if read_len > 0 then
-        Lwt_result.return (Cstruct.of_bytes ~len:read_len recv_buffer)
-      else
-        Lwt_result.fail (`Msg "Empty response"))
+      with_timeout ctx
+        (Lwt_unix.recv ctx.fd recv_buffer 0 (Bytes.length recv_buffer) []
+        >>= fun read_len ->
+        if read_len > 0 then
+          Lwt_result.return (Cstruct.of_bytes ~len:read_len recv_buffer)
+        else
+          Lwt_result.fail (`Msg "Empty response")))
     (fun e -> Lwt_result.fail (`Msg (Printexc.to_string e)))
 
   let bind = Lwt.bind
@@ -73,11 +79,16 @@ module Transport : Dns_client.S
         end >>= fun (proto_number, socket_type) ->
         let socket = Lwt_unix.socket PF_INET socket_type proto_number in
         let addr = Lwt_unix.ADDR_INET (server, port) in
+        let ctx = { t ; fd = socket ; timeout_ns = ref t.timeout_ns } in
         Lwt.catch (fun () ->
-            Lwt_unix.connect socket addr >|= fun () ->
-            Ok socket)
+            (* SO_RCVTIMEO does not work in Lwt: it results in an EAGAIN, which
+               is handled by re-queuing the event *)
+            with_timeout ctx
+              (Lwt_unix.connect socket addr >|= fun () -> Ok ()) >>= function
+              | Ok () -> Lwt_result.return ctx
+              | Error e -> close ctx >|= fun () -> Error e)
           (fun e ->
-             close socket >|= fun () ->
+             close ctx >|= fun () ->
              Error (`Msg (Printexc.to_string e))))
       (fun e ->
          Lwt_result.fail (`Msg (Printexc.to_string e)))
