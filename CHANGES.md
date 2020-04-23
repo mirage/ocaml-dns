@@ -1,3 +1,11 @@
+### v4.5.0 (2020-04-23)
+
+* client: add timeout for DNS requests (defaults to 5 seconds, as in resolv.h).
+* dns-client-mirage functor requires a Mirage_time.S implementation (changes API).
+  Update your code as in this commit:
+  https://github.com/roburio/unikernels/commit/201e980f458ebb515298392227294e7b508a1009
+  #223 @linse @hannesm, review by @cfcs
+
 ### v4.4.1 (2020-03-29)
 
 * client: treat '*.localhost' and '*.invalid' special, as specified in RFC 6761
