@@ -135,33 +135,27 @@ module Pure = struct
 
 end
 
-
-let stdlib_random n =
-  let b = Cstruct.create n in
-  for i = 0 to pred n do
-    Cstruct.set_uint8 b i (Random.int 256)
-  done;
-  b
-
+(* Anycast address of uncensoreddns.org *)
 let default_resolver = "91.239.100.100"
 
 module type S = sig
-  type flow
+  type context
   type +'a io
   type io_addr
   type ns_addr = ([`TCP | `UDP]) * io_addr
   type stack
   type t
 
-  val create : ?rng:(int -> Cstruct.t) -> ?nameserver:ns_addr -> stack -> t
+  val create : ?nameserver:ns_addr -> timeout:int64 -> stack -> t
 
   val nameserver : t -> ns_addr
-  val rng : t -> (int -> Cstruct.t)
+  val rng : int -> Cstruct.t
+  val clock : unit -> int64
 
-  val connect : ?nameserver:ns_addr -> t -> (flow, [> `Msg of string ]) result io
-  val send : flow -> Cstruct.t -> (unit, [> `Msg of string ]) result io
-  val recv : flow -> (Cstruct.t, [> `Msg of string ]) result io
-  val close : flow -> unit io
+  val connect : ?nameserver:ns_addr -> t -> (context, [> `Msg of string ]) result io
+  val send : context -> Cstruct.t -> (unit, [> `Msg of string ]) result io
+  val recv : context -> (Cstruct.t, [> `Msg of string ]) result io
+  val close : context -> unit io
 
   val bind : 'a io -> ('a -> 'b io) -> 'b io
   val lift : 'a -> 'a io
@@ -190,14 +184,12 @@ struct
 
   type t = {
     cache : Dns_cache.t ;
-    clock : unit -> int64 ;
     transport : Transport.t ;
   }
 
-  let create ?(size=32) ?rng ?nameserver ~clock stack =
+  let create ?(size=32) ?nameserver ?(timeout = Duration.of_sec 5) stack =
     { cache = Dns_cache.empty size ;
-      clock = clock ;
-      transport = Transport.create ?rng ?nameserver stack
+      transport = Transport.create ?nameserver ~timeout stack
     }
 
   let nameserver { transport; _ } = Transport.nameserver transport
@@ -245,14 +237,14 @@ struct
     | Ok _ as ok -> Transport.lift ok
     | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
     | Error `Msg _ ->
-      match Dns_cache.get t.cache (t.clock ()) domain_name query_type |> lift_ok query_type with
+      match Dns_cache.get t.cache (Transport.clock ()) domain_name query_type |> lift_ok query_type with
       | Ok _ as ok -> Transport.lift ok
       | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
       | Error `Msg _ ->
         let proto, _ = match nameserver with
           | None -> Transport.nameserver t.transport | Some x -> x in
         let tx, state =
-          Pure.make_query (Transport.rng t.transport)
+          Pure.make_query Transport.rng
             (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
         in
         Transport.connect ?nameserver t.transport >>| fun socket ->
@@ -261,7 +253,7 @@ struct
          Logs.debug (fun m -> m "Receiving from NS");
          let update_cache entry =
            let rank = Dns_cache.NonAuthoritativeAnswer in
-           Dns_cache.set t.cache (t.clock ()) domain_name query_type rank entry
+           Dns_cache.set t.cache (Transport.clock ()) domain_name query_type rank entry
          in
          let rec recv_loop acc =
            Transport.recv socket >>| fun recv_buffer ->

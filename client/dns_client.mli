@@ -4,35 +4,28 @@
          better solution presents itself.
 *)
 
-val stdlib_random : int -> Cstruct.t
-(** [stdlib_random len] is a buffer of size [len], filled with random data.
-    This function is used by default (in the Unix and Lwt implementations) for
-    filling the ID field of the DNS packet. Internally, the {!Random} module
-    from the OCaml standard library is used, which is not cryptographically
-    secure. If desired {!Nocrypto.Rng.generate} can be passed to {!S.create}. *)
-
 val default_resolver : string
 (** [default_resolver] is the IPv4 address in dotted-decimal form of the default
     resolver. Currently it is the IP address of the UncensoredDNS.org anycast
     service. *)
 
 module type S = sig
-  type flow
-  (** A flow is a network connection initialized by {!T.connect} *)
+  type context
+  (** A context is a network connection initialized by {!T.connect} *)
 
   type +'a io
   (** [io] is the type of an effect. ['err] is a polymorphic variant. *)
 
   type io_addr
-  (** An address for a given flow type, usually this will consist of
-      IP address + a TCP/IP or UDP/IP port number, but for some flow types
+  (** An address for a given context type, usually this will consist of
+      IP address + a TCP/IP or UDP/IP port number, but for some context types
       it can carry additional information for purposes of cryptographic
       verification. TODO at least that would be nice in the future. TODO
   *)
 
   type ns_addr = [ `TCP | `UDP] * io_addr
   (** TODO well this is kind of crude; it's a tuple to prevent having
-      to do endless amounts of currying things when implementing flow types,
+      to do endless amounts of currying things when implementing context types,
       and we need to know the protocol used so we can prefix packets for
       DNS-over-TCP and set correct socket options etc. therefore we can't
       just use the opaque [io_addr].
@@ -44,28 +37,33 @@ module type S = sig
   type t
   (** The abstract state of a DNS client. *)
 
-  val create : ?rng:(int -> Cstruct.t) -> ?nameserver:ns_addr -> stack -> t
-  (** [create ~rng ~nameserver stack] creates the state record of the DNS client. *)
+  val create : ?nameserver:ns_addr -> timeout:int64 -> stack -> t
+  (** [create ~nameserver ~timeout stack] creates the state record of the DNS
+      client. We use [timeout] (ns) as a cumulative time budget for connect
+      and request timeouts. *)
 
   val nameserver : t -> ns_addr
   (** The address of a nameserver that is supposed to work with
-      the underlying flow, can be used if the user does not want to
+      the underlying context, can be used if the user does not want to
       bother with configuring their own.*)
 
-  val rng : t -> (int -> Cstruct.t)
+  val rng : int -> Cstruct.t
   (** [rng t] is a random number generator. *)
 
-  val connect : ?nameserver:ns_addr -> t -> (flow, [> `Msg of string ]) result io
-  (** [connect addr] is a new connection ([flow]) to [addr], or an error. *)
+  val clock : unit -> int64
+  (** [clock t] is the monotonic clock. *)
 
-  val send : flow -> Cstruct.t -> (unit, [> `Msg of string ]) result io
-  (** [send flow buffer] sends [buffer] to the [flow] upstream.*)
+  val connect : ?nameserver:ns_addr -> t -> (context, [> `Msg of string ]) result io
+  (** [connect addr] is a new connection ([context]) to [addr], or an error. *)
 
-  val recv : flow -> (Cstruct.t, [> `Msg of string ]) result io
-  (** [recv flow] tries to read a [buffer] from the [flow] downstream.*)
+  val send : context -> Cstruct.t -> (unit, [> `Msg of string ]) result io
+  (** [send context buffer] sends [buffer] to the [context] upstream.*)
 
-  val close : flow -> unit io
-  (** [close flow] closes the [flow], freeing up resources. *)
+  val recv : context -> (Cstruct.t, [> `Msg of string ]) result io
+  (** [recv context] tries to read a [buffer] from the [context] downstream.*)
+
+  val close : context -> unit io
+  (** [close context] closes the [context], freeing up resources. *)
 
   val bind : 'a io -> ('a -> 'b io) -> 'b io
   (** a.k.a. [>>=] *)
@@ -78,8 +76,11 @@ sig
 
   type t
 
-  val create : ?size:int -> ?rng:(int -> Cstruct.t) -> ?nameserver:T.ns_addr -> clock:(unit -> int64) -> T.stack -> t
-  (** [create ~size ~rng ~nameserver ~clock stack] creates the state of the DNS client. *)
+  val create : ?size:int -> ?nameserver:T.ns_addr -> ?timeout:int64 -> T.stack -> t
+  (** [create ~size ~nameserver ~timeout stack] creates the state of the DNS client.
+      We use [timeout] (ns, default 3s) as a time budget for connect and request timeouts.
+      To specify a timeout, use [create ~timeout:(Duration.of_sec 5)].
+      *)
 
   val nameserver : t -> T.ns_addr
   (** [nameserver state] returns the default nameserver to be used. *)

@@ -6,7 +6,7 @@ open Dns
 let src = Logs.Src.create "dns_stub_mirage" ~doc:"effectful DNS stub layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4) = struct
+module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4) = struct
 
   (* data in the wild:
      - a request comes in hdr, q
@@ -77,23 +77,31 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
       type +'a io = 'a Lwt.t
 
       type t = {
-        rng : (int -> Cstruct.t) ;
         nameserver : ns_addr ;
+        timeout_ns : int64 ;
         stack : stack ;
         mutable flow : S.TCPV4.flow option ;
         mutable requests : (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t IM.t ;
       }
-      type flow = { t : t ; mutable id : int }
+      type context = { t : t ; timeout_ns : int64 ref ; mutable id : int }
 
       let create
-          ?rng
           ?(nameserver = `TCP, (Ipaddr.V4.of_string_exn Dns_client.default_resolver, 53))
+          ~timeout
           stack =
-        let rng = match rng with None -> R.generate ?g:None | Some x -> x in
-        { rng ; nameserver ; stack ; flow = None ; requests = IM.empty }
+        { nameserver ; timeout_ns = timeout ; stack ; flow = None ; requests = IM.empty }
 
       let nameserver { nameserver ; _ } = nameserver
-      let rng { rng ; _ } = rng
+      let rng = R.generate ?g:None
+      let clock = C.elapsed_ns
+
+      let with_timeout time_left f =
+        let timeout = T.sleep_ns !time_left >|= fun () -> Error (`Msg "DNS request timeout") in
+        let start = clock () in
+        Lwt.pick [ f ; timeout ] >|= fun result ->
+        let stop = clock () in
+        time_left := Int64.sub !time_left (Int64.sub stop start);
+        result
 
       let bind = Lwt.bind
       let lift = Lwt.return
@@ -142,10 +150,11 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
 
       let connect ?nameserver:ns t =
         match t.flow with
-        | Some _ -> Lwt.return (Ok ({ t ; id = 0 }))
+        | Some _ -> Lwt.return (Ok ({ t ; timeout_ns = ref t.timeout_ns ; id = 0 }))
         | None ->
           let _proto, addr = match ns with None -> nameserver t | Some x -> x in
-          S.TCPV4.create_connection (S.tcpv4 t.stack) addr >|= function
+          let time_left = ref t.timeout_ns in
+          with_timeout time_left (S.TCPV4.create_connection (S.tcpv4 t.stack) addr >|= function
           | Error e ->
             Log.err (fun m -> m "error connecting to nameserver %a"
                         S.TCPV4.pp_error e) ;
@@ -154,40 +163,37 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MC
             metrics `Recursive_connections;
             Lwt.async (fun () -> read_loop t flow);
             t.flow <- Some flow;
-            Ok ({ t ; id = 0 })
+            Ok ({ t ; timeout_ns = time_left ; id = 0 }))
 
       let close _f =
         (* ignoring this here *)
         Lwt.return_unit
 
-      let recv { t ; id } =
+      let recv { t ; timeout_ns ; id } =
         let cond = Lwt_condition.create () in
         t.requests <- IM.add id cond t.requests;
-        Lwt_condition.wait cond >|= fun data ->
+        with_timeout timeout_ns (Lwt_condition.wait cond) >|= fun data ->
         t.requests <- IM.remove id t.requests;
         match data with
         | Ok cs -> Ok cs
         | Error `Msg m -> Error (`Msg m)
 
-      let send f s =
-        match f.t.flow with
+      let send ({ t ; timeout_ns ; _ } as f) s =
+        match t.flow with
         | None -> Lwt.return (Error (`Msg "no connection to resolver"))
         | Some flow ->
           let id = Cstruct.BE.get_uint16 s 2 in
           f.id <- id;
-          S.TCPV4.write flow s >>= function
+          with_timeout timeout_ns (S.TCPV4.write flow s >>= function
           | Error e ->
-            f.t.flow <- None;
+            t.flow <- None;
             Lwt.return (Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e)))
           | Ok () ->
             metrics `Recursive_queries;
-            Lwt.return (Ok ())
+            Lwt.return (Ok ()))
     end
 
     include Dns_client.Make(Transport)
-
-    let create ?size ?nameserver stack =
-      create ?size ~rng:R.generate ?nameserver ~clock:C.elapsed_ns stack
   end
 
   (* likely this should contain:
