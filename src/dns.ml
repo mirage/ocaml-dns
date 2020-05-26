@@ -223,6 +223,19 @@ module Name = struct
       Cstruct.set_uint8 buf off 0 ;
       succ off
     in
+    let maybe_insert_label name off names =
+      (* do not add label to our map if it'd overflow the pointer (14 bit) *)
+      if off < 1 lsl 14 then
+        Domain_name.Map.add name off names
+      else
+        names
+    and name_remainder arr l off =
+      let last = Array.get arr (pred l)
+      and rem = Array.sub arr 0 (pred l)
+      in
+      let l = encode_lbl last off in
+      l, Domain_name.of_array rem
+    in
     let names, off =
       if compress then
         let rec one names off name =
@@ -233,12 +246,8 @@ module Name = struct
           else
             match Domain_name.Map.find name names with
             | None ->
-              let last = Array.get arr (pred l)
-              and rem = Array.sub arr 0 (pred l)
-              in
-              let l = encode_lbl last off in
-              one (Domain_name.Map.add name off names) l
-                (Domain_name.of_array rem)
+              let l, rem = name_remainder arr l off in
+              one (maybe_insert_label name off names) l rem
             | Some ptr ->
               let data = ptr_tag lsl 8 + ptr in
               Cstruct.BE.set_uint16 buf off data ;
@@ -252,12 +261,8 @@ module Name = struct
           if l = 0 then
             names, z off
           else
-            let last = Array.get arr (pred l)
-            and rem = Array.sub arr 0 (pred l)
-            in
-            let l = encode_lbl last off in
-            one (Domain_name.Map.add name off names) l
-              (Domain_name.of_array rem)
+            let l, rem = name_remainder arr l off in
+            one (maybe_insert_label name off names) l rem
         in
         one names off name
     in
