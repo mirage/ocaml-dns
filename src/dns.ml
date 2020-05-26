@@ -551,7 +551,7 @@ module Cname = struct
 
   let compare = Domain_name.compare
 
-  let decode names buf ~off ~len:_= Name.decode names buf ~off
+  let decode names buf ~off ~len:_ = Name.decode names buf ~off
 
   let encode = Name.encode
 end
@@ -2387,7 +2387,6 @@ module Packet = struct
       Rr_map.encode_ntc names buf off (name, (typ :> Rr_map.rrtyp), Class.to_int Class.IN)
   end
 
-
   let encode_data map names buf off =
     Domain_name.Map.fold (fun name rrmap acc ->
         Rr_map.fold (fun (Rr_map.B (k, v)) ((names, off), count) ->
@@ -2564,14 +2563,41 @@ module Packet = struct
       | _ -> Error (`Malformed (off, "AXFR first RR in answer must be SOA"))
 
     let encode names buf off question (soa, entries) =
-      (* TODO if this would truncate, should create another packet --
-         how does this interact with TSIG, is each individual packet signed? *)
       (* serialise: SOA .. other data .. SOA *)
       let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
       let (names, off), count = encode_data entries names buf off in
       let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
       Cstruct.BE.set_uint16 buf 6 (count + 2) ;
       names, off
+
+    let encode_reply next_buffer max_size question (soa, entries) =
+      (* first packet MUST contain SOA *)
+      let names, buf, off = next_buffer () in
+      let (names, off), count = Rr_map.encode (fst question) Soa soa names buf off in
+      let rec encode_or_allocate acc count (names, buf, off) name k v =
+        try
+          let (names, off'), count' = Rr_map.encode name k v names buf off in
+          if off' > max_size then
+            invalid_arg "foo"
+          else
+            acc, count + count', (names, buf, off')
+        with
+        | Invalid_argument _ ->
+          (* TODO if rrset (v) has multiple elements, split it and attempt encoding *)
+          if count = 0 then invalid_arg "no progress has been done";
+          Cstruct.BE.set_uint16 buf 6 count;
+          encode_or_allocate (Cstruct.sub buf 0 off :: acc) 0 (next_buffer ()) name k v
+      in
+      let r, count, (names, buf, off) =
+        Domain_name.Map.fold (fun name rrmap acc ->
+            Rr_map.fold (fun (Rr_map.B (k, v)) (bufs, count, r) ->
+                encode_or_allocate bufs count r name k v)
+              rrmap acc)
+          entries ([], count, (names, buf, off))
+      in
+      let r, count, (_names, buf, off) = encode_or_allocate r count (names, buf, off) (fst question) Soa soa in
+      Cstruct.BE.set_uint16 buf 6 count ;
+      List.rev (Cstruct.sub buf 0 off :: r)
   end
 
   module Ixfr = struct
@@ -3316,6 +3342,34 @@ module Packet = struct
           doit next
     in
     doit (min max 4000) (* (mainly for TCP) we use a page as initial allocation *)
+
+  let encode_axfr_reply ?max_size needed_for_tsig protocol t data =
+    let query = false in
+    let max, _edns = size_edns max_size t.edns protocol query in
+    let max_size = max - needed_for_tsig in
+    assert (max_size > 0);
+    (* strategy:
+       - fill packets up to max - needed_for_tsig
+       - when encoding fails (i.e. off > allowed_size):
+         - allocate a fresh buffer
+         - encode header and question
+         - restart with the RR
+       - skip EDNS reply and additional section for now
+    *)
+    let opcode = opcode_data t.data
+    and rcode = rcode_data t.data
+    in
+    let new_buffer () =
+      (* we always embed a question in the AXFR reply (this is optional according to RFC) *)
+      let buf = Cstruct.create max in
+      Header.encode buf (t.header, query, opcode, rcode);
+      let names, off = Question.encode Domain_name.Map.empty buf Header.len t.question in
+      Cstruct.BE.set_uint16 buf 4 1 ;
+      names, buf, off
+    in
+    Axfr.encode_reply new_buffer max_size t.question data, max
+    (* let (_names, off), adcount = encode_data t.additional names buf off in *)
+    (* encode_edns Rcode.NoError edns buf off, false *)
 
   let raw_error buf rcode =
     (* copy id from header, retain opcode, set rcode to ServFail

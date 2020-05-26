@@ -1056,9 +1056,10 @@ module Primary = struct
                    Rcode.pp rcode Ipaddr.V4.pp ip Cstruct.hexdump_pp buf
                    Fmt.(option ~none:(unit "no") Cstruct.hexdump_pp) answer);
       tx_metrics (`Rcode_error (rcode, Opcode.Query, None));
+      let answer = match answer with None -> [] | Some err -> [ err ] in
       t, answer, [], None, None
     | Ok p ->
-      let handle_inner keyname =
+      let handle_inner tsig_size keyname =
         let t, answer, out, notify =
           handle_packet t now ts proto ip port p keyname
         in
@@ -1066,9 +1067,14 @@ module Primary = struct
           | Some answer ->
             let max_size, edns = Edns.reply p.edns in
             let answer = Packet.with_edns answer edns in
-            (* be aware, this may be truncated... here AXFR gets assembled! *)
             tx_metrics answer.Packet.data;
-            let r = Packet.encode ?max_size proto answer in
+            let r = match answer.Packet.data with
+              | `Axfr_reply data ->
+                Packet.encode_axfr_reply ?max_size tsig_size proto answer data
+              | _ ->
+                let cs, max_size = Packet.encode ?max_size proto answer in
+                [ cs ], max_size
+            in
             Some (answer, r)
           | None -> None
         in
@@ -1082,12 +1088,13 @@ module Primary = struct
       match handle_tsig ?mac server now p buf with
       | Error (e, data) ->
         Log.err (fun m -> m "error %a while handling tsig" Tsig_op.pp_e e);
-        t, data, [], None, None
+        let answer = match data with None -> [] | Some err -> [ err ] in
+        t, answer, [], None, None
       | Ok None ->
-        let t, answer, out, notify = handle_inner None in
+        let t, answer, out, notify = handle_inner 0 None in
         let answer' = match answer with
-          | None -> None
-          | Some (_, (cs, _)) -> Some cs
+          | None -> []
+          | Some (_, (ds, _)) -> ds
         in
         t, answer', out, notify, None
       | Ok (Some (name, tsig, mac, key)) ->
@@ -1096,17 +1103,25 @@ module Primary = struct
           | Some `Keep -> Some `Keep
           | None -> None
         in
-        let t', answer, out, notify = handle_inner (Some name) in
+        let tsig_size =
+          let dl d = String.length (Domain_name.to_string d) + 2 in
+          dl name (* key name *) + 10 (* type class ttl rdlen *) +
+          16 (* base tsig *) + Cstruct.len tsig.Tsig.mac +
+          dl (Tsig.algorithm_to_name tsig.Tsig.algorithm) (* algo name *)
+        in
+        let t', answer, out, notify = handle_inner tsig_size (Some name) in
         let answer' = match answer with
-          | None -> None
-          | Some (answer, (buf, max_size)) ->
-            match server.tsig_sign ~max_size ~mac name tsig ~key answer buf with
-            | None ->
-              Log.warn (fun m -> m "couldn't use %a to tsig sign"
-                           Domain_name.pp name);
-              (* TODO - better send back unsigned answer? or an error? *)
-              None
-            | Some (buf, _) -> Some buf
+          | None -> []
+          | Some (answer, (ds, max_size)) ->
+            List.fold_left (fun acc buf ->
+                match server.tsig_sign ~max_size ~mac name tsig ~key answer buf with
+                | None ->
+                  Log.warn (fun m -> m "couldn't use %a to tsig sign"
+                               Domain_name.pp name);
+                  (* TODO - better send back unsigned answer? or an error? *)
+                  acc
+                | Some (buf, _) -> buf :: acc)
+              [] ds |> List.rev
         in
         t', answer', out, n notify, Some name
 

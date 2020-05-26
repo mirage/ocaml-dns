@@ -103,7 +103,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
           inc `Tcp_query;
           let now = Ptime.v (P.now_d_ps ()) in
           let ts = M.elapsed_ns () in
-          let t, answer, notify, n, key =
+          let t, answers, notify, n, key =
             Dns_server.Primary.handle_buf !state now ts `Tcp ip port data
           in
           let n' = match n with
@@ -114,13 +114,10 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
           in
           maybe_update_state key ip t >>= fun () ->
           maybe_notify recv_task t now ts n' >>= fun () ->
-          (match answer with
-           | None -> Lwt.return_unit
-           | Some answer ->
-             inc `Tcp_answer;
-             Dns.send_tcp flow answer >|= function
-             | Ok () -> ()
-             | Error () -> drop ip) >>= fun () ->
+          if answers <> [] then inc `Tcp_answer;
+          (Dns.send_tcp_multiple flow answers >|= function
+            | Ok () -> ()
+            | Error () -> drop ip) >>= fun () ->
           Lwt_list.iter_p (send_notify recv_task) notify >>= fun () ->
           loop ()
       in
@@ -139,7 +136,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
       inc `Udp_query;
       let now = Ptime.v (P.now_d_ps ()) in
       let ts = M.elapsed_ns () in
-      let t, answer, notify, n, key =
+      let t, answers, notify, n, key =
         Dns_server.Primary.handle_buf !state now ts `Udp src src_port buf
       in
       let n' = match n with
@@ -149,11 +146,8 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
       in
       maybe_update_state key src t >>= fun () ->
       maybe_notify recv_task t now ts n' >>= fun () ->
-      (match answer with
-       | None -> Lwt.return_unit
-       | Some answer ->
-         inc `Udp_answer;
-         Dns.send_udp stack port src src_port answer) >>= fun () ->
+      if answers <> [] then inc `Udp_answer;
+      (Lwt_list.iter_s (Dns.send_udp stack port src src_port) answers) >>= fun () ->
       Lwt_list.iter_p (send_notify recv_task) notify
     in
     S.listen_udpv4 stack ~port udp_cb ;

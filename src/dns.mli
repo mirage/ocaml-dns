@@ -1093,6 +1093,13 @@ module Packet : sig
      [protocol]) is reached, the truncation flag is set. The last component of
      the result is the maximum size. *)
 
+  val encode_axfr_reply : ?max_size:int -> int -> proto -> t -> Axfr.t ->
+    Cstruct.t list * int
+  (** [encode_axfr_reply ~max_size tsig_size protocol t axfr] encodes the [axfr]
+      into a list of buffers to be sent out (each with at least [tsig_size]
+      space for a tsig signature. The second component of the result is the
+      maximum size (dependent on [max_size] and [protocol]). *)
+
   val raw_error : Cstruct.t -> Rcode.t -> Cstruct.t option
   (** [raw_error cs rcode] is an error reply with [rcode] to [cs], or None if
      [cs] is already a reply. *)
