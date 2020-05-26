@@ -2683,8 +2683,14 @@ module Packet = struct
 
     let encode_reply next_buffer max_size question (soa, entries) =
       (* first packet MUST contain SOA *)
+      let finish buf count off =
+        Cstruct.BE.set_uint16 buf 6 count;
+        Cstruct.sub buf 0 off
+      in
       let names, buf, off = next_buffer () in
-      let (names, off), count = Rr_map.encode (fst question) Soa soa names buf off in
+      let (names, off), count =
+        Rr_map.encode (fst question) Soa soa names buf off
+      in
       let rec encode_or_allocate acc count (names, buf, off) name k v =
         try
           let (names, off'), count' = Rr_map.encode name k v names buf off in
@@ -2701,12 +2707,11 @@ module Packet = struct
               let acc, count, (_, buf, off) =
                 encode_or_allocate acc 0 (names, buf, off) name k v
               in
-              Cstruct.BE.set_uint16 buf 6 count;
-              encode_or_allocate (Cstruct.sub buf 0 off :: acc) 0 (next_buffer ()) name k v'
-          else begin
-            Cstruct.BE.set_uint16 buf 6 count;
-            encode_or_allocate (Cstruct.sub buf 0 off :: acc) 0 (next_buffer ()) name k v
-          end
+              let buf' = finish buf count off in
+              encode_or_allocate (buf' :: acc) 0 (next_buffer ()) name k v'
+          else
+            let buf' = finish buf count off in
+            encode_or_allocate (buf' :: acc) 0 (next_buffer ()) name k v
       in
       let r, count, (names, buf, off) =
         Domain_name.Map.fold (fun name rrmap acc ->
@@ -2715,9 +2720,11 @@ module Packet = struct
               rrmap acc)
           entries ([], count, (names, buf, off))
       in
-      let r, count, (_names, buf, off) = encode_or_allocate r count (names, buf, off) (fst question) Soa soa in
-      Cstruct.BE.set_uint16 buf 6 count ;
-      List.rev (Cstruct.sub buf 0 off :: r)
+      let r, count, (_names, buf, off) =
+        encode_or_allocate r count (names, buf, off) (fst question) Soa soa
+      in
+      let buf' = finish buf count off in
+      List.rev (buf' :: r)
   end
 
   module Ixfr = struct
