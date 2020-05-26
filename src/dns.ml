@@ -1984,6 +1984,90 @@ module Rr_map = struct
     | Sshfp, (_, sshfps) -> B (k, (ttl, sshfps))
     | Unknown _, (_, datas) -> B (k, (ttl, datas))
 
+  let split : type a. a key -> a -> a * a option = fun k v ->
+    match k, v with
+    | Cname, (ttl, cname) ->
+      (ttl, cname), None
+    | Mx, (ttl, mxs) ->
+      let one = Mx_set.choose mxs in
+      let rest = Mx_set.remove one mxs in
+      let rest' =
+        if Mx_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Mx_set.singleton one), rest'
+    | Ns, (ttl, ns) ->
+      let one = Domain_name.Host_set.choose ns in
+      let rest = Domain_name.Host_set.remove one ns in
+      let rest' =
+        if Domain_name.Host_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Domain_name.Host_set.singleton one), rest'
+    | Ptr, (ttl, ptr) -> (ttl, ptr), None
+    | Soa, soa -> soa, None
+    | Txt, (ttl, txts) ->
+      let one = Txt_set.choose txts in
+      let rest = Txt_set.remove one txts in
+      let rest' =
+        if Txt_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Txt_set.singleton one), rest'
+    | A, (ttl, ips) ->
+      let one = Ipv4_set.choose ips in
+      let rest = Ipv4_set.remove one ips in
+      let rest' =
+        if Ipv4_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Ipv4_set.singleton one), rest'
+    | Aaaa, (ttl, ips) ->
+      let one = Ipv6_set.choose ips in
+      let rest = Ipv6_set.remove one ips in
+      let rest' =
+        if Ipv6_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Ipv6_set.singleton one), rest'
+    | Srv, (ttl, srvs) ->
+      let one = Srv_set.choose srvs in
+      let rest = Srv_set.remove one srvs in
+      let rest' =
+        if Srv_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Srv_set.singleton one), rest'
+    | Dnskey, (ttl, keys) ->
+      let one = Dnskey_set.choose keys in
+      let rest = Dnskey_set.remove one keys in
+      let rest' =
+        if Dnskey_set.is_empty keys then None else Some (ttl, rest)
+      in
+      (ttl, Dnskey_set.singleton one), rest'
+    | Caa, (ttl, caas) ->
+      let one = Caa_set.choose caas in
+      let rest = Caa_set.remove one caas in
+      let rest' =
+        if Caa_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Caa_set.singleton one), rest'
+    | Tlsa, (ttl, tlsas) ->
+      let one = Tlsa_set.choose tlsas in
+      let rest = Tlsa_set.remove one tlsas in
+      let rest' =
+        if Tlsa_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Tlsa_set.singleton one), rest'
+    | Sshfp, (ttl, sshfps) ->
+      let one = Sshfp_set.choose sshfps in
+      let rest = Sshfp_set.remove one sshfps in
+      let rest' =
+        if Sshfp_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Sshfp_set.singleton one), rest'
+    | Unknown _, (ttl, datas) ->
+      let one = Txt_set.choose datas in
+      let rest = Txt_set.remove one datas in
+      let rest' =
+        if Txt_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Txt_set.singleton one), rest'
+
   let pp_b ppf (B (k, _)) = ppk ppf (K k)
 
   let names : type a. a key -> a -> Domain_name.Host_set.t = fun k v ->
@@ -2610,10 +2694,19 @@ module Packet = struct
             acc, count + count', (names, buf, off')
         with
         | Invalid_argument _ ->
-          (* TODO if rrset (v) has multiple elements, split it and attempt encoding *)
-          if count = 0 then invalid_arg "no progress has been done";
-          Cstruct.BE.set_uint16 buf 6 count;
-          encode_or_allocate (Cstruct.sub buf 0 off :: acc) 0 (next_buffer ()) name k v
+          if count = 0 then
+            match Rr_map.split k v with
+            | _, None -> invalid_arg "unable to split resource record"
+            | v, Some v' ->
+              let acc, count, (_, buf, off) =
+                encode_or_allocate acc 0 (names, buf, off) name k v
+              in
+              Cstruct.BE.set_uint16 buf 6 count;
+              encode_or_allocate (Cstruct.sub buf 0 off :: acc) 0 (next_buffer ()) name k v'
+          else begin
+            Cstruct.BE.set_uint16 buf 6 count;
+            encode_or_allocate (Cstruct.sub buf 0 off :: acc) 0 (next_buffer ()) name k v
+          end
       in
       let r, count, (names, buf, off) =
         Domain_name.Map.fold (fun name rrmap acc ->
