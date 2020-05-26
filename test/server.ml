@@ -1484,15 +1484,12 @@ module Axfr = struct
       Dns_server.Primary.handle_buf server Ptime.epoch 0L `Tcp Ipaddr.V4.localhost 1234 req
     in
     assert (match keyname' with Some k -> Domain_name.equal k keyname | _ -> false);
-    (match answers with
-     | [ _ ] ->
-       List.iter (fun answer ->
-           match Dns_tsig.decode_and_verify Ptime.epoch key keyname ~mac answer with
-           | Ok _ -> ()
-           | Error e ->
-             Alcotest.fail ("error while verifying " ^ Fmt.to_to_string Dns_tsig.pp_e e))
-         answers;
-     | _ -> (* decode doesn't like AXFR spanning over multiple packages yet *) ());
+    (List.iter (fun answer ->
+         match Dns_tsig.decode_and_verify Ptime.epoch key keyname ~mac answer with
+         | Ok _ -> ()
+         | Error e ->
+           Alcotest.fail ("error while verifying " ^ Fmt.to_to_string Dns_tsig.pp_e e))
+        answers);
     answers
 
   let keyname, key =

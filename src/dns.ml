@@ -2530,37 +2530,51 @@ module Packet = struct
       Soa.compare soa soa' = 0 && Name_rr_map.equal entries entries'
 
     let pp ppf (soa, entries) =
-        Fmt.pf ppf "AXFR soa %a data %a" Soa.pp soa Name_rr_map.pp entries
+      Fmt.pf ppf "AXFR soa %a data %a" Soa.pp soa Name_rr_map.pp entries
 
     let decode (_, flags) buf names off ancount =
       let open Rresult.R.Infix in
       guard (not (Flags.mem `Truncation flags)) `Partial >>= fun () ->
       let empty = Domain_name.Map.empty in
-      (* TODO handle partial AXFR:
-         - only first frame must have the question, subsequent may have empty questions
-         - only first frame starts with SOA
-         - last one ends with SOA *)
-      guard (ancount >= 2)
-        (`Malformed (6, Fmt.strf "AXFR needs at least two RRs in answer %d" ancount)) >>= fun () ->
+      (* TODO handle partial AXFR better:
+         - only first frame must have the question, subsequent frames may have
+           no questions (to be adjusted in Packet.decode)
+      *)
+      (* an AXFR frame can be shaped in several forms:
+         (a) SOA .. RRSets (no SOA) .. SOA -> full Axfr_reply
+         (b) SOA .. RRSets (no SOA) -> `Axfr_partial_reply (`First soa, _)
+         (c) RRSets (no SOA) -> `Axfr_partial_reply (`Mid, _)
+         (d) RRSets (no SOA) .. SOA -> `Axfr_partial_reply (`Last soa, _)
+         please note that a single SOA may either be the first or the last
+         packet, this cannot be decided without further context (it is
+         characterized to be `First in here, but user code needs to handle this)
+      *)
+      guard (ancount >= 1)
+        (`Malformed (6, Fmt.strf "AXFR needs at least one RRs in answer %d" ancount)) >>= fun () ->
       decode_rr names buf off >>= fun (name, B (k, v), names, off) ->
-      (* TODO: verify name == zname in question, also all RR sub of zname *)
-      match k, v with
-      | Soa, soa ->
+      if ancount = 1 then
+        match k, v with
+        | Soa, soa -> Ok (`Axfr_partial_reply (`First (soa : Soa.t), Name_rr_map.empty), names, off)
+        | k, v -> Ok (`Axfr_partial_reply (`Mid, Name_rr_map.singleton name k v), names, off)
+      else (* ancount > 1 *)
+        (* TODO: verify name == zname in question, also all RR sub of zname *)
         let add name (Rr_map.B (k, v)) map = Name_rr_map.add name k v map in
         decode_n add decode_rr names buf off empty (ancount - 2) >>= fun (names, off, answer) ->
         decode_rr names buf off >>= fun (name', B (k', v'), names, off) ->
-        begin
-          match k', v' with
-          | Soa, soa' ->
-            (* TODO: verify that answer does not contain a SOA!? *)
-            guard (Domain_name.equal name name')
-              (`Malformed (off, "AXFR SOA RRs do not use the same name")) >>= fun () ->
-            guard (Soa.compare soa soa' = 0)
-              (`Malformed (off, "AXFR SOA RRs are not equal")) >>| fun () ->
-            ((soa, answer) : Soa.t * Name_rr_map.t), names, off
-          | _ -> Error (`Malformed (off, "AXFR last RR in answer must be SOA"))
-        end
-      | _ -> Error (`Malformed (off, "AXFR first RR in answer must be SOA"))
+        (* TODO: verify that answer does not contain a SOA!? *)
+        match k, v, k', v' with
+        | Soa, soa, Soa, soa' ->
+          guard (Domain_name.equal name name')
+            (`Malformed (off, "AXFR SOA RRs do not use the same name")) >>= fun () ->
+          guard (Soa.compare soa soa' = 0)
+            (`Malformed (off, "AXFR SOA RRs are not equal")) >>| fun () ->
+          (`Axfr_reply ((soa, answer) : Soa.t * Name_rr_map.t)), names, off
+        | Soa, soa, k', v' ->
+          Ok (`Axfr_partial_reply (`First (soa : Soa.t), add name' (B (k', v')) answer), names, off)
+        | k, v, Soa, soa ->
+          Ok (`Axfr_partial_reply (`Last (soa : Soa.t), add name (B (k, v)) answer), names, off)
+        | k, v, k', v' ->
+          Ok (`Axfr_partial_reply (`Mid, add name' (B (k', v')) (add name (B (k, v)) answer)), names, off)
 
     let encode names buf off question (soa, entries) =
       (* serialise: SOA .. other data .. SOA *)
@@ -2568,6 +2582,19 @@ module Packet = struct
       let (names, off), count = encode_data entries names buf off in
       let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
       Cstruct.BE.set_uint16 buf 6 (count + 2) ;
+      names, off
+
+    let encode_partial names buf off question pos entries =
+      let (names, off), count = match pos with
+        | `First soa -> Rr_map.encode (fst question) Soa soa names buf off
+        | _ -> (names, off), 0
+      in
+      let (names, off), count' = encode_data entries names buf off in
+      let (names, off), count'' = match pos with
+        | `Last soa -> Rr_map.encode (fst question) Soa soa names buf off
+        | _ -> (names, off), 0
+      in
+      Cstruct.BE.set_uint16 buf 6 (count + count' + count'') ;
       names, off
 
     let encode_reply next_buffer max_size question (soa, entries) =
@@ -2957,6 +2984,7 @@ module Packet = struct
     | `Answer of Answer.t
     | `Notify_ack
     | `Axfr_reply of Axfr.t
+    | `Axfr_partial_reply of [ `First of Soa.t | `Mid | `Last of Soa.t ] * Name_rr_map.t
     | `Ixfr_reply of Ixfr.t
     | `Update_ack
     | `Rcode_error of Rcode.t * Opcode.t * Answer.t option
@@ -2966,6 +2994,13 @@ module Packet = struct
     | `Answer q, `Answer q' -> Answer.equal q q'
     | `Notify_ack, `Notify_ack -> true
     | `Axfr_reply a, `Axfr_reply b -> Axfr.equal a b
+    | `Axfr_partial_reply (x, a), `Axfr_partial_reply (y, b) ->
+      (match x, y with
+       | `First soa, `First soa' -> Soa.compare soa soa' = 0
+       | `Mid, `Mid -> true
+       | `Last soa, `Last soa' -> Soa.compare soa soa' = 0
+       | _ -> false) &&
+      Name_rr_map.equal a b
     | `Ixfr_reply a, `Ixfr_reply b -> Ixfr.equal a b
     | `Update_ack, `Update_ack -> true
     | `Rcode_error (rc, op, q), `Rcode_error (rc', op', q') ->
@@ -2975,6 +3010,13 @@ module Packet = struct
   let pp_reply ppf = function
     | `Answer a -> Answer.pp ppf a
     | `Axfr_reply a -> Axfr.pp ppf a
+    | `Axfr_partial_reply (x, a) ->
+      let pp_pos ppf = function
+        | `First soa -> Fmt.pf ppf "first %a" Soa.pp soa
+        | `Mid -> Fmt.string ppf "middle"
+        | `Last soa -> Fmt.pf ppf "last %a" Soa.pp soa
+      in
+      Fmt.pf ppf "AXFR (partial %a) %a" pp_pos x Name_rr_map.pp a
     | `Ixfr_reply a -> Ixfr.pp ppf a
     | `Notify_ack -> Fmt.string ppf "notify ack"
     | `Update_ack -> Fmt.string ppf "update ack"
@@ -2986,7 +3028,7 @@ module Packet = struct
 
   let opcode_data = function
     | `Query | `Answer _
-    | `Axfr_request | `Axfr_reply _
+    | `Axfr_request | `Axfr_reply _ | `Axfr_partial_reply _
     | `Ixfr_request _ | `Ixfr_reply _ -> Opcode.Query
     | `Notify _ | `Notify_ack -> Notify
     | `Update _ | `Update_ack -> Update
@@ -3178,7 +3220,7 @@ module Packet = struct
                 | `Axfr ->
                   guard (au_count = 0) (`Malformed (8, Fmt.strf "AXFR with aucount %d > 0" au_count)) >>= fun () ->
                   Axfr.decode header buf names off an_count >>| fun (axfr, names, off) ->
-                  `Axfr_reply axfr, names, off, true, false
+                  axfr, names, off, true, false
                 | `Ixfr ->
                   guard (au_count = 0) (`Malformed (8, Fmt.strf "IXFR with aucount %d > 0" au_count)) >>= fun () ->
                   Ixfr.decode header buf names off an_count >>| fun (ixfr, names, off) ->
@@ -3292,6 +3334,7 @@ module Packet = struct
     | `Update u -> Update.encode names buf off question u
     | `Answer q -> Answer.encode names buf off question q
     | `Axfr_reply data -> Axfr.encode names buf off question data
+    | `Axfr_partial_reply (x, data) -> Axfr.encode_partial names buf off question x data
     | `Ixfr_reply data -> Ixfr.encode names buf off question data
     | `Rcode_error (_, _, Some q) -> Answer.encode names buf off question q
 

@@ -979,6 +979,7 @@ module Packet : sig
     | `Answer of Answer.t
     | `Notify_ack
     | `Axfr_reply of Axfr.t
+    | `Axfr_partial_reply of [ `First of Soa.t | `Mid | `Last of Soa.t ] * Name_rr_map.t
     | `Ixfr_reply of Ixfr.t
     | `Update_ack
     | `Rcode_error of Rcode.t * Opcode.t * Answer.t option
