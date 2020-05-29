@@ -8,7 +8,7 @@ let notify zone serial key now =
   and soa =
     { Soa.nameserver = raw_zone ; hostmaster = raw_zone ; serial ;
       refresh = 0l; retry = 0l ; expiry = 0l ; minimum = 0l }
-  and header = Random.int 0xFFFF, Packet.Flags.singleton `Authoritative
+  and header = Randomconv.int16 Mirage_crypto_rng.generate, Packet.Flags.singleton `Authoritative
   in
   let p = Packet.create header question (`Notify (Some soa)) in
   match key with
@@ -20,7 +20,7 @@ let notify zone serial key now =
     | Error e -> Error e
 
 let jump _ serverip port zone key serial =
-  Random.self_init () ;
+  Mirage_crypto_rng_unix.initialize ();
   let now = Ptime_clock.now () in
   Logs.app (fun m -> m "notifying to %a:%d zone %a serial %lu"
                Ipaddr.V4.pp serverip port Domain_name.pp zone serial) ;

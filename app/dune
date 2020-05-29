@@ -17,14 +17,14 @@
   (public_name oupdate)
   (package dns-cli)
   (modules oupdate)
-  (libraries dns dns-tsig dns-cli ptime ptime.clock.os mirage-crypto mirage-crypto-rng.unix))
+  (libraries dns dns-tsig dns-cli ptime ptime.clock.os mirage-crypto mirage-crypto-rng.unix randomconv))
 
 (executable
   (name onotify)
   (public_name onotify)
   (package dns-cli)
   (modules onotify)
-  (libraries dns dns-tsig dns-cli ptime ptime.clock.os mirage-crypto mirage-crypto-rng.unix))
+  (libraries dns dns-tsig dns-cli ptime ptime.clock.os mirage-crypto mirage-crypto-rng.unix randomconv))
 
 (executable
   (name ozone)
@@ -39,4 +39,4 @@
   (modules      odns)
   (package      dns-cli)
   (libraries    dns dns-client.lwt dns-cli cmdliner mtime.clock.os
-                lwt.unix hex rresult))
+                lwt.unix hex rresult mirage-crypto-rng.lwt))

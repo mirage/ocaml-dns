@@ -13,12 +13,12 @@ let create_update zone hostname ip_address =
         ]
     in
     (Domain_name.Map.empty, up)
-  and header = Random.int 0xFFFF, Packet.Flags.empty
+  and header = Randomconv.int16 Mirage_crypto_rng.generate, Packet.Flags.empty
   in
   Packet.create header zone (`Update update)
 
 let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
-  Random.self_init () ;
+  Mirage_crypto_rng_unix.initialize ();
   let now = Ptime_clock.now () in
   Logs.app (fun m -> m "updating to %a:%d zone %a A 600 %a %a"
                Ipaddr.V4.pp serverip port
