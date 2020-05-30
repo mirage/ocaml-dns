@@ -2,6 +2,28 @@
 
 type proto = [ `Tcp | `Udp ]
 
+let max_rdata_length =
+  (* The maximum length of a single resource record data must be limited, such
+     a resource record needs to fit into a DNS message together with some more
+     data (namely question, header, and TSIG). The size of a DNS message is
+     limited by EDNS, which uses the class field (2 byte) for the indication,
+     and the TCP transport requires a 2 byte length prefix.
+
+     so in total it may not exceed 65535 bytes, including:
+     - DNS header
+     - 1 QUESTION
+     - 1 RR
+     - 1 TSIG
+
+     being conservative (name compression = off):
+     - header: ID (2 byte) OP+FLAGS (2 byte), 4 * 2 byte count of question, answer, authority, additional = 12 byte
+     - question: name (max 255 bytes), typ (2 byte), class (2 byte) = 259
+     - RR: name, typ, class, ttl (4 byte), rdlength (2 byte), rdata (this is the size we are interested in) = 265 + x
+     - TSIG being key name, typ, class, ttl, rdlength, 16 bytes (base TSIG struct), algorithm name (atm 13 bytes "hmac-sha512"), mac (64 bytes, sha512) = 358
+     --> 65535 - 894 = 64641 bytes
+  *)
+  64641
+
 let andThen v f = match v with 0 -> f | x -> x
 let opt_eq f a b = match a, b with
   | Some a, Some b -> f a b
@@ -2129,6 +2151,8 @@ module Rr_map = struct
     guard (Int32.logand ttl 0x8000_0000l = 0l)
       (`Malformed (off, Fmt.strf "bad TTL (high bit set) %lu" ttl)) >>= fun () ->
     guard (Cstruct.len buf - rdata_start >= len) `Partial >>= fun () ->
+    guard (len <= max_rdata_length)
+      (`Malformed (off + 4, Fmt.strf "length %d exceeds maximum rdata size" len)) >>= fun () ->
     (match typ with
      | Soa ->
        Soa.decode names buf ~off:rdata_start ~len >>| fun (soa, names, off) ->
