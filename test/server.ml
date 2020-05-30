@@ -1324,10 +1324,216 @@ module A = struct
   ]
 end
 
+module Axfr = struct
+  let buf_axfr_test server axfr_req =
+    let req =
+      let header = 0x1234, Packet.Flags.empty in
+      let res = Packet.create header axfr_req `Axfr_request in
+      fst (Packet.encode `Tcp res)
+    in
+    let _server', answers, _notifies, _notify, _key =
+      Dns_server.Primary.handle_buf server Ptime.epoch 0L `Tcp Ipaddr.V4.localhost 1234 req
+    in
+    answers
+
+  let p_cs = Alcotest.testable Cstruct.hexdump_pp Cstruct.equal
+
+  let axfr_server ?(trie = A.example_trie) () =
+    Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate
+      ~unauthenticated_zone_transfer:true trie
+
+  let axfr_encoding () =
+    let s = axfr_server () in
+    let server = Dns_server.Primary.server s in
+    let axfr = A.soa, A.example_zone in
+    let axfr_req = n_of_s "one.com", `Axfr in
+    Alcotest.(check (result A.axfr_test A.rcode_test) __LOC__ (Ok axfr)
+                (Dns_server.handle_axfr_request server `Tcp None axfr_req));
+    let cs = Cstruct.of_hex {|
+12 34 84 00 00 01 00 09  00 00 00 00 03 6f 6e 65
+03 63 6f 6d 00 00 fc 00  01 c0 0c 00 06 00 01 00
+00 0e 10 00 26 02 6e 73  c0 0c 0a 68 6f 73 74 6d
+61 73 74 65 72 c0 0c 00  00 00 01 00 01 51 80 00
+00 1c 20 00 36 ee 80 00  00 0e 10 c0 0c 00 02 00
+01 00 00 01 2c 00 02 c0  25 c0 0c 00 02 00 01 00
+00 01 2c 00 06 03 6e 73  32 c0 0c c0 0c 00 02 00
+01 00 00 01 2c 00 06 03  6e 73 33 c0 0c c0 25 00
+01 00 01 00 00 01 2c 00  04 01 02 03 04 c0 65 00
+01 00 01 00 00 01 2c 00  04 05 06 07 08 c0 77 00
+01 00 01 00 00 01 2c 00  04 0a 00 00 01 c0 77 00
+01 00 01 00 00 01 2c 00  04 c0 a8 01 01 c0 0c 00
+06 00 01 00 00 0e 10 00  18 c0 25 c0 2a 00 00 00
+01 00 01 51 80 00 00 1c  20 00 36 ee 80 00 00 0e
+10|}
+    in
+    Alcotest.(check (list p_cs) __LOC__ [cs] (buf_axfr_test s axfr_req))
+
+  let big_zone k =
+    let big_txt_512 = Rr_map.Txt_set.of_list
+        [ "12345678901234567890123456789012345678901234567890 \
+           12345678901234567890123456789012345678901234567809 \
+           12345678901234567890123456789012345678901234567089 \
+           12345678901234567890123456789012345678901234560789 \
+           123456789012345678901234567890123456789" ;
+          "12345678901234567890123456789012345678901234056789 \
+           12345678901234567890123456789012345678901230456789 \
+           12345678901234567890123456789012345678901203456789 \
+           12345678901234567890123456789012345678901023456789 \
+           123456789012345678901234567890123456789"
+        ]
+    in
+    let rec fill acc = function
+      | 0 -> acc
+      | n ->
+        (* should lead to 1024 bytes binary size:
+           name: yyy.<ptr> (= 4 + 2)
+           type, class, ttl, rdlen: 10
+           rd: 1 byte len + value (239) -> 240
+           --> 256 bytes
+        *)
+        let name = n_of_s (Printf.sprintf "%03d.one.com" (2 * n + 1)) in
+        let acc = Name_rr_map.add name Rr_map.Txt (300l, big_txt_512) acc in
+        let name = n_of_s (Printf.sprintf "%03d.one.com" (2 * n)) in
+        let acc = Name_rr_map.add name Rr_map.Txt (300l, big_txt_512) acc in
+        fill acc (pred n)
+    in
+    fill A.example_zone k
+
+  let trie_of_zone zone =
+    Dns_trie.insert (n_of_s "one.com") Soa A.soa
+      (Dns_trie.insert_map zone Dns_trie.empty)
+
+  let zone add =
+    let more = [
+      "foobar00"; "foobar01"; "foobar02"; "foobar03"; "foobar04";
+      "foobar05"; "foobar06"; "foobar07"; "foobar08"; "foobar09";
+      "foobar10"; "foobar11"; "foobar12"; "foobar13"; "foobar14";
+      "foobar15"; "foobar16"; "foobar17"; "foobar18"; "foobar19";
+      "foobar20"; "foobar21"; "foobar22"; "foobar23"; "foobar24";
+      "foobar25"; "foobar26"; "foobar27"; "foobar28"; "foobar29";
+      "foobar30"; "foobar31"; "foobar32"; "foobar33"; "foobar34";
+      "foobar35"; "foobar36"; "foobar37"; "foobar38"; "foobar39";
+      "foobar40"; "foobar41"; "foobar42"; "foobar43"; "12345foobar44" ^ add
+    ]
+    in
+    let z =
+      Name_rr_map.add (n_of_s "one.com")
+        Rr_map.Txt (300l, Rr_map.Txt_set.of_list more) (big_zone 62)
+    in
+    trie_of_zone z
+
+  let axfr_encoding_big_zone_no_split () =
+    (* big_zone 63 results in an AXFR which is 65241 bytes big *)
+    (* the `more` below extends it to 65535 bytes (max size for a TCP frame) *)
+    (* the biggest zone to fit into a single DNS packet *)
+    let trie = zone "" in
+    let s = axfr_server ~trie () in
+    let axfr_req = n_of_s "one.com", `Axfr in
+    let bufs = buf_axfr_test s axfr_req in
+    Alcotest.(check int __LOC__ 1 (List.length bufs));
+    Alcotest.(check int __LOC__ 65535 (Cstruct.len (List.hd bufs)));
+    match Packet.decode (List.hd bufs) with
+    | Ok _ -> ()
+    | Error e ->
+      Alcotest.fail ("AXFR decoding error " ^ Fmt.to_to_string Packet.pp_err e)
+
+  let axfr_encoding_big_zone_one_split () =
+    (* the first zone to split into multiple packets *)
+    let trie = zone "1" in
+    let s = axfr_server ~trie () in
+    let axfr_req = n_of_s "one.com", `Axfr in
+    let bufs = buf_axfr_test s axfr_req in
+    Alcotest.(check int __LOC__ 2 (List.length bufs));
+    Alcotest.(check int __LOC__ 65500 (Cstruct.len (List.hd bufs)));
+    Alcotest.(check int __LOC__ 75 (Cstruct.len (List.hd (List.tl bufs))))
+
+  let axfr_encoding_big_zone_multiple_splits () =
+    (* a zone split over multiple packages *)
+    let trie = trie_of_zone (big_zone 200) in
+    let s = axfr_server ~trie () in
+    let axfr_req = n_of_s "one.com", `Axfr in
+    Alcotest.(check int __LOC__ 4 (List.length (buf_axfr_test s axfr_req)))
+
+  let signed_zone add =
+    let more = [
+      "foobar00"; "foobar01"; "foobar02"; "foobar03"; "foobar04";
+      "foobar05"; "foobar06"; "foobar07"; "foobar08"; "foobar09";
+      "foobar10"; "foobar11"; "foobar12"; "foobar13"; "foobar14";
+      "foobar15"; "foobar16"; "foobar17"; "foobar18"; "foobar19";
+      "foobar20"; "foobar21"; "foobar22"; "foobar23"; "foobar24";
+      "foobar25"; "foobar26"; "foobar27"; "foobar28"; "foobar29";
+      "foobar30"; "foobar31"; "foobar32"; "foobar33"; "foobar34";
+      "foobar35"; "foobar36"; "foobar37"; "foobar38"; "0foobar39" ^ add
+    ]
+    in
+    let z =
+      Name_rr_map.add (n_of_s "one.com")
+        Rr_map.Txt (300l, Rr_map.Txt_set.of_list more) (big_zone 62)
+    in
+    trie_of_zone z
+
+  let signed_buf_axfr_test server keyname key axfr_req =
+    let req, mac =
+      let header = 0x1234, Packet.Flags.empty in
+      let res = Packet.create header axfr_req `Axfr_request in
+      match Dns_tsig.encode_and_sign ~proto:`Tcp res Ptime.epoch key keyname with
+      | Ok (buf, mac) -> buf, mac
+      | Error _ -> assert false
+    in
+    let _server', answers, _notifies, _notify, keyname' =
+      Dns_server.Primary.handle_buf server Ptime.epoch 0L `Tcp Ipaddr.V4.localhost 1234 req
+    in
+    assert (match keyname' with Some k -> Domain_name.equal k keyname | _ -> false);
+    (List.iter (fun answer ->
+         match Dns_tsig.decode_and_verify Ptime.epoch key keyname ~mac answer with
+         | Ok _ -> ()
+         | Error e ->
+           Alcotest.fail ("error while verifying " ^ Fmt.to_to_string Dns_tsig.pp_e e))
+        answers);
+    answers
+
+  let keyname, key =
+    let key = String.make 32 '\000' |> Base64.encode_string |> Cstruct.of_string in
+    n_of_s "1.2.3.4.9.10.11.12._transfer.one.com",
+    { Dnskey.flags = 0 ; algorithm = SHA256 ; key }
+
+  let s trie =
+    let keys = [ keyname, key ] in
+    Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate
+      ~tsig_verify:Dns_tsig.verify ~tsig_sign:Dns_tsig.sign ~keys trie
+
+  let axfr_encoding_big_zone_no_split_tsig () =
+    let trie = signed_zone "" in
+    let s = s trie in
+    let axfr_req = n_of_s "one.com", `Axfr in
+    let bufs = signed_buf_axfr_test s keyname key axfr_req in
+    Alcotest.(check int __LOC__ 1 (List.length bufs));
+    Alcotest.(check int __LOC__ 65535 (Cstruct.len (List.hd bufs)))
+
+  let axfr_encoding_big_zone_one_split_tsig () =
+    let trie = signed_zone "0" in
+    let s = s trie in
+    let axfr_req = n_of_s "one.com", `Axfr in
+    let bufs = signed_buf_axfr_test s keyname key axfr_req in
+    Alcotest.(check int __LOC__ 2 (List.length bufs));
+    Alcotest.(check int __LOC__ 65500 (Cstruct.len (List.hd bufs)));
+    Alcotest.(check int __LOC__ 184 (Cstruct.len (List.hd (List.tl bufs))))
+
+  let tests = [
+    "encoding", `Quick, axfr_encoding ;
+    "encoding big zone (no split)", `Quick, axfr_encoding_big_zone_no_split ;
+    "encoding big zone (one split)", `Quick, axfr_encoding_big_zone_one_split ;
+    "encoding big zone (multiple splits)", `Quick, axfr_encoding_big_zone_multiple_splits ;
+    "encoding big zone with tsig (no split)", `Quick, axfr_encoding_big_zone_no_split_tsig ;
+    "encoding big zone with tsig (one split)", `Quick, axfr_encoding_big_zone_one_split_tsig ;
+  ]
+end
+
 let tests = [
   "Trie", Trie.tests ;
   "Server", S.tests ;
   "Authentication", A.tests ;
+  "AXFR", Axfr.tests ;
 ]
 
 let () =

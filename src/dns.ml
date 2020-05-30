@@ -223,6 +223,19 @@ module Name = struct
       Cstruct.set_uint8 buf off 0 ;
       succ off
     in
+    let maybe_insert_label name off names =
+      (* do not add label to our map if it'd overflow the pointer (14 bit) *)
+      if off < 1 lsl 14 then
+        Domain_name.Map.add name off names
+      else
+        names
+    and name_remainder arr l off =
+      let last = Array.get arr (pred l)
+      and rem = Array.sub arr 0 (pred l)
+      in
+      let l = encode_lbl last off in
+      l, Domain_name.of_array rem
+    in
     let names, off =
       if compress then
         let rec one names off name =
@@ -233,12 +246,8 @@ module Name = struct
           else
             match Domain_name.Map.find name names with
             | None ->
-              let last = Array.get arr (pred l)
-              and rem = Array.sub arr 0 (pred l)
-              in
-              let l = encode_lbl last off in
-              one (Domain_name.Map.add name off names) l
-                (Domain_name.of_array rem)
+              let l, rem = name_remainder arr l off in
+              one (maybe_insert_label name off names) l rem
             | Some ptr ->
               let data = ptr_tag lsl 8 + ptr in
               Cstruct.BE.set_uint16 buf off data ;
@@ -252,12 +261,8 @@ module Name = struct
           if l = 0 then
             names, z off
           else
-            let last = Array.get arr (pred l)
-            and rem = Array.sub arr 0 (pred l)
-            in
-            let l = encode_lbl last off in
-            one (Domain_name.Map.add name off names) l
-              (Domain_name.of_array rem)
+            let l, rem = name_remainder arr l off in
+            one (maybe_insert_label name off names) l rem
         in
         one names off name
     in
@@ -546,7 +551,7 @@ module Cname = struct
 
   let compare = Domain_name.compare
 
-  let decode names buf ~off ~len:_= Name.decode names buf ~off
+  let decode names buf ~off ~len:_ = Name.decode names buf ~off
 
   let encode = Name.encode
 end
@@ -1979,6 +1984,90 @@ module Rr_map = struct
     | Sshfp, (_, sshfps) -> B (k, (ttl, sshfps))
     | Unknown _, (_, datas) -> B (k, (ttl, datas))
 
+  let split : type a. a key -> a -> a * a option = fun k v ->
+    match k, v with
+    | Cname, (ttl, cname) ->
+      (ttl, cname), None
+    | Mx, (ttl, mxs) ->
+      let one = Mx_set.choose mxs in
+      let rest = Mx_set.remove one mxs in
+      let rest' =
+        if Mx_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Mx_set.singleton one), rest'
+    | Ns, (ttl, ns) ->
+      let one = Domain_name.Host_set.choose ns in
+      let rest = Domain_name.Host_set.remove one ns in
+      let rest' =
+        if Domain_name.Host_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Domain_name.Host_set.singleton one), rest'
+    | Ptr, (ttl, ptr) -> (ttl, ptr), None
+    | Soa, soa -> soa, None
+    | Txt, (ttl, txts) ->
+      let one = Txt_set.choose txts in
+      let rest = Txt_set.remove one txts in
+      let rest' =
+        if Txt_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Txt_set.singleton one), rest'
+    | A, (ttl, ips) ->
+      let one = Ipv4_set.choose ips in
+      let rest = Ipv4_set.remove one ips in
+      let rest' =
+        if Ipv4_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Ipv4_set.singleton one), rest'
+    | Aaaa, (ttl, ips) ->
+      let one = Ipv6_set.choose ips in
+      let rest = Ipv6_set.remove one ips in
+      let rest' =
+        if Ipv6_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Ipv6_set.singleton one), rest'
+    | Srv, (ttl, srvs) ->
+      let one = Srv_set.choose srvs in
+      let rest = Srv_set.remove one srvs in
+      let rest' =
+        if Srv_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Srv_set.singleton one), rest'
+    | Dnskey, (ttl, keys) ->
+      let one = Dnskey_set.choose keys in
+      let rest = Dnskey_set.remove one keys in
+      let rest' =
+        if Dnskey_set.is_empty keys then None else Some (ttl, rest)
+      in
+      (ttl, Dnskey_set.singleton one), rest'
+    | Caa, (ttl, caas) ->
+      let one = Caa_set.choose caas in
+      let rest = Caa_set.remove one caas in
+      let rest' =
+        if Caa_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Caa_set.singleton one), rest'
+    | Tlsa, (ttl, tlsas) ->
+      let one = Tlsa_set.choose tlsas in
+      let rest = Tlsa_set.remove one tlsas in
+      let rest' =
+        if Tlsa_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Tlsa_set.singleton one), rest'
+    | Sshfp, (ttl, sshfps) ->
+      let one = Sshfp_set.choose sshfps in
+      let rest = Sshfp_set.remove one sshfps in
+      let rest' =
+        if Sshfp_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Sshfp_set.singleton one), rest'
+    | Unknown _, (ttl, datas) ->
+      let one = Txt_set.choose datas in
+      let rest = Txt_set.remove one datas in
+      let rest' =
+        if Txt_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Txt_set.singleton one), rest'
+
   let pp_b ppf (B (k, _)) = ppk ppf (K k)
 
   let names : type a. a key -> a -> Domain_name.Host_set.t = fun k v ->
@@ -2382,7 +2471,6 @@ module Packet = struct
       Rr_map.encode_ntc names buf off (name, (typ :> Rr_map.rrtyp), Class.to_int Class.IN)
   end
 
-
   let encode_data map names buf off =
     Domain_name.Map.fold (fun name rrmap acc ->
         Rr_map.fold (fun (Rr_map.B (k, v)) ((names, off), count) ->
@@ -2526,47 +2614,117 @@ module Packet = struct
       Soa.compare soa soa' = 0 && Name_rr_map.equal entries entries'
 
     let pp ppf (soa, entries) =
-        Fmt.pf ppf "AXFR soa %a data %a" Soa.pp soa Name_rr_map.pp entries
+      Fmt.pf ppf "AXFR soa %a data %a" Soa.pp soa Name_rr_map.pp entries
 
     let decode (_, flags) buf names off ancount =
       let open Rresult.R.Infix in
       guard (not (Flags.mem `Truncation flags)) `Partial >>= fun () ->
       let empty = Domain_name.Map.empty in
-      (* TODO handle partial AXFR:
-         - only first frame must have the question, subsequent may have empty questions
-         - only first frame starts with SOA
-         - last one ends with SOA *)
-      guard (ancount >= 2)
-        (`Malformed (6, Fmt.strf "AXFR needs at least two RRs in answer %d" ancount)) >>= fun () ->
+      (* TODO handle partial AXFR better:
+         - only first frame must have the question, subsequent frames may have
+           no questions (to be adjusted in Packet.decode)
+      *)
+      (* an AXFR frame can be shaped in several forms:
+         (a) SOA .. RRSets (no SOA) .. SOA -> full Axfr_reply
+         (b) SOA .. RRSets (no SOA) -> `Axfr_partial_reply (`First soa, _)
+         (c) RRSets (no SOA) -> `Axfr_partial_reply (`Mid, _)
+         (d) RRSets (no SOA) .. SOA -> `Axfr_partial_reply (`Last soa, _)
+         please note that a single SOA may either be the first or the last
+         packet, this cannot be decided without further context (it is
+         characterized to be `First in here, but user code needs to handle this)
+      *)
+      guard (ancount >= 1)
+        (`Malformed (6, Fmt.strf "AXFR needs at least one RRs in answer %d" ancount)) >>= fun () ->
       decode_rr names buf off >>= fun (name, B (k, v), names, off) ->
-      (* TODO: verify name == zname in question, also all RR sub of zname *)
-      match k, v with
-      | Soa, soa ->
+      if ancount = 1 then
+        match k, v with
+        | Soa, soa -> Ok (`Axfr_partial_reply (`First (soa : Soa.t), Name_rr_map.empty), names, off)
+        | k, v -> Ok (`Axfr_partial_reply (`Mid, Name_rr_map.singleton name k v), names, off)
+      else (* ancount > 1 *)
+        (* TODO: verify name == zname in question, also all RR sub of zname *)
         let add name (Rr_map.B (k, v)) map = Name_rr_map.add name k v map in
         decode_n add decode_rr names buf off empty (ancount - 2) >>= fun (names, off, answer) ->
         decode_rr names buf off >>= fun (name', B (k', v'), names, off) ->
-        begin
-          match k', v' with
-          | Soa, soa' ->
-            (* TODO: verify that answer does not contain a SOA!? *)
-            guard (Domain_name.equal name name')
-              (`Malformed (off, "AXFR SOA RRs do not use the same name")) >>= fun () ->
-            guard (Soa.compare soa soa' = 0)
-              (`Malformed (off, "AXFR SOA RRs are not equal")) >>| fun () ->
-            ((soa, answer) : Soa.t * Name_rr_map.t), names, off
-          | _ -> Error (`Malformed (off, "AXFR last RR in answer must be SOA"))
-        end
-      | _ -> Error (`Malformed (off, "AXFR first RR in answer must be SOA"))
+        (* TODO: verify that answer does not contain a SOA!? *)
+        match k, v, k', v' with
+        | Soa, soa, Soa, soa' ->
+          guard (Domain_name.equal name name')
+            (`Malformed (off, "AXFR SOA RRs do not use the same name")) >>= fun () ->
+          guard (Soa.compare soa soa' = 0)
+            (`Malformed (off, "AXFR SOA RRs are not equal")) >>| fun () ->
+          (`Axfr_reply ((soa, answer) : Soa.t * Name_rr_map.t)), names, off
+        | Soa, soa, k', v' ->
+          Ok (`Axfr_partial_reply (`First (soa : Soa.t), add name' (B (k', v')) answer), names, off)
+        | k, v, Soa, soa ->
+          Ok (`Axfr_partial_reply (`Last (soa : Soa.t), add name (B (k, v)) answer), names, off)
+        | k, v, k', v' ->
+          Ok (`Axfr_partial_reply (`Mid, add name' (B (k', v')) (add name (B (k, v)) answer)), names, off)
 
     let encode names buf off question (soa, entries) =
-      (* TODO if this would truncate, should create another packet --
-         how does this interact with TSIG, is each individual packet signed? *)
       (* serialise: SOA .. other data .. SOA *)
       let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
       let (names, off), count = encode_data entries names buf off in
       let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
       Cstruct.BE.set_uint16 buf 6 (count + 2) ;
       names, off
+
+    let encode_partial names buf off question pos entries =
+      let (names, off), count = match pos with
+        | `First soa -> Rr_map.encode (fst question) Soa soa names buf off
+        | _ -> (names, off), 0
+      in
+      let (names, off), count' = encode_data entries names buf off in
+      let (names, off), count'' = match pos with
+        | `Last soa -> Rr_map.encode (fst question) Soa soa names buf off
+        | _ -> (names, off), 0
+      in
+      Cstruct.BE.set_uint16 buf 6 (count + count' + count'') ;
+      names, off
+
+    let encode_reply next_buffer max_size question (soa, entries) =
+      (* first packet MUST contain SOA *)
+      let finish buf count off =
+        Cstruct.BE.set_uint16 buf 6 count;
+        Cstruct.sub buf 0 off
+      in
+      let names, buf, off = next_buffer () in
+      let (names, off), count =
+        Rr_map.encode (fst question) Soa soa names buf off
+      in
+      let rec encode_or_allocate acc count (names, buf, off) name k v =
+        try
+          let (names, off'), count' = Rr_map.encode name k v names buf off in
+          if off' > max_size then
+            invalid_arg "foo"
+          else
+            acc, count + count', (names, buf, off')
+        with
+        | Invalid_argument _ ->
+          if count = 0 then
+            match Rr_map.split k v with
+            | _, None -> invalid_arg "unable to split resource record"
+            | v, Some v' ->
+              let acc, count, (_, buf, off) =
+                encode_or_allocate acc 0 (names, buf, off) name k v
+              in
+              let buf' = finish buf count off in
+              encode_or_allocate (buf' :: acc) 0 (next_buffer ()) name k v'
+          else
+            let buf' = finish buf count off in
+            encode_or_allocate (buf' :: acc) 0 (next_buffer ()) name k v
+      in
+      let r, count, (names, buf, off) =
+        Domain_name.Map.fold (fun name rrmap acc ->
+            Rr_map.fold (fun (Rr_map.B (k, v)) (bufs, count, r) ->
+                encode_or_allocate bufs count r name k v)
+              rrmap acc)
+          entries ([], count, (names, buf, off))
+      in
+      let r, count, (_names, buf, off) =
+        encode_or_allocate r count (names, buf, off) (fst question) Soa soa
+      in
+      let buf' = finish buf count off in
+      List.rev (buf' :: r)
   end
 
   module Ixfr = struct
@@ -2926,6 +3084,7 @@ module Packet = struct
     | `Answer of Answer.t
     | `Notify_ack
     | `Axfr_reply of Axfr.t
+    | `Axfr_partial_reply of [ `First of Soa.t | `Mid | `Last of Soa.t ] * Name_rr_map.t
     | `Ixfr_reply of Ixfr.t
     | `Update_ack
     | `Rcode_error of Rcode.t * Opcode.t * Answer.t option
@@ -2935,6 +3094,13 @@ module Packet = struct
     | `Answer q, `Answer q' -> Answer.equal q q'
     | `Notify_ack, `Notify_ack -> true
     | `Axfr_reply a, `Axfr_reply b -> Axfr.equal a b
+    | `Axfr_partial_reply (x, a), `Axfr_partial_reply (y, b) ->
+      (match x, y with
+       | `First soa, `First soa' -> Soa.compare soa soa' = 0
+       | `Mid, `Mid -> true
+       | `Last soa, `Last soa' -> Soa.compare soa soa' = 0
+       | _ -> false) &&
+      Name_rr_map.equal a b
     | `Ixfr_reply a, `Ixfr_reply b -> Ixfr.equal a b
     | `Update_ack, `Update_ack -> true
     | `Rcode_error (rc, op, q), `Rcode_error (rc', op', q') ->
@@ -2944,6 +3110,13 @@ module Packet = struct
   let pp_reply ppf = function
     | `Answer a -> Answer.pp ppf a
     | `Axfr_reply a -> Axfr.pp ppf a
+    | `Axfr_partial_reply (x, a) ->
+      let pp_pos ppf = function
+        | `First soa -> Fmt.pf ppf "first %a" Soa.pp soa
+        | `Mid -> Fmt.string ppf "middle"
+        | `Last soa -> Fmt.pf ppf "last %a" Soa.pp soa
+      in
+      Fmt.pf ppf "AXFR (partial %a) %a" pp_pos x Name_rr_map.pp a
     | `Ixfr_reply a -> Ixfr.pp ppf a
     | `Notify_ack -> Fmt.string ppf "notify ack"
     | `Update_ack -> Fmt.string ppf "update ack"
@@ -2955,7 +3128,7 @@ module Packet = struct
 
   let opcode_data = function
     | `Query | `Answer _
-    | `Axfr_request | `Axfr_reply _
+    | `Axfr_request | `Axfr_reply _ | `Axfr_partial_reply _
     | `Ixfr_request _ | `Ixfr_reply _ -> Opcode.Query
     | `Notify _ | `Notify_ack -> Notify
     | `Update _ | `Update_ack -> Update
@@ -3147,7 +3320,7 @@ module Packet = struct
                 | `Axfr ->
                   guard (au_count = 0) (`Malformed (8, Fmt.strf "AXFR with aucount %d > 0" au_count)) >>= fun () ->
                   Axfr.decode header buf names off an_count >>| fun (axfr, names, off) ->
-                  `Axfr_reply axfr, names, off, true, false
+                  axfr, names, off, true, false
                 | `Ixfr ->
                   guard (au_count = 0) (`Malformed (8, Fmt.strf "IXFR with aucount %d > 0" au_count)) >>= fun () ->
                   Ixfr.decode header buf names off an_count >>| fun (ixfr, names, off) ->
@@ -3261,6 +3434,7 @@ module Packet = struct
     | `Update u -> Update.encode names buf off question u
     | `Answer q -> Answer.encode names buf off question q
     | `Axfr_reply data -> Axfr.encode names buf off question data
+    | `Axfr_partial_reply (x, data) -> Axfr.encode_partial names buf off question x data
     | `Ixfr_reply data -> Ixfr.encode names buf off question data
     | `Rcode_error (_, _, Some q) -> Answer.encode names buf off question q
 
@@ -3311,6 +3485,34 @@ module Packet = struct
           doit next
     in
     doit (min max 4000) (* (mainly for TCP) we use a page as initial allocation *)
+
+  let encode_axfr_reply ?max_size needed_for_tsig protocol t data =
+    let query = false in
+    let max, _edns = size_edns max_size t.edns protocol query in
+    let max_size = max - needed_for_tsig in
+    assert (max_size > 0);
+    (* strategy:
+       - fill packets up to max - needed_for_tsig
+       - when encoding fails (i.e. off > allowed_size):
+         - allocate a fresh buffer
+         - encode header and question
+         - restart with the RR
+       - skip EDNS reply and additional section for now
+    *)
+    let opcode = opcode_data t.data
+    and rcode = rcode_data t.data
+    in
+    let new_buffer () =
+      (* we always embed a question in the AXFR reply (this is optional according to RFC) *)
+      let buf = Cstruct.create max in
+      Header.encode buf (t.header, query, opcode, rcode);
+      let names, off = Question.encode Domain_name.Map.empty buf Header.len t.question in
+      Cstruct.BE.set_uint16 buf 4 1 ;
+      names, buf, off
+    in
+    Axfr.encode_reply new_buffer max_size t.question data, max
+    (* let (_names, off), adcount = encode_data t.additional names buf off in *)
+    (* encode_edns Rcode.NoError edns buf off, false *)
 
   let raw_error buf rcode =
     (* copy id from header, retain opcode, set rcode to ServFail

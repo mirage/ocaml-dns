@@ -1056,9 +1056,10 @@ module Primary = struct
                    Rcode.pp rcode Ipaddr.V4.pp ip Cstruct.hexdump_pp buf
                    Fmt.(option ~none:(unit "no") Cstruct.hexdump_pp) answer);
       tx_metrics (`Rcode_error (rcode, Opcode.Query, None));
+      let answer = match answer with None -> [] | Some err -> [ err ] in
       t, answer, [], None, None
     | Ok p ->
-      let handle_inner keyname =
+      let handle_inner tsig_size keyname =
         let t, answer, out, notify =
           handle_packet t now ts proto ip port p keyname
         in
@@ -1066,9 +1067,14 @@ module Primary = struct
           | Some answer ->
             let max_size, edns = Edns.reply p.edns in
             let answer = Packet.with_edns answer edns in
-            (* be aware, this may be truncated... here AXFR gets assembled! *)
             tx_metrics answer.Packet.data;
-            let r = Packet.encode ?max_size proto answer in
+            let r = match answer.Packet.data with
+              | `Axfr_reply data ->
+                Packet.encode_axfr_reply ?max_size tsig_size proto answer data
+              | _ ->
+                let cs, max_size = Packet.encode ?max_size proto answer in
+                [ cs ], max_size
+            in
             Some (answer, r)
           | None -> None
         in
@@ -1082,12 +1088,13 @@ module Primary = struct
       match handle_tsig ?mac server now p buf with
       | Error (e, data) ->
         Log.err (fun m -> m "error %a while handling tsig" Tsig_op.pp_e e);
-        t, data, [], None, None
+        let answer = match data with None -> [] | Some err -> [ err ] in
+        t, answer, [], None, None
       | Ok None ->
-        let t, answer, out, notify = handle_inner None in
+        let t, answer, out, notify = handle_inner 0 None in
         let answer' = match answer with
-          | None -> None
-          | Some (_, (cs, _)) -> Some cs
+          | None -> []
+          | Some (_, (ds, _)) -> ds
         in
         t, answer', out, notify, None
       | Ok (Some (name, tsig, mac, key)) ->
@@ -1096,17 +1103,25 @@ module Primary = struct
           | Some `Keep -> Some `Keep
           | None -> None
         in
-        let t', answer, out, notify = handle_inner (Some name) in
+        let tsig_size =
+          let dl d = String.length (Domain_name.to_string d) + 2 in
+          dl name (* key name *) + 10 (* type class ttl rdlen *) +
+          16 (* base tsig *) + Cstruct.len tsig.Tsig.mac +
+          dl (Tsig.algorithm_to_name tsig.Tsig.algorithm) (* algo name *)
+        in
+        let t', answer, out, notify = handle_inner tsig_size (Some name) in
         let answer' = match answer with
-          | None -> None
-          | Some (answer, (buf, max_size)) ->
-            match server.tsig_sign ~max_size ~mac name tsig ~key answer buf with
-            | None ->
-              Log.warn (fun m -> m "couldn't use %a to tsig sign"
-                           Domain_name.pp name);
-              (* TODO - better send back unsigned answer? or an error? *)
-              None
-            | Some (buf, _) -> Some buf
+          | None -> []
+          | Some (answer, (ds, max_size)) ->
+            List.fold_left (fun acc buf ->
+                match server.tsig_sign ~max_size ~mac name tsig ~key answer buf with
+                | None ->
+                  Log.warn (fun m -> m "couldn't use %a to tsig sign"
+                               Domain_name.pp name);
+                  (* TODO - better send back unsigned answer? or an error? *)
+                  acc
+                | Some (buf, _) -> buf :: acc)
+              [] ds |> List.rev
         in
         t', answer', out, n notify, Some name
 
@@ -1129,12 +1144,14 @@ module Secondary = struct
     | Requested_soa of int64 * int * int * Cstruct.t
     | Requested_axfr of int64 * int * Cstruct.t
     | Requested_ixfr of int64 * int * Soa.t * Cstruct.t
+    | Processing_axfr of int64 * int * Cstruct.t * Soa.t * Name_rr_map.t
 
   let id = function
     | Transferred _ -> None
     | Requested_soa (_, id, _, _) -> Some id
     | Requested_axfr (_, id, _) -> Some id
     | Requested_ixfr (_, id, _, _) -> Some id
+    | Processing_axfr (_, id, _, _, _) -> Some id
 
   (* undefined what happens if there are multiple transfer keys for zone *)
   type s =
@@ -1292,6 +1309,12 @@ module Secondary = struct
                  ixfr t p_now now zone soa name
                else
                  None)
+          | _, Processing_axfr (ts, _, _, _, _) ->
+            maybe_out
+              (if Int64.sub now three_sec >= ts then
+                 axfr t p_now now zone name
+               else
+                 None)
           | Error e, _ ->
             Log.err (fun m -> m "ended up here zone %a error %a looking for soa"
                         Domain_name.pp zone Dns_trie.pp_e e);
@@ -1430,7 +1453,6 @@ module Secondary = struct
     authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
     match st with
     | Requested_axfr (_, _, _) ->
-      (* TODO partial AXFR, but decoder already rejects them *)
       Log.info (fun m -> m "received authorised AXFR for %a: %a"
                    Domain_name.pp zone Packet.Axfr.pp (fresh_soa, fresh_zone));
       (* SOA should be higher than ours! *)
@@ -1472,6 +1494,25 @@ module Secondary = struct
       Log.warn (fun m -> m "ignoring AXFR %a unmatched state"
                    Domain_name.pp zone);
       Error Rcode.Refused
+
+  let handle_partial_axfr t zones ts keyname header zone y data =
+    authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
+    match y, st with
+    | `First soa, Requested_axfr (_, id, mac) ->
+      let st = Processing_axfr (ts, id, mac, soa, data) in
+      Ok (t, Domain_name.Host_map.add zone (st, ip, name) zones)
+    | `Mid, Processing_axfr (_, id, mac, soa, acc) ->
+      let st = Processing_axfr (ts, id, mac, soa, Name_rr_map.union acc data) in
+      Ok (t, Domain_name.Host_map.add zone (st, ip, name) zones)
+    | (`First soa' | `Last soa'), Processing_axfr (_, id, mac, soa, acc) ->
+      guard (Soa.compare soa soa' = 0) Rcode.Refused >>= fun () ->
+      let data = Name_rr_map.union acc data in
+      let st = Requested_axfr (ts, id, mac) in
+      let zones = Domain_name.Host_map.add zone (st, ip, name) zones in
+      handle_axfr t zones ts keyname header zone (soa, data)
+    | _ ->
+      Log.warn (fun m -> m "invalid state for partial axfr reply");
+      Ok (t, zones)
 
   let handle_ixfr t zones ts keyname header zone (fresh_soa, data) =
     authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
@@ -1676,6 +1717,23 @@ module Secondary = struct
           in
           r, None, None
       end
+    | `Axfr_partial_reply (y, data) ->
+      begin match Domain_name.host (fst p.question) with
+        | Error _ ->
+          Log.warn (fun m -> m "axfr reply with non-hostname zone %a"
+                       Domain_name.pp (fst p.question));
+          (t, zones), None, None
+        | Ok zone ->
+          let r =
+            match handle_partial_axfr t zones ts keyname p.header zone y data with
+            | Ok (t, zones) -> t, zones
+            | Error rcode ->
+              Log.warn (fun m -> m "error %a while processing partial axfr reply %a"
+                           Rcode.pp rcode Packet.pp p);
+              t, zones
+          in
+          r, None, None
+      end
     | `Ixfr_reply data ->
       begin match Domain_name.host (fst p.question) with
         | Error _ ->
@@ -1735,6 +1793,7 @@ module Secondary = struct
         | Some (Requested_axfr (_, _, mac), _, _) -> Some mac
         | Some (Requested_ixfr (_, _, _, mac), _, _) -> Some mac
         | Some (Requested_soa (_, _, _, mac), _, _) -> Some mac
+        | Some (Processing_axfr (_, _, mac, _, _), _, _) -> Some mac
         | _ -> None
 
   let handle_buf t now ts proto ip buf =
