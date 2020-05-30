@@ -168,7 +168,7 @@ generic_type s generic_rdata {
        | Invalid_argument err -> parse_error err
      }
  | TYPE_AAAA s ipv6 { B (Aaaa, (0l, Rr_map.Ipv6_set.singleton $3)) }
- | TYPE_DNSKEY s int16 s int16 s int16 s charstring
+ | TYPE_DNSKEY s int16 s int8 s int8 s charstring
      { if not ($5 = 3) then
          parse_error ("DNSKEY protocol is not 3, but " ^ string_of_int $5) ;
        try
@@ -180,7 +180,7 @@ generic_type s generic_rdata {
        with
        | Invalid_argument err -> parse_error err
      }
- | TYPE_CAA s int16 s charstring s charstrings
+ | TYPE_CAA s int8 s charstring s charstrings
      { let critical = if $3 = 0x80 then true else false in
        if String.length $5 <= 0 || String.length $5 >= 16 then
          parse_error "CAA tag length must be > 0 and < 16";
