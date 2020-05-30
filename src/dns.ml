@@ -656,7 +656,7 @@ module Dnskey = struct
 
   (* 8 bit *)
   type algorithm =
-    | MD5 | SHA1 | SHA224 | SHA256 | SHA384 | SHA512
+    | MD5 | SHA1 | SHA224 | SHA256 | SHA384 | SHA512 | Unknown of int
 
   let algorithm_to_int = function
     | MD5 -> 157
@@ -665,14 +665,19 @@ module Dnskey = struct
     | SHA256 -> 163
     | SHA384 -> 164
     | SHA512 -> 165
-  let int_to_algorithm ?(off = 0) = function
-    | 157 -> Ok MD5
-    | 161 -> Ok SHA1
-    | 162 -> Ok SHA224
-    | 163 -> Ok SHA256
-    | 164 -> Ok SHA384
-    | 165 -> Ok SHA512
-    | x -> Error (`Not_implemented (off, Fmt.strf "DNSKEY algorithm 0x%X" x))
+    | Unknown x -> x
+  let int_to_algorithm = function
+    | 157 -> MD5
+    | 161 -> SHA1
+    | 162 -> SHA224
+    | 163 -> SHA256
+    | 164 -> SHA384
+    | 165 -> SHA512
+    | x ->
+      if x >= 0 && x < 255 then
+        Unknown x
+      else
+        invalid_arg ("invalid DNSKEY algorithm " ^ string_of_int x)
   let algorithm_to_string = function
     | MD5 -> "MD5"
     | SHA1 -> "SHA1"
@@ -680,6 +685,7 @@ module Dnskey = struct
     | SHA256 -> "SHA256"
     | SHA384 -> "SHA384"
     | SHA512 -> "SHA512"
+    | Unknown x -> string_of_int x
   let string_to_algorithm = function
     | "MD5" -> Ok MD5
     | "SHA1" -> Ok SHA1
@@ -687,17 +693,8 @@ module Dnskey = struct
     | "SHA256" -> Ok SHA256
     | "SHA384" -> Ok SHA384
     | "SHA512" -> Ok SHA512
-    | x -> Error (`Msg ("DNSKEY algorithm not implemented " ^ x))
-
-  let algorithm_b64_len k =
-    let b64 bits = (bits / 8 + 2) / 3 * 4 in
-    match k with
-    | MD5 -> b64 128
-    | SHA1 -> b64 160
-    | SHA224 -> b64 224
-    | SHA256 -> b64 256
-    | SHA384 -> b64 384
-    | SHA512 -> b64 512
+    | x -> try Ok (Unknown (int_of_string x)) with
+        Failure _ -> Error (`Msg ("DNSKEY algorithm not implemented " ^ x))
 
   let pp_algorithm ppf k = Fmt.string ppf (algorithm_to_string k)
 
@@ -716,17 +713,17 @@ module Dnskey = struct
     andThen (compare a.algorithm b.algorithm)
       (Cstruct.compare a.key b.key)
 
-  let decode names buf ~off ~len:_ =
+  let decode names buf ~off ~len =
     let open Rresult.R.Infix in
     let flags = Cstruct.BE.get_uint16 buf off
     and proto = Cstruct.get_uint8 buf (off + 2)
     and algo = Cstruct.get_uint8 buf (off + 3)
     in
-    guard (proto = 3) (`Not_implemented (off + 2, Fmt.strf "dnskey protocol 0x%x" proto)) >>= fun () ->
-    int_to_algorithm ~off algo >>= fun algorithm ->
-    let len = algorithm_b64_len algorithm in
-    let key = Cstruct.sub buf (off + 4) len in
-    Ok ({ flags ; algorithm ; key }, names, off + len + 4)
+    guard (proto = 3)
+      (`Not_implemented (off + 2, Fmt.strf "dnskey protocol 0x%x" proto)) >>| fun () ->
+    let algorithm = int_to_algorithm algo in
+    let key = Cstruct.sub buf (off + 4) (len - 4) in
+    { flags ; algorithm ; key }, names, off + len
 
   let encode t names buf off =
     Cstruct.BE.set_uint16 buf off t.flags ;
@@ -788,7 +785,8 @@ module Caa = struct
     let critical = Cstruct.get_uint8 buf off = 0x80
     and tl = Cstruct.get_uint8 buf (succ off)
     in
-    guard (tl > 0 && tl < 16) (`Not_implemented (succ off, Fmt.strf "caa tag 0x%x" tl)) >>= fun () ->
+    guard (tl > 0 && tl < 16)
+      (`Not_implemented (succ off, Fmt.strf "caa tag 0x%x" tl)) >>= fun () ->
     let tag = Cstruct.sub buf (off + 2) tl in
     let tag = Cstruct.to_string tag in
     let vs = 2 + tl in
@@ -816,23 +814,30 @@ module Tlsa = struct
     | Service_certificate_constraint
     | Trust_anchor_assertion
     | Domain_issued_certificate
+    | Unknown of int
 
   let cert_usage_to_int = function
     | CA_constraint -> 0
     | Service_certificate_constraint -> 1
     | Trust_anchor_assertion -> 2
     | Domain_issued_certificate -> 3
-  let int_to_cert_usage ?(off = 0) = function
-    | 0 -> Ok CA_constraint
-    | 1 -> Ok Service_certificate_constraint
-    | 2 -> Ok Trust_anchor_assertion
-    | 3 -> Ok Domain_issued_certificate
-    | x -> Error (`Not_implemented (off, Fmt.strf "TLSA cert usage %X" x))
+    | Unknown x -> x
+  let int_to_cert_usage = function
+    | 0 -> CA_constraint
+    | 1 -> Service_certificate_constraint
+    | 2 -> Trust_anchor_assertion
+    | 3 -> Domain_issued_certificate
+    | x ->
+      if x >= 0 && x < 256 then
+        Unknown x
+      else
+        invalid_arg ("Bad certificate usage " ^ string_of_int x)
   let cert_usage_to_string = function
     | CA_constraint -> "CA constraint"
     | Service_certificate_constraint -> "service certificate constraint"
     | Trust_anchor_assertion -> "trust anchor assertion"
     | Domain_issued_certificate -> "domain issued certificate"
+    | Unknown x -> "unknown " ^ string_of_int x
 
   let pp_cert_usage ppf k = Fmt.string ppf (cert_usage_to_string k)
 
@@ -841,20 +846,27 @@ module Tlsa = struct
     | Full_certificate
     | Subject_public_key_info
     | Private
+    | Unknown of int
 
   let selector_to_int = function
     | Full_certificate -> 0
     | Subject_public_key_info -> 1
     | Private -> 255
-  let int_to_selector ?(off = 0) = function
-    | 0 -> Ok Full_certificate
-    | 1 -> Ok Subject_public_key_info
-    | 255 -> Ok Private
-    | x -> Error (`Not_implemented (off, Fmt.strf "TLSA selector %x" x))
+    | Unknown x -> x
+  let int_to_selector = function
+    | 0 -> Full_certificate
+    | 1 -> Subject_public_key_info
+    | 255 -> Private
+    | x ->
+      if x >= 0 && x < 256 then
+        Unknown x
+      else
+        invalid_arg ("Bad selector " ^ string_of_int x)
   let selector_to_string = function
     | Full_certificate -> "full certificate"
     | Subject_public_key_info -> "subject public key info"
     | Private -> "private"
+    | Unknown x -> "unknown " ^ string_of_int x
 
   let pp_selector ppf k = Fmt.string ppf (selector_to_string k)
 
@@ -863,20 +875,27 @@ module Tlsa = struct
     | No_hash
     | SHA256
     | SHA512
+    | Unknown of int
 
   let matching_type_to_int = function
     | No_hash -> 0
     | SHA256 -> 1
     | SHA512 -> 2
-  let int_to_matching_type ?(off = 0) = function
-    | 0 -> Ok No_hash
-    | 1 -> Ok SHA256
-    | 2 -> Ok SHA512
-    | x -> Error (`Not_implemented (off, Fmt.strf "TLSA matching type %X" x))
+    | Unknown x -> x
+  let int_to_matching_type = function
+    | 0 -> No_hash
+    | 1 -> SHA256
+    | 2 -> SHA512
+    | x ->
+      if x >= 0 && x < 256 then
+        Unknown x
+      else
+        invalid_arg ("Bad matching type " ^ string_of_int x)
   let matching_type_to_string = function
     | No_hash -> "no hash"
     | SHA256 -> "SHA256"
     | SHA512 -> "SHA512"
+    | Unknown x -> "unknown " ^ string_of_int x
 
   let pp_matching_type ppf k = Fmt.string ppf (matching_type_to_string k)
 
@@ -901,18 +920,17 @@ module Tlsa = struct
             (Cstruct.compare t1.data t2.data)))
 
   let decode names buf ~off ~len =
-    let open Rresult.R.Infix in
     let usage, selector, matching_type =
       Cstruct.get_uint8 buf off,
       Cstruct.get_uint8 buf (off + 1),
       Cstruct.get_uint8 buf (off + 2)
     in
     let data = Cstruct.sub buf (off + 3) (len - 3) in
-    int_to_cert_usage ~off usage >>= fun cert_usage ->
-    int_to_selector ~off:(off + 1) selector >>= fun selector ->
-    int_to_matching_type ~off:(off + 2) matching_type >>| fun matching_type ->
+    let cert_usage = int_to_cert_usage usage in
+    let selector = int_to_selector selector in
+    let matching_type = int_to_matching_type matching_type in
     let tlsa = { cert_usage ; selector ; matching_type ; data } in
-    tlsa, names, off + len
+    Ok (tlsa, names, off + len)
 
   let encode tlsa names buf off =
     Cstruct.set_uint8 buf off (cert_usage_to_int tlsa.cert_usage) ;
@@ -932,25 +950,32 @@ module Sshfp = struct
     | Dsa
     | Ecdsa
     | Ed25519
+    | Unknown of int
 
   let algorithm_to_int = function
     | Rsa -> 1
     | Dsa -> 2
     | Ecdsa -> 3
     | Ed25519 -> 4
+    | Unknown x -> x
 
-  let int_to_algorithm ?(off = 0) = function
-    | 1 -> Ok Rsa
-    | 2 -> Ok Dsa
-    | 3 -> Ok Ecdsa
-    | 4 -> Ok Ed25519
-    | x -> Error (`Not_implemented (off, Fmt.strf "SSHFP algorithm %X" x))
+  let int_to_algorithm = function
+    | 1 -> Rsa
+    | 2 -> Dsa
+    | 3 -> Ecdsa
+    | 4 -> Ed25519
+    | x ->
+      if x >= 0 && x < 256 then
+        Unknown x
+      else
+        invalid_arg ("Bad SSHFP algorithm " ^ string_of_int x)
 
   let algorithm_to_string = function
     | Rsa -> "RSA"
     | Dsa -> "DSA"
     | Ecdsa -> "ECDSA"
     | Ed25519 -> "ED25519"
+    | Unknown x -> "unknown " ^ string_of_int x
 
   let pp_algorithm ppf k = Fmt.string ppf (algorithm_to_string k)
 
@@ -958,19 +983,26 @@ module Sshfp = struct
   type typ =
     | SHA1
     | SHA256
+    | Unknown of int
 
   let typ_to_int = function
     | SHA1 -> 1
     | SHA256 -> 2
+    | Unknown x -> x
 
-  let int_to_typ ?(off = 0) = function
-    | 1 -> Ok SHA1
-    | 2 -> Ok SHA256
-    | x -> Error (`Not_implemented (off, Fmt.strf "SSHFP type %X" x))
+  let int_to_typ = function
+    | 1 -> SHA1
+    | 2 -> SHA256
+    | x ->
+      if x >= 0 && x < 256 then
+        Unknown x
+      else
+        invalid_arg ("Bad SSHFP typ " ^ string_of_int x)
 
   let typ_to_string = function
     | SHA1 -> "SHA1"
     | SHA256 -> "SHA256"
+    | Unknown x -> "unknown " ^ string_of_int x
 
   let pp_typ ppf k = Fmt.string ppf (typ_to_string k)
 
@@ -992,13 +1024,12 @@ module Sshfp = struct
          (Cstruct.compare s1.fingerprint s2.fingerprint))
 
   let decode names buf ~off ~len =
-    let open Rresult.R.Infix in
     let algo, typ = Cstruct.get_uint8 buf off, Cstruct.get_uint8 buf (succ off) in
     let fingerprint = Cstruct.sub buf (off + 2) (len - 2) in
-    int_to_algorithm ~off algo >>= fun algorithm ->
-    int_to_typ ~off:(succ off) typ >>| fun typ ->
+    let algorithm = int_to_algorithm algo in
+    let typ = int_to_typ typ in
     let sshfp = { algorithm ; typ ; fingerprint } in
-    sshfp, names, off + len
+    Ok (sshfp, names, off + len)
 
   let encode sshfp names buf off =
     Cstruct.set_uint8 buf off (algorithm_to_int sshfp.algorithm) ;
@@ -1328,6 +1359,7 @@ module Tsig = struct
     | Dnskey.SHA256 -> Ok SHA256
     | Dnskey.SHA384 -> Ok SHA384
     | Dnskey.SHA512 -> Ok SHA512
+    | Dnskey.Unknown x -> Error (`Msg ("Unknown DNSKEY algorithm " ^ string_of_int x))
 end
 
 module Edns = struct
@@ -2463,12 +2495,18 @@ module Packet = struct
       decode_ntc names buf off >>= fun ((name, typ, c), names, off) ->
       Class.of_int ~off c >>= fun clas ->
       match typ with
-      | `Edns | `Tsig -> Error (`Malformed (off, Fmt.strf "bad RRTYp in question %a" Rr_map.pp_rr typ))
-      | (`Axfr | `Ixfr | `Any | `K _ as t) when clas = Class.IN -> Ok ((name, t), names, off)
-      | _ -> Error (`Not_implemented (off, Fmt.strf "bad class in question 0x%x" c))
+      | `Edns | `Tsig ->
+        let msg = Fmt.strf "bad RRTYp in question %a" Rr_map.pp_rr typ in
+        Error (`Malformed (off, msg))
+      | (`Axfr | `Ixfr | `Any | `K _ as t) ->
+        if clas = Class.IN then
+          Ok ((name, t), names, off)
+        else
+          Error (`Not_implemented (off, Fmt.strf "bad class in question 0x%x" c))
 
     let encode names buf off (name, typ) =
-      Rr_map.encode_ntc names buf off (name, (typ :> Rr_map.rrtyp), Class.to_int Class.IN)
+      Rr_map.encode_ntc names buf off
+        (name, (typ :> Rr_map.rrtyp), Class.to_int Class.IN)
   end
 
   let encode_data map names buf off =
