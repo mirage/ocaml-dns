@@ -1,5 +1,8 @@
 open Dns
 
+let src = Logs.Src.create "dns_certify" ~doc:"DNS certify"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 let tlsa_is usage sel typ t =
   t.Tlsa.cert_usage = usage &&
   t.Tlsa.selector = sel &&
@@ -126,15 +129,42 @@ let pp_q_err ppf = function
   | `Unexpected_reply r -> Fmt.pf ppf "unexpected reply %a" Packet.pp_reply r
   | `No_tlsa -> Fmt.pf ppf "No TLSA record found"
 
-let tlsas_to_certchain host public_key tlsas =
+(* may be better suited in X509? *)
+let cert_matches_csr ?until now csr cert =
+  let until = match until with None -> now | Some x -> x in
+  let csr_key = X509.Signing_request.((info csr).public_key)
+  and csr_hostnames = X509.Signing_request.hostnames csr
+  and cert_key = X509.Certificate.public_key cert
+  and cert_hostnames = X509.Certificate.hostnames cert
+  and (st, en) = X509.Certificate.validity cert
+  in
+  let valid = Ptime.is_later ~than:st now && Ptime.is_later ~than:until en in
+  if not (Cstruct.equal (X509.Public_key.id cert_key) (X509.Public_key.id csr_key)) then begin
+    Log.info (fun m -> m "public key of CSR and certificate %a do not match"
+                 X509.Certificate.pp cert);
+    false
+  end else if not (X509.Host.Set.equal cert_hostnames csr_hostnames) then begin
+    Log.info (fun m -> m "hostnames of CSR %a and certificate %a do not match"
+                 X509.Host.Set.pp csr_hostnames X509.Host.Set.pp cert_hostnames);
+    false
+  end else if not valid then begin
+    let pp_pt = Ptime.pp_rfc3339 () in
+    Log.info (fun m -> m "Certificate is not valid now %a (until %a), it is \
+                          valid from %a until %a)"
+                 pp_pt now pp_pt until pp_pt st pp_pt en);
+    false
+  end else
+    true
+
+let tlsas_to_certchain host now csr tlsas =
   let certificates, ca_certificates =
     Rr_map.Tlsa_set.fold (fun tlsa (certs, cacerts as acc) ->
         if is_certificate tlsa || is_ca_certificate tlsa then
           match X509.Certificate.decode_der tlsa.Tlsa.data with
           | Error (`Msg msg) ->
-            Logs.warn (fun m -> m "couldn't decode tlsa record %a: %s (%a)"
-                          Domain_name.pp host msg
-                          Cstruct.hexdump_pp tlsa.Tlsa.data);
+            Log.warn (fun m -> m "couldn't decode tlsa record %a: %s (%a)"
+                         Domain_name.pp host msg
+                         Cstruct.hexdump_pp tlsa.Tlsa.data);
             acc
           | Ok cert ->
             match is_certificate tlsa, is_ca_certificate tlsa with
@@ -144,18 +174,14 @@ let tlsas_to_certchain host public_key tlsas =
         else acc)
       tlsas ([], [])
   in
-  let matches_public_key cert =
-    let key = X509.Certificate.public_key cert in
-    Cstruct.equal (X509.Public_key.id key) (X509.Public_key.id public_key)
-  in
-  match List.find_opt matches_public_key certificates with
+  match List.find_opt (cert_matches_csr now csr) certificates with
   | None -> Error `No_tlsa
   | Some server_cert ->
     match List.rev (X509.Validation.build_paths server_cert ca_certificates) with
     | (_server :: chain) :: _ -> Ok (server_cert, chain)
     | _ -> Ok (server_cert, []) (* build_paths always returns the server_cert *)
 
-let query rng public_key host =
+let query rng now host csr =
   match letsencrypt_name host with
   | Error e -> Error e
   | Ok host ->
@@ -172,7 +198,7 @@ let query rng public_key host =
         | Ok (`Answer (answer, _)) ->
           begin match Name_rr_map.find host Tlsa answer with
             | None -> Error `No_tlsa
-            | Some (_, tlsas) -> tlsas_to_certchain host public_key tlsas
+            | Some (_, tlsas) -> tlsas_to_certchain host now csr tlsas
           end
         | Ok (`Rcode_error (Rcode.NXDomain, Opcode.Query, _)) -> Error `No_tlsa
         | Ok reply -> Error (`Unexpected_reply reply)

@@ -21,8 +21,8 @@ let find_or_generate_key key_filename bits seed =
     Bos.OS.File.write ~mode:0o600 key_filename (Cstruct.to_string pem) >>= fun () ->
     Ok key
 
-let query_certificate sock public_key fqdn =
-  match Dns_certify.query Mirage_crypto_rng.generate public_key fqdn with
+let query_certificate sock fqdn csr =
+  match Dns_certify.query Mirage_crypto_rng.generate (Ptime_clock.now ()) fqdn csr with
   | Error e -> Error e
   | Ok (out, cb) ->
     Dns_cli.send_tcp sock out;
@@ -59,7 +59,6 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
       let pem = X509.Signing_request.encode_pem csr in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
       Ok csr) >>= fun csr ->
-  let public_key = X509.Signing_request.((info csr).public_key) in
   (* before doing anything, let's check whether cert_filename is present, matches public key, and is valid *)
   let tomorrow =
     let (d, ps) = Ptime_clock.now_d_ps () in
@@ -71,12 +70,12 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
       X509.Certificate.decode_pem (Cstruct.of_string data) >>| fun cert ->
       Some cert
     | false -> Ok None) >>= (function
-      | Some cert when
-          not force
-          && Cstruct.equal X509.(Public_key.id (Certificate.public_key cert)) (X509.Public_key.id public_key)
-          && Ptime.is_later (snd (X509.Certificate.validity cert)) ~than:tomorrow ->
-        Error (`Msg "valid certificate with matching key already present")
-      | _ -> Ok ()) >>= fun () ->
+      | Some cert ->
+        if not force && Dns_certify.cert_matches_csr tomorrow csr cert then
+          Error (`Msg "valid certificate with matching key already present")
+        else
+          Ok ()
+      | None -> Ok ()) >>= fun () ->
   (* strategy: unless force is provided, we can request DNS, and if a
      certificate is present, compare its public key with csr public key *)
   let write_certificate certs =
@@ -87,7 +86,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
   let sock = Dns_cli.connect_tcp server_ip port in
   (if force then
      Ok true
-   else match query_certificate sock public_key hostname with
+   else match query_certificate sock hostname csr with
      | Ok (server, chain) ->
        Logs.app (fun m -> m "found cached certificate in DNS");
        write_certificate (server :: chain) >>| fun () ->
@@ -107,7 +106,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
     | Some (keyname, zone, dnskey) ->
       nsupdate_csr sock hostname keyname zone dnskey csr >>= fun () ->
       let rec request retries =
-        match query_certificate sock public_key hostname with
+        match query_certificate sock hostname csr with
         | Error (`Msg msg) -> Error (`Msg msg)
         | Error #Dns_certify.q_err when retries = 0 ->
           Error (`Msg "failed to retrieve certificate (tried 10 times)")

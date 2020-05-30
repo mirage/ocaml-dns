@@ -24,8 +24,8 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
           | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Dns_certify.pp_u_err e))
           | Ok () -> Ok ()
 
-  let query_certificate flow public_key name =
-    match Dns_certify.query R.generate public_key name with
+  let query_certificate flow name csr =
+    match Dns_certify.query R.generate (Ptime.v (P.now_d_ps ())) name csr with
     | Error e -> Lwt.return (Error e)
     | Ok (out, cb) ->
       D.send_tcp (D.flow flow) out >>= function
@@ -53,11 +53,10 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
       key
     in
     let csr = Dns_certify.signing_request hostname ~more_hostnames (`RSA private_key) in
-    let public_key = `RSA (Mirage_crypto_pk.Rsa.pub_of_priv private_key) in
-    (private_key, public_key, csr)
+    (private_key, csr)
 
-  let query_certificate_or_csr flow pub hostname keyname zone dnskey csr =
-    query_certificate flow pub hostname >>= function
+  let query_certificate_or_csr flow hostname keyname zone dnskey csr =
+    query_certificate flow hostname csr >>= function
     | Ok certificate ->
       Log.info (fun m -> m "found certificate in DNS") ;
       Lwt.return (Ok certificate)
@@ -78,7 +77,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
           if retry = 0 then
             Lwt.return (Error (`Msg "too many retries, giving up"))
           else
-            query_certificate flow pub hostname >>= function
+            query_certificate flow hostname csr >>= function
             | Ok certificate ->
               Log.info (fun m -> m "finally found a certificate") ;
               Lwt.return (Ok certificate)
@@ -104,14 +103,14 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
     if not_sub hostname || List.exists not_sub additional_hostnames then
       Lwt.fail_with "hostname not a subdomain of zone provided by dns_key"
     else
-      let priv, pub, csr = initialise_csr hostname additional_hostnames key_seed in
+      let priv, csr = initialise_csr hostname additional_hostnames key_seed in
       S.TCPV4.create_connection (S.tcpv4 stack) (dns, port) >>= function
       | Error e ->
         Log.err (fun m -> m "error %a while connecting to name server, shutting down" S.TCPV4.pp_error e) ;
         Lwt.return (Error (`Msg "couldn't connect to name server"))
       | Ok flow ->
         let flow = D.of_flow flow in
-        query_certificate_or_csr flow pub hostname keyname zone dnskey csr >>= fun certificate ->
+        query_certificate_or_csr flow hostname keyname zone dnskey csr >>= fun certificate ->
         S.TCPV4.close (D.flow flow) >|= fun () ->
         match certificate with
         | Error e -> Error e

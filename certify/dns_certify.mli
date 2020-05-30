@@ -75,11 +75,19 @@ type q_err = [
 val pp_q_err : q_err Fmt.t
 (** [pp_q_err ppf q] pretty-prints [q] on [ppf]. *)
 
-val query : (int -> Cstruct.t) -> X509.Public_key.t ->
-  [ `host ] Domain_name.t ->
+val cert_matches_csr : ?until:Ptime.t -> Ptime.t -> X509.Signing_request.t ->
+  X509.Certificate.t -> bool
+(** [cert_matches_csr ~until now csr cert] is [true] if [cert] matches the
+    signing request [csr], and is valid from [now] until [until] (defaults to
+    [now]). The matching is [true] if the public key matches, and the set of
+    hostnames in [csr] and [cert] are equal. A log message on the info level
+    is emitted if the return value if [false]. *)
+
+val query : (int -> Cstruct.t) -> Ptime.t -> [ `host ] Domain_name.t ->
+  X509.Signing_request.t ->
   (Cstruct.t *
    (Cstruct.t -> (X509.Certificate.t * X509.Certificate.t list, [> q_err ]) result),
    [> `Msg of string ]) result
-(** [query rng pubkey name] is a [buffer] with a DNS TLSA query for the given
-   [name], and a function that decodes a given answer, either returning a X.509
-   certificate and a chain, or an error. *)
+(** [query rng now csr] is a [buffer] with a DNS TLSA query for the name of
+   [csr], and a function that decodes a given answer, either returning a X.509
+   certificate valid [now] and matching [csr], and a CA chain, or an error. *)
