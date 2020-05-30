@@ -59,9 +59,11 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
       let pem = X509.Signing_request.encode_pem csr in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
       Ok csr) >>= fun csr ->
-  (* before doing anything, let's check whether cert_filename is present, matches public key, and is valid *)
+  (* before doing anything, let's check whether cert_filename is present,
+     the public key matches, and the certificate is still valid *)
+  let now = Ptime_clock.now () in
   let tomorrow =
-    let (d, ps) = Ptime_clock.now_d_ps () in
+    let (d, ps) = Ptime.Span.to_d_ps (Ptime.to_span now) in
     Ptime.v (succ d, ps)
   in
   (Bos.OS.File.exists cert_filename >>= function
@@ -71,7 +73,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
       Some cert
     | false -> Ok None) >>= (function
       | Some cert ->
-        if not force && Dns_certify.cert_matches_csr tomorrow csr cert then
+        if not force && Dns_certify.cert_matches_csr ~until:tomorrow now csr cert then
           Error (`Msg "valid certificate with matching key already present")
         else
           Ok ()
