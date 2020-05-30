@@ -137,35 +137,36 @@ generic_type s generic_rdata {
      { B (Srv, (0l, Rr_map.Srv_set.singleton { Srv.priority = $3 ; weight = $5 ; port = $7 ; target = $9 })) }
      /* RFC 3596 */
  | TYPE_TLSA s int8 s int8 s int8 s hex
-     { match
-         Tlsa.int_to_cert_usage $3,
-         Tlsa.int_to_selector $5,
-         Tlsa.int_to_matching_type $7
+     { try
+         let cert_usage = Tlsa.int_to_cert_usage $3
+         and selector = Tlsa.int_to_selector $5
+         and matching_type = Tlsa.int_to_matching_type $7
+         in
+         let tlsa = { Tlsa.cert_usage ; selector ; matching_type ; data = $9 } in
+         B (Tlsa, (0l, Rr_map.Tlsa_set.singleton tlsa ))
        with
-       | Ok cert_usage, Ok selector, Ok matching_type ->
-          let tlsa = { Tlsa.cert_usage ; selector ; matching_type ; data = $9 } in
-          B (Tlsa, (0l, Rr_map.Tlsa_set.singleton tlsa ))
-       | _ -> raise Parsing.Parse_error
+       | Invalid_argument err -> parse_error err
      }
  | TYPE_SSHFP s int8 s int8 s hex
-     { match
-         Sshfp.int_to_algorithm $3,
-         Sshfp.int_to_typ $5
+     { try
+         let algorithm = Sshfp.int_to_algorithm $3
+         and typ = Sshfp.int_to_typ $5
+         in
+         let sshfp = { Sshfp.algorithm ; typ ; fingerprint = $7 } in
+         B (Sshfp, (0l, Rr_map.Sshfp_set.singleton sshfp))
        with
-       | Ok algorithm, Ok typ ->
-          let sshfp = { Sshfp.algorithm ; typ ; fingerprint = $7 } in
-          B (Sshfp, (0l, Rr_map.Sshfp_set.singleton sshfp))
-       | _ -> raise Parsing.Parse_error
+       | Invalid_argument err -> parse_error err
      }
  | TYPE_AAAA s ipv6 { B (Aaaa, (0l, Rr_map.Ipv6_set.singleton $3)) }
  | TYPE_DNSKEY s int16 s int16 s int16 s charstring
      { if not ($5 = 3) then
            parse_error ("DNSKEY protocol is not 3, but " ^ string_of_int $5) ;
-       match Dnskey.int_to_algorithm $7 with
-       | Error _ -> parse_error ("DNSKEY algorithm not supported " ^ string_of_int $7)
-       | Ok x ->
-          let dnskey = { Dnskey.flags = $3 ; algorithm = x ; key = Cstruct.of_string $9 } in
-          B (Dnskey, (0l, Rr_map.Dnskey_set.singleton dnskey))
+       try
+         let algorithm = Dnskey.int_to_algorithm $7 in
+         let dnskey = { Dnskey.flags = $3 ; algorithm ; key = Cstruct.of_string $9 } in
+         B (Dnskey, (0l, Rr_map.Dnskey_set.singleton dnskey))
+       with
+       | Invalid_argument err -> parse_error err
      }
  | TYPE_CAA s int16 s charstring s charstrings
      { let critical = if $3 = 0x80 then true else false in

@@ -309,10 +309,14 @@ module Dnskey : sig
     | SHA256
     | SHA384
     | SHA512
+    | Unknown of int
   (** The type of currently supported DNS key algorithms. *)
 
-  val int_to_algorithm : ?off:int -> int -> (algorithm, [> `Not_implemented of int * string ]) result
-  (** [int_to_algorithm ~off i] tries to decode [i] to an [algorithm]. *)
+  val int_to_algorithm : int -> algorithm
+  (** [int_to_algorithm i] decodes [i] to an [algorithm].
+
+      @raise Invalid_argument if [i] does not fit in one octet.
+ *)
 
   val algorithm_to_int : algorithm -> int
   (** [algorithm_to_int a] encodes [a] to an integer. *)
@@ -372,16 +376,17 @@ module Tlsa : sig
     | Service_certificate_constraint
     | Trust_anchor_assertion
     | Domain_issued_certificate
+    | Unknown of int
   (** The type of the certificate usage field. *)
 
   val cert_usage_to_int : cert_usage -> int
   (** [cert_usage_to_int cu] is the 8 bit integer representation of [cu]. *)
 
-  val int_to_cert_usage : ?off:int -> int ->
-    (cert_usage, [> `Not_implemented of int * string ]) result
-  (** [int_to_cert_usage ~off i] attempts to convert [i] to a certificate
-     usage constructor. If successful, this is the result, otherwise an
-     Error is returned (with [off] as position). *)
+  val int_to_cert_usage : int -> cert_usage
+  (** [int_to_cert_usage i] decodes [i] to a certificate usage constructor.
+
+      @raise Invalid_argument if [i] does not fit in one octet.
+  *)
 
   val pp_cert_usage : cert_usage Fmt.t
   (** [pp_cert_usage ppf cu] pretty-prints the certificate usage on [ppf]. *)
@@ -390,16 +395,17 @@ module Tlsa : sig
     | Full_certificate
     | Subject_public_key_info
     | Private
+    | Unknown of int
   (** The type of the selector. *)
 
   val selector_to_int : selector -> int
   (** [selector_to_int s] is the 8 bit integer representation of [s]. *)
 
-  val int_to_selector : ?off:int -> int ->
-    (selector, [> `Not_implemented of int * string ]) result
-  (** [int_to_selector ~off i] attempts to convert [i] to a selector
-     constructor. If there is no such constructor known for the provided [i], an
-     Error is returned. *)
+  val int_to_selector : int -> selector
+  (** [int_to_selector i] decodes [i] to a selector.
+
+      @raise Invalid_argument if [i] does not fit in one octet.
+  *)
 
   val pp_selector : selector Fmt.t
   (** [pp_selector ppf s] pretty-prints the selector [s] on [ppf]. *)
@@ -408,16 +414,17 @@ module Tlsa : sig
     | No_hash
     | SHA256
     | SHA512
+    | Unknown of int
   (** The type of matching type. *)
 
   val matching_type_to_int : matching_type -> int
   (** [matching_type_to_int m] is the 8 bit integer representation of [m]. *)
 
-  val int_to_matching_type : ?off:int -> int ->
-    (matching_type, [> `Not_implemented of int * string ]) result
-  (** [int_to_matching_type ~off i] attempts to convert [i] to a matching type
-     constructor. If there is no such constructor for the provided [i], an Error
-     is returned. *)
+  val int_to_matching_type : int -> matching_type
+  (** [int_to_matching_type i] decodes [i] to a matching type constructor.
+
+      @raise Invalid_argument if [i] does not fit in one octet.
+  *)
 
   val pp_matching_type : matching_type Fmt.t
   (** [pp_matching_type ppf m] pretty-prints the matching type [m] on [ppf]. *)
@@ -450,16 +457,18 @@ module Sshfp : sig
     | Dsa
     | Ecdsa
     | Ed25519
+    | Unknown of int
   (** The type of supported algorithms. *)
 
   val algorithm_to_int : algorithm -> int
   (** [algorithm_to_int a] is the 8 bit integer representation of algorithm
      [a]. *)
 
-  val int_to_algorithm : ?off:int -> int ->
-    (algorithm, [> `Not_implemented of int * string ]) result
-  (** [int_to_algorithm ~off i] is the algorithm constructor of [i], if
-     defined. Otherwise an Error is returned. *)
+  val int_to_algorithm : int -> algorithm
+  (** [int_to_algorithm i] decodes [i] to the algorithm constructor.
+
+      @raise Invalid_argument if [i] does not fit in one octet.
+  *)
 
   val pp_algorithm : algorithm Fmt.t
   (** [pp_algorithm ppf a] pretty-prints the algorithm [a] on [ppf]. *)
@@ -467,15 +476,17 @@ module Sshfp : sig
   type typ =
     | SHA1
     | SHA256
+    | Unknown of int
   (** The type of supported SSH fingerprint types. *)
 
   val typ_to_int : typ -> int
   (** [typ_to_int t] is the 8 bit integer representation of typ [t]. *)
 
-  val int_to_typ : ?off:int -> int ->
-    (typ, [> `Not_implemented of int * string ]) result
-  (** [int_to_typ ~off i] is the typ constructor of [i], if defined. Otherwise
-     an Error is returned. *)
+  val int_to_typ : int -> typ
+  (** [int_to_typ i] decodes [i] to the typ constructor.
+
+      @raise Invalid_argument if [i] does not fit in one octet.
+ *)
 
   val pp_typ : typ Fmt.t
   (** [pp_typ ppf t] pretty-prints the typ [t] on [ppf]. *)
