@@ -2406,12 +2406,18 @@ module Packet = struct
       decode_ntc names buf off >>= fun ((name, typ, c), names, off) ->
       Class.of_int ~off c >>= fun clas ->
       match typ with
-      | `Edns | `Tsig -> Error (`Malformed (off, Fmt.strf "bad RRTYp in question %a" Rr_map.pp_rr typ))
-      | (`Axfr | `Ixfr | `Any | `K _ as t) when clas = Class.IN -> Ok ((name, t), names, off)
-      | _ -> Error (`Not_implemented (off, Fmt.strf "bad class in question 0x%x" c))
+      | `Edns | `Tsig ->
+        let msg = Fmt.strf "bad RRTYp in question %a" Rr_map.pp_rr typ in
+        Error (`Malformed (off, msg))
+      | (`Axfr | `Ixfr | `Any | `K _ as t) ->
+        if clas = Class.IN then
+          Ok ((name, t), names, off)
+        else
+          Error (`Not_implemented (off, Fmt.strf "bad class in question 0x%x" c))
 
     let encode names buf off (name, typ) =
-      Rr_map.encode_ntc names buf off (name, (typ :> Rr_map.rrtyp), Class.to_int Class.IN)
+      Rr_map.encode_ntc names buf off
+        (name, (typ :> Rr_map.rrtyp), Class.to_int Class.IN)
   end
 
 
