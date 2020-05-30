@@ -3,9 +3,6 @@
 
     The {!Dns_client} is available as Dns_client_lwt after
     linking to dns-client.lwt in your dune file.
-
-    The [create] function embeds the side effect of initializing the RNG
-    by calling {!Mirage_crypto_rng_unix.initialize}.
 *)
 
 

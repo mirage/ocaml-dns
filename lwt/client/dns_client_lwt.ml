@@ -18,7 +18,6 @@ module Transport : Dns_client.S
   let create
     ?(nameserver = `TCP, (Unix.inet_addr_of_string Dns_client.default_resolver, 53))
     ~timeout () =
-    Mirage_crypto_rng_unix.initialize ();
     { nameserver ; timeout_ns = timeout }
 
   let nameserver { nameserver ; _ } = nameserver

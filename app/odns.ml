@@ -3,6 +3,8 @@
 (* RFC 7766 DNS over TCP: https://tools.ietf.org/html/rfc7766 *)
 (* RFC 6698 DANE: https://tools.ietf.org/html/rfc6698*)
 
+open Lwt.Infix
+
 let pp_zone ppf (domain,query_type,query_value) =
   (* TODO dig also prints 'IN' after the TTL, we don't... *)
   Fmt.string ppf
@@ -40,6 +42,7 @@ let do_a nameserver is_udp domains _ =
                 (Unix.string_of_inet_addr ns_ip)
                 Fmt.(list ~sep:(unit", ") Domain_name.pp) domains);
   let job =
+    Mirage_crypto_rng_lwt.initialize () >>= fun () ->
     Lwt_list.iter_p (fun domain ->
         let open Lwt in
         Logs.debug (fun m -> m "looking up %a" Domain_name.pp domain);
@@ -70,7 +73,8 @@ let for_all_domains nameserver is_udp ~domains typ f =
   Logs.info (fun m -> m "NS: %s" @@ Unix.string_of_inet_addr ns_ip);
   let open Lwt in
   match Lwt_main.run
-          (Lwt_list.iter_p
+          (Mirage_crypto_rng_lwt.initialize () >>= fun () ->
+           Lwt_list.iter_p
              (fun domain ->
                 Dns_client_lwt.getaddrinfo t typ domain
                 >|= Rresult.R.reword_error
