@@ -1,3 +1,22 @@
+### v4.6.0 (2020-06-02)
+
+* dns: bugfix for name compression when encoding names at offset > (2 ^ 14) - 1
+  (#225 @hannesm)
+* dns: allow unknown DNSKEY algorithm, TLSA certificate usage, selector,
+  matching type, SSHFP algorithm and typ. This makes the DNS library
+  future-proof for when new values are assigned (#228 @hannesm)
+* dns: enforce a max_rdata_length for all resource records. This ensures that
+  when a resource record is loaded into the server, it can be extracted via a
+  DNS query and transferred via IXFR/AXFR
+  (#230 @hannesm, reported in #229 via #225)
+* AXFR: encode and decode support for AXFR transfers spanning multiple messages
+  (#225 @hannesm)
+* client: do not initialize the Mirage_crypto_rng in the library, initialize
+  the RNG in applications (#227 @hannesm)
+* certify: provide cert_matches_csr function and use it (cleans up partial
+  ad-hoc matches which did not verify that all hostnames of the CSR are present
+  in the certificate) (#226 @hannesm, reported in #224)
+
 ### v4.5.0 (2020-04-23)
 
 * client: add timeout for DNS requests (defaults to 5 seconds, as in resolv.h).
