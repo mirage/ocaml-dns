@@ -130,11 +130,17 @@ generic_type s generic_rdata {
      { B (Soa, { Soa.nameserver = $3 ; hostmaster = $5 ; serial = $7 ;
                  refresh = $9 ; retry = $11 ; expiry = $13 ; minimum = $15 }) }
  | TYPE_PTR s hostname { B (Ptr, (0l, $3)) }
- | TYPE_MX s int16 s hostname { B (Mx, (0l, Rr_map.Mx_set.singleton { Mx.preference = $3 ; mail_exchange = $5 })) }
- | TYPE_TXT s charstrings { B (Txt, (0l, Rr_map.Txt_set.of_list $3)) }
+ | TYPE_MX s int16 s hostname
+     { let mx = { Mx.preference = $3 ; mail_exchange = $5 } in
+       B (Mx, (0l, Rr_map.Mx_set.singleton mx)) }
+ | TYPE_TXT s charstrings
+     { if List.exists (fun s -> String.length s > 255) $3 then
+         parse_error "A single TXT rdata may not exceed 255 bytes";
+       B (Txt, (0l, Rr_map.Txt_set.of_list $3)) }
      /* RFC 2782 */
  | TYPE_SRV s int16 s int16 s int16 s hostname
-     { B (Srv, (0l, Rr_map.Srv_set.singleton { Srv.priority = $3 ; weight = $5 ; port = $7 ; target = $9 })) }
+     { let srv = { Srv.priority = $3 ; weight = $5 ; port = $7 ; target = $9 } in
+       B (Srv, (0l, Rr_map.Srv_set.singleton srv)) }
      /* RFC 3596 */
  | TYPE_TLSA s int8 s int8 s int8 s hex
      { try
@@ -142,6 +148,8 @@ generic_type s generic_rdata {
          and selector = Tlsa.int_to_selector $5
          and matching_type = Tlsa.int_to_matching_type $7
          in
+         if Cstruct.len $9 > max_rdata_length - 3 then
+           parse_error "TLSA payload exceeds maximum rdata size";
          let tlsa = { Tlsa.cert_usage ; selector ; matching_type ; data = $9 } in
          B (Tlsa, (0l, Rr_map.Tlsa_set.singleton tlsa ))
        with
@@ -152,24 +160,39 @@ generic_type s generic_rdata {
          let algorithm = Sshfp.int_to_algorithm $3
          and typ = Sshfp.int_to_typ $5
          in
+         if Cstruct.len $7 > max_rdata_length - 2 then
+           parse_error "SSHFP payload exceeds maximum rdata size";
          let sshfp = { Sshfp.algorithm ; typ ; fingerprint = $7 } in
          B (Sshfp, (0l, Rr_map.Sshfp_set.singleton sshfp))
        with
        | Invalid_argument err -> parse_error err
      }
  | TYPE_AAAA s ipv6 { B (Aaaa, (0l, Rr_map.Ipv6_set.singleton $3)) }
- | TYPE_DNSKEY s int16 s int16 s int16 s charstring
+ | TYPE_DNSKEY s int16 s int8 s int8 s charstring
      { if not ($5 = 3) then
-           parse_error ("DNSKEY protocol is not 3, but " ^ string_of_int $5) ;
+         parse_error ("DNSKEY protocol is not 3, but " ^ string_of_int $5) ;
        try
          let algorithm = Dnskey.int_to_algorithm $7 in
+         if String.length $9 > max_rdata_length - 4 then
+           parse_error "DNSKEY exceeds maximum rdata size";
          let dnskey = { Dnskey.flags = $3 ; algorithm ; key = Cstruct.of_string $9 } in
          B (Dnskey, (0l, Rr_map.Dnskey_set.singleton dnskey))
        with
        | Invalid_argument err -> parse_error err
      }
- | TYPE_CAA s int16 s charstring s charstrings
+ | TYPE_CAA s int8 s charstring s charstrings
      { let critical = if $3 = 0x80 then true else false in
+       if String.length $5 <= 0 || String.length $5 >= 16 then
+         parse_error "CAA tag length must be > 0 and < 16";
+       let size =
+         (* the values are ';' separated (thus + 1 here) *)
+         List.fold_left (fun acc s -> acc + 1 + String.length s)
+           (String.length $5) $7
+       in
+       (* actually flag + tag length = 2, but we already added one for the first
+          value above *)
+       if size > max_rdata_length - 1 then
+         parse_error "CAA exceeds maximum rdata size";
        let caa = { Caa.critical ; tag = $5 ; value = $7 } in
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
@@ -195,6 +218,8 @@ generic_rdata: GENERIC s NUMBER s hex
            parse_error ("generic data length field is "
 			   ^ $3 ^ " but actual length is "
 			      ^ string_of_int (String.length data));
+         if len > max_rdata_length then
+           parse_error ("generic data length field exceeds maximum rdata size: " ^ $3);
 	 data
        with Failure _ ->
 	 parse_error ("\\# should be followed by a number")

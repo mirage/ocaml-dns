@@ -89,6 +89,12 @@ type proto = [ `Tcp | `Udp ]
 (** The type of supported protocols. Used by {!Packet.encode} to decide on
      maximum buffer length, etc. *)
 
+val max_rdata_length : int
+(** Maximum size of resource data. This limitation is close to (2 ^ 16) - 1 (the
+    limit of DNS-over-TCP and EDNS payload size, but slightly smaller, since an
+    rdata must fit into this DNS message together with a DNS header, a question,
+    and a TSIG signature (for e.g. zone transfer). *)
+
 (** Opcode
 
     Each DNS packet includes the kind of query, identified by a 4bit opcode.
