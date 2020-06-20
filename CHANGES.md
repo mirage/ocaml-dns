@@ -1,3 +1,8 @@
+### v4.6.1 (2020-06-20)
+
+* dns-client.lwt, dns-client.unix: initialize RNG (#232 @hannesm)
+* dns-cli: compatible with mirage-crypto-rng 0.8 (#232 @hannesm)
+
 ### v4.6.0 (2020-06-02)
 
 * dns: bugfix for name compression when encoding names at offset > (2 ^ 14) - 1
