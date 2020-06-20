@@ -3,6 +3,8 @@
 
     The {!Dns_client} is available as Dns_client_lwt after
     linking to dns-client.lwt in your dune file.
+
+    It initializes the RNG (using Mirage_crypto_rng_lwt.initialize ()).
 *)
 
 

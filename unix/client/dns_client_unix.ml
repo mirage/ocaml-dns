@@ -98,3 +98,6 @@ end
 (* Now that we have our {!Transport} implementation we can include the logic
    that goes on top of it: *)
 include Dns_client.Make(Transport)
+
+(* initialize the RNG *)
+let () = Mirage_crypto_rng_unix.initialize ()
