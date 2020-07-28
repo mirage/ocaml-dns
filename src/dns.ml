@@ -1542,7 +1542,7 @@ module Edns = struct
     and len = Cstruct.BE.get_uint16 buf (off + 9)
     in
     let off = off + 11 in
-    let dnssec_ok = flags land 0x8000_0000 = 0x8000_0000 in
+    let dnssec_ok = flags land 0x8000 = 0x8000 in
     guard (version = 0) (`Bad_edns_version version) >>= fun () ->
     let payload_size =
       if payload_size < min_payload_size then begin
@@ -1570,7 +1570,7 @@ module Edns = struct
     (* it continues: the ttl is split into: 8bit extended rcode, 8bit version, 1bit dnssec_ok, 7bit 0 *)
     Cstruct.set_uint8 buf (off + 5) t.extended_rcode ;
     Cstruct.set_uint8 buf (off + 6) t.version ;
-    Cstruct.BE.set_uint16 buf (off + 7) (if t.dnssec_ok then 0x8000_0000 else 0) ;
+    Cstruct.BE.set_uint16 buf (off + 7) (if t.dnssec_ok then 0x8000 else 0) ;
     let ext_start = off + 11 in
     let ext_end = encode_extensions t.extensions buf ext_start in
     Cstruct.BE.set_uint16 buf (off + 9) (ext_end - ext_start) ;
