@@ -346,31 +346,24 @@ let handle_ixfr_request t m proto key ((zone, _) as question) soa =
 
 let safe_decode buf =
   match Packet.decode buf with
-  | Error e ->
-    Logs.err (fun m -> m "error %a while decoding, giving up" Packet.pp_err e);
-    rx_metrics (`Rcode_error (Rcode.FormErr, Opcode.Query, None));
-    Error Rcode.FormErr
-(*  | Error `Partial ->
-    Log.err (fun m -> m "partial frame (length %d)@.%a" (Cstruct.len buf) Cstruct.hexdump_pp buf);
-    Packet.create <<no header>> <<no question>> Dns_enum.FormErr
   | Error (`Bad_edns_version i) ->
     Log.err (fun m -> m "bad edns version error %u while decoding@.%a"
                  i Cstruct.hexdump_pp buf);
-    Error Dns_enum.BadVersOrSig
+    Error Rcode.BadVersOrSig
   | Error (`Not_implemented (off, msg)) ->
     Log.err (fun m -> m "not implemented at %d: %s while decoding@.%a"
                 off msg Cstruct.hexdump_pp buf);
-    Error Dns_enum.NotImp
+    Error Rcode.NotImp
   | Error e ->
-    Log.err (fun m -> m "error %a while decoding@.%a"
-                 Packet.pp_err e Cstruct.hexdump_pp buf);
-    Error Dns_enum.FormErr *)
+    Log.err (fun m -> m "error %a while decoding, giving up" Packet.pp_err e);
+    rx_metrics (`Rcode_error (Rcode.FormErr, Opcode.Query, None));
+    Error Rcode.FormErr
   | Ok v ->
     rx_metrics v.Packet.data;
     Ok v
 
 let handle_question t (name, typ) =
-  (* TODO white/blacklist of allowed qtypes? what about ANY and UDP? *)
+  (* TODO allow/disallowlist of allowed qtypes? what about ANY and UDP? *)
   match typ with
   (* this won't happen, decoder constructs `Axfr *)
   | `Axfr | `Ixfr -> Error (Rcode.NotImp, None)

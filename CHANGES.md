@@ -1,3 +1,12 @@
+### v4.6.2 (2020-08-07)
+
+* fixes for 32 bit support (OCaml-CI now runs on 32 bit) in test suite and EDNS
+* dns: fix EDNS flag decoding and encoding (16 bit only)
+  reported in #234 by @dinosaure, fix #235 by @hannesm
+* dns-server: reply to unsupported EDNS version (not 0) with
+  rcode=16 (BadVersOrSig), as required by RFC 6891, and tested by DNS flag day
+  issue #166, fix in #237 by @hannesm
+
 ### v4.6.1 (2020-06-20)
 
 * dns-client.lwt, dns-client.unix: initialize RNG (#232 @hannesm)
