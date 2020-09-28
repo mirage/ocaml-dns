@@ -73,7 +73,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
        and type io_addr = Ipaddr.t * int = struct
       type stack = S.t
       type io_addr = Ipaddr.t * int
-      type ns_addr = [`TCP | `UDP] * io_addr
+      type ns_addr = Dns.proto * io_addr
       type +'a io = 'a Lwt.t
 
       type t = {
@@ -86,7 +86,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
       type context = { t : t ; timeout_ns : int64 ref ; mutable id : int }
 
       let create
-          ?(nameserver = `TCP, (Ipaddr.V4 (Ipaddr.V4.of_string_exn (fst Dns_client.default_resolver)), 53))
+          ?(nameserver = `Tcp, (Ipaddr.V4 (Ipaddr.V4.of_string_exn (fst Dns_client.default_resolver)), 53))
           ~timeout
           stack =
         { nameserver ; timeout_ns = timeout ; stack ; flow = None ; requests = IM.empty }
@@ -369,7 +369,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         | None -> resolve t packet.Packet.question packet.Packet.data build_reply
 
   let create ?nameserver ?(size = 10000) ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
-    let nameserver = match nameserver with None -> None | Some ns -> Some (`TCP, (ns, 53)) in
+    let nameserver = match nameserver with None -> None | Some ns -> Some (`Tcp, (ns, 53)) in
     let client = Client.create ~size ?nameserver stack in
     let server = Dns_server.Primary.server primary in
     let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in

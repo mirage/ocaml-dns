@@ -30,7 +30,7 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Dns.Tlsa.t)) =
 
 let ns ip port is_udp = match ip with
   | None -> None
-  | Some ip -> if is_udp then Some (`UDP, (ip, port)) else Some (`TCP, (ip, port))
+  | Some ip -> if is_udp then Some (`Udp, (ip, port)) else Some (`Tcp, (ip, port))
 
 let do_a nameserver ns_port is_udp domains _ =
   let nameserver = ns nameserver ns_port is_udp in

@@ -23,7 +23,7 @@ module type S = sig
       verification. TODO at least that would be nice in the future. TODO
   *)
 
-  type ns_addr = [ `TCP | `UDP] * io_addr
+  type ns_addr = Dns.proto * io_addr
   (** TODO well this is kind of crude; it's a tuple to prevent having
       to do endless amounts of currying things when implementing context types,
       and we need to know the protocol used so we can prefix packets for

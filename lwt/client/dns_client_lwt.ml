@@ -6,7 +6,7 @@ module Transport : Dns_client.S
  and type stack = unit
 = struct
   type io_addr = Ipaddr.t * int
-  type ns_addr = [`TCP | `UDP] * io_addr
+  type ns_addr = Dns.proto * io_addr
   type +'a io = 'a Lwt.t
   type stack = unit
   type t = {
@@ -43,7 +43,7 @@ module Transport : Dns_client.S
             | Error _ -> Ipaddr.(V4 (V4.of_string_exn (fst Dns_client.default_resolver)))
             | Ok ip -> ip
           in
-          Ok (`TCP, (ip, 53)))
+          Ok (`Tcp, (ip, 53)))
           nameserver))
     in
     { nameserver ; timeout_ns = timeout }
@@ -97,10 +97,10 @@ module Transport : Dns_client.S
     in
     Lwt.catch (fun () ->
         begin match proto with
-          | `UDP ->
+          | `Udp ->
             Lwt_unix.((getprotobyname "udp") >|= fun x -> x.p_proto,
                                                           SOCK_DGRAM)
-          | `TCP ->
+          | `Tcp ->
             Lwt_unix.((getprotobyname "tcp") >|= fun x -> x.p_proto,
                                                           SOCK_STREAM)
         end >>= fun (proto_number, socket_type) ->

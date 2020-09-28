@@ -92,7 +92,7 @@ module Transport (*: Dns_client.S
    and type +'a io = 'a *)
 = struct
   type io_addr = debug_info
-  type ns_addr = [`TCP | `UDP] * io_addr
+  type ns_addr = [`Tcp | `Udp] * io_addr
   type stack = unit
   type context = debug_info
   type t = unit
@@ -102,7 +102,7 @@ module Transport (*: Dns_client.S
       ?nameserver:_ ~timeout:_ () =
     ()
 
-  let nameserver _ = `TCP,  default_debug_info
+  let nameserver _ = `Tcp,  default_debug_info
   let rng = Cstruct.create
   let clock () = 0L
 
@@ -158,7 +158,7 @@ module Gethostbyname_tests = struct
        02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
        02 40 8a 00 04 17 15 f3  77" in
     let t = create () in
-    let ns = `TCP, ref [ipv4_buf] in
+    let ns = `Tcp, ref [ipv4_buf] in
     match gethostbyname t domain_name ~nameserver:ns with
     | Ok _ip -> ()
     | Error _ -> failwith "foo.com should have been returned"
@@ -176,11 +176,11 @@ module Gethostbyname_tests = struct
        02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
        02 40 8a 00 04 17 15 f3  77" in
     let t = create () in
-    let ns = `TCP, ref [ipv4_buf] in
+    let ns = `Tcp, ref [ipv4_buf] in
     match gethostbyname t domain_name ~nameserver:ns with
     | Error _ -> failwith "foo.com should have been returned"
     | Ok _ip ->
-      let empty_ns_responses = `TCP, ref [] in
+      let empty_ns_responses = `Tcp, ref [] in
       match gethostbyname t domain_name ~nameserver:empty_ns_responses with
       | Error _ -> failwith "should have been cached"
       | Ok _ -> () (* we returned content, but the wire stayed silent *)
@@ -198,11 +198,11 @@ module Gethostbyname_tests = struct
        02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
        02 40 8a 00 04 17 15 f3  77" in
     let t = Dns_client_with_time_machine.create () in
-    let ns = `TCP, ref [ipv4_buf] in
+    let ns = `Tcp, ref [ipv4_buf] in
     match Dns_client_with_time_machine.gethostbyname t domain_name ~nameserver:ns with
     | Error _ -> failwith "foo.com should have been returned"
     | Ok _ip ->
-      let mock_ns_responses = `TCP, ref [ipv4_buf] in
+      let mock_ns_responses = `Tcp, ref [ipv4_buf] in
       match Dns_client_with_time_machine.gethostbyname t domain_name ~nameserver:mock_ns_responses with
       | Error _ -> failwith "should have been cached"
       | Ok _ -> (* we returned content, AND the wire was used *)
@@ -256,7 +256,7 @@ module Getaddrinfo_tests = struct
       20 01 48 60 48 02 00 38  00 00 00 00 00 00 00 0a" in
 
     let mock_state = create () in
-    let ns = `TCP, ref [ipv4_buf] in
+    let ns = `Tcp, ref [ipv4_buf] in
     match getaddrinfo mock_state Dns.Rr_map.Mx domain_name ~nameserver:ns with
     | Ok (_ttl, mx_set) ->
       let make_mx_record (preference, domain_name) =
@@ -286,7 +286,7 @@ module Getaddrinfo_tests = struct
       "     00 00 81 80 00 01  00 05 00 04 00 0f 06 67
       6f 6f 67 6c 65 03 63 6f  " in
     let mock_state = create () in
-    let ns = `UDP, ref [udp_buf] in
+    let ns = `Udp, ref [udp_buf] in
     match getaddrinfo mock_state Dns.Rr_map.Mx domain_name ~nameserver:ns with
     | Error `Msg actual ->
       let expected = "Truncated UDP response" in
@@ -314,7 +314,7 @@ c0 42 0a 68 6f 73 74 6d 61 73 74 65 72 06 66 61
 02 58 00 09 3a 80 00 00 00 1e|}
     in
     let mock_state = create () in
-    let ns = `UDP, ref [udp_buf] in
+    let ns = `Udp, ref [udp_buf] in
     match getaddrinfo mock_state Dns.Rr_map.Aaaa domain_name ~nameserver:ns with
     | Error `Msg actual ->
       let expected = "DNS cache error no data fastly.net" in

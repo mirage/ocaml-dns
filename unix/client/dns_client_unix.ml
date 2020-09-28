@@ -9,7 +9,7 @@ module Transport : Dns_client.S
    and type +'a io = 'a
 = struct
   type io_addr = Ipaddr.t * int
-  type ns_addr = [`TCP | `UDP] * io_addr
+  type ns_addr = Dns.proto * io_addr
   type stack = unit
   type t = {
     nameserver : ns_addr ;
@@ -46,7 +46,7 @@ module Transport : Dns_client.S
             | Error _ -> Ipaddr.(V4 (V4.of_string_exn (fst Dns_client.default_resolver)))
             | Ok ip -> ip
           in
-          Ok (`TCP, (ip, 53)))
+          Ok (`Tcp, (ip, 53)))
           nameserver))
     in
     { nameserver ; timeout_ns = timeout }
@@ -80,8 +80,8 @@ module Transport : Dns_client.S
     in
     try
       begin match proto with
-        | `UDP -> Ok Unix.((getprotobyname "udp").p_proto)
-        | `TCP -> Ok Unix.((getprotobyname "tcp").p_proto)
+        | `Udp -> Ok Unix.((getprotobyname "udp").p_proto)
+        | `Tcp -> Ok Unix.((getprotobyname "tcp").p_proto)
       end >>= fun proto_number ->
       let fam = match server with Ipaddr.V4 _ -> Unix.PF_INET | Ipaddr.V6 _ -> Unix.PF_INET6 in
       let socket = Unix.socket fam Unix.SOCK_STREAM proto_number in
