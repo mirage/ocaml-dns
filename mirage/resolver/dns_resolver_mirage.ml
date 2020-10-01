@@ -5,16 +5,16 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_resolver_mirage" ~doc:"effectful DNS resolver"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_time.S) (S : Mirage_stack.V4) = struct
+module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_time.S) (S : Mirage_stack.V4V6) = struct
 
   module Dns = Dns_mirage.Make(S)
 
-  module T = S.TCPV4
+  module T = S.TCP
 
   module FM = Map.Make(struct
-      type t = Ipaddr.V4.t * int
+      type t = Ipaddr.t * int
       let compare (ip, p) (ip', p') =
-        match Ipaddr.V4.compare ip ip' with
+        match Ipaddr.compare ip ip' with
         | 0 -> compare p p'
         | x -> x
     end)
@@ -27,22 +27,22 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
     let tcp_out = ref Dns.IM.empty in
 
     let rec client_out dst port =
-      T.create_connection (S.tcpv4 stack) (dst, port) >|= function
+      T.create_connection (S.tcp stack) (dst, port) >|= function
       | Error e ->
         (* do i need to report this back into the resolver? what are their options then? *)
         Log.err (fun m -> m "error %a while establishing tcp connection to %a:%d"
-                    T.pp_error e Ipaddr.V4.pp dst port) ;
+                    T.pp_error e Ipaddr.pp dst port) ;
         Error ()
       | Ok flow ->
         Log.debug (fun m -> m "established new outgoing TCP connection to %a:%d"
-                      Ipaddr.V4.pp dst port);
+                      Ipaddr.pp dst port);
         tcp_out := Dns.IM.add dst flow !tcp_out ;
         Lwt.async (fun () ->
             let f = Dns.of_flow flow in
             let rec loop () =
               Dns.read_tcp f >>= function
               | Error () ->
-                Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.V4.pp dst) ;
+                Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.pp dst) ;
                 tcp_out := Dns.IM.remove dst !tcp_out ;
                 Lwt.return_unit
               | Ok data ->
@@ -65,7 +65,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
           client_out dst port >>= function
           | Error () ->
             let sport = sport () in
-            S.listen_udpv4 stack ~port:sport (udp_cb false) ;
+            S.listen_udp stack ~port:sport (udp_cb false) ;
             Dns.send_udp stack sport dst port data
           | Ok () -> client_tcp dst port data
         end
@@ -82,7 +82,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
       | Ok () -> Lwt.return_unit
       | Error () ->
         let sport = sport () in
-        S.listen_udpv4 stack ~port:sport (udp_cb false) ;
+        S.listen_udp stack ~port:sport (udp_cb false) ;
         Dns.send_udp stack sport dst port data
     and handle_query (proto, dst, data) = match proto with
       | `Udp -> maybe_tcp dst port data
@@ -92,7 +92,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
       | `Tcp -> match try Some (FM.find (dst, dst_port) !tcp_in) with Not_found -> None with
         | None ->
           Log.err (fun m -> m "wanted to answer %a:%d via TCP, but couldn't find a flow"
-                       Ipaddr.V4.pp dst dst_port) ;
+                       Ipaddr.pp dst dst_port) ;
           Lwt.return_unit
         | Some flow -> Dns.send_tcp flow data >|= function
           | Ok () -> ()
@@ -108,12 +108,12 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
       Lwt_list.iter_p handle_answer answers >>= fun () ->
       Lwt_list.iter_p handle_query queries
     in
-    S.listen_udpv4 stack ~port (udp_cb true) ;
+    S.listen_udp stack ~port (udp_cb true) ;
     Log.app (fun f -> f "DNS resolver listening on UDP port %d" port);
 
     let tcp_cb query flow =
       let dst_ip, dst_port = T.dst flow in
-      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp dst_ip dst_port) ;
+      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.pp dst_ip dst_port) ;
       tcp_in := FM.add (dst_ip, dst_port) flow !tcp_in ;
       let f = Dns.of_flow flow in
       let rec loop () =
@@ -134,7 +134,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
       in
       loop ()
     in
-    S.listen_tcpv4 stack ~port (tcp_cb true) ;
+    S.listen_tcp stack ~port (tcp_cb true) ;
     Log.info (fun m -> m "DNS resolver listening on TCP port %d" port) ;
 
     let rec stats_reporter () =

@@ -301,7 +301,7 @@ let resolve_ns t ts name =
       match k, v with
       | Rr_map.A, (_, ips) ->
         Logs.debug (fun m -> m "resolve_ns: found a %a: %a)"
-                       Domain_name.pp name Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp)
+                       Domain_name.pp name Fmt.(list ~sep:(unit ", ") Ipaddr.pp)
                        (Rr_map.Ipv4_set.elements ips));
         `HaveIPS ips, t
       | _ ->
@@ -396,7 +396,7 @@ let find_nearest_ns rng ts t name =
     if Domain_name.(equal root nam) then
       match pick (snd (List.split Dns_resolver_root.root_servers)) with
       | None -> assert false
-      | Some ip -> `HaveIP (Domain_name.root, ip)
+      | Some ip -> `HaveIP (Domain_name.root, Ipaddr.V4 ip)
     else
       f (Domain_name.drop_label_exn nam)
   in
@@ -412,7 +412,7 @@ let find_nearest_ns rng ts t name =
           or_root go nam
         else
           `NeedA host
-      | Some ip -> `HaveIP (nam, ip)
+      | Some ip -> `HaveIP (nam, Ipaddr.V4 ip)
   in
   go name
 
@@ -429,7 +429,7 @@ let find_nearest_ns rng ts t name =
                    Domain_name.pp cur
                    Fmt.(list ~sep:(unit ".") string) rest
                    Domain_name.pp zone
-                   Ipaddr.V4.pp_hum ip) ;
+                   Ipaddr.pp ip) ;
     match pick find_ns cur with
     | None -> `HaveIP (zone, ip)
     | Some ns -> begin match pick find_a ns with
@@ -490,13 +490,13 @@ let _resolve t ~rng ts name typ =
                    Dns_enum.pp_rr_typ typ Domain_name.pp cur
                    Domain_name.pp (Domain_name.of_strings_exn ~hostname:false rest)
                    Domain_name.pp zone
-                   Ipaddr.V4.pp ip) ;
+                   Ipaddr.pp ip) ;
     match find_ns t rng ts stash cur with
     | `NeedNS, t when Domain_name.equal cur Domain_name.root ->
       (* we don't have any root servers *)
       Ok (Domain_name.root, Domain_name.root, Dns_enum.NS, root, t)
     | `HaveIP ip, t ->
-      Logs.debug (fun m -> m "resolve: have ip %a" Ipaddr.V4.pp ip) ;
+      Logs.debug (fun m -> m "resolve: have ip %a" Ipaddr.pp ip) ;
       begin match rest with
         | [] -> Ok (zone, cur, typ, ip, t)
         | hd::tl -> go t stash typ (Domain_name.prepend_exn cur hd) tl zone ip
@@ -670,5 +670,5 @@ let handle_query t ~rng ts qname qtype =
       if Domain_name.equal name' qname' then qname, qtype else name', `K typ
     in
     Logs.debug (fun m -> m "resolve returned zone %a query %a, ip %a"
-                   Domain_name.pp zone pp_question (name, typ) Ipaddr.V4.pp ip);
+                   Domain_name.pp zone pp_question (name, typ) Ipaddr.pp ip);
     `Query (zone, (name, typ), ip), t

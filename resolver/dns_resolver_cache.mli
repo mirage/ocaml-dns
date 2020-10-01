@@ -62,14 +62,14 @@ val resolve_ns : t -> int64 -> Domain_name.t ->
 *)
 
 (*val find_ns : t -> (int -> Cstruct.t) -> int64 -> Domain_name.Set.t -> Domain_name.t ->
-  [ `Loop | `NeedNS | `NoDom | `No | `Cname of Domain_name.t | `HaveIP of Ipaddr.V4.t | `NeedA of Domain_name.t | `NeedGlue of Domain_name.t ] * t
+  [ `Loop | `NeedNS | `NoDom | `No | `Cname of Domain_name.t | `HaveIP of Ipaddr.t | `NeedA of Domain_name.t | `NeedGlue of Domain_name.t ] * t
 *)
 
 val resolve : t -> rng:(int -> Cstruct.t) ->  int64 -> [ `raw ] Domain_name.t ->
-  Rr_map.k -> [ `raw ] Domain_name.t * [ `raw ] Domain_name.t * Rr_map.k * Ipaddr.V4.t * t
+  Rr_map.k -> [ `raw ] Domain_name.t * [ `raw ] Domain_name.t * Rr_map.k * Ipaddr.t * t
 
 val handle_query : t -> rng:(int -> Cstruct.t) -> int64 -> [ `raw ] Domain_name.t ->
   Packet.Question.qtype ->
   [ `Reply of Packet.Flags.t * Packet.reply
   | `Nothing
-  | `Query of [ `raw ] Domain_name.t * ([ `raw ] Domain_name.t * Packet.Question.qtype) * Ipaddr.V4.t ] * t
+  | `Query of [ `raw ] Domain_name.t * ([ `raw ] Domain_name.t * Packet.Question.qtype) * Ipaddr.t ] * t

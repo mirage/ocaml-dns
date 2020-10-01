@@ -459,7 +459,7 @@ end
 
 module S = struct
 
-  let ip =
+  let ipv4 =
     let module M = struct
       type t = Ipaddr.V4.t
       let pp = Ipaddr.V4.pp
@@ -467,9 +467,19 @@ module S = struct
     end in
     (module M : Alcotest.TESTABLE with type t = M.t)
 
-  let ipset = Alcotest.(slist ip Ipaddr.V4.compare)
+  let ip =
+    let module M = struct
+      type t = Ipaddr.t
+      let pp = Ipaddr.pp
+      let equal a b = Ipaddr.compare a b = 0
+    end in
+    (module M : Alcotest.TESTABLE with type t = M.t)
 
-  let ip_of_s = Ipaddr.V4.of_string_exn
+  let ipset = Alcotest.(slist ip Ipaddr.compare)
+
+  let ipv4_of_s = Ipaddr.V4.of_string_exn
+
+  let ip_of_s s = Ipaddr.V4 (ipv4_of_s s)
 
   let ts = Duration.of_sec 5
 
@@ -498,7 +508,7 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2")) data)
+           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.2")) data)
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
@@ -515,7 +525,7 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.two.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2")) data)
+           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.2")) data)
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
@@ -530,7 +540,7 @@ module S = struct
         Domain_name.(Host_set.(add (host_exn (n_of_s "ns.one.com"))
                                  (singleton (host_exn (n_of_s "ns2.one.com")))))
       and ips =
-        Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.2") (singleton (ip_of_s "1.2.3.4")))
+        Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.2") (singleton (ipv4_of_s "1.2.3.4")))
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A (300l, ips) data)
@@ -551,9 +561,9 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2"))
+           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.2"))
            (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
-              (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.3"))
+              (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.3"))
               data))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data' in
@@ -573,9 +583,9 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.2") (singleton (ip_of_s "10.0.0.3"))))
+           (300l, Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.2") (singleton (ipv4_of_s "10.0.0.3"))))
            (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
-              (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.3") (singleton (ip_of_s "10.0.0.4"))))
+              (300l, Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.3") (singleton (ipv4_of_s "10.0.0.4"))))
               data))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data' in
@@ -602,11 +612,11 @@ module S = struct
            (Dns_trie.insert (n_of_s "foo.com") Rr_map.Soa soa'
               (Dns_trie.insert (n_of_s "bar.com") Rr_map.Soa soa''
                  (Dns_trie.insert (n_of_s "ns.foo.com") Rr_map.A
-                    (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.2"))
+                    (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.2"))
                     (Dns_trie.insert (n_of_s "ns.bar.com") Rr_map.A
-                       (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.3"))
+                       (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.3"))
                        (Dns_trie.insert (n_of_s "ns.one.com") Rr_map.A
-                          (300l, Rr_map.Ipv4_set.singleton (ip_of_s "10.0.0.4"))
+                          (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.4"))
                           Dns_trie.empty))))))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
@@ -654,9 +664,9 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "1.1.1.1"))
+           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "1.1.1.1"))
            (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
-              (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.1") (singleton (ip_of_s "192.168.1.1"))))
+              (300l, Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.1") (singleton (ipv4_of_s "192.168.1.1"))))
               data))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data' in
@@ -680,9 +690,9 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ip_of_s "5.6.7.8"))
+           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "5.6.7.8"))
            (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
-              (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.1") (singleton (ip_of_s "192.168.1.1"))))
+              (300l, Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.1") (singleton (ipv4_of_s "192.168.1.1"))))
               data))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data' in
@@ -1332,7 +1342,7 @@ module Axfr = struct
       fst (Packet.encode `Tcp res)
     in
     let _server', answers, _notifies, _notify, _key =
-      Dns_server.Primary.handle_buf server Ptime.epoch 0L `Tcp Ipaddr.V4.localhost 1234 req
+      Dns_server.Primary.handle_buf server Ptime.epoch 0L `Tcp (Ipaddr.V4 Ipaddr.V4.localhost) 1234 req
     in
     answers
 
@@ -1481,7 +1491,7 @@ module Axfr = struct
       | Error _ -> assert false
     in
     let _server', answers, _notifies, _notify, keyname' =
-      Dns_server.Primary.handle_buf server Ptime.epoch 0L `Tcp Ipaddr.V4.localhost 1234 req
+      Dns_server.Primary.handle_buf server Ptime.epoch 0L `Tcp (Ipaddr.V4 Ipaddr.V4.localhost) 1234 req
     in
     assert (match keyname' with Some k -> Domain_name.equal k keyname | _ -> false);
     (List.iter (fun answer ->

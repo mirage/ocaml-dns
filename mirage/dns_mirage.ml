@@ -7,17 +7,17 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (S : Mirage_stack.V4V6) = struct
 
-  module IS = Set.Make(Ipaddr.V4)
+  module IS = Set.Make(Ipaddr)
 
   module IM = struct
-    include Map.Make(Ipaddr.V4)
+    include Map.Make(Ipaddr)
     let find k t = try Some (find k t) with Not_found -> None
   end
 
   module IPM = struct
     include Map.Make(struct
-        type t = Ipaddr.V4.t * int
-        let compare (ip, p) (ip', p') = match Ipaddr.V4.compare ip ip' with
+        type t = Ipaddr.t * int
+        let compare (ip, p) (ip', p') = match Ipaddr.compare ip ip' with
           | 0 -> compare p p'
           | x -> x
       end)

@@ -1,7 +1,7 @@
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4) : sig
+module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4V6) : sig
   module Transport : Dns_client.S
-    with type io_addr = Ipaddr.V4.t * int
+    with type io_addr = Ipaddr.t * int
      and type +'a io = 'a Lwt.t
      and type stack = S.t
 
@@ -12,16 +12,3 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
       random number generator and timestamp source, and calls the generic
       {!Dns_client.Make.create}. *)
 end
-
-(*
-type dns_ty
-
-val config : dns_ty Mirage.impl
-(** [config] is the *)
-
-module Make :
-  functor (Time:Mirage_time_lwt.S) ->
-  functor (IPv4:Mirage_stack_lwt.V4) ->
-    S
-
-*)
