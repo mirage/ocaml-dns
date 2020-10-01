@@ -21,7 +21,7 @@ depends: [
   "mirage-random" {>= "2.0.0"}
   "mirage-time" {>= "2.0.0"}
   "mirage-clock" {>= "3.0.0"}
-  "mirage-stack" {>= "2.0.0"}
+  "mirage-stack" {>= "2.2.0"}
   "logs"
   "mirage-crypto-pk" {>= "0.8.0"}
   "mirage-crypto-rng" {>= "0.8.0"}
