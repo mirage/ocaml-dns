@@ -1,10 +1,10 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
-module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (T : Mirage_time.S) (S : Mirage_stack.V4) : sig
+module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (T : Mirage_time.S) (S : Mirage_stack.V4V6) : sig
 
   val retrieve_certificate :
     S.t -> dns_key:string -> hostname:[ `host ] Domain_name.t ->
     ?additional_hostnames:[ `host ] Domain_name.t list -> ?key_seed:string ->
-    S.TCPV4.ipaddr -> int -> (Tls.Config.own_cert, [ `Msg of string ]) result Lwt.t
+    S.TCP.ipaddr -> int -> (Tls.Config.own_cert, [ `Msg of string ]) result Lwt.t
   (** [retrieve_certificate stack ~dns_key ~hostname ~key_seed server_ip port]
      generates a RSA private key (using the [key_seed]), a certificate
      signing request for the given [hostname] and [additional_hostnames], and
