@@ -66,7 +66,7 @@ let namekey_c =
     | Error (`Msg m) -> `Error ("failed to parse key: " ^ m)
     | Ok (name, key) ->
       let is_op s =
-        Domain_name.(equal_label s "_update" || equal_label s "_transfer")
+        Domain_name.(equal_label s "_update" || equal_label s "_transfer" || equal_label s "_notify")
       in
       let amount = match Domain_name.find_label ~rev:true name is_op with
         | None -> 0
