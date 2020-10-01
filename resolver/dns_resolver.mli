@@ -8,23 +8,23 @@ val create : ?size:int -> ?mode:[ `Recursive | `Stub ] -> int64 ->
 (** [create ~size ~mode now rng primary] creates the value of a resolver,
    pre-filled with root NS and their IP addresses. *)
 
-val handle_buf : t -> Ptime.t -> int64 -> bool -> Dns.proto -> Ipaddr.V4.t ->
+val handle_buf : t -> Ptime.t -> int64 -> bool -> Dns.proto -> Ipaddr.t ->
   int -> Cstruct.t ->
-  t * (Dns.proto * Ipaddr.V4.t * int * Cstruct.t) list
-    * (Dns.proto * Ipaddr.V4.t * Cstruct.t) list
+  t * (Dns.proto * Ipaddr.t * int * Cstruct.t) list
+    * (Dns.proto * Ipaddr.t * Cstruct.t) list
 (** [handle_buf t now ts query_or_reply proto sender source-port buf] handles
    resolution of [buf], which leads to a new [t], a list of answers to be
    transmitted (quadruple of protocol, ip address, port, buffer), and a list of
    queries (triple of protocol, ip address, buffer). *)
 
 val query_root : t -> int64 -> Dns.proto ->
-  t * (Dns.proto * Ipaddr.V4.t * Cstruct.t)
+  t * (Dns.proto * Ipaddr.t * Cstruct.t)
 (** [query_root t now proto] potentially requests an update of the root
    zone. Best invoked by a regular timer. *)
 
 val timer : t -> int64 ->
-  t * (Dns.proto * Ipaddr.V4.t * int * Cstruct.t) list
-    * (Dns.proto * Ipaddr.V4.t * Cstruct.t) list
+  t * (Dns.proto * Ipaddr.t * int * Cstruct.t) list
+    * (Dns.proto * Ipaddr.t * Cstruct.t) list
 (** [timer t now] potentially retransmits DNS requests and/or sends NXDomain
     answers. *)
 

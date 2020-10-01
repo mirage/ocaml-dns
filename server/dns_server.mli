@@ -114,12 +114,12 @@ module Primary : sig
   (** [data s] is the data store of [s]. *)
 
   val with_data : s -> Ptime.t -> int64 -> Dns_trie.t ->
-    s * (Ipaddr.V4.t * Cstruct.t list) list
+    s * (Ipaddr.t * Cstruct.t list) list
   (** [with_data s now ts trie] replaces the current data with [trie] in [s].
       The returned notifications should be send out. *)
 
   val with_keys : s -> Ptime.t -> int64 -> ('a Domain_name.t * Dnskey.t) list ->
-    s * (Ipaddr.V4.t * Cstruct.t list) list
+    s * (Ipaddr.t * Cstruct.t list) list
   (** [with_keys s now ts keys] replaces the current keys with [keys] in [s],
       and generates notifications. *)
 
@@ -133,17 +133,17 @@ module Primary : sig
      data] creates a primary server. If [unauthenticated_zone_transfer] is
      provided and [true] (defaults to [false]), anyone can transfer the zones. *)
 
-  val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> int ->
+  val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.t -> int ->
     Packet.t -> 'a Domain_name.t option ->
-    s * Packet.t option * (Ipaddr.V4.t * Cstruct.t list) list *
+    s * Packet.t option * (Ipaddr.t * Cstruct.t list) list *
     [> `Notify of Soa.t option | `Keep ] option
   (** [handle_packet s now ts src src_port proto key packet] handles the given
      [packet], returning new state, an answer, and potentially notify packets to
      secondary name servers. *)
 
   val handle_buf : s -> Ptime.t -> int64 -> proto ->
-    Ipaddr.V4.t -> int -> Cstruct.t ->
-    s * Cstruct.t list * (Ipaddr.V4.t * Cstruct.t list) list *
+    Ipaddr.t -> int -> Cstruct.t ->
+    s * Cstruct.t list * (Ipaddr.t * Cstruct.t list) list *
     [ `Notify of Soa.t option | `Signed_notify of Soa.t option | `Keep ] option *
     [ `raw ] Domain_name.t option
   (** [handle_buf s now ts proto src src_port buffer] decodes the [buffer],
@@ -152,16 +152,16 @@ module Primary : sig
      a list of notifications to send out, information whether a notify (or
      signed notify) was received, and the hmac key used for authentication. *)
 
-  val closed : s -> Ipaddr.V4.t -> s
+  val closed : s -> Ipaddr.t -> s
   (** [closed s ip] marks the connection to [ip] closed. *)
 
   val timer : s -> Ptime.t -> int64 ->
-    s * (Ipaddr.V4.t * Cstruct.t list) list
+    s * (Ipaddr.t * Cstruct.t list) list
   (** [timer s now ts] may encode some notifications to secondary name servers
      if previous ones were not acknowledged. *)
 
   val to_be_notified : s -> [ `host ] Domain_name.t ->
-    (Ipaddr.V4.t * [ `raw ] Domain_name.t option) list
+    (Ipaddr.t * [ `raw ] Domain_name.t option) list
   (** [to_be_notified s zone] returns a list of pairs of IP address and optional
      tsig key name of the servers to be notified for a zone change.  This list
      is based on (a) NS entries for the zone, (b) registered TSIG transfer keys,
@@ -179,27 +179,27 @@ module Secondary : sig
   val with_data : s -> Dns_trie.t -> s
   (** [with_data s trie] is [s] with its data replaced by [trie]. *)
 
-  val create : ?primary:Ipaddr.V4.t ->
+  val create : ?primary:Ipaddr.t ->
    tsig_verify:Tsig_op.verify -> tsig_sign:Tsig_op.sign ->
     rng:(int -> Cstruct.t) -> ('a Domain_name.t * Dnskey.t) list -> s
   (** [create ~primary ~tsig_verify ~tsig_sign ~rng keys] creates a secondary
      DNS server state. *)
 
-  val handle_packet : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
+  val handle_packet : s -> Ptime.t -> int64 -> Ipaddr.t ->
     Packet.t -> 'a Domain_name.t option ->
-    s * Packet.t option * (Ipaddr.V4.t * Cstruct.t) option
+    s * Packet.t option * (Ipaddr.t * Cstruct.t) option
   (** [handle_packet s now ts ip proto key t] handles the incoming packet. *)
 
-  val handle_buf : s -> Ptime.t -> int64 -> proto -> Ipaddr.V4.t -> Cstruct.t ->
-    s * Cstruct.t option * (Ipaddr.V4.t * Cstruct.t) option
+  val handle_buf : s -> Ptime.t -> int64 -> proto -> Ipaddr.t -> Cstruct.t ->
+    s * Cstruct.t option * (Ipaddr.t * Cstruct.t) option
   (** [handle_buf s now ts proto src buf] decodes [buf], processes with
       {!handle_packet}, and encodes the results. *)
 
   val timer : s -> Ptime.t -> int64 ->
-    s * (Ipaddr.V4.t * Cstruct.t list) list
+    s * (Ipaddr.t * Cstruct.t list) list
   (** [timer s now ts] may request SOA or retransmit AXFR. *)
 
-  val closed : s -> Ptime.t -> int64 -> Ipaddr.V4.t ->
+  val closed : s -> Ptime.t -> int64 -> Ipaddr.t ->
     s * Cstruct.t list
   (** [closed s now ts ip] marks [ip] as closed, the returned buffers (SOA
       requests) should be sent to [ip]. *)

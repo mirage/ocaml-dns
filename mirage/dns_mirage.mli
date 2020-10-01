@@ -2,18 +2,18 @@
 
 module Make (S : Mirage_stack.V4V6) : sig
 
-  module IS : Set.S with type elt = Ipaddr.V4.t
+  module IS : Set.S with type elt = Ipaddr.t
   (** [IS] is a set of [ipaddr]. *)
 
   module IM : sig
-    include Map.S with type key = Ipaddr.V4.t
-    val find : Ipaddr.V4.t -> 'a t -> 'a option
+    include Map.S with type key = Ipaddr.t
+    val find : Ipaddr.t -> 'a t -> 'a option
   end
   (** [IM] is a map using [ipaddr] as key. *)
 
   module IPM : sig
-    include Map.S with type key = Ipaddr.V4.t * int
-    val find : Ipaddr.V4.t * int -> 'a t -> 'a option
+    include Map.S with type key = Ipaddr.t * int
+    val find : Ipaddr.t * int -> 'a t -> 'a option
   end
   (** [IPM] is a map using [ip * port] as key. *)
 
