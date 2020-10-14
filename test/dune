@@ -33,3 +33,9 @@
  (package dns)
  (libraries dns.cache alcotest)
  (modules cache))
+
+(test
+ (name resolvconf)
+ (package dns-client)
+ (libraries dns-client.resolvconf ipaddr alcotest)
+ (modules resolvconf))

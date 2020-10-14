@@ -1,0 +1,9 @@
+(library
+ (name dns_resolvconv)
+ (public_name dns-client.resolvconf)
+ (private_modules resolvconf_lexer resolvconf_parser)
+ (libraries ipaddr)
+ (wrapped false))
+
+(ocamlyacc resolvconf_parser)
+(ocamllex resolvconf_lexer)
