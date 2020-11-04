@@ -18,8 +18,38 @@ module Transport : Dns_client.S
   type context = { t : t ; fd : Unix.file_descr ; timeout_ns : int64 ref }
   type +'a io = 'a
 
-  let create
-      ?(nameserver = `TCP, (Unix.inet_addr_of_string Dns_client.default_resolver, 53)) ~timeout () =
+  let read_file file =
+    try
+      let fh = open_in file in
+      try
+        let content = really_input_string fh (in_channel_length fh) in
+        close_in_noerr fh ;
+        Ok content
+      with _ ->
+        close_in_noerr fh;
+        Error (`Msg ("Error reading file: " ^ file))
+    with _ -> Error (`Msg ("Error opening file " ^ file))
+
+  let create ?nameserver ~timeout () =
+    let nameserver =
+      Rresult.R.(get_ok (of_option ~none:(fun () ->
+          let ip =
+            match
+              read_file "/etc/resolv.conf" >>= fun data ->
+              Dns_resolvconf.parse data >>= fun nameservers ->
+              List.fold_left (fun acc ns ->
+                  match acc, ns with
+                  | Ok ip, _ -> Ok ip
+                  | _, `Nameserver (Ipaddr.V4 ip) -> Ok ip
+                  | acc, _ -> acc)
+                (Error (`Msg "no nameserver")) nameservers
+            with
+            | Error _ -> Unix.inet_addr_of_string Dns_client.default_resolver
+            | Ok ip -> Ipaddr_unix.V4.to_inet_addr ip
+          in
+          Ok (`TCP, (ip, 53)))
+          nameserver))
+    in
     { nameserver ; timeout_ns = timeout }
 
   let nameserver { nameserver ; _ } = nameserver
