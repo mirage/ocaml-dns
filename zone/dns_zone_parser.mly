@@ -134,9 +134,11 @@ generic_type s generic_rdata {
      { let mx = { Mx.preference = $3 ; mail_exchange = $5 } in
        B (Mx, (0l, Rr_map.Mx_set.singleton mx)) }
  | TYPE_TXT s charstrings
-     { if List.exists (fun s -> String.length s > 255) $3 then
-         parse_error "A single TXT rdata may not exceed 255 bytes";
-       B (Txt, (0l, Rr_map.Txt_set.of_list $3)) }
+     { let txt = String.concat "" $3 in
+       if String.length txt > 65279 then
+         (* there's only so much space for a RR - TXT needs for each 255 byte an extra length byte *)
+         parse_error "A single TXT rdata may not exceed 65279 bytes";
+       B (Txt, (0l, Rr_map.Txt_set.singleton txt)) }
      /* RFC 2782 */
  | TYPE_SRV s int16 s int16 s int16 s hostname
      { let srv = { Srv.priority = $3 ; weight = $5 ; port = $7 ; target = $9 } in

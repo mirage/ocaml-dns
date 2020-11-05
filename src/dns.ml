@@ -1084,13 +1084,26 @@ module Txt = struct
         more (d::acc) off
     in
     let txts = more [] 0 in
-    Ok (txts, names, off + len)
+    Ok (String.concat "" txts, names, off + len)
 
   let encode txt names buf off =
-    let len = String.length txt in
-    Cstruct.set_uint8 buf off len ;
-    Cstruct.blit_from_string txt 0 buf (succ off) len ;
-    names, off + len + 1
+    let rec more off txt =
+      if txt = "" then
+        off
+      else
+        let len = String.length txt in
+        let len, rest =
+          if len > 255 then
+            255, String.(sub txt 255 (len - 255))
+          else
+            len, ""
+        in
+        Cstruct.set_uint8 buf off len ;
+        Cstruct.blit_from_string txt 0 buf (succ off) len ;
+        more (off + len + 1) rest
+    in
+    let off = more off txt in
+    names, off
 end
 
 module Tsig = struct
@@ -2192,7 +2205,7 @@ module Rr_map = struct
        (B (Sshfp, (ttl, Sshfp_set.singleton sshfp)), names, off)
      | Txt ->
        Txt.decode names buf ~off:rdata_start ~len >>| fun (txt, names, off) ->
-       (B (Txt, (ttl, Txt_set.of_list txt)), names, off)
+       (B (Txt, (ttl, Txt_set.singleton txt)), names, off)
      | Unknown x ->
        let data = Cstruct.sub buf rdata_start len in
        Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)
@@ -3467,15 +3480,15 @@ module Packet = struct
 
   let size_edns max_size edns protocol query =
     let maximum, payload_size = match protocol, max_size, query with
-      | `Tcp, _, _ -> max_tcp, 4096
-      | `Udp, None, true -> max_udp, 4096
-      | `Udp, None, false -> max_reply_udp, 512
-      | `Udp, Some x, true -> x, x
-      | `Udp, Some x, false -> min x max_reply_udp, 512
+      | `Tcp, _, _ -> max_tcp, None
+      | `Udp, None, true -> max_udp, Some 4096
+      | `Udp, None, false -> max_reply_udp, Some 512
+      | `Udp, Some x, true -> x, Some x
+      | `Udp, Some x, false -> min x max_reply_udp, Some 512
     in
-    let edns = match edns with
-      | None -> None
-      | Some opts -> Some ({ opts with Edns.payload_size })
+    let edns = match edns, payload_size with
+      | None, _ | _, None -> edns
+      | Some opts, Some s -> Some ({ opts with Edns.payload_size = s })
     in
     maximum, edns
 
