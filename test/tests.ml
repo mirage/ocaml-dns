@@ -448,7 +448,6 @@ module Packet = struct
     in
     let res = create header zone (`Update update) in
     let encoded = fst @@ encode `Udp res in
-    Cstruct.hexdump encoded;
     (* encode followed by decode should lead to same data *)
     Alcotest.(check (result t_ok p_err) "regression 7 decode encode works"
                 (Ok res) (decode @@ encoded))
@@ -592,6 +591,92 @@ b0 42 00 30 00 00 23 00  55 00 00 00 65 00 00 29
     Alcotest.(check (result t_ok p_err) "regression 9 decodes"
                 (Ok res) (decode data))
 
+  let regression11 () =
+    (* here we have an overlong text record (>255 bytes) which should be encoded into a single RR! *)
+    let data = Cstruct.of_hex {|
+d0 55 81 80 00 01 00 01 00 00 00 01 0c 61 72 63
+2d 32 30 31 36 30 38 31 36 0a 5f 64 6f 6d 61 69
+6e 6b 65 79 06 67 6f 6f 67 6c 65 03 63 6f 6d 00
+00 10 00 01 c0 0c 00 10 00 01 00 00 00 33 01 93
+aa 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
+41 4e 42 67 6b 71 68 6b 69 47 39 77 30 42 41 51
+45 46 41 41 4f 43 41 51 38 41 4d 49 49 42 43 67
+4b 43 41 51 45 41 31 4c 7a 74 70 78 73 37 79 55
+78 51 45 73 62 44 46 68 6a 4d 63 39 6b 5a 56 5a
+75 35 50 2f 43 4f 59 45 55 49 58 34 42 33 39 49
+4c 34 53 58 41 62 76 34 76 69 49 6c 54 39 45 36
+46 36 69 5a 6d 54 68 31 67 6f 37 2b 39 57 51 4c
+79 77 77 67 77 6a 58 4d 4a 78 2f 44 7a 30 52 67
+4d 6f 50 65 79 70 35 4e 52 79 34 6c 33 32 30 44
+50 59 69 62 4e 71 56 4d 57 61 35 e7 69 51 32 57
+69 49 6d 51 43 30 65 6e 31 4f 39 75 68 4c 4c 76
+7a 61 53 5a 4a 30 33 66 76 47 6d 43 6f 39 6a 4d
+6f 30 47 77 4b 7a 4c 4e 65 31 34 78 4d 67 6e 2f
+70 78 32 4c 35 4e 2f 33 49 4b 6c 4b 58 34 62 71
+55 41 4a 54 55 74 38 4c 39 39 33 5a 6c 57 7a 76
+67 4d 6e 53 46 53 74 38 42 2b 65 75 53 4b 53 72
+74 41 69 6f 70 64 79 34 72 31 79 4f 34 65 4e 35
+67 6f 42 41 53 72 47 57 30 65 4c 51 63 31 6c 59
+6f 75 4e 76 43 72 63 54 51 70 6f 73 34 2f 47 45
+41 71 69 47 7a 70 71 75 65 4a 4c 6d 42 66 4f 4f
+34 63 6c 4e 76 56 76 70 50 6b 76 51 73 32 42 48
+77 39 49 39 4c 6d 49 6a 61 4d 78 54 4e 47 78 6b
+47 42 52 61 50 33 75 74 44 69 4b 58 58 71 75 31
+4b 2b 4c 52 7a 6c 30 48 43 4e 53 64 51 49 44 41
+51 41 42 00 00 29 20 00 00 00 00 00 00 00
+|}
+    in
+    let host = n_of_s "arc-20160816._domainkey.google.com" in
+    let flags = Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and question = Question.create host Txt
+    and content =
+      Domain_name.Map.singleton host
+        (Rr_map.singleton Txt (51l, Rr_map.Txt_set.singleton "k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1Lztpxs7yUxQEsbDFhjMc9kZVZu5P/COYEUIX4B39IL4SXAbv4viIlT9E6F6iZmTh1go7+9WQLywwgwjXMJx/Dz0RgMoPeyp5NRy4l320DPYibNqVMWa5iQ2WiImQC0en1O9uhLLvzaSZJ03fvGmCo9jMo0GwKzLNe14xMgn/px2L5N/3IKlKX4bqUAJTUt8L993ZlWzvgMnSFSt8B+euSKSrtAiopdy4r1yO4eN5goBASrGW0eLQc1lYouNvCrcTQpos4/GEAqiGzpqueJLmBfOO4clNvVvpPkvQs2BHw9I9LmIjaMxTNGxkGBRaP3utDiKXXqu1K+LRzl0HCNSdQIDAQAB"))
+    and edns =
+      Edns.create ~payload_size:8192 ()
+    in
+    let header = 0xD055, flags in
+    let res = create ~edns header question (`Answer (content, Name_rr_map.empty)) in
+    Alcotest.(check (result t_ok p_err) "regression 11 decodes"
+                (Ok res) (decode data)) ;
+    (* manually moved the length field a bit further *)
+    let data' = Cstruct.of_hex {|
+d0 55 81 80 00 01 00 01 00 00 00 01 0c 61 72 63
+2d 32 30 31 36 30 38 31 36 0a 5f 64 6f 6d 61 69
+6e 6b 65 79 06 67 6f 6f 67 6c 65 03 63 6f 6d 00
+00 10 00 01 c0 0c 00 10 00 01 00 00 00 33 01 93
+ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
+41 4e 42 67 6b 71 68 6b 69 47 39 77 30 42 41 51
+45 46 41 41 4f 43 41 51 38 41 4d 49 49 42 43 67
+4b 43 41 51 45 41 31 4c 7a 74 70 78 73 37 79 55
+78 51 45 73 62 44 46 68 6a 4d 63 39 6b 5a 56 5a
+75 35 50 2f 43 4f 59 45 55 49 58 34 42 33 39 49
+4c 34 53 58 41 62 76 34 76 69 49 6c 54 39 45 36
+46 36 69 5a 6d 54 68 31 67 6f 37 2b 39 57 51 4c
+79 77 77 67 77 6a 58 4d 4a 78 2f 44 7a 30 52 67
+4d 6f 50 65 79 70 35 4e 52 79 34 6c 33 32 30 44
+50 59 69 62 4e 71 56 4d 57 61 35 69 51 32 57
+69 49 6d 51 43 30 65 6e 31 4f 39 75 68 4c 4c 76
+7a 61 53 5a 4a 30 33 66 76 47 6d 43 6f 39 6a 4d
+6f 30 47 77 4b 7a 4c 4e 65 31 34 78 4d 67 6e 2f
+70 78 32 4c 35 4e 2f 33 49 4b 6c 4b 58 34 62 71
+55 41 4a 54 55 74 38 4c 39 39 33 5a 6c 57 7a 76
+67 92 4d 6e 53 46 53 74 38 42 2b 65 75 53 4b 53 72
+74 41 69 6f 70 64 79 34 72 31 79 4f 34 65 4e 35
+67 6f 42 41 53 72 47 57 30 65 4c 51 63 31 6c 59
+6f 75 4e 76 43 72 63 54 51 70 6f 73 34 2f 47 45
+41 71 69 47 7a 70 71 75 65 4a 4c 6d 42 66 4f 4f
+34 63 6c 4e 76 56 76 70 50 6b 76 51 73 32 42 48
+77 39 49 39 4c 6d 49 6a 61 4d 78 54 4e 47 78 6b
+47 42 52 61 50 33 75 74 44 69 4b 58 58 71 75 31
+4b 2b 4c 52 7a 6c 30 48 43 4e 53 64 51 49 44 41
+51 41 42 00 00 29 20 00 00 00 00 00 00 00
+|} in
+    Alcotest.(check p_cs "regression 11 encode works"
+                data' (fst @@ encode `Tcp res));
+    Alcotest.(check (result t_ok p_err) "regression 11 encoded decodes well"
+                (Ok res) (decode data'))
+
   let code_tests = [
     "bad query", `Quick, bad_query ;
     "regression0", `Quick, regression0 ;
@@ -605,6 +690,7 @@ b0 42 00 30 00 00 23 00  55 00 00 00 65 00 00 29
     "regression8", `Quick, regression8 ;
     "regression9", `Quick, regression9 ;
     "regression10", `Quick, regression10 ;
+    "regression11", `Quick, regression11 ;
   ]
 end
 
