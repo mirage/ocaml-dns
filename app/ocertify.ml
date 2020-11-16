@@ -69,8 +69,13 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
   (Bos.OS.File.exists cert_filename >>= function
     | true ->
       Bos.OS.File.read cert_filename >>= fun data ->
-      X509.Certificate.decode_pem (Cstruct.of_string data) >>| fun cert ->
-      Some cert
+      X509.Certificate.decode_pem_multiple (Cstruct.of_string data) >>= fun certs ->
+      begin
+        match List.filter (fun c -> X509.Certificate.supports_hostname c hostname) certs with
+        | [] -> Ok None
+        | [ cert ] -> Ok (Some cert)
+        | _ -> Error (`Msg "multiple certificates that match the hostname")
+      end
     | false -> Ok None) >>= (function
       | Some cert ->
         if not force && Dns_certify.cert_matches_csr ~until:tomorrow now csr cert then
