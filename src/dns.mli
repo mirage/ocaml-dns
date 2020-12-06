@@ -309,6 +309,9 @@ end
 module Dnskey : sig
 
   type algorithm =
+    | RSA_SHA1
+    | RSA_SHA256
+    | RSA_SHA512
     | MD5
     | SHA1
     | SHA224

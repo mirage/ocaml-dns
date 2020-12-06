@@ -678,9 +678,13 @@ module Dnskey = struct
 
   (* 8 bit *)
   type algorithm =
+    | RSA_SHA1 | RSA_SHA256 | RSA_SHA512
     | MD5 | SHA1 | SHA224 | SHA256 | SHA384 | SHA512 | Unknown of int
 
   let algorithm_to_int = function
+    | RSA_SHA1 -> 5
+    | RSA_SHA256 -> 8
+    | RSA_SHA512 -> 10
     | MD5 -> 157
     | SHA1 -> 161
     | SHA224 -> 162
@@ -689,6 +693,9 @@ module Dnskey = struct
     | SHA512 -> 165
     | Unknown x -> x
   let int_to_algorithm = function
+    | 5 -> RSA_SHA1
+    | 8 -> RSA_SHA256
+    | 10 -> RSA_SHA512
     | 157 -> MD5
     | 161 -> SHA1
     | 162 -> SHA224
@@ -701,6 +708,9 @@ module Dnskey = struct
       else
         invalid_arg ("invalid DNSKEY algorithm " ^ string_of_int x)
   let algorithm_to_string = function
+    | RSA_SHA1 -> "RSA-SHA1"
+    | RSA_SHA256 -> "RSA-SHA256"
+    | RSA_SHA512 -> "RSA-SHA512"
     | MD5 -> "MD5"
     | SHA1 -> "SHA1"
     | SHA224 -> "SHA224"
@@ -709,6 +719,9 @@ module Dnskey = struct
     | SHA512 -> "SHA512"
     | Unknown x -> string_of_int x
   let string_to_algorithm = function
+    | "RSA-SHA1" -> Ok RSA_SHA1
+    | "RSA-SHA256" -> Ok RSA_SHA256
+    | "RSA-SHA512" -> Ok RSA_SHA512
     | "MD5" -> Ok MD5
     | "SHA1" -> Ok SHA1
     | "SHA224" -> Ok SHA224
@@ -1424,6 +1437,7 @@ module Tsig = struct
 
   let dnskey_to_tsig_algo key =
     match key.Dnskey.algorithm with
+    | Dnskey.RSA_SHA1 | Dnskey.RSA_SHA256 | Dnskey.RSA_SHA512 -> Error (`Msg "TSIG with RSA is not supported")
     | Dnskey.MD5 -> Error (`Msg "TSIG algorithm MD5 is not supported")
     | Dnskey.SHA1 -> Ok SHA1
     | Dnskey.SHA224 -> Ok SHA224
