@@ -826,6 +826,91 @@ module Dnskey = struct
     Fmt.pf ppf "%a %a" Domain_name.pp name pp key
 end
 
+(** RRSIG *)
+module Rrsig = struct
+
+  type t = {
+    type_covered : int ;
+    algorithm : Dnskey.algorithm ;
+    label_count : int ;
+    original_ttl : int32 ;
+    signature_expiration : Ptime.t ;
+    signature_inception : Ptime.t ;
+    key_tag : int ;
+    signer_name : [ `raw ] Domain_name.t ;
+    signature : Cstruct.t
+  }
+
+  let pp ppf t =
+    Fmt.pf ppf "RRSIG type covered %u algo %a labels %u original ttl %lu signature expiration %a signature inception %a key tag %u signer name %a signature %a"
+      t.type_covered
+      Dnskey.pp_algorithm t.algorithm
+      t.label_count t.original_ttl
+      (Ptime.pp_rfc3339 ()) t.signature_expiration
+      (Ptime.pp_rfc3339 ()) t.signature_inception
+      t.key_tag Domain_name.pp t.signer_name
+      Cstruct.hexdump_pp t.signature
+
+  let compare a b =
+    andThen (compare a.type_covered b.type_covered)
+      (andThen (compare a.algorithm b.algorithm)
+         (andThen (compare a.label_count b.label_count)
+            (andThen (compare a.original_ttl b.original_ttl)
+               (andThen (Ptime.compare a.signature_expiration b.signature_expiration)
+                  (andThen (Ptime.compare a.signature_inception b.signature_inception)
+                     (andThen (compare a.key_tag b.key_tag)
+                        (andThen (Domain_name.compare a.signer_name b.signer_name)
+                           (Cstruct.compare a.signature b.signature))))))))
+
+  let decode names buf ~off ~len =
+    let open Rresult.R.Infix in
+    let type_covered = Cstruct.BE.get_uint16 buf off
+    and algo = Cstruct.get_uint8 buf (off + 2)
+    and label_count = Cstruct.get_uint8 buf (off + 3)
+    and original_ttl = Cstruct.BE.get_uint32 buf (off + 4)
+    and sig_exp = Cstruct.BE.get_uint32 buf (off + 8)
+    and sig_inc = Cstruct.BE.get_uint32 buf (off + 12)
+    and key_tag = Cstruct.BE.get_uint16 buf (off + 16)
+    in
+    Name.decode names buf ~off:(off + 18) >>= fun (signer_name, names, off') ->
+    let signature = Cstruct.sub buf off' (len - (off' - off)) in
+    let algorithm = Dnskey.int_to_algorithm algo in
+    (* sig_exp and sig_inc are supposed seconds since UNIX epoch (1970-01-01),
+       TODO but may only be +68years and -68years in respect to current timestamp *)
+    let int_s_to_ptime s =
+      (* TODO Int32.to_int may be a bad idea on 32bit systems *)
+      match Ptime.of_span (Ptime.Span.of_int_s (Int32.to_int s)) with
+      | None -> Error (`Msg "couldn't represent as timestamp")
+      | Some s -> Ok s
+    in
+    int_s_to_ptime sig_exp >>= fun signature_expiration ->
+    int_s_to_ptime sig_inc >>| fun signature_inception ->
+    { type_covered ; algorithm ; label_count ; original_ttl ;
+      signature_expiration ; signature_inception ; key_tag ; signer_name ;
+      signature },
+    names, off + len
+
+  let encode t names buf off =
+    Cstruct.BE.set_uint16 buf off t.type_covered ;
+    Cstruct.set_uint8 buf (off + 2) (Dnskey.algorithm_to_int t.algorithm) ;
+    Cstruct.set_uint8 buf (off + 3) t.label_count ;
+    Cstruct.BE.set_uint32 buf (off + 4) t.original_ttl ;
+    (* TODO +-68 years in respect to current timestamp *)
+    let int_s ts =
+      match Ptime.Span.to_int_s (Ptime.to_span ts) with
+      | None -> 0l
+      | Some s -> Int32.of_int s
+    in
+    Cstruct.BE.set_uint32 buf (off + 8) (int_s t.signature_expiration) ;
+    Cstruct.BE.set_uint32 buf (off + 12) (int_s t.signature_inception) ;
+    Cstruct.BE.set_uint16 buf (off + 16) t.key_tag ;
+    let names, off = Name.encode ~compress:false t.signer_name names buf (off + 18) in
+    let slen = Cstruct.len t.signature in
+    Cstruct.blit t.signature 0 buf off slen ;
+    names, off + slen
+end
+
+
 (* certificate authority authorization *)
 module Caa = struct
   type t = {

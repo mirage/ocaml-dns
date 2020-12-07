@@ -350,7 +350,7 @@ module Dnskey : sig
   (** [pp ppf t] pretty-prints the DNSKEY. *)
 
   val compare : t -> t -> int
-  (** [comapre a b] compares the DNSKEY [a] with [b]. *)
+  (** [compare a b] compares the DNSKEY [a] with [b]. *)
 
   val of_string : string -> (t, [> `Msg of string ]) result
   (** [of_string str] attempts to parse [str] to a dnskey. The colon character
@@ -363,6 +363,31 @@ module Dnskey : sig
 
   val pp_name_key : ([ `raw ] Domain_name.t * t) Fmt.t
   (** [pp_name_key (name, key)] pretty-prints the dnskey and name pair. *)
+
+  val digest_prep : [ `raw ] Domain_name.t -> t -> Cstruct.t
+end
+
+(** RRSIG *)
+module Rrsig : sig
+
+  type t = {
+    type_covered : int ;
+    algorithm : Dnskey.algorithm ;
+    label_count : int ;
+    original_ttl : int32 ;
+    signature_expiration : Ptime.t ;
+    signature_inception : Ptime.t ;
+    key_tag : int ;
+    signer_name : [ `raw ] Domain_name.t ;
+    signature : Cstruct.t
+  }
+  (** The type of a RRSIG. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the RRSIG. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the RRSIG [a] with [b]. *)
 end
 
 (** Certificate authority authorization
@@ -772,6 +797,8 @@ module Rr_map : sig
 
   val with_ttl : b -> int32 -> b
   (** [with_ttl b ttl] updates [ttl] in [b]. *)
+
+  val prep_for_sig : [ `raw ] Domain_name.t -> Rrsig.t -> t -> (Cstruct.t, [ `Msg of string ]) result
 
 end
 
