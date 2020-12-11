@@ -100,7 +100,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
       | Error (`Msg m) -> invalid_arg ("failed to parse dnskey: " ^ m)
     in
     let not_sub subdomain = not (Domain_name.is_subdomain ~subdomain ~domain:zone) in
-    if not_sub hostname || List.exists not_sub additional_hostnames then
+    if not_sub hostname then
       Lwt.fail_with "hostname not a subdomain of zone provided by dns_key"
     else
       let priv, csr = initialise_csr hostname additional_hostnames key_seed in
