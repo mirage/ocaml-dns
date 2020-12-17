@@ -106,8 +106,12 @@ let lookup_aux name t =
             | Some (`Delegation (name, (ttl, ns))) ->
               Error (`Delegation (name, (ttl, ns)))
             | Some (`Soa (name, map)) ->
-              let soa = Rr_map.get Soa map in
-              Error (`NotFound (name, soa))
+              (* may still be a wildcard *)
+              match M.find "*" sub with
+              | exception Not_found ->
+                let soa = Rr_map.get Soa map in
+                Error (`NotFound (name, soa))
+              | N (sub, map) -> Ok (zone, sub, map)
           end
         | x -> go (succ idx) zone x
   in
