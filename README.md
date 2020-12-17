@@ -19,10 +19,8 @@ zones such as `.localhost` and reverse lookups of RFC 1918 IP ranges).
 Legacy resource record types are not dealt with, and there is no plan to support
 `ISDN`, `MAILA`, `MAILB`, `WKS`, `MB`, `NULL`, `HINFO`, ... .  `AXFR`, `IXFR`,
 and `UPDATE` is only handled via TCP connections.  The only resource class
-supported is `IN` (the Internet).  In a similar vein, wildcard records are _not_
-supported, and it is unlikely they'll ever be in this library.  Truncated hmac
-in `TSIG` are not supported (always the full length of the hash algorithm is
-used).
+supported is `IN` (the Internet).  Truncated hmac in `TSIG` are not supported
+(always the full length of the hash algorithm is used).
 
 Please read [the blog article](https://hannes.nqsb.io/Posts/DNS) for a more
 detailed overview.
@@ -45,6 +43,7 @@ This library is published under the 2 clause BSD license.
 * [RFC 4034](https://tools.ietf.org/html/rfc4034) Resource Records for the DNS Security Extensions
 * [RFC 4255](https://tools.ietf.org/html/rfc4255) Using DNS to Securely Publish Secure Shell (SSH) Key Fingerprints
 * [RFC 4343](https://tools.ietf.org/html/rfc4343) Domain Name System (DNS) Case Insensitivity Clarification
+* [RFC 4592](https://tools.ietf.org/html/rfc4592) The Role of Wildcards in the Domain Name System
 * [RFC 4635](https://tools.ietf.org/html/rfc4635) HMAC SHA TSIG Algorithm Identifiers
 * `*` [RFC 5001](https://tools.ietf.org/html/rfc5001) DNS Name Server Identifier (NSID) Option
 * [RFC 5358](https://tools.ietf.org/html/rfc5358) Preventing Use of Recursive Nameservers in Reflector Attacks

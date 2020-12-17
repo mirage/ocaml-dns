@@ -1529,11 +1529,197 @@ module Axfr = struct
   ]
 end
 
+module Zone = struct
+  let name_map_ok =
+    let module M = struct
+      type t = Name_rr_map.t
+      let pp = Name_rr_map.pp
+      let equal = Name_rr_map.equal
+    end in
+    (module M: Alcotest.TESTABLE with type t = M.t)
+
+  let err =
+    let module M = struct
+      type t = [ `Msg of string ]
+      let pp ppf (`Msg s) = Fmt.string ppf s
+      let equal _ _ = true
+    end in
+    (module M: Alcotest.TESTABLE with type t = M.t)
+
+  let simple_zone = {|
+$ORIGIN example.
+$TTL 2560
+@	SOA	ns 	root	1	86400	10800	1048576	2560
+@	NS	ns
+|}
+
+  let parse_simple_zone () =
+    let rrs =
+      let z = n_of_s "example" in
+      let ns_name = n_of_s "ns.example" in
+      let ns = 2560l, Domain_name.(Host_set.singleton (host_exn ns_name)) in
+      let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+                  serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                  expiry = 1048576l ; minimum = 2560l }
+      in
+      Name_rr_map.(add z Rr_map.Ns ns (singleton z Rr_map.Soa soa))
+    in
+    Alcotest.(check (result name_map_ok err) "parsing simple zone"
+                (Ok rrs) (Dns_zone.parse simple_zone))
+
+  let wildcard_zone = {|
+$ORIGIN example.
+$TTL 2560
+@	SOA	ns 	root	1	86400	10800	1048576	2560
+@	NS	ns
+*       A       1.2.3.4
+|}
+
+  let parse_wildcard_zone () =
+    let rrs =
+      let z = n_of_s "example" in
+      let ns_name = n_of_s "ns.example" in
+      let minimum = 2560l in
+      let ns = Domain_name.(Host_set.singleton (host_exn ns_name)) in
+      let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+                  serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                  expiry = 1048576l ; minimum }
+      in
+      let a = Rr_map.Ipv4_set.singleton (Ipaddr.V4.of_string_exn "1.2.3.4") in
+      Name_rr_map.(add z Rr_map.Ns (minimum, ns)
+                     (add z Rr_map.Soa soa
+                        (singleton (n_of_s "*.example") Rr_map.A (minimum, a))))
+    in
+    Alcotest.(check (result name_map_ok err) "parsing wildcard zone"
+                (Ok rrs) (Dns_zone.parse wildcard_zone))
+
+  let rfc4592_zone = {|
+$ORIGIN example.
+example.                 3600 IN  SOA   ns.example.com. 	root	1	86400	10800	1048576	2560
+example.                 3600     NS    ns.example.com.
+example.                 3600     NS    ns.example.net.
+*.example.               3600     TXT   "this is a wildcard"
+*.example.               3600     MX    10 host1.example.
+sub.*.example.           3600     TXT   "this is not a wildcard"
+host1.example.           3600     A     192.0.2.1
+_ssh._tcp.host1.example. 3600     SRV   1 2 3 host1
+_ssh._tcp.host2.example. 3600     SRV   2 3 4 host1
+subdel.example.          3600     NS    ns.example.com.
+subdel.example.          3600     NS    ns.example.net.
+|}
+
+  let wc_txt = Rr_map.Txt_set.singleton "this is a wildcard"
+  and sub_txt = Rr_map.Txt_set.singleton "this is not a wildcard"
+  and wc_mx =
+    let mx =
+      let mail_exchange = Domain_name.host_exn (n_of_s "host1.example") in
+      Mx.{ preference = 10 ; mail_exchange }
+    in
+    Rr_map.Mx_set.singleton mx
+  and soa = { Soa.nameserver = n_of_s "ns.example.com" ; hostmaster = n_of_s "root.example" ;
+              serial = 1l ; refresh = 86400l ; retry = 10800l ;
+              expiry = 1048576l ; minimum = 2560l }
+  and ns = Domain_name.(Host_set.(add (host_exn (n_of_s "ns.example.com"))
+                                    (singleton (host_exn (n_of_s "ns.example.net")))))
+
+  let parse_rfc4592_zone () =
+    let rrs =
+      let z = n_of_s "example" in
+      let host1 = n_of_s "host1.example" in
+      let host1_a = Rr_map.Ipv4_set.singleton (Ipaddr.V4.of_string_exn "192.0.2.1")
+      and srv1 =
+        let srv = Srv.{ priority = 1 ; weight = 2 ; port = 3 ; target = Domain_name.host_exn host1 } in
+        Rr_map.Srv_set.singleton srv
+      and srv2 =
+        let srv = Srv.{ priority = 2 ; weight = 3 ; port = 4 ; target = Domain_name.host_exn host1 } in
+        Rr_map.Srv_set.singleton srv
+      in
+      let ttl = 3600l in
+      let wc = n_of_s "*.example" in
+      let subdel = n_of_s "subdel.example" in
+      Name_rr_map.(add z Rr_map.Ns (ttl, ns)
+                     (add z Rr_map.Soa soa
+                        (add wc Rr_map.Txt (ttl, wc_txt)
+                           (add wc Rr_map.Mx (ttl, wc_mx)
+                              (add (n_of_s "sub.*.example") Rr_map.Txt (ttl, sub_txt)
+                                 (add host1 Rr_map.A (ttl, host1_a)
+                                    (add (n_of_s "_ssh._tcp.host1.example") Rr_map.Srv (ttl, srv1)
+                                       (add (n_of_s "_ssh._tcp.host2.example") Rr_map.Srv (ttl, srv2)
+                                          (singleton subdel Rr_map.Ns (ttl, ns))))))))))
+    in
+    Alcotest.(check (result name_map_ok err) "parsing rfc4592 zone"
+                (Ok rrs) (Dns_zone.parse rfc4592_zone))
+
+  let rfc4592_questions () =
+    match Dns_zone.parse rfc4592_zone with
+    | Error `Msg f -> Alcotest.failf "couldn't parse zone: %s" f
+    | Ok data ->
+      let trie = Dns_trie.insert_map data Dns_trie.empty in
+      match Dns_trie.check trie with
+      | Error e ->
+        Alcotest.failf "dns trie check failed %a" Dns_trie.pp_zone_check e
+      | Ok () ->
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for MX host3 matches wildcard"
+                (Ok (Rr_map.B (Rr_map.Mx, (3600l, wc_mx))))
+                (Trie.lookup_b (n_of_s "host3.example") Rr_map.Mx trie));
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for A host3 is nodata"
+                (Error (`EmptyNonTerminal (n_of_s "example", soa)))
+                (Trie.lookup_b (n_of_s "host3.example") Rr_map.A trie));
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for TXT foo.bar matches wildcard"
+                (Ok (Rr_map.B (Rr_map.Txt, (3600l, wc_txt))))
+                (Trie.lookup_b (n_of_s "foo.bar.example") Rr_map.Txt trie));
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for MX host1 is nodata"
+                (Error (`EmptyNonTerminal (n_of_s "example", soa)))
+                (Trie.lookup_b (n_of_s "host1.example") Rr_map.Mx trie));
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for MX sub.* is nodata"
+                (Error (`EmptyNonTerminal (n_of_s "example", soa)))
+                (Trie.lookup_b (n_of_s "sub.*.example") Rr_map.Mx trie));
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for SRV _telnet._tcp.host1 is nodata"
+                (Error (`NotFound (n_of_s "example", soa)))
+                (Trie.lookup_b (n_of_s "_telnet._tcp.host1.example") Rr_map.Srv trie));
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for A host.subdel is nodata"
+                (Error (`Delegation (n_of_s "subdel.example", (3600l, ns))))
+                (Trie.lookup_b (n_of_s "host.subdel.example") Rr_map.A trie));
+        (* for the curious from RFC 4592, 2.2.1:
+           The final example highlights one common misconception about
+           wildcards.  A wildcard "blocks itself" in the sense that a wildcard
+           does not match its own subdomains.  That is, "*.example."  does not
+           match all names in the "example." zone; it fails to match the names
+           below "*.example.". To cover names under "*.example.", another
+           wildcard domain name is needed--"*.*.example."--which covers all but
+           its own subdomains.
+        *)
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for MX ghost.* is nodata"
+                (Error (`NotFound (n_of_s "example", soa)))
+                (Trie.lookup_b (n_of_s "ghost.*.example") Rr_map.Mx trie));
+        (* some more checks *)
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for TXT host3 matches wildcard"
+                    (Ok (Rr_map.B (Rr_map.Txt, (3600l, wc_txt))))
+                    (Trie.lookup_b (n_of_s "host3.example") Rr_map.Txt trie));
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for TXT foo.host1 is nodata"
+                (Error (`NotFound (n_of_s "example", soa)))
+                (Trie.lookup_b (n_of_s "foo.host1.example") Rr_map.Txt trie));
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for TXT sub.* is sub_txt"
+                (Ok (Rr_map.B (Rr_map.Txt, (3600l, sub_txt))))
+                (Trie.lookup_b (n_of_s "sub.*.example") Rr_map.Txt trie));
+        Alcotest.(check (result Trie.b_ok Trie.e) "lookup_b for TXT example is nodata"
+                (Error (`EmptyNonTerminal (n_of_s "example", soa)))
+                (Trie.lookup_b (n_of_s "example") Rr_map.Txt trie))
+
+  let tests = [
+    "parsing simple zone", `Quick, parse_simple_zone ;
+    "parsing wildcard zone", `Quick, parse_wildcard_zone ;
+    "parsing RFC 4592 zone", `Quick, parse_rfc4592_zone ;
+    "RFC 4592 questions", `Quick, rfc4592_questions ;
+  ]
+end
+
 let tests = [
   "Trie", Trie.tests ;
   "Server", S.tests ;
   "Authentication", A.tests ;
   "AXFR", Axfr.tests ;
+  "Zone", Zone.tests ;
 ]
 
 let () =

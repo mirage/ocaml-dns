@@ -7,7 +7,7 @@
 (test
  (name server)
  (package dns-server)
- (libraries base64 dns-server dns-tsig alcotest mirage-crypto-rng.unix)
+ (libraries base64 dns-server dns-server.zone dns-tsig alcotest mirage-crypto-rng.unix)
  (modules server))
 
 (test
