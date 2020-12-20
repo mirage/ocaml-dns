@@ -114,5 +114,5 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
         S.TCP.close (D.flow flow) >|= fun () ->
         match certificate with
         | Error e -> Error e
-        | Ok (cert, chain) -> Ok (`Single (cert :: chain, priv))
+        | Ok (cert, chain) -> Ok (cert :: chain, priv)
 end

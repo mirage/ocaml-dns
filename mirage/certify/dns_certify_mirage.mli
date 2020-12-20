@@ -4,7 +4,9 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (T : Mirage_time.S) 
   val retrieve_certificate :
     S.t -> dns_key:string -> hostname:[ `host ] Domain_name.t ->
     ?additional_hostnames:[ `raw ] Domain_name.t list -> ?key_seed:string ->
-    S.TCP.ipaddr -> int -> (Tls.Config.own_cert, [ `Msg of string ]) result Lwt.t
+    S.TCP.ipaddr -> int ->
+    (X509.Certificate.t list * Mirage_crypto_pk.Rsa.priv,
+     [ `Msg of string ]) result Lwt.t
   (** [retrieve_certificate stack ~dns_key ~hostname ~key_seed server_ip port]
      generates a RSA private key (using the [key_seed]), a certificate
      signing request for the given [hostname] and [additional_hostnames], and
