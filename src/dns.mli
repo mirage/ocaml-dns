@@ -1038,8 +1038,9 @@ module Packet : sig
      and optional EDNS and TSIG records. *)
 
   val create : ?max_size:int -> ?additional:Name_rr_map.t -> ?edns:Edns.t ->
+    ?tsig:([ `raw ] Domain_name.t * Tsig.t * int) ->
     Header.t -> Question.t -> data -> t
-  (** [create ~max_size ~additional ~edns hdr q data] is a DNS packet. *)
+  (** [create ~max_size ~additional ~edns ~tsig hdr q data] is a DNS packet. *)
 
   val with_edns : t -> Edns.t option -> t
   (** [with_edns t edns] is [t] with the edns field set to [edns]. *)

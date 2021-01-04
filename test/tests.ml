@@ -677,6 +677,50 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "regression 11 encoded decodes well"
                 (Ok res) (decode data'))
 
+  let regression12 () =
+    let data = {|
+  7b a2 80 09 00 01 00 00 00 00 00 01 00 00
+  06 00 01 03 31 34 37 02 37 35 02 33 34 03 32 31
+  30 03 31 39 34 03 31 35 30 03 31 36 38 03 31 35
+  36 09 5f 74 72 61 6e 73 66 65 72 00 00 fa 00 ff
+  00 00 00 00 00 43 0b 68 6d 61 63 2d 73 68 61 32
+  35 36 00 00 00 5f f3 22 3b 01 2c 00 20 b1 40 50
+  19 fd 27 49 c3 90 77 d3 a2 87 38 ed a0 eb 2f e8
+  eb c4 12 03 f1 25 ad fa 5b 4a 17 83 5e 7b a2 00
+  12 00 06 00 00 5f f3 23 71
+|} in
+    let header = 0x7BA2, Flags.empty in
+    let question = Question.create Domain_name.root Soa in
+    let r = `Rcode_error (Rcode.NotAuth, Opcode.Query, None) in
+    let tsig =
+      let of_ts s = match Ptime.of_rfc3339 s with
+          Ok (ts, _, _) -> ts
+        | Error _ -> Alcotest.fail "bad ts"
+      in
+      let mac = Cstruct.of_hex {|
+  b1 40 50 19 fd 27 49 c3  90 77 d3 a2 87 38 ed a0
+  eb 2f e8 eb c4 12 03 f1  25 ad fa 5b 4a 17 83 5e
+|}
+      and signed = of_ts "2021-01-04T14:12:11-00:00"
+      and other = of_ts "2021-01-04T14:17:21-00:00"
+      and fudge = Ptime.Span.of_int_s 300
+      in
+      let tsig =
+        match
+          Tsig.tsig ~algorithm:Tsig.SHA256
+            ~signed ~fudge ~mac ~original_id:0x7BA2
+            ~error:Rcode.BadTime ~other ()
+        with
+        | Some ts -> ts
+        | None -> Alcotest.fail "bad tsig"
+      in
+      n_of_s "147.75.34.210.194.150.168.156._transfer",
+      tsig, 17
+    in
+    let res = create ~tsig header question r in
+    Alcotest.(check (result t_ok p_err) "regression 12 decodes"
+                (Ok res) (decode (Cstruct.of_hex data)))
+
   let code_tests = [
     "bad query", `Quick, bad_query ;
     "regression0", `Quick, regression0 ;
@@ -691,6 +735,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "regression9", `Quick, regression9 ;
     "regression10", `Quick, regression10 ;
     "regression11", `Quick, regression11 ;
+    "regression12", `Quick, regression12 ;
   ]
 end
 
