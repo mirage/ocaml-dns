@@ -1177,7 +1177,13 @@ module Tsig = struct
     if d < Int64.of_int min_int || d > Int64.of_int max_int then
       Error (`Malformed (off, Fmt.strf "timestamp does not fit in time range %Ld" s))
     else
-      Ok (Ptime.v (Int64.to_int d, ps))
+      match Ptime.Span.of_d_ps (Int64.to_int d, ps) with
+      | Some span ->
+        begin match Ptime.of_span span with
+          | Some ts -> Ok ts
+          | None -> Error (`Malformed (off, Fmt.strf "span does not fit into timestamp %Ld" s))
+        end
+      | None -> Error (`Malformed (off, Fmt.strf "timestamp does not fit %Ld" s))
 
   let valid_time now tsig =
     let ts = tsig.signed
@@ -1266,13 +1272,13 @@ module Tsig = struct
     guard (Cstruct.len buf >= rdata_end) `Partial >>= fun () ->
     guard (other_len = 0 || other_len = 6)
       (`Malformed (off' + 14 + mac_len, "other timestamp should be 0 or 6 bytes!")) >>= fun () ->
-    algorithm_of_name ~off algorithm >>= fun algorithm ->
+    algorithm_of_name ~off:rdata_start algorithm >>= fun algorithm ->
     ptime_of_int64 ~off:off' signed >>= fun signed ->
     Rcode.of_int ~off:(off' + 12 + mac_len) error >>= fun error ->
     (if other_len = 0 then
        Ok None
      else
-       let other = decode_48bit_time buf (off + 16 + mac_len) in
+       let other = decode_48bit_time buf (off' + 16 + mac_len) in
        ptime_of_int64 ~off:(off' + 14 + mac_len + 2) other >>| fun x ->
        Some x) >>| fun other ->
     let fudge = Ptime.Span.of_int_s fudge in
@@ -3249,9 +3255,9 @@ module Packet = struct
   let eq_tsig (name, tsig, off) (name', tsig', off') =
     Domain_name.equal name name' && Tsig.equal tsig tsig' && off = off'
 
-  let create ?max_size:_ ?(additional = Name_rr_map.empty) ?edns header question data =
+  let create ?max_size:_ ?(additional = Name_rr_map.empty) ?edns ?tsig header question data =
     (* TODO!? max size edns reply stuff!? *)
-    { header ; question ; data ; additional ; edns ; tsig = None }
+    { header ; question ; data ; additional ; edns ; tsig }
 
   let with_edns t edns = { t with edns }
 
