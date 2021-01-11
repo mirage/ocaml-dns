@@ -1,3 +1,16 @@
+### v4.6.3 (2021-01-11)
+
+* dns-server: wildcard support (#248 @hannesm)
+* dns-certify: only dnskey needs to be a valid hostname (#247 @hannesm),
+  allow [`raw] Domain_name.t in signing requests (#249 @hannesm)
+* dns-client.resolvconf provides a parser for /etc/resolv.conf (#240 @hannesm),
+  used in dns-client.unix and dns-client.lwt (#241 @hannesm)
+* BUGFIX dns-cli notify keys are accepted in namekey_c (#242 @hannesm)
+* BUGFIX dns: revise TXT resource record encoding and storage (for DKIM usage)
+  previously RR were cut at 255 characters (fixes #244, #245 @hannesm)
+* BUGFIX dns: decoding of TSIG packets (#250 @hannesm)
+* BUGFIX ocertify: pem file may contain a certificate chain (#246 @hannesm)
+
 ### v4.6.2 (2020-08-07)
 
 * fixes for 32 bit support (OCaml-CI now runs on 32 bit) in test suite and EDNS
