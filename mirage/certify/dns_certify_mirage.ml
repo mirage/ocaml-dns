@@ -5,7 +5,7 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_certify_mirage" ~doc:"effectful DNS certify"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.S) (S : Mirage_stack.V4) = struct
+module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.S) (S : Mirage_stack.V4V6) = struct
 
   module D = Dns_mirage.Make(S)
 
@@ -104,15 +104,15 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
       Lwt.fail_with "hostname not a subdomain of zone provided by dns_key"
     else
       let priv, csr = initialise_csr hostname additional_hostnames key_seed in
-      S.TCPV4.create_connection (S.tcpv4 stack) (dns, port) >>= function
+      S.TCP.create_connection (S.tcp stack) (dns, port) >>= function
       | Error e ->
-        Log.err (fun m -> m "error %a while connecting to name server, shutting down" S.TCPV4.pp_error e) ;
+        Log.err (fun m -> m "error %a while connecting to name server, shutting down" S.TCP.pp_error e) ;
         Lwt.return (Error (`Msg "couldn't connect to name server"))
       | Ok flow ->
         let flow = D.of_flow flow in
         query_certificate_or_csr flow hostname keyname zone dnskey csr >>= fun certificate ->
-        S.TCPV4.close (D.flow flow) >|= fun () ->
+        S.TCP.close (D.flow flow) >|= fun () ->
         match certificate with
         | Error e -> Error e
-        | Ok (cert, chain) -> Ok (`Single (cert :: chain, priv))
+        | Ok (cert, chain) -> Ok (cert :: chain, priv)
 end

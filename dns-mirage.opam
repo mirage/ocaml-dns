@@ -13,7 +13,7 @@ depends: [
   "dns" {= version}
   "ipaddr" {>= "4.0.0"}
   "lwt" {>= "4.2.1"}
-  "mirage-stack" {>= "2.0.0"}
+  "mirage-stack" {>= "2.2.0"}
 ]
 
 build: [

@@ -8,7 +8,7 @@ let src = Logs.Src.create "dns_server" ~doc:"DNS server"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 module IPM = struct
-  include Map.Make(Ipaddr.V4)
+  include Map.Make(Ipaddr)
 
   let union_append a b =
     let f _ a b = Some (a @ b) in
@@ -68,7 +68,7 @@ module Authentication = struct
           in
           match Ipaddr.V4.of_string (String.concat "." [ a ; b ; c ; d ]) with
           | Error _ -> None
-          | Ok ip -> Some ip
+          | Ok ip -> Some (Ipaddr.V4 ip)
         else
           None
       in
@@ -449,7 +449,7 @@ module Notification = struct
      initiated a signed! TCP session (the fd/flow are kept in the effectful
      layer) *)
   type connections =
-   ([ `raw ] Domain_name.t * Ipaddr.V4.t) list Domain_name.Host_map.t
+   ([ `raw ] Domain_name.t * Ipaddr.t) list Domain_name.Host_map.t
 
   let secondaries trie zone =
     match Dns_trie.lookup_with_cname zone Rr_map.Soa trie with
@@ -480,7 +480,7 @@ module Notification = struct
        - active connections (from the zone -> ip, key map above), used for
          let's encrypt etc. *)
     let secondaries =
-      Rr_map.Ipv4_set.fold (fun ip m -> IPM.add ip None m)
+      Rr_map.Ipv4_set.fold (fun ip m -> IPM.add (Ipaddr.V4 ip) None m)
         (secondaries data zone) IPM.empty
     in
     let of_list = List.fold_left (fun m (key, ip) -> IPM.add ip (Some key) m) in
@@ -501,29 +501,29 @@ module Notification = struct
     match IPM.find_opt ip (to_notify cs ~data ~auth zone) with
     | None ->
       Log.info (fun m -> m "inserting notifications for %a key %a IP %a"
-                   Domain_name.pp zone Domain_name.pp key Ipaddr.V4.pp ip);
+                   Domain_name.pp zone Domain_name.pp key Ipaddr.pp ip);
       cs'
     | Some (Some k) ->
       if Domain_name.equal k key then begin
         Log.warn (fun m -> m "zone %a with key %a and IP %a already registered"
-                     Domain_name.pp zone Domain_name.pp key Ipaddr.V4.pp ip);
+                     Domain_name.pp zone Domain_name.pp key Ipaddr.pp ip);
         cs
       end else begin
         Log.warn (fun m -> m "replacing key zone %a oldkey %a IP %a, new key %a"
-                     Domain_name.pp zone Domain_name.pp k Ipaddr.V4.pp ip
+                     Domain_name.pp zone Domain_name.pp k Ipaddr.pp ip
                      Domain_name.pp key);
         cs'
       end
     | Some None ->
       Log.info (fun m -> m "adding zone %a (key %a) IP %a (previously no key)"
-                   Domain_name.pp zone Domain_name.pp key Ipaddr.V4.pp ip);
+                   Domain_name.pp zone Domain_name.pp key Ipaddr.pp ip);
       cs'
 
   let remove conn ip =
     let is_not_it name (_, ip') =
-      if Ipaddr.V4.compare ip ip' = 0 then begin
+      if Ipaddr.compare ip ip' = 0 then begin
         Log.info (fun m -> m "removing notification for %a %a"
-                     Domain_name.pp name Ipaddr.V4.pp ip);
+                     Domain_name.pp name Ipaddr.pp ip);
         false
       end else true
     in
@@ -569,7 +569,7 @@ module Notification = struct
                  let out, mac = encode_and_sign key server now packet in
                  (if count = max then begin
                      Log.warn (fun m -> m "retransmit notify to %a last time %a"
-                                  Ipaddr.V4.pp ip Packet.pp packet);
+                                  Ipaddr.pp ip Packet.pp packet);
                      new_map
                    end else
                     let v = ts, succ count, packet, key, mac in
@@ -611,7 +611,7 @@ module Notification = struct
     let remotes = to_notify conn ~data:server.data ~auth:server.auth zone in
     Log.debug (fun m -> m "notifying %a: %a" Domain_name.pp zone
                   Fmt.(list ~sep:(unit ",@ ")
-                         (pair ~sep:(unit ", key ") Ipaddr.V4.pp
+                         (pair ~sep:(unit ", key ") Ipaddr.pp
                             (option ~none:(unit "none") Domain_name.pp)))
                   (IPM.bindings remotes));
     IPM.fold (fun ip key (ns, outs) ->
@@ -1039,14 +1039,14 @@ module Primary = struct
   let handle_buf t now ts proto ip port buf =
     match
       safe_decode buf >>| fun res ->
-      Log.debug (fun m -> m "from %a received:@[%a@]" Ipaddr.V4.pp ip
+      Log.debug (fun m -> m "from %a received:@[%a@]" Ipaddr.pp ip
                    Packet.pp res);
       res
     with
     | Error rcode ->
       let answer = Packet.raw_error buf rcode in
       Log.warn (fun m -> m "error %a while %a sent %a, answering with %a"
-                   Rcode.pp rcode Ipaddr.V4.pp ip Cstruct.hexdump_pp buf
+                   Rcode.pp rcode Ipaddr.pp ip Cstruct.hexdump_pp buf
                    Fmt.(option ~none:(unit "no") Cstruct.hexdump_pp) answer);
       tx_metrics (`Rcode_error (rcode, Opcode.Query, None));
       let answer = match answer with None -> [] | Some err -> [ err ] in
@@ -1148,7 +1148,7 @@ module Secondary = struct
 
   (* undefined what happens if there are multiple transfer keys for zone *)
   type s =
-    t * (state * Ipaddr.V4.t * [ `raw ] Domain_name.t) Domain_name.Host_map.t
+    t * (state * Ipaddr.t * [ `raw ] Domain_name.t) Domain_name.Host_map.t
 
   let data (t, _) = t.data
 
@@ -1178,7 +1178,7 @@ module Secondary = struct
                     then begin
                       Log.app (fun m -> m "adding zone %a with key %a and ip %a"
                                   Domain_name.pp name Domain_name.pp keyname
-                                  Ipaddr.V4.pp ip);
+                                  Ipaddr.pp ip);
                       let v =
                         Requested_soa (0L, 0, 0, Cstruct.empty), ip, keyname
                       in
@@ -1253,7 +1253,7 @@ module Secondary = struct
     let t, out =
       Domain_name.Host_map.fold (fun zone (st, ip, name) ((t, zones), map) ->
           Log.debug (fun m -> m "secondary timer zone %a ip %a name %a"
-                        Domain_name.pp zone Ipaddr.V4.pp ip Domain_name.pp name);
+                        Domain_name.pp zone Ipaddr.pp ip Domain_name.pp name);
           let maybe_out data =
             let st, out = match data with
               | None -> st, map
@@ -1343,7 +1343,7 @@ module Secondary = struct
             Error Rcode.Refused
           end
         | Some (Transferred _, ip', name), None ->
-          if Ipaddr.V4.compare ip ip' = 0 then begin
+          if Ipaddr.compare ip ip' = 0 then begin
             Log.debug (fun m -> m "received notify %a, requesting SOA"
                           Domain_name.pp zone);
             let zones, out =
@@ -1356,7 +1356,7 @@ module Secondary = struct
             Ok (zones, out)
           end else begin
             Log.warn (fun m -> m "ignoring notify %a from %a (%a is primary)"
-                         Domain_name.pp zone Ipaddr.V4.pp ip Ipaddr.V4.pp ip');
+                         Domain_name.pp zone Ipaddr.pp ip Ipaddr.pp ip');
             Error Rcode.Refused
           end
         | Some _, None ->
@@ -1364,7 +1364,7 @@ module Secondary = struct
                        Domain_name.pp zone);
           Ok (zones, None)
         | Some (st, ip', name), Some _ ->
-          if Ipaddr.V4.compare ip ip' = 0 then begin
+          if Ipaddr.compare ip ip' = 0 then begin
             (* we received a signed notify! check if SOA present, and act *)
             match st, notify, Dns_trie.lookup zone Rr_map.Soa t.data with
             | Transferred _, None, _ ->
@@ -1413,7 +1413,7 @@ module Secondary = struct
               end
           end else begin
             Log.warn (fun m -> m "ignoring notify %a from %a (%a is primary)"
-                         Domain_name.pp zone Ipaddr.V4.pp ip Ipaddr.V4.pp ip');
+                         Domain_name.pp zone Ipaddr.pp ip Ipaddr.pp ip');
             Error Rcode.Refused
           end
       end
@@ -1559,7 +1559,7 @@ module Secondary = struct
         with
         | _, None ->
           Log.err (fun m -> m "didn't receive SOA for %a from %a (answer %a)"
-                      Domain_name.pp zone Ipaddr.V4.pp ip Name_rr_map.pp answer);
+                      Domain_name.pp zone Ipaddr.pp ip Name_rr_map.pp answer);
           Error Rcode.FormErr
         | Ok cached_soa, Some fresh ->
           if Soa.newer ~old:cached_soa fresh then
@@ -1792,7 +1792,7 @@ module Secondary = struct
   let handle_buf t now ts proto ip buf =
     match
       safe_decode buf >>| fun res ->
-      Log.debug (fun m -> m "received a packet from %a: %a" Ipaddr.V4.pp ip
+      Log.debug (fun m -> m "received a packet from %a: %a" Ipaddr.pp ip
                     Packet.pp res);
       res
     with
@@ -1845,7 +1845,7 @@ module Secondary = struct
     (* if ip, port was registered for zone(s), re-open connections to remotes *)
     let zones', out =
       Domain_name.Host_map.fold (fun zone (_, ip, keyname) (zones', out) ->
-          if Ipaddr.V4.compare ip ip' = 0 then
+          if Ipaddr.compare ip ip' = 0 then
             match Authentication.find_zone_ips keyname with
             (* hidden secondary has latter = None *)
             | Some (_, _, None) ->

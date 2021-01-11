@@ -6,7 +6,7 @@ open Dns
 let src = Logs.Src.create "dns_stub_mirage" ~doc:"effectful DNS stub layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4) = struct
+module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4V6) = struct
 
   (* data in the wild:
      - a request comes in hdr, q
@@ -70,9 +70,9 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
     module Transport : Dns_client.S
       with type stack = S.t
        and type +'a io = 'a Lwt.t
-       and type io_addr = Ipaddr.V4.t * int = struct
+       and type io_addr = Ipaddr.t * int = struct
       type stack = S.t
-      type io_addr = Ipaddr.V4.t * int
+      type io_addr = Ipaddr.t * int
       type ns_addr = [`TCP | `UDP] * io_addr
       type +'a io = 'a Lwt.t
 
@@ -80,13 +80,13 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         nameserver : ns_addr ;
         timeout_ns : int64 ;
         stack : stack ;
-        mutable flow : S.TCPV4.flow option ;
+        mutable flow : S.TCP.flow option ;
         mutable requests : (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t IM.t ;
       }
       type context = { t : t ; timeout_ns : int64 ref ; mutable id : int }
 
       let create
-          ?(nameserver = `TCP, (Ipaddr.V4.of_string_exn Dns_client.default_resolver, 53))
+          ?(nameserver = `TCP, (Ipaddr.V4 (Ipaddr.V4.of_string_exn Dns_client.default_resolver), 53))
           ~timeout
           stack =
         { nameserver ; timeout_ns = timeout ; stack ; flow = None ; requests = IM.empty }
@@ -112,10 +112,10 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
           t.requests
 
       let rec read_loop ?(linger = Cstruct.empty) t flow =
-        S.TCPV4.read flow >>= function
+        S.TCP.read flow >>= function
         | Error e ->
           t.flow <- None;
-          Log.err (fun m -> m "error %a reading from resolver" S.TCPV4.pp_error e);
+          Log.err (fun m -> m "error %a reading from resolver" S.TCP.pp_error e);
           cancel_all t;
           Lwt.return_unit
         | Ok `Eof ->
@@ -154,10 +154,10 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         | None ->
           let _proto, addr = match ns with None -> nameserver t | Some x -> x in
           let time_left = ref t.timeout_ns in
-          with_timeout time_left (S.TCPV4.create_connection (S.tcpv4 t.stack) addr >|= function
+          with_timeout time_left (S.TCP.create_connection (S.tcp t.stack) addr >|= function
           | Error e ->
             Log.err (fun m -> m "error connecting to nameserver %a"
-                        S.TCPV4.pp_error e) ;
+                        S.TCP.pp_error e) ;
             Error (`Msg "connect failure")
           | Ok flow ->
             metrics `Recursive_connections;
@@ -184,10 +184,10 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         | Some flow ->
           let id = Cstruct.BE.get_uint16 s 2 in
           f.id <- id;
-          with_timeout timeout_ns (S.TCPV4.write flow s >>= function
+          with_timeout timeout_ns (S.TCP.write flow s >>= function
           | Error e ->
             t.flow <- None;
-            Lwt.return (Error (`Msg (Fmt.to_to_string S.TCPV4.pp_write_error e)))
+            Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
           | Ok () ->
             metrics `Recursive_queries;
             Lwt.return (Ok ()))
@@ -220,7 +220,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
     client : Client.t ;
     reserved : Dns_server.t ;
     mutable server : Dns_server.t ;
-    on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.V4.t -> Dns_trie.t -> unit Lwt.t ;
+    on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.t -> Dns_trie.t -> unit Lwt.t ;
   }
 
   let query_server trie question data build_reply =
@@ -379,16 +379,16 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
       handle t `Udp src buf >>= function
       | None -> Lwt.return_unit
       | Some data ->
-        S.UDPV4.write ~src_port:53 ~dst:src ~dst_port:src_port (S.udpv4 stack) data >|= function
+        S.UDP.write ~src_port:53 ~dst:src ~dst_port:src_port (S.udp stack) data >|= function
         | Error e -> Logs.warn (fun m -> m "udp: failure %a while sending to %a:%d"
-                                  S.UDPV4.pp_error e Ipaddr.V4.pp src src_port)
+                                  S.UDP.pp_error e Ipaddr.pp src src_port)
         | Ok () -> ()
     in
-    S.listen_udpv4 stack ~port:53 udp_cb ;
+    S.listen_udp stack ~port:53 udp_cb ;
     let tcp_cb flow =
       metrics `Tcp_connections;
-      let dst_ip, dst_port = S.TCPV4.dst flow in
-      Log.debug (fun m -> m "tcp connection from %a:%d" Ipaddr.V4.pp dst_ip dst_port) ;
+      let dst_ip, dst_port = S.TCP.dst flow in
+      Log.debug (fun m -> m "tcp connection from %a:%d" Ipaddr.pp dst_ip dst_port) ;
       let f = Dns_flow.of_flow flow in
       let rec loop () =
         Dns_flow.read_tcp f >>= function
@@ -406,6 +406,6 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
       in
       loop ()
     in
-    S.listen_tcpv4 stack ~port:53 tcp_cb;
+    S.listen_tcp stack ~port:53 tcp_cb;
     t
 end

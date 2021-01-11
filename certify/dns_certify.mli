@@ -1,7 +1,7 @@
 open Dns
 
 val signing_request : [`host] Domain_name.t ->
-  ?more_hostnames:([`host] Domain_name.t list) ->
+  ?more_hostnames:([`raw] Domain_name.t list) ->
   X509.Private_key.t -> X509.Signing_request.t
 (** [signing_request name ~more_hostnames key] creates a X509 signing request
     where [name] will be the common name in its subject, and if [more_hostnames]
