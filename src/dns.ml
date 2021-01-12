@@ -1215,14 +1215,15 @@ module Txt = struct
     Ok (String.concat "" txts, names, off + len)
 
   let encode txt names buf off =
+    let max_len = 255 in
     let rec more off txt =
       if txt = "" then
         off
       else
         let len = String.length txt in
         let len, rest =
-          if len > 255 then
-            255, String.(sub txt 255 (len - 255))
+          if len > max_len then
+            max_len, String.(sub txt max_len (len - max_len))
           else
             len, ""
         in
