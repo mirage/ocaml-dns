@@ -936,12 +936,6 @@ module Ds = struct
     | SHA256 -> "SHA256"
     | SHA384 -> "SHA384"
     | Unknown i -> string_of_int i
-  let string_to_digest_type = function
-    | "SHA1" -> Ok SHA1
-    | "SHA256" -> Ok SHA256
-    | "SHA384" -> Ok SHA384
-    | x -> try Ok (Unknown (int_of_string x)) with
-        Failure _ -> Error (`Msg ("DS digest type not implemented " ^ x))
 
   let pp_digest_type ppf k = Fmt.string ppf (digest_type_to_string k)
 

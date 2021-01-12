@@ -76,6 +76,7 @@ let add_to_map name (Rr_map.B (k, v)) = Name_rr_map.add name k v
 %token <string> TYPE_DNSKEY
 %token <string> TYPE_TLSA
 %token <string> TYPE_SSHFP
+%token <string> TYPE_DS
 %token <string> TYPE_GENERIC
 
 %token <string> CLASS_IN
@@ -166,6 +167,19 @@ generic_type s generic_rdata {
            parse_error "SSHFP payload exceeds maximum rdata size";
          let sshfp = { Sshfp.algorithm ; typ ; fingerprint = $7 } in
          B (Sshfp, (0l, Rr_map.Sshfp_set.singleton sshfp))
+       with
+       | Invalid_argument err -> parse_error err
+     }
+ | TYPE_DS s int16 s int8 s int8 s hex
+     { try
+         let key_tag = $3
+         and algorithm = Dnskey.int_to_algorithm $5
+         and digest_type = Ds.int_to_digest_type $7
+         in
+         if Cstruct.len $9 > max_rdata_length - 4 then
+           parse_error "DS payload exceeds maximum rdata size";
+         let ds = { Ds.key_tag ; algorithm ; digest_type ; digest = $9 } in
+         B (Ds, (0l, Rr_map.Ds_set.singleton ds))
        with
        | Invalid_argument err -> parse_error err
      }
