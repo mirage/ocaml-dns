@@ -703,7 +703,7 @@ module Dnskey = struct
     | 164 -> SHA384
     | 165 -> SHA512
     | x ->
-      if x >= 0 && x < 255 then
+      if x >= 0 && x < 256 then
         Unknown x
       else
         invalid_arg ("invalid DNSKEY algorithm " ^ string_of_int x)
