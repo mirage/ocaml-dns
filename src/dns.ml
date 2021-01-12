@@ -910,6 +910,79 @@ module Rrsig = struct
     names, off + slen
 end
 
+module Ds = struct
+  type digest_type =
+    | SHA1
+    | SHA256
+    | SHA384
+    | Unknown of int
+
+  let digest_type_to_int = function
+    | SHA1 -> 1
+    | SHA256 -> 2
+    | SHA384 -> 4
+    | Unknown i -> i
+  let int_to_digest_type = function
+    | 1 -> SHA1
+    | 2 -> SHA256
+    | 4 -> SHA384
+    | x ->
+      if x >= 0 && x < 256 then
+        Unknown x
+      else
+        invalid_arg ("invalid DS digest type " ^ string_of_int x)
+  let digest_type_to_string = function
+    | SHA1 -> "SHA1"
+    | SHA256 -> "SHA256"
+    | SHA384 -> "SHA384"
+    | Unknown i -> string_of_int i
+  let string_to_digest_type = function
+    | "SHA1" -> Ok SHA1
+    | "SHA256" -> Ok SHA256
+    | "SHA384" -> Ok SHA384
+    | x -> try Ok (Unknown (int_of_string x)) with
+        Failure _ -> Error (`Msg ("DS digest type not implemented " ^ x))
+
+  let pp_digest_type ppf k = Fmt.string ppf (digest_type_to_string k)
+
+  type t = {
+    key_tag : int ;
+    algorithm : Dnskey.algorithm ;
+    digest_type : digest_type ;
+    digest : Cstruct.t
+  }
+
+  let pp ppf t =
+    Fmt.pf ppf "DS key_tag %u algo %a digest type %a digest %a"
+      t.key_tag
+      Dnskey.pp_algorithm t.algorithm
+      pp_digest_type t.digest_type
+      Cstruct.hexdump_pp t.digest
+
+  let compare a b =
+    andThen (compare a.key_tag b.key_tag)
+      (andThen (compare a.algorithm b.algorithm)
+         (andThen (compare a.digest_type b.digest_type)
+            (Cstruct.compare a.digest b.digest)))
+
+  let decode names buf ~off ~len =
+    let key_tag = Cstruct.BE.get_uint16 buf off
+    and algo = Cstruct.get_uint8 buf (off + 2)
+    and dt = Cstruct.get_uint8 buf (off + 3)
+    and digest = Cstruct.sub buf (off + 4) (len - 4)
+    in
+    let algorithm = Dnskey.int_to_algorithm algo
+    and digest_type = int_to_digest_type dt
+    in
+    Ok ({ key_tag ; algorithm ; digest_type ; digest }, names, off + len)
+
+  let encode t names buf off =
+    Cstruct.BE.set_uint16 buf off t.key_tag ;
+    Cstruct.set_uint8 buf (off + 2) (Dnskey.algorithm_to_int t.algorithm) ;
+    Cstruct.set_uint8 buf (off + 3) (digest_type_to_int t.digest_type) ;
+    Cstruct.blit t.digest 0 buf (off + 4) (Cstruct.len t.digest) ;
+    names, off + Cstruct.len t.digest + 4
+end
 
 (* certificate authority authorization *)
 module Caa = struct
@@ -1743,6 +1816,7 @@ module Rr_map = struct
   module Caa_set = Set.Make(Caa)
   module Tlsa_set = Set.Make(Tlsa)
   module Sshfp_set = Set.Make(Sshfp)
+  module Ds_set = Set.Make(Ds)
 
   module I : sig
     type t
@@ -1752,7 +1826,7 @@ module Rr_map = struct
   end = struct
     type t = int
     let of_int ?(off = 0) i = match i with
-      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 44 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
+      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
         Error (`Malformed (off, "reserved and supported RTYPE not Unknown"))
       | x -> if x < 1 lsl 15 then Ok x else Error (`Malformed (off, "RTYPE exceeds 16 bit"))
     let to_int t = t
@@ -1775,6 +1849,7 @@ module Rr_map = struct
     | Tlsa : Tlsa_set.t with_ttl rr
     | Sshfp : Sshfp_set.t with_ttl rr
     | Txt : Txt_set.t with_ttl rr
+    | Ds : Ds_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
 
   module K = struct
@@ -1796,6 +1871,7 @@ module Rr_map = struct
       | Tlsa, Tlsa -> Eq | Tlsa, _ -> Lt | _, Tlsa -> Gt
       | Sshfp, Sshfp -> Eq | Sshfp, _ -> Lt | _, Sshfp -> Gt
       | Txt, Txt -> Eq | Txt, _ -> Lt | _, Txt -> Gt
+      | Ds, Ds -> Eq | Ds, _ -> Lt | _, Ds -> Gt
       | Unknown a, Unknown b ->
         let r = I.compare a b in
         if r = 0 then Eq else if r < 0 then Lt else Gt
@@ -1823,6 +1899,7 @@ module Rr_map = struct
     | Caa, (_, caas), (_, caas') -> Caa_set.equal caas caas'
     | Tlsa, (_, tlsas), (_, tlsas') -> Tlsa_set.equal tlsas tlsas'
     | Sshfp, (_, sshfps), (_, sshfps') -> Sshfp_set.equal sshfps sshfps'
+    | Ds, (_, ds), (_, ds') -> Ds_set.equal ds ds'
     | Unknown _, (_, data), (_, data') -> Txt_set.equal data data'
 
   let equalb (B (k, v)) (B (k', v')) = match K.compare k k' with
@@ -1831,7 +1908,7 @@ module Rr_map = struct
 
   let to_int : type a. a key -> int = function
     | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Ptr -> 12 | Mx -> 15
-    | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Sshfp -> 44 | Dnskey -> 48
+    | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Ds -> 43 | Sshfp -> 44 | Dnskey -> 48
     | Tlsa -> 52 | Caa -> 257 | Unknown x -> I.to_int x
 
   let any_rtyp = 255 and axfr_rtyp = 252 and ixfr_rtyp = 251
@@ -1839,8 +1916,8 @@ module Rr_map = struct
   let of_int ?(off = 0) = function
     | 1 -> Ok (K A) | 2 -> Ok (K Ns) | 5 -> Ok (K Cname) | 6 -> Ok (K Soa)
     | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
-    | 33 -> Ok (K Srv) | 44 -> Ok (K Sshfp) | 48 -> Ok (K Dnskey)
-    | 52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
+    | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
+    | 48 -> Ok (K Dnskey) | 52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
     | x ->
       let open Rresult.R.Infix in
       I.of_int ~off x >>| fun i ->
@@ -1860,6 +1937,7 @@ module Rr_map = struct
     | Caa -> Fmt.string ppf "CAA"
     | Tlsa -> Fmt.string ppf "TLSA"
     | Sshfp -> Fmt.string ppf "SSHFP"
+    | Ds -> Fmt.string ppf "DS"
     | Unknown x -> Fmt.pf ppf "TYPE%d" (I.to_int x)
 
   type rrtyp = [ `Any | `Tsig | `Edns | `Ixfr | `Axfr | `K of k ]
@@ -1943,6 +2021,10 @@ module Rr_map = struct
       Txt_set.fold (fun txt ((names, off), count) ->
           rr names (Txt.encode txt) off ttl, succ count)
         txts ((names, off), 0)
+    | Ds, (ttl, ds) ->
+      Ds_set.fold (fun ds ((names, off), count) ->
+          rr names (Ds.encode ds) off ttl, succ count)
+        ds ((names, off), 0)
     | Unknown _, (ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -1968,6 +2050,7 @@ module Rr_map = struct
     | Caa, (_, caas), (ttl, caas') -> (ttl, Caa_set.union caas caas')
     | Tlsa, (_, tlsas), (ttl, tlsas') -> (ttl, Tlsa_set.union tlsas tlsas')
     | Sshfp, (_, sshfps), (ttl, sshfps') -> (ttl, Sshfp_set.union sshfps sshfps')
+    | Ds, (_, ds), (ttl, ds') -> (ttl, Ds_set.union ds ds')
     | Unknown _, (_, data), (ttl, data') -> (ttl, Txt_set.union data data')
 
   let unionee : type a. a key -> a -> a -> a option =
@@ -2013,6 +2096,9 @@ module Rr_map = struct
     | Sshfp, (ttl, sshfps), (_, rm) ->
       let s = Sshfp_set.diff sshfps rm in
       if Sshfp_set.is_empty s then None else Some (ttl, s)
+    | Ds, (ttl, ds), (_, rm) ->
+      let s = Ds_set.diff ds rm in
+      if Ds_set.is_empty s then None else Some (ttl, s)
     | Unknown _, (ttl, datas), (_, rm) ->
       let data = Txt_set.diff datas rm in
       if Txt_set.is_empty data then None else Some (ttl, data)
@@ -2145,6 +2231,14 @@ module Rr_map = struct
               (Sshfp.typ_to_int sshfp.typ)
               (hex sshfp.fingerprint) :: acc)
           sshfps []
+      | Ds, (ttl, ds) ->
+        Ds_set.fold (fun ds acc ->
+            Fmt.strf "%s\t%aDS\t%u\t%u\t%u\t%s" str_name ttl_fmt (ttl_opt ttl)
+              ds.Ds.key_tag
+              (Dnskey.algorithm_to_int ds.algorithm)
+              (Ds.digest_type_to_int ds.digest_type)
+              (hex ds.digest) :: acc)
+          ds []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
             Fmt.strf "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
@@ -2168,6 +2262,7 @@ module Rr_map = struct
     | Caa, (ttl, _) -> ttl
     | Tlsa, (ttl, _) -> ttl
     | Sshfp, (ttl, _) -> ttl
+    | Ds, (ttl, _) -> ttl
     | Unknown _, (ttl, _) -> ttl
 
   let with_ttl : b -> int32 -> b = fun (B (k, v)) ttl ->
@@ -2185,6 +2280,7 @@ module Rr_map = struct
     | Caa, (_, caas) -> B (k, (ttl, caas))
     | Tlsa, (_, tlsas) -> B (k, (ttl, tlsas))
     | Sshfp, (_, sshfps) -> B (k, (ttl, sshfps))
+    | Ds, (_, ds) -> B (k, (ttl, ds))
     | Unknown _, (_, datas) -> B (k, (ttl, datas))
 
   let split : type a. a key -> a -> a * a option = fun k v ->
@@ -2263,6 +2359,13 @@ module Rr_map = struct
         if Sshfp_set.is_empty rest then None else Some (ttl, rest)
       in
       (ttl, Sshfp_set.singleton one), rest'
+    | Ds, (ttl, ds) ->
+      let one = Ds_set.choose ds in
+      let rest = Ds_set.remove one ds in
+      let rest' =
+        if Ds_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Ds_set.singleton one), rest'
     | Unknown _, (ttl, datas) ->
       let one = Txt_set.choose datas in
       let rest = Txt_set.remove one datas in
@@ -2342,6 +2445,9 @@ module Rr_map = struct
      | Txt ->
        Txt.decode names buf ~off:rdata_start ~len >>| fun (txt, names, off) ->
        (B (Txt, (ttl, Txt_set.singleton txt)), names, off)
+     | Ds ->
+       Ds.decode names buf ~off:rdata_start ~len >>| fun (ds, names, off) ->
+       (B (Ds, (ttl, Ds_set.singleton ds)), names, off)
      | Unknown x ->
        let data = Cstruct.sub buf rdata_start len in
        Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)

@@ -390,6 +390,34 @@ module Rrsig : sig
   (** [compare a b] compares the RRSIG [a] with [b]. *)
 end
 
+(** DS *)
+module Ds : sig
+  type digest_type =
+    | SHA1
+    | SHA256
+    | SHA384
+    | Unknown of int
+
+  val digest_type_to_int : digest_type -> int
+
+  val int_to_digest_type : int -> digest_type
+
+  val pp_digest_type : digest_type Fmt.t
+
+  type t = {
+    key_tag : int ;
+    algorithm : Dnskey.algorithm ;
+    digest_type : digest_type ;
+    digest : Cstruct.t
+  }
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the DS. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the DS [a] with [b]. *)
+end
+
 (** Certificate authority authorization
 
     A certificate authority authorization (CAA) record can restrict usage of
@@ -708,6 +736,7 @@ module Rr_map : sig
   module Caa_set : Set.S with type elt = Caa.t
   module Tlsa_set : Set.S with type elt = Tlsa.t
   module Sshfp_set : Set.S with type elt = Sshfp.t
+  module Ds_set : Set.S with type elt = Ds.t
 
   module I : sig
     type t
@@ -733,6 +762,7 @@ module Rr_map : sig
     | Tlsa : Tlsa_set.t with_ttl rr
     | Sshfp : Sshfp_set.t with_ttl rr
     | Txt : Txt_set.t with_ttl rr
+    | Ds : Ds_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
   (** The type of resource record sets, as GADT: the value depends on the
      specific constructor. There may only be a single SOA and Cname and Ptr
