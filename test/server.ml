@@ -630,7 +630,7 @@ module S = struct
   let secondary_via_key () =
     let keys =
       [ n_of_s "1.2.3.4.5.6.7.8._transfer.one.com",
-        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
@@ -642,7 +642,7 @@ module S = struct
   let secondary_via_root_key () =
     let keys =
       [ n_of_s "1.2.3.4.5.6.7.8._transfer",
-        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
@@ -654,7 +654,7 @@ module S = struct
   let secondaries_and_keys () =
     let keys =
       [ n_of_s "1.2.3.4.5.6.7.8._transfer.one.com",
-        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
     in
     let data' =
       let ns =
@@ -680,7 +680,7 @@ module S = struct
   let secondaries_and_keys_dups () =
     let keys =
       [ n_of_s "1.2.3.4.5.6.7.8._transfer.one.com",
-        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
     in
     let data' =
       let ns =
@@ -712,7 +712,7 @@ module S = struct
   let multiple_zones () =
     let keys =
       [ n_of_s "1.2.3.4.9.10.11.12._transfer",
-        { Dnskey.flags = 0 ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
     in
     let data' =
       let ns = Domain_name.(host_exn (n_of_s "ns.one.com")) in
@@ -745,7 +745,7 @@ module S = struct
     let keys =
       let key = String.make 32 '\000' |> Base64.encode_string |> Cstruct.of_string in
       [ n_of_s "1.2.3.4.9.10.11.12._transfer.one.com",
-        { Dnskey.flags = 0 ; algorithm = SHA256 ; key } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key } ]
     in
     let s =
       Dns_server.Secondary.create ~rng:Mirage_crypto_rng.generate
@@ -1505,7 +1505,7 @@ module Axfr = struct
   let keyname, key =
     let key = String.make 32 '\000' |> Base64.encode_string |> Cstruct.of_string in
     n_of_s "1.2.3.4.9.10.11.12._transfer.one.com",
-    { Dnskey.flags = 0 ; algorithm = SHA256 ; key }
+    { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key }
 
   let s trie =
     let keys = [ keyname, key ] in
