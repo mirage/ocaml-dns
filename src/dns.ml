@@ -877,14 +877,14 @@ module Rrsig = struct
     let algorithm = Dnskey.int_to_algorithm algo in
     (* sig_exp and sig_inc are supposed seconds since UNIX epoch (1970-01-01),
        TODO but may only be +68years and -68years in respect to current timestamp *)
-    let int_s_to_ptime s =
+    let int_s_to_ptime off s =
       (* TODO Int32.to_int may be a bad idea on 32bit systems *)
       match Ptime.of_span (Ptime.Span.of_int_s (Int32.to_int s)) with
-      | None -> Error (`Msg "couldn't represent as timestamp")
+      | None -> Error (`Malformed (off, "couldn't represent as timestamp"))
       | Some s -> Ok s
     in
-    int_s_to_ptime sig_exp >>= fun signature_expiration ->
-    int_s_to_ptime sig_inc >>| fun signature_inception ->
+    int_s_to_ptime (off + 8) sig_exp >>= fun signature_expiration ->
+    int_s_to_ptime (off + 12) sig_inc >>| fun signature_inception ->
     { type_covered ; algorithm ; label_count ; original_ttl ;
       signature_expiration ; signature_inception ; key_tag ; signer_name ;
       signature },
@@ -1811,6 +1811,7 @@ module Rr_map = struct
   module Tlsa_set = Set.Make(Tlsa)
   module Sshfp_set = Set.Make(Sshfp)
   module Ds_set = Set.Make(Ds)
+  module Rrsig_set = Set.Make(Rrsig)
 
   module I : sig
     type t
@@ -1820,7 +1821,7 @@ module Rr_map = struct
   end = struct
     type t = int
     let of_int ?(off = 0) i = match i with
-      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
+      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 46 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
         Error (`Malformed (off, "reserved and supported RTYPE not Unknown"))
       | x -> if x < 1 lsl 15 then Ok x else Error (`Malformed (off, "RTYPE exceeds 16 bit"))
     let to_int t = t
@@ -1844,6 +1845,7 @@ module Rr_map = struct
     | Sshfp : Sshfp_set.t with_ttl rr
     | Txt : Txt_set.t with_ttl rr
     | Ds : Ds_set.t with_ttl rr
+    | Rrsig : Rrsig_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
 
   module K = struct
@@ -1866,6 +1868,7 @@ module Rr_map = struct
       | Sshfp, Sshfp -> Eq | Sshfp, _ -> Lt | _, Sshfp -> Gt
       | Txt, Txt -> Eq | Txt, _ -> Lt | _, Txt -> Gt
       | Ds, Ds -> Eq | Ds, _ -> Lt | _, Ds -> Gt
+      | Rrsig, Rrsig -> Eq | Rrsig, _ -> Lt | _, Rrsig -> Gt
       | Unknown a, Unknown b ->
         let r = I.compare a b in
         if r = 0 then Eq else if r < 0 then Lt else Gt
@@ -1894,6 +1897,7 @@ module Rr_map = struct
     | Tlsa, (_, tlsas), (_, tlsas') -> Tlsa_set.equal tlsas tlsas'
     | Sshfp, (_, sshfps), (_, sshfps') -> Sshfp_set.equal sshfps sshfps'
     | Ds, (_, ds), (_, ds') -> Ds_set.equal ds ds'
+    | Rrsig, (_, rrs), (_, rrs') -> Rrsig_set.equal rrs rrs'
     | Unknown _, (_, data), (_, data') -> Txt_set.equal data data'
 
   let equalb (B (k, v)) (B (k', v')) = match K.compare k k' with
@@ -1902,8 +1906,9 @@ module Rr_map = struct
 
   let to_int : type a. a key -> int = function
     | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Ptr -> 12 | Mx -> 15
-    | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Ds -> 43 | Sshfp -> 44 | Dnskey -> 48
-    | Tlsa -> 52 | Caa -> 257 | Unknown x -> I.to_int x
+    | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Ds -> 43 | Sshfp -> 44
+    | Rrsig -> 46 | Dnskey -> 48 | Tlsa -> 52 | Caa -> 257
+    | Unknown x -> I.to_int x
 
   let any_rtyp = 255 and axfr_rtyp = 252 and ixfr_rtyp = 251
 
@@ -1911,7 +1916,8 @@ module Rr_map = struct
     | 1 -> Ok (K A) | 2 -> Ok (K Ns) | 5 -> Ok (K Cname) | 6 -> Ok (K Soa)
     | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
     | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
-    | 48 -> Ok (K Dnskey) | 52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
+    | 46 -> Ok (K Rrsig) | 48 -> Ok (K Dnskey) | 52 -> Ok (K Tlsa)
+    | 257 -> Ok (K Caa)
     | x ->
       let open Rresult.R.Infix in
       I.of_int ~off x >>| fun i ->
@@ -1932,6 +1938,7 @@ module Rr_map = struct
     | Tlsa -> Fmt.string ppf "TLSA"
     | Sshfp -> Fmt.string ppf "SSHFP"
     | Ds -> Fmt.string ppf "DS"
+    | Rrsig -> Fmt.string ppf "RRSIG"
     | Unknown x -> Fmt.pf ppf "TYPE%d" (I.to_int x)
 
   type rrtyp = [ `Any | `Tsig | `Edns | `Ixfr | `Axfr | `K of k ]
@@ -2019,6 +2026,10 @@ module Rr_map = struct
       Ds_set.fold (fun ds ((names, off), count) ->
           rr names (Ds.encode ds) off ttl, succ count)
         ds ((names, off), 0)
+    | Rrsig, (ttl, rrs) ->
+      Rrsig_set.fold (fun rrsig ((names, off), count) ->
+          rr names (Rrsig.encode rrsig) off ttl, succ count)
+        rrs ((names, off), 0)
     | Unknown _, (ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -2045,6 +2056,7 @@ module Rr_map = struct
     | Tlsa, (_, tlsas), (ttl, tlsas') -> (ttl, Tlsa_set.union tlsas tlsas')
     | Sshfp, (_, sshfps), (ttl, sshfps') -> (ttl, Sshfp_set.union sshfps sshfps')
     | Ds, (_, ds), (ttl, ds') -> (ttl, Ds_set.union ds ds')
+    | Rrsig, (_, rrs), (ttl, rrs') -> (ttl, Rrsig_set.union rrs rrs')
     | Unknown _, (_, data), (ttl, data') -> (ttl, Txt_set.union data data')
 
   let unionee : type a. a key -> a -> a -> a option =
@@ -2093,6 +2105,9 @@ module Rr_map = struct
     | Ds, (ttl, ds), (_, rm) ->
       let s = Ds_set.diff ds rm in
       if Ds_set.is_empty s then None else Some (ttl, s)
+    | Rrsig, (ttl, rrs), (_, rm) ->
+      let s = Rrsig_set.diff rrs rm in
+      if Rrsig_set.is_empty s then None else Some (ttl, s)
     | Unknown _, (ttl, datas), (_, rm) ->
       let data = Txt_set.diff datas rm in
       if Txt_set.is_empty data then None else Some (ttl, data)
@@ -2233,6 +2248,23 @@ module Rr_map = struct
               (Ds.digest_type_to_int ds.digest_type)
               (hex ds.digest) :: acc)
           ds []
+      | Rrsig, (ttl, rrs) ->
+        Rrsig_set.fold (fun rrsig acc ->
+            let typ = match of_int rrsig.type_covered with
+              | Ok k -> Fmt.to_to_string ppk k
+              | Error _ -> "TYPE" ^ string_of_int rrsig.type_covered
+            in
+            let pp_ts ppf _ts =
+              Fmt.pf ppf "foo"
+            in
+            Fmt.strf "%s\t%aRRSIG\t%s\t%u\t%u\t%lu\t%a\t%a\t%u\t%s\t%s" str_name ttl_fmt (ttl_opt ttl)
+              typ (Dnskey.algorithm_to_int rrsig.algorithm)
+              rrsig.label_count rrsig.original_ttl
+              pp_ts rrsig.signature_expiration pp_ts rrsig.signature_inception
+              rrsig.key_tag (name rrsig.signer_name)
+              (* TODO base64, not hex *)
+              (hex rrsig.signature) :: acc)
+          rrs []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
             Fmt.strf "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
@@ -2257,6 +2289,7 @@ module Rr_map = struct
     | Tlsa, (ttl, _) -> ttl
     | Sshfp, (ttl, _) -> ttl
     | Ds, (ttl, _) -> ttl
+    | Rrsig, (ttl, _) -> ttl
     | Unknown _, (ttl, _) -> ttl
 
   let with_ttl : b -> int32 -> b = fun (B (k, v)) ttl ->
@@ -2275,6 +2308,7 @@ module Rr_map = struct
     | Tlsa, (_, tlsas) -> B (k, (ttl, tlsas))
     | Sshfp, (_, sshfps) -> B (k, (ttl, sshfps))
     | Ds, (_, ds) -> B (k, (ttl, ds))
+    | Rrsig, (_, rrs) -> B (k, (ttl, rrs))
     | Unknown _, (_, datas) -> B (k, (ttl, datas))
 
   let split : type a. a key -> a -> a * a option = fun k v ->
@@ -2360,6 +2394,13 @@ module Rr_map = struct
         if Ds_set.is_empty rest then None else Some (ttl, rest)
       in
       (ttl, Ds_set.singleton one), rest'
+    | Rrsig, (ttl, rrs) ->
+      let one = Rrsig_set.choose rrs in
+      let rest = Rrsig_set.remove one rrs in
+      let rest' =
+        if Rrsig_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Rrsig_set.singleton one), rest'
     | Unknown _, (ttl, datas) ->
       let one = Txt_set.choose datas in
       let rest = Txt_set.remove one datas in
@@ -2442,6 +2483,9 @@ module Rr_map = struct
      | Ds ->
        Ds.decode names buf ~off:rdata_start ~len >>| fun (ds, names, off) ->
        (B (Ds, (ttl, Ds_set.singleton ds)), names, off)
+     | Rrsig ->
+       Rrsig.decode names buf ~off:rdata_start ~len >>| fun (rrs, names, off) ->
+       (B (Rrsig, (ttl, Rrsig_set.singleton rrs)), names, off)
      | Unknown x ->
        let data = Cstruct.sub buf rdata_start len in
        Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)

@@ -737,6 +737,7 @@ module Rr_map : sig
   module Tlsa_set : Set.S with type elt = Tlsa.t
   module Sshfp_set : Set.S with type elt = Sshfp.t
   module Ds_set : Set.S with type elt = Ds.t
+  module Rrsig_set : Set.S with type elt = Rrsig.t
 
   module I : sig
     type t
@@ -763,6 +764,7 @@ module Rr_map : sig
     | Sshfp : Sshfp_set.t with_ttl rr
     | Txt : Txt_set.t with_ttl rr
     | Ds : Ds_set.t with_ttl rr
+    | Rrsig : Rrsig_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
   (** The type of resource record sets, as GADT: the value depends on the
      specific constructor. There may only be a single SOA and Cname and Ptr
