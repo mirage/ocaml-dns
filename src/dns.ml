@@ -510,9 +510,9 @@ module Soa = struct
     in
     (soa, names, off + 20)
 
-  let encode soa names buf off =
-    let names, off = Name.encode soa.nameserver names buf off in
-    let names, off = Name.encode soa.hostmaster names buf off in
+  let encode ?compress soa names buf off =
+    let names, off = Name.encode ?compress soa.nameserver names buf off in
+    let names, off = Name.encode ?compress soa.hostmaster names buf off in
     Cstruct.BE.set_uint32 buf off soa.serial ;
     Cstruct.BE.set_uint32 buf (off + 4) soa.refresh ;
     Cstruct.BE.set_uint32 buf (off + 8) soa.retry ;
@@ -560,9 +560,9 @@ module Mx = struct
     Name.host off mx >>| fun mail_exchange ->
     { preference ; mail_exchange }, names, off'
 
-  let encode { preference ; mail_exchange } names buf off =
+  let encode ?compress { preference ; mail_exchange } names buf off =
     Cstruct.BE.set_uint16 buf off preference ;
-    Name.encode mail_exchange names buf (off + 2)
+    Name.encode ?compress mail_exchange names buf (off + 2)
 end
 
 (* canonical name *)
@@ -777,8 +777,9 @@ module Dnskey = struct
       Cstruct.hexdump_pp t.key
 
   let compare a b =
-    andThen (compare a.algorithm b.algorithm)
-      (Cstruct.compare a.key b.key)
+    andThen (F.compare b.flags a.flags)
+      (andThen (compare b.algorithm a.algorithm)
+         (Cstruct.compare b.key a.key))
 
   let decode names buf ~off ~len =
     let open Rresult.R.Infix in
@@ -801,6 +802,14 @@ module Dnskey = struct
     let kl = Cstruct.len t.key in
     Cstruct.blit t.key 0 buf (off + 4) kl ;
     names, off + 4 + kl
+
+  let digest_prep owner t =
+    let kl = Cstruct.len t.key in
+    let buf = Cstruct.create (kl + 255 + 4) in (* key length + max name + 4 *)
+    let names = Domain_name.Map.empty in
+    let _, off = Name.encode ~compress:false owner names buf 0 in
+    let _, off' = encode t names buf off in
+    Cstruct.sub buf 0 off'
 
   let of_string key =
     let open Rresult.R.Infix in
@@ -908,6 +917,31 @@ module Rrsig = struct
     let slen = Cstruct.len t.signature in
     Cstruct.blit t.signature 0 buf off slen ;
     names, off + slen
+
+  (* RFC 4035 section 5.3.2 *)
+  let used_name rrsig name =
+    let rrsig_labels = rrsig.label_count
+    and fqdn_labels = Domain_name.count_labels name
+    in
+    if rrsig_labels = fqdn_labels then
+      Ok name
+    else if rrsig_labels < fqdn_labels then
+      let amount = fqdn_labels - rrsig_labels in
+      Ok Domain_name.(prepend_label_exn (drop_label_exn ~amount name) "*")
+    else (* rrsig_labels > fqdn_labels *)
+      Error (`Msg "rrsig_labels is greater than fqdn_labels: name is too short")
+
+  let prep_rrsig rrsig =
+    (* from RFC 4034 section 3.1.8.1 *)
+    (* this buffer may be too small... *)
+    let tbs = Cstruct.create 4096 in
+    let rrsig_raw =
+      { rrsig with signature = Cstruct.empty ;
+                   signer_name = Domain_name.canonical rrsig.signer_name
+      }
+    in
+    let _, off = encode rrsig_raw Domain_name.Map.empty tbs 0 in
+    tbs, off
 end
 
 module Ds = struct
@@ -1959,17 +1993,18 @@ module Rr_map = struct
     | `Axfr -> axfr_rtyp
     | `K (K k) -> to_int k
 
-  let encode_ntc names buf off (n, t, c) =
-    let names, off = Name.encode n names buf off in
+  let encode_ntc ?compress names buf off (n, t, c) =
+    let names, off = Name.encode ?compress n names buf off in
     Cstruct.BE.set_uint16 buf off (rr_to_int t) ;
     Cstruct.BE.set_uint16 buf (off + 2) c ;
     names, off + 4
 
-  let encode : type a. ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Name.name_offset_map -> Cstruct.t -> int ->
-    (Name.name_offset_map * int) * int = fun ?(clas = Class.IN) name k v names buf off ->
+  let encode : type a. ?compress:bool -> ?ttl:int32 -> ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Name.name_offset_map -> Cstruct.t -> int ->
+    (Name.name_offset_map * int) * int = fun ?compress ?ttl ?(clas = Class.IN) name k v names buf off ->
     let clas = Class.to_int clas in
-    let rr names f off ttl =
-      let names, off' = encode_ntc names buf off (name, `K (K k), clas) in
+    let rr names f off rr_ttl =
+      let ttl = match ttl with None -> rr_ttl | Some x -> x in
+      let names, off' = encode_ntc ?compress names buf off (name, `K (K k), clas) in
       (* leave 6 bytes space for TTL and length *)
       let rdata_start = off' + 6 in
       let names, rdata_end = f names buf rdata_start in
@@ -1979,16 +2014,16 @@ module Rr_map = struct
       names, rdata_end
     in
     match k, v with
-    | Soa, soa -> rr names (Soa.encode soa) off soa.minimum, 1
+    | Soa, soa -> rr names (Soa.encode ?compress soa) off soa.minimum, 1
     | Ns, (ttl, ns) ->
       Domain_name.Host_set.fold (fun name ((names, off), count) ->
-          rr names (Ns.encode name) off ttl, succ count)
+          rr names (Ns.encode ?compress name) off ttl, succ count)
         ns ((names, off), 0)
     | Mx, (ttl, mx) ->
       Mx_set.fold (fun mx ((names, off), count) ->
-          rr names (Mx.encode mx) off ttl, succ count)
+          rr names (Mx.encode ?compress mx) off ttl, succ count)
         mx ((names, off), 0)
-    | Cname, (ttl, alias) -> rr names (Cname.encode alias) off ttl, 1
+    | Cname, (ttl, alias) -> rr names (Cname.encode ?compress alias) off ttl, 1
     | A, (ttl, addresses) ->
       Ipv4_set.fold (fun address ((names, off), count) ->
         rr names (A.encode address) off ttl, succ count)
@@ -1997,7 +2032,7 @@ module Rr_map = struct
       Ipv6_set.fold (fun address ((names, off), count) ->
           rr names (Aaaa.encode address) off ttl, succ count)
         aaaas ((names, off), 0)
-    | Ptr, (ttl, rev) -> rr names (Ptr.encode rev) off ttl, 1
+    | Ptr, (ttl, rev) -> rr names (Ptr.encode ?compress rev) off ttl, 1
     | Srv, (ttl, srvs) ->
       Srv_set.fold (fun srv ((names, off), count) ->
           rr names (Srv.encode srv) off ttl, succ count)
@@ -2039,6 +2074,35 @@ module Rr_map = struct
       Txt_set.fold (fun data ((names, off), count) ->
           rr names (encode data) off ttl, succ count)
         datas ((names, off), 0)
+
+  (* RFC 4034, section 3.1.8.1 *)
+  let prep_for_sig name rrsig rrmap =
+    let open Rresult.R.Infix in
+    let buf, off = Rrsig.prep_rrsig rrsig in
+    (Rrsig.used_name rrsig name >>| Domain_name.canonical) >>= fun name ->
+    Rresult.R.reword_error
+      (function `Malformed (_, txt) -> `Msg txt)
+      (of_int rrsig.Rrsig.type_covered) >>= fun (K typ) ->
+    (* RFC 4034, section 3.1.8.1:
+       Each RR in the RRset MUST have the RR type listed in the RRSIG RR's Type
+       Covered field; *)
+    (* TODO not assert *)
+    assert (cardinal rrmap = 1);
+    let v = get typ rrmap in
+    (* TODO:
+       - canonical rr ordering (smallest first - maybe adapt compare in all RRs)
+       - canonical DNS names for:
+         NS, MD, MF, CNAME, SOA, MB, MG, MR, PTR, HINFO, MINFO, MX, HINFO, RP,
+         AFSDB, RT, SIG, PX, NXT, NAPTR, KX, SRV, DNAME, A6, RRSIG, or NSEC,
+         all uppercase US-ASCII letters in the DNS names contained within the
+         RDATA are replaced by the corresponding lowercase US-ASCII letters
+    *)
+    (* TODO buf may be too small *)
+    let ttl = rrsig.Rrsig.original_ttl in
+    let (_, off), _ =
+      encode ~compress:false ~ttl name typ v Domain_name.Map.empty buf off
+    in
+    Ok (Cstruct.sub buf 0 off)
 
   let union_rr : type a. a key -> a -> a -> a = fun k l r ->
     match k, l, r with
@@ -2215,6 +2279,7 @@ module Rr_map = struct
               str_name ttl_fmt (ttl_opt ttl)
               (Dnskey.encode_flags key.flags)
               (Dnskey.algorithm_to_int key.algorithm)
+              (* TODO should be base64! *)
               (hex key.key) :: acc)
           keys []
       | Caa, (ttl, caas) ->
@@ -2255,14 +2320,14 @@ module Rr_map = struct
               | Error _ -> "TYPE" ^ string_of_int rrsig.type_covered
             in
             let pp_ts ppf _ts =
-              Fmt.pf ppf "foo"
+              (* TODO *) Fmt.pf ppf "foo"
             in
             Fmt.strf "%s\t%aRRSIG\t%s\t%u\t%u\t%lu\t%a\t%a\t%u\t%s\t%s" str_name ttl_fmt (ttl_opt ttl)
               typ (Dnskey.algorithm_to_int rrsig.algorithm)
               rrsig.label_count rrsig.original_ttl
               pp_ts rrsig.signature_expiration pp_ts rrsig.signature_inception
               rrsig.key_tag (name rrsig.signer_name)
-              (* TODO base64, not hex *)
+              (* TODO should be base64, not hex *)
               (hex rrsig.signature) :: acc)
           rrs []
       | Unknown x, (ttl, datas) ->
