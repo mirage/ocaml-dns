@@ -38,6 +38,41 @@ let guard p err = if p then Ok () else Error err
 let src = Logs.Src.create "dns" ~doc:"DNS core"
 module Log = (val Logs.src_log src : Logs.LOG)
 
+module Ptime_extra = struct
+  (* this is here because I don't like float, and rather convert Ptime.t to int64 *)
+  let s_in_d = 86_400L
+  let ps_in_s = 1_000_000_000_000L
+
+  let span_to_int64 ts =
+    let d_min, d_max = Int64.(div min_int s_in_d, div max_int s_in_d) in
+    let d, ps = Ptime.Span.to_d_ps ts in
+    let d = Int64.of_int d in
+    if d < d_min || d > d_max then
+      None
+    else
+      let s = Int64.mul d s_in_d in
+      let s' = Int64.(add s (div ps ps_in_s)) in
+      if s' < s then
+        None
+      else
+        Some s'
+
+  let to_int64 t = span_to_int64 (Ptime.to_span t)
+
+  let of_int64 ?(off = 0) s =
+    let d, ps = Int64.(div s s_in_d, mul (rem s s_in_d) ps_in_s) in
+    if d < Int64.of_int min_int || d > Int64.of_int max_int then
+      Error (`Malformed (off, Fmt.strf "timestamp does not fit in time range %Ld" s))
+    else
+      match Ptime.Span.of_d_ps (Int64.to_int d, ps) with
+      | Some span ->
+        begin match Ptime.of_span span with
+          | Some ts -> Ok ts
+          | None -> Error (`Malformed (off, Fmt.strf "span does not fit into timestamp %Ld" s))
+        end
+      | None -> Error (`Malformed (off, Fmt.strf "timestamp does not fit %Ld" s))
+end
+
 module Class = struct
   (* 16 bit *)
   type t =
@@ -886,14 +921,8 @@ module Rrsig = struct
     let algorithm = Dnskey.int_to_algorithm algo in
     (* sig_exp and sig_inc are supposed seconds since UNIX epoch (1970-01-01),
        TODO but may only be +68years and -68years in respect to current timestamp *)
-    let int_s_to_ptime off s =
-      (* TODO Int32.to_int may be a bad idea on 32bit systems *)
-      match Ptime.of_span (Ptime.Span.of_int_s (Int32.to_int s)) with
-      | None -> Error (`Malformed (off, "couldn't represent as timestamp"))
-      | Some s -> Ok s
-    in
-    int_s_to_ptime (off + 8) sig_exp >>= fun signature_expiration ->
-    int_s_to_ptime (off + 12) sig_inc >>| fun signature_inception ->
+    Ptime_extra.of_int64 ~off:(off + 8) (Int64.of_int32 sig_exp) >>= fun signature_expiration ->
+    Ptime_extra.of_int64 ~off:(off + 12) (Int64.of_int32 sig_inc) >>| fun signature_inception ->
     { type_covered ; algorithm ; label_count ; original_ttl ;
       signature_expiration ; signature_inception ; key_tag ; signer_name ;
       signature },
@@ -906,9 +935,13 @@ module Rrsig = struct
     Cstruct.BE.set_uint32 buf (off + 4) t.original_ttl ;
     (* TODO +-68 years in respect to current timestamp *)
     let int_s ts =
-      match Ptime.Span.to_int_s (Ptime.to_span ts) with
+      match Ptime_extra.to_int64 ts with
       | None -> 0l
-      | Some s -> Int32.of_int s
+      | Some s ->
+        if Int64.(s > of_int32 Int32.min_int && s < of_int32 Int32.max_int) then
+          Int64.to_int32 s
+        else
+          0l
     in
     Cstruct.BE.set_uint32 buf (off + 8) (int_s t.signature_expiration) ;
     Cstruct.BE.set_uint32 buf (off + 12) (int_s t.signature_inception) ;
@@ -1384,37 +1417,6 @@ module Tsig = struct
 
   let pp_algorithm ppf a = Domain_name.pp ppf (algorithm_to_name a)
 
-  (* this is here because I don't like float, and rather convert Ptime.t to int64 *)
-  let s_in_d = 86_400L
-  let ps_in_s = 1_000_000_000_000L
-
-  let ptime_span_to_int64 ts =
-    let d_min, d_max = Int64.(div min_int s_in_d, div max_int s_in_d) in
-    let d, ps = Ptime.Span.to_d_ps ts in
-    let d = Int64.of_int d in
-    if d < d_min || d > d_max then
-      None
-    else
-      let s = Int64.mul d s_in_d in
-      let s' = Int64.(add s (div ps ps_in_s)) in
-      if s' < s then
-        None
-      else
-        Some s'
-
-  let ptime_of_int64 ?(off = 0) s =
-    let d, ps = Int64.(div s s_in_d, mul (rem s s_in_d) ps_in_s) in
-    if d < Int64.of_int min_int || d > Int64.of_int max_int then
-      Error (`Malformed (off, Fmt.strf "timestamp does not fit in time range %Ld" s))
-    else
-      match Ptime.Span.of_d_ps (Int64.to_int d, ps) with
-      | Some span ->
-        begin match Ptime.of_span span with
-          | Some ts -> Ok ts
-          | None -> Error (`Malformed (off, Fmt.strf "span does not fit into timestamp %Ld" s))
-        end
-      | None -> Error (`Malformed (off, Fmt.strf "timestamp does not fit %Ld" s))
-
   let valid_time now tsig =
     let ts = tsig.signed
     and fudge = tsig.fudge
@@ -1425,16 +1427,19 @@ module Tsig = struct
     | Some late, Some early ->
       Ptime.is_earlier ts ~than:late && Ptime.is_later ts ~than:early
 
+  let ptime_to_bits ts =
+    match Ptime_extra.to_int64 ts with
+    | None -> None
+    | Some x ->
+      if Int64.logand 0xffff_0000_0000_0000L x = 0L then Some x else None
+
   let tsig ~algorithm ~signed ?(fudge = Ptime.Span.of_int_s 300)
       ?(mac = Cstruct.create 0) ?(original_id = 0) ?(error = Rcode.NoError)
       ?other () =
-    match ptime_span_to_int64 (Ptime.to_span signed), ptime_span_to_int64 fudge with
+    match ptime_to_bits signed, Ptime_extra.span_to_int64 fudge with
     | None, _ | _, None -> None
-    | Some ts, Some fu ->
-      if
-        Int64.logand 0xffff_0000_0000_0000L ts = 0L &&
-        Int64.logand 0xffff_ffff_ffff_0000L fu = 0L
-      then
+    | Some _, Some fu ->
+      if Int64.logand 0xffff_ffff_ffff_0000L fu = 0L then
         Some { algorithm ; signed ; fudge ; mac ; original_id ; error ; other }
       else
         None
@@ -1444,19 +1449,17 @@ module Tsig = struct
   let with_error tsig error = { tsig with error }
 
   let with_signed tsig signed =
-    match ptime_span_to_int64 (Ptime.to_span signed) with
-    | Some x when Int64.logand 0xffff_0000_0000_0000L x = 0L ->
-      Some { tsig with signed }
-    | _ -> None
+    match ptime_to_bits signed with
+    | Some _ -> Some { tsig with signed }
+    | None -> None
 
   let with_other tsig other =
     match other with
     | None -> Some { tsig with other }
     | Some ts ->
-      match ptime_span_to_int64 (Ptime.to_span ts) with
-      | Some x when Int64.logand 0xffff_0000_0000_0000L x = 0L ->
-        Some { tsig with other }
-      | _ -> None
+      match ptime_to_bits ts with
+      | Some _ -> Some { tsig with other }
+      | None -> None
 
   let pp ppf t =
     Fmt.pf ppf
@@ -1503,13 +1506,13 @@ module Tsig = struct
     guard (other_len = 0 || other_len = 6)
       (`Malformed (off' + 14 + mac_len, "other timestamp should be 0 or 6 bytes!")) >>= fun () ->
     algorithm_of_name ~off:rdata_start algorithm >>= fun algorithm ->
-    ptime_of_int64 ~off:off' signed >>= fun signed ->
+    Ptime_extra.of_int64 ~off:off' signed >>= fun signed ->
     Rcode.of_int ~off:(off' + 12 + mac_len) error >>= fun error ->
     (if other_len = 0 then
        Ok None
      else
        let other = decode_48bit_time buf (off' + 16 + mac_len) in
-       ptime_of_int64 ~off:(off' + 14 + mac_len + 2) other >>| fun x ->
+       Ptime_extra.of_int64 ~off:(off' + 14 + mac_len + 2) other >>| fun x ->
        Some x) >>| fun other ->
     let fudge = Ptime.Span.of_int_s fudge in
     { algorithm ; signed ; fudge ; mac ; original_id ; error ; other },
@@ -1517,23 +1520,20 @@ module Tsig = struct
     off' + 16 + mac_len + other_len
 
   let encode_48bit_time buf ?(off = 0) ts =
-    match ptime_span_to_int64 (Ptime.to_span ts) with
+    match ptime_to_bits ts with
     | None ->
       Log.warn (fun m -> m "couldn't convert (to_span %a) to int64" Ptime.pp ts)
     | Some secs ->
-      if Int64.logand secs 0xffff_0000_0000_0000L > 0L then
-        Log.warn (fun m -> m "secs %Lu > 48 bit" secs)
-      else
-        let a, b, c =
-          let f s = Int64.(to_int (logand 0xffffL (shift_right secs s))) in
-          f 32, f 16, f 0
-        in
-        Cstruct.BE.set_uint16 buf off a ;
-        Cstruct.BE.set_uint16 buf (off + 2) b ;
-        Cstruct.BE.set_uint16 buf (off + 4) c
+      let a, b, c =
+        let f s = Int64.(to_int (logand 0xffffL (shift_right secs s))) in
+        f 32, f 16, f 0
+      in
+      Cstruct.BE.set_uint16 buf off a ;
+      Cstruct.BE.set_uint16 buf (off + 2) b ;
+      Cstruct.BE.set_uint16 buf (off + 4) c
 
   let encode_16bit_time buf ?(off = 0) ts =
-    match ptime_span_to_int64 ts with
+    match Ptime_extra.span_to_int64 ts with
     | None ->
       Log.warn (fun m -> m "couldn't convert span %a to int64" Ptime.Span.pp ts)
     | Some secs ->
