@@ -515,6 +515,10 @@ module Soa = struct
     in
     { nameserver ; hostmaster ; serial ; refresh ; retry ; expiry ; minimum }
 
+  let canonical t =
+    { t with nameserver = Domain_name.canonical t.nameserver ;
+             hostmaster = Domain_name.canonical t.hostmaster }
+
   let pp ppf soa =
     Fmt.pf ppf "SOA %a %a %lu %lu %lu %lu %lu"
       Domain_name.pp soa.nameserver Domain_name.pp soa.hostmaster
@@ -560,6 +564,8 @@ end
 module Ns = struct
   type t = [ `host ] Domain_name.t
 
+  let canonical t = Domain_name.canonical t
+
   let pp ppf ns = Fmt.pf ppf "NS %a" Domain_name.pp ns
 
   let compare = Domain_name.compare
@@ -579,6 +585,9 @@ module Mx = struct
     preference : int ;
     mail_exchange : [ `host ] Domain_name.t ;
   }
+
+  let canonical t =
+    { t with mail_exchange = Domain_name.canonical t.mail_exchange }
 
   let pp ppf { preference ; mail_exchange } =
     Fmt.pf ppf "MX %u %a" preference Domain_name.pp mail_exchange
@@ -603,6 +612,8 @@ end
 (* canonical name *)
 module Cname = struct
   type t = [ `raw ] Domain_name.t
+
+  let canonical t = Domain_name.canonical t
 
   let pp ppf alias = Fmt.pf ppf "CNAME %a" Domain_name.pp alias
 
@@ -656,6 +667,8 @@ end
 module Ptr = struct
   type t = [ `host ] Domain_name.t
 
+  let canonical t = Domain_name.canonical t
+
   let pp ppf rev = Fmt.pf ppf "PTR %a" Domain_name.pp rev
 
   let compare = Domain_name.compare
@@ -677,6 +690,9 @@ module Srv = struct
     port : int ;
     target : [ `host ] Domain_name.t
   }
+
+  let canonical t =
+    { t with target = Domain_name.canonical t.target }
 
   let pp ppf t =
     Fmt.pf ppf
@@ -885,6 +901,9 @@ module Rrsig = struct
     signature : Cstruct.t
   }
 
+  let canonical t =
+    { t with signer_name = Domain_name.canonical t.signer_name }
+
   let pp ppf t =
     Fmt.pf ppf "RRSIG type covered %u algo %a labels %u original ttl %lu signature expiration %a signature inception %a key tag %u signer name %a signature %a"
       t.type_covered
@@ -968,11 +987,7 @@ module Rrsig = struct
     (* from RFC 4034 section 3.1.8.1 *)
     (* this buffer may be too small... *)
     let tbs = Cstruct.create 4096 in
-    let rrsig_raw =
-      { rrsig with signature = Cstruct.empty ;
-                   signer_name = Domain_name.canonical rrsig.signer_name
-      }
-    in
+    let rrsig_raw = canonical { rrsig with signature = Cstruct.empty } in
     let _, off = encode rrsig_raw Domain_name.Map.empty tbs 0 in
     tbs, off
 end
@@ -1561,17 +1576,16 @@ module Tsig = struct
      | Some t -> encode_48bit_time buf ~off:(off + 16 + mac_len) t) ;
     names, off + 16 + mac_len + other_len
 
-  let canonical_name name =
+  let name_to_buf name =
     let buf = Cstruct.create 255
     and emp = Domain_name.Map.empty
-    and nam = Domain_name.canonical name
     in
-    let _, off = Name.encode ~compress:false nam emp buf 0 in
+    let _, off = Name.encode ~compress:false name emp buf 0 in
     Cstruct.sub buf 0 off
 
   let encode_raw_tsig_base name t =
-    let name = canonical_name name
-    and aname = canonical_name (algorithm_to_name t.algorithm)
+    let name = name_to_buf (Domain_name.canonical name)
+    and aname = name_to_buf (algorithm_to_name t.algorithm)
     in
     let clttl = Cstruct.create 6 in
     Cstruct.BE.set_uint16 clttl 0 Class.(to_int ANY_CLASS) ;
@@ -2075,29 +2089,32 @@ module Rr_map = struct
           rr names (encode data) off ttl, succ count)
         datas ((names, off), 0)
 
+  let canonical : type a. a key -> a -> a = fun k v ->
+    match k, v with
+    | Soa, s -> Soa.canonical s
+    | Ns, (ttl, ns) -> ttl, Domain_name.Host_set.map Ns.canonical ns
+    | Mx, (ttl, mx) -> ttl, Mx_set.map Mx.canonical mx
+    | Cname, (ttl, cn) -> ttl, Cname.canonical cn
+    | Ptr, (ttl, ptr) -> ttl, Ptr.canonical ptr
+    | Srv, (ttl, srv) -> ttl, Srv_set.map Srv.canonical srv
+    | Rrsig, (ttl, rrsig) -> ttl, Rrsig_set.map Rrsig.canonical rrsig
+    | _, v -> v
+
   (* RFC 4034, section 3.1.8.1 *)
   let prep_for_sig name rrsig rrmap =
     let open Rresult.R.Infix in
+    let guard b e = if b then Ok () else Error e in
     let buf, off = Rrsig.prep_rrsig rrsig in
     (Rrsig.used_name rrsig name >>| Domain_name.canonical) >>= fun name ->
     Rresult.R.reword_error
       (function `Malformed (_, txt) -> `Msg txt)
       (of_int rrsig.Rrsig.type_covered) >>= fun (K typ) ->
-    (* RFC 4034, section 3.1.8.1:
-       Each RR in the RRset MUST have the RR type listed in the RRSIG RR's Type
-       Covered field; *)
-    (* TODO not assert *)
-    assert (cardinal rrmap = 1);
+    guard (K typ <> K Rrsig) (`Msg "RRSIG records are never signed") >>= fun () ->
+    guard (cardinal rrmap = 1) (`Msg "multiple entries in rrmap") >>= fun () ->
     let v = get typ rrmap in
-    (* TODO:
-       - canonical rr ordering (smallest first - maybe adapt compare in all RRs)
-       - canonical DNS names for:
-         NS, MD, MF, CNAME, SOA, MB, MG, MR, PTR, HINFO, MINFO, MX, HINFO, RP,
-         AFSDB, RT, SIG, PX, NXT, NAPTR, KX, SRV, DNAME, A6, RRSIG, or NSEC,
-         all uppercase US-ASCII letters in the DNS names contained within the
-         RDATA are replaced by the corresponding lowercase US-ASCII letters
-    *)
+    (* TODO: canonical rr ordering (smallest first - maybe adapt compare in all RRs) *)
     (* TODO buf may be too small *)
+    let v = canonical typ v in
     let ttl = rrsig.Rrsig.original_ttl in
     let (_, off), _ =
       encode ~compress:false ~ttl name typ v Domain_name.Map.empty buf off
