@@ -23,7 +23,7 @@ let jump _ serverip port zone key serial =
   Mirage_crypto_rng_unix.initialize ();
   let now = Ptime_clock.now () in
   Logs.app (fun m -> m "notifying to %a:%d zone %a serial %lu"
-               Ipaddr.V4.pp serverip port Domain_name.pp zone serial) ;
+               Ipaddr.pp serverip port Domain_name.pp zone serial) ;
   match notify zone serial key now with
   | Error s -> Error (`Msg (Fmt.strf "signing %a" Dns_tsig.pp_s s))
   | Ok (request, data, mac) ->

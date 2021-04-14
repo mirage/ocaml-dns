@@ -5,8 +5,9 @@ let setup_log style_renderer level =
   Logs.set_reporter (Logs_fmt.reporter ~dst:Format.std_formatter ())
 
 let connect_tcp ip port =
-  let sa = Unix.ADDR_INET (Ipaddr_unix.V4.to_inet_addr ip, port) in
-  let sock = Unix.(socket PF_INET SOCK_STREAM 0) in
+  let sa = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ip, port) in
+  let fam = match ip with Ipaddr.V4 _ -> Unix.PF_INET | Ipaddr.V6 _ -> Unix.PF_INET6 in
+  let sock = Unix.(socket fam SOCK_STREAM 0) in
   Unix.(setsockopt sock SO_REUSEADDR true) ;
   Unix.connect sock sa ;
   sock
@@ -50,14 +51,13 @@ let setup_log =
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
 
-let ip_c : Ipaddr.V4.t Arg.converter =
+let ip_c : Ipaddr.t Arg.converter =
   let parse s =
-      try
-        `Ok (Ipaddr.V4.of_string_exn s)
-      with
-        Not_found -> `Error "failed to parse IP address"
+    match Ipaddr.of_string s with
+    | Ok ip -> `Ok ip
+    | Error (`Msg m) -> `Error ("failed to parse IP address: " ^ m)
   in
-  parse, Ipaddr.V4.pp
+  parse, Ipaddr.pp
 
 let namekey_c =
   let parse s =

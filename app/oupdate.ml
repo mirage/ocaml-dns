@@ -21,7 +21,7 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
   Mirage_crypto_rng_unix.initialize ();
   let now = Ptime_clock.now () in
   Logs.app (fun m -> m "updating to %a:%d zone %a A 600 %a %a"
-               Ipaddr.V4.pp serverip port
+               Ipaddr.pp serverip port
                Domain_name.pp zone
                Domain_name.pp hostname
                Ipaddr.V4.pp ip_address) ;
@@ -69,9 +69,17 @@ let hostname =
   let doc = "Hostname to modify" in
   Arg.(required & pos 2 (some Dns_cli.domain_name_c) None & info [] ~doc ~docv:"HOSTNAME")
 
+let ipv4_c : Ipaddr.V4.t Arg.converter =
+  let parse s =
+    match Ipaddr.V4.of_string s with
+    | Ok ip -> `Ok ip
+    | Error (`Msg m) -> `Error ("failed to parse IP address: " ^ m)
+  in
+  parse, Ipaddr.V4.pp
+
 let ip_address =
   let doc = "New IP address" in
-  Arg.(required & pos 3 (some Dns_cli.ip_c) None & info [] ~doc ~docv:"IP")
+  Arg.(required & pos 3 (some ipv4_c) None & info [] ~doc ~docv:"IP")
 
 let cmd =
   Term.(term_result (const jump $ Dns_cli.setup_log $ serverip $ port $ key $ hostname $ ip_address)),
