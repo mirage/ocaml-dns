@@ -1,3 +1,11 @@
+### v5.0.0 (2021-04-14)
+
+* IPv6 support for client and server (Mirage, Unix, Lwt) (#249 #252 @hannesm)
+  This results in breaking changes, especially in the Mirage boilerplate,
+  since now a Mirage_stack.V4V6 is needed instead of a Mirage_stack.V4.
+* dns-certify: support EC private keys, now that X509 0.12.0 supports them
+  (#252 @hannesm)
+
 ### v4.6.3 (2021-01-11)
 
 * dns-server: wildcard support (#248 @hannesm)
