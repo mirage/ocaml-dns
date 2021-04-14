@@ -2,4 +2,4 @@
  (name dns_certify)
  (public_name dns-certify)
  (wrapped false)
- (libraries dns dns-tsig x509 randomconv logs))
+ (libraries dns dns-tsig x509 randomconv logs mirage-crypto-rng mirage-crypto-ec mirage-crypto-pk))
