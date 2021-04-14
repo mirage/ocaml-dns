@@ -11,7 +11,7 @@
 (** A flow module based on non-blocking I/O on top of the
     Lwt_unix socket API. *)
 module Transport : Dns_client.S
-   with type io_addr = Lwt_unix.inet_addr * int
+   with type io_addr = Ipaddr.t * int
    and type +'a io = 'a Lwt.t
    and type stack = unit
 

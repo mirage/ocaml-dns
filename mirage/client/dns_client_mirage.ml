@@ -21,7 +21,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
     type context = { t : t ; flow : S.TCP.flow ; timeout_ns : int64 ref }
 
     let create
-        ?(nameserver = `TCP, (Ipaddr.V4 (Ipaddr.V4.of_string_exn Dns_client.default_resolver), 53))
+        ?(nameserver = `TCP, (Ipaddr.V4 (Ipaddr.V4.of_string_exn (fst Dns_client.default_resolver)), 53))
         ~timeout
         stack =
       { nameserver ; timeout_ns = timeout ; stack }

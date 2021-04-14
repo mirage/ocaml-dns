@@ -10,7 +10,7 @@
     TODO: Implement the connect timeout.
 *)
 module Transport : Dns_client.S
-  with type io_addr = Unix.inet_addr * int
+  with type io_addr = Ipaddr.t * int
    and type stack = unit
    and type +'a io = 'a
 

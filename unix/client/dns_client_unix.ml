@@ -4,11 +4,11 @@
 *)
 
 module Transport : Dns_client.S
-  with type io_addr = Unix.inet_addr * int
+  with type io_addr = Ipaddr.t * int
    and type stack = unit
    and type +'a io = 'a
 = struct
-  type io_addr = Unix.inet_addr * int
+  type io_addr = Ipaddr.t * int
   type ns_addr = [`TCP | `UDP] * io_addr
   type stack = unit
   type t = {
@@ -40,12 +40,11 @@ module Transport : Dns_client.S
               List.fold_left (fun acc ns ->
                   match acc, ns with
                   | Ok ip, _ -> Ok ip
-                  | _, `Nameserver (Ipaddr.V4 ip) -> Ok ip
-                  | acc, _ -> acc)
+                  | _, `Nameserver ip -> Ok ip)
                 (Error (`Msg "no nameserver")) nameservers
             with
-            | Error _ -> Unix.inet_addr_of_string Dns_client.default_resolver
-            | Ok ip -> Ipaddr_unix.V4.to_inet_addr ip
+            | Error _ -> Ipaddr.(V4 (V4.of_string_exn (fst Dns_client.default_resolver)))
+            | Ok ip -> ip
           in
           Ok (`TCP, (ip, 53)))
           nameserver))
@@ -84,9 +83,10 @@ module Transport : Dns_client.S
         | `UDP -> Ok Unix.((getprotobyname "udp").p_proto)
         | `TCP -> Ok Unix.((getprotobyname "tcp").p_proto)
       end >>= fun proto_number ->
-      let socket = Unix.socket PF_INET SOCK_STREAM proto_number in
+      let fam = match server with Ipaddr.V4 _ -> Unix.PF_INET | Ipaddr.V6 _ -> Unix.PF_INET6 in
+      let socket = Unix.socket fam Unix.SOCK_STREAM proto_number in
       let time_left = ref t.timeout_ns in
-      let addr = Unix.ADDR_INET (server, port) in
+      let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
       let ctx = { t ; fd = socket ; timeout_ns = time_left } in
       try
         with_timeout ctx (fun fd ->
