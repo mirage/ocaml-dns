@@ -37,24 +37,6 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
           | Error e -> Error e
           | Ok cert -> Ok cert
 
-  let initialise_csr hostname more_hostnames seed =
-    let private_key =
-      let g, print =
-        match seed with
-        | None -> (None, true)
-        | Some seed ->
-          let seed = Cstruct.of_string seed in
-          Some (Mirage_crypto_rng.(create ~seed (module Fortuna))), false
-      in
-      let key = Mirage_crypto_pk.Rsa.generate ?g ~bits:4096 () in
-      (if print then
-         let pem = X509.Private_key.encode_pem (`RSA key) in
-         Log.info (fun m -> m "using private key@.%s" (Cstruct.to_string pem)));
-      key
-    in
-    let csr = Dns_certify.signing_request hostname ~more_hostnames (`RSA private_key) in
-    (private_key, csr)
-
   let query_certificate_or_csr flow hostname keyname zone dnskey csr =
     query_certificate flow hostname csr >>= function
     | Ok certificate ->
@@ -91,7 +73,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
         in
         wait_for_cert ()
 
-  let retrieve_certificate stack ~dns_key ~hostname ?(additional_hostnames = []) ?key_seed dns port =
+  let retrieve_certificate stack ~dns_key ~hostname ?(additional_hostnames = []) ?(key_type = `RSA) ?key_data ?key_seed ?bits dns port =
     let keyname, zone, dnskey =
       match Dns.Dnskey.name_key_of_string dns_key with
       | Ok (name, key) ->
@@ -103,7 +85,8 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
     if not_sub hostname then
       Lwt.fail_with "hostname not a subdomain of zone provided by dns_key"
     else
-      let priv, csr = initialise_csr hostname additional_hostnames key_seed in
+      let key = Dns_certify.generate ?key_seed ?bits ?key_data key_type in
+      let csr = Dns_certify.signing_request hostname ~more_hostnames:additional_hostnames key in
       S.TCP.create_connection (S.tcp stack) (dns, port) >>= function
       | Error e ->
         Log.err (fun m -> m "error %a while connecting to name server, shutting down" S.TCP.pp_error e) ;
@@ -114,5 +97,5 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
         S.TCP.close (D.flow flow) >|= fun () ->
         match certificate with
         | Error e -> Error e
-        | Ok (cert, chain) -> Ok (cert :: chain, priv)
+        | Ok (cert, chain) -> Ok (cert :: chain, key)
 end

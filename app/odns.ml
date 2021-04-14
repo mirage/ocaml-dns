@@ -28,17 +28,16 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Dns.Tlsa.t)) =
         | n -> loop ((String.sub hex n 56)::acc) (n+56)
       in loop [] 0)
 
-let ns ip is_udp = match ip with
+let ns ip port is_udp = match ip with
   | None -> None
-  | Some ip -> if is_udp then Some (`UDP, ip) else Some (`TCP, ip)
+  | Some ip -> if is_udp then Some (`UDP, (ip, port)) else Some (`TCP, (ip, port))
 
-let do_a nameserver is_udp domains _ =
-  let nameserver = ns nameserver is_udp in
+let do_a nameserver ns_port is_udp domains _ =
+  let nameserver = ns nameserver ns_port is_udp in
   let t = Dns_client_lwt.create ?nameserver () in
   let (_, (ns_ip, _)) = Dns_client_lwt.nameserver t in
-  Logs.info (fun m -> m "querying NS %s for A records of %a"
-                (Unix.string_of_inet_addr ns_ip)
-                Fmt.(list ~sep:(unit", ") Domain_name.pp) domains);
+  Logs.info (fun m -> m "querying NS %a for A records of %a"
+                Ipaddr.pp ns_ip Fmt.(list ~sep:(unit", ") Domain_name.pp) domains);
   let job =
     Lwt_list.iter_p (fun domain ->
         let open Lwt in
@@ -60,14 +59,14 @@ let do_a nameserver is_udp domains _ =
   match Lwt_main.run job with
   | () -> Ok () (* TODO handle errors *)
 
-let for_all_domains nameserver is_udp ~domains typ f =
+let for_all_domains nameserver ns_port is_udp ~domains typ f =
   (* [for_all_domains] is a utility function that lets us avoid duplicating
      this block of code in all the subcommands.
      We leave {!do_a} simple to provide a more readable example. *)
-  let nameserver = ns nameserver is_udp in
+  let nameserver = ns nameserver ns_port is_udp in
   let t = Dns_client_lwt.create ?nameserver () in
   let _, (ns_ip, _) = Dns_client_lwt.nameserver t in
-  Logs.info (fun m -> m "NS: %s" @@ Unix.string_of_inet_addr ns_ip);
+  Logs.info (fun m -> m "NS: %a" Ipaddr.pp ns_ip);
   let open Lwt in
   match Lwt_main.run
           (Lwt_list.iter_p
@@ -88,16 +87,16 @@ let pp_response typ domain = function
   | Error _ -> ()
   | Ok resp -> Logs.app (fun m -> m "%a" pp_zone (domain, typ, resp))
 
-let do_aaaa nameserver is_udp domains _ =
-  for_all_domains nameserver is_udp ~domains Dns.Rr_map.Aaaa
+let do_aaaa nameserver ns_port is_udp domains _ =
+  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Aaaa
     (pp_response Dns.Rr_map.Aaaa)
 
-let do_mx nameserver is_udp domains _ =
-  for_all_domains nameserver is_udp ~domains Dns.Rr_map.Mx
+let do_mx nameserver ns_port is_udp domains _ =
+  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Mx
     (pp_response Dns.Rr_map.Mx)
 
-let do_tlsa nameserver is_udp domains _ =
-  for_all_domains nameserver is_udp ~domains Dns.Rr_map.Tlsa
+let do_tlsa nameserver ns_port is_udp domains _ =
+  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Tlsa
     (fun domain -> function
        | Ok (ttl, tlsa_resp) ->
          Dns.Rr_map.Tlsa_set.iter (fun tlsa ->
@@ -106,8 +105,8 @@ let do_tlsa nameserver is_udp domains _ =
        | Error _ -> () )
 
 
-let do_txt nameserver is_udp domains _ =
-  for_all_domains nameserver is_udp ~domains Dns.Rr_map.Txt
+let do_txt nameserver ns_port is_udp domains _ =
+  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Txt
     (fun _domain -> function
        | Ok (ttl, txtset) ->
          Dns.Rr_map.Txt_set.iter (fun txtrr ->
@@ -120,13 +119,13 @@ let do_any _nameserver _is_udp _domains _ =
   (* TODO *)
   Error (`Msg "ANY functionality is not present atm due to refactorings, come back later")
 
-let do_dkim nameserver is_udp (selector:string) domains _ =
+let do_dkim nameserver ns_port is_udp (selector:string) domains _ =
   let domains = List.map (fun original_domain ->
       Domain_name.prepend_label_exn
         (Domain_name.prepend_label_exn
            (original_domain) "_domainkey") selector
     ) domains in
-  for_all_domains nameserver is_udp ~domains Dns.Rr_map.Txt
+  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Txt
     (fun _domain -> function
        | Ok (_ttl, txtset) ->
          Dns.Rr_map.Txt_set.iter (fun txt ->
@@ -148,20 +147,20 @@ let setup_log =
   Term.(const _setup_log $ Fmt_cli.style_renderer ~docs:sdocs ()
         $ Logs_cli.level ~docs:sdocs ())
 
-let parse_ns : (Lwt_unix.inet_addr * int) Arg.conv =
+let parse_ns : Ipaddr.t Arg.conv =
   ( fun ns ->
-      try match String.split_on_char ':' ns with
-      | [ ns ] -> `Ok (Unix.inet_addr_of_string ns, 53)
-      | [ ns ; port ] -> `Ok (Unix.inet_addr_of_string ns, int_of_string port)
-      | _ -> `Error "bad name server"
-      with
-      | _ -> `Error "NS must be an IPv4 address"),
-  ( fun ppf (ns, port) ->
-      Fmt.pf ppf "%s:%d" (Unix.string_of_inet_addr ns) port )
+      match Ipaddr.of_string ns with
+      | Ok ip -> `Ok ip
+      | Error (`Msg m) -> `Error ("bad name server: " ^ m)),
+  Ipaddr.pp
 
 let arg_ns : 'a Term.t =
   let doc = "IP of nameserver to use" in
   Arg.(value & opt (some parse_ns) None & info ~docv:"NS-IP" ~doc ["ns"])
+
+let arg_port : 'a Term.t =
+  let doc = "Port of nameserver" in
+  Arg.(value & opt int 53 & info ~docv:"NS-PORT" ~doc ["ns-port"])
 
 let arg_udp =
   let doc = "Connect via UDP to resolver" in
@@ -190,7 +189,7 @@ let cmd_a : unit Term.t * Term.info =
   let man = [
     `P {| Output mimics that of $(b,dig A )$(i,DOMAIN)|}
   ] in
-  Term.(term_result (const do_a $ arg_ns $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_a $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
   Term.info "a" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_aaaa : unit Term.t * Term.info =
@@ -198,7 +197,7 @@ let cmd_aaaa : unit Term.t * Term.info =
   let man = [
     `P {| Output mimics that of $(b,dig AAAA )$(i,DOMAIN)|}
   ] in
-  Term.(term_result (const do_aaaa $ arg_ns $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_aaaa $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
   Term.info "aaaa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_mx : unit Term.t * Term.info =
@@ -206,7 +205,7 @@ let cmd_mx : unit Term.t * Term.info =
   let man = [
     `P {| Output mimics that of $(b,dig MX )$(i,DOMAIN)|}
   ] in
-  Term.(term_result (const do_mx $ arg_ns $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_mx $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
   Term.info "mx" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_tlsa : unit Term.t * Term.info =
@@ -228,7 +227,7 @@ let cmd_tlsa : unit Term.t * Term.info =
     `P {| $(b,_993._tcp) (IMAP) |} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_tlsa $ arg_ns $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_tlsa $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
   Term.info "tlsa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_txt : unit Term.t * Term.info =
@@ -240,7 +239,7 @@ let cmd_txt : unit Term.t * Term.info =
           It would be nice to mirror `dig` output here.|} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_txt $ arg_ns $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_txt $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
   Term.info "txt" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_any : unit Term.t * Term.info =
@@ -267,7 +266,7 @@ let cmd_dkim : unit Term.t * Term.info =
        |} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_dkim $ arg_ns $ arg_udp $ arg_selector
+  Term.(term_result (const do_dkim $ arg_ns $ arg_port $ arg_udp $ arg_selector
                      $ arg_domains $ setup_log)),
   Term.info "dkim" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 

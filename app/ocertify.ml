@@ -1,22 +1,16 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
 open Rresult.R.Infix
 
-let find_or_generate_key key_filename bits seed =
+let find_or_generate_key key_filename keytype keydata seed bits =
   Bos.OS.File.exists key_filename >>= function
   | true ->
     Bos.OS.File.read key_filename >>= fun data ->
     X509.Private_key.decode_pem (Cstruct.of_string data)
   | false ->
-    let key =
-      let g =
-        match seed with
-        | None -> None
-        | Some seed ->
-          let seed = Cstruct.of_string seed in
-          Some Mirage_crypto_rng.(create ~seed (module Fortuna))
-      in
-      `RSA (Mirage_crypto_pk.Rsa.generate ?g ~bits ())
-    in
+    (match keydata with
+     | None -> Ok None
+     | Some s -> Base64.decode s >>| fun s -> Some s) >>= fun key_data ->
+    let key = Dns_certify.generate ?key_seed:seed ~bits ?key_data keytype in
     let pem = X509.Private_key.encode_pem key in
     Bos.OS.File.write ~mode:0o600 key_filename (Cstruct.to_string pem) >>= fun () ->
     Ok key
@@ -39,7 +33,7 @@ let nsupdate_csr sock host keyname zone dnskey csr =
     | Ok () -> Ok ()
     | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Dns_certify.pp_u_err e))
 
-let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits cert force =
+let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype keydata seed bits cert force =
   Mirage_crypto_rng_unix.initialize ();
   let fn suffix = function
     | None -> Fpath.(v (Domain_name.to_string hostname) + suffix)
@@ -54,7 +48,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key seed bits 
       Bos.OS.File.read csr_filename >>= fun data ->
       X509.Signing_request.decode_pem (Cstruct.of_string data)
     | false ->
-      find_or_generate_key key_filename bits seed >>= fun key ->
+      find_or_generate_key key_filename keytype keydata seed bits >>= fun key ->
       let csr = Dns_certify.signing_request hostname ~more_hostnames key in
       let pem = X509.Signing_request.encode_pem csr in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
@@ -162,12 +156,24 @@ let key =
   Arg.(value & opt (some string) None & info [ "key" ] ~doc)
 
 let seed =
-  let doc = "private key seed" in
+  let doc = "private key seed (or full private key if keytype is a EC key)" in
   Arg.(value & opt (some string) None & info [ "seed" ] ~doc)
 
 let bits =
   let doc = "private key bits" in
   Arg.(value & opt int 4096 & info [ "bits" ] ~doc)
+
+let keydata =
+  let doc = "private key (base64 encoded)" in
+  Arg.(value & opt (some string) None & info [ "data" ] ~doc)
+
+let keytype =
+  let doc = "keytype to generate" in
+  let types = [
+    ("rsa", `RSA) ; ("ed25519", `ED25519) ;
+    ("p256", `P256) ; ("p384", `P384) ; ("p521", `P521)
+  ] in
+  Arg.(value & opt (enum types) `RSA & info [ "type" ] ~doc)
 
 let cert =
   let doc = "certificate filename (defaults to hostname.pem)" in
@@ -180,7 +186,7 @@ let force =
 let ocertify =
   let doc = "ocertify requests a signed certificate" in
   let man = [ `S "BUGS"; `P "Submit bugs to me";] in
-  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ hostname $ more_hostnames $ dns_key $ csr $ key $ seed $ bits $ cert $ force)),
+  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ hostname $ more_hostnames $ dns_key $ csr $ key $ keytype $ keydata $ seed $ bits $ cert $ force)),
   Term.info "ocertify" ~version:"%%VERSION_NUM%%" ~doc ~man
 
 let () = match Term.eval ocertify with `Ok () -> exit 0 | _ -> exit 1

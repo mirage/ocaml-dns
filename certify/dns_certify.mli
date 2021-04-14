@@ -91,3 +91,10 @@ val query : (int -> Cstruct.t) -> Ptime.t -> [ `host ] Domain_name.t ->
 (** [query rng now csr] is a [buffer] with a DNS TLSA query for the name of
    [csr], and a function that decodes a given answer, either returning a X.509
    certificate valid [now] and matching [csr], and a CA chain, or an error. *)
+
+val generate : ?key_seed:string -> ?bits:int -> ?key_data:string ->
+  [ `RSA | `ED25519 | `P256 | `P384 | `P521 ] -> X509.Private_key.t
+(** [generate ~key_seed ~bits ~key_data key_type] generates a private key from
+    [key_seed] of the provided [key_type]. If no [key_seed] is provided, random
+    data is used and the PEM-encoded private key is logged. If [key_type] is a
+    EC key and [key_data] is provided, this is used as private key. *)

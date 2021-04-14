@@ -1,11 +1,11 @@
 open Lwt.Infix
 
 module Transport : Dns_client.S
- with type io_addr = Lwt_unix.inet_addr * int
+ with type io_addr = Ipaddr.t * int
  and type +'a io = 'a Lwt.t
  and type stack = unit
 = struct
-  type io_addr = Lwt_unix.inet_addr * int
+  type io_addr = Ipaddr.t * int
   type ns_addr = [`TCP | `UDP] * io_addr
   type +'a io = 'a Lwt.t
   type stack = unit
@@ -37,12 +37,11 @@ module Transport : Dns_client.S
               List.fold_left (fun acc ns ->
                   match acc, ns with
                   | Ok ip, _ -> Ok ip
-                  | _, `Nameserver (Ipaddr.V4 ip) -> Ok ip
-                  | acc, _ -> acc)
+                  | _, `Nameserver ip -> Ok ip)
                 (Error (`Msg "no nameserver")) nameservers
             with
-            | Error _ -> Unix.inet_addr_of_string Dns_client.default_resolver
-            | Ok ip -> Ipaddr_unix.V4.to_inet_addr ip
+            | Error _ -> Ipaddr.(V4 (V4.of_string_exn (fst Dns_client.default_resolver)))
+            | Ok ip -> ip
           in
           Ok (`TCP, (ip, 53)))
           nameserver))
@@ -105,8 +104,9 @@ module Transport : Dns_client.S
             Lwt_unix.((getprotobyname "tcp") >|= fun x -> x.p_proto,
                                                           SOCK_STREAM)
         end >>= fun (proto_number, socket_type) ->
-        let socket = Lwt_unix.socket PF_INET socket_type proto_number in
-        let addr = Lwt_unix.ADDR_INET (server, port) in
+        let fam = match server with Ipaddr.V4 _ -> Lwt_unix.PF_INET | Ipaddr.V6 _ -> Lwt_unix.PF_INET6 in
+        let socket = Lwt_unix.socket fam socket_type proto_number in
+        let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
         let ctx = { t ; fd = socket ; timeout_ns = ref t.timeout_ns } in
         Lwt.catch (fun () ->
             (* SO_RCVTIMEO does not work in Lwt: it results in an EAGAIN, which

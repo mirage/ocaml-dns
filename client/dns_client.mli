@@ -4,10 +4,10 @@
          better solution presents itself.
 *)
 
-val default_resolver : string
-(** [default_resolver] is the IPv4 address in dotted-decimal form of the default
-    resolver. Currently it is the IP address of the UncensoredDNS.org anycast
-    service. *)
+val default_resolver : string * string
+(** [default_resolver] is a pair of IPv4 and IPv6 address in dotted-decimal
+    (/hexadecimal) form of the default resolver. Currently it is the IP address
+    of the UncensoredDNS.org anycast service. *)
 
 module type S = sig
   type context
