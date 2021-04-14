@@ -459,16 +459,19 @@ module Notification = struct
         | Error _ -> ns
         | Ok prim -> Domain_name.Host_set.remove prim ns
       in
-      (* TODO AAAA records *)
       Domain_name.Host_set.fold (fun ns acc ->
-          match Dns_trie.lookup_glue ns trie with
-          | Some (_, ips), _ -> Rr_map.Ipv4_set.union ips acc
-          | _ ->
-            Log.warn (fun m -> m "could not find an address record for the secondary %a (zone %a), it won't be notified"
-                         Domain_name.pp ns Domain_name.pp zone);
-            acc)
-        secondaries Rr_map.Ipv4_set.empty
-    | _ -> Rr_map.Ipv4_set.empty
+          let of_opt f acc = function None -> acc | Some x -> f acc x in
+          let v4, v6 = Dns_trie.lookup_glue ns trie in
+          let acc =
+            of_opt (fun acc (_, ipv4) ->
+                Rr_map.Ipv4_set.fold (fun ip acc -> Ipaddr.V4 ip :: acc)
+                  ipv4 acc) acc v4
+          in
+          of_opt (fun acc (_, ipv6) ->
+              Rr_map.Ipv6_set.fold (fun ip acc -> Ipaddr.V6 ip :: acc)
+                ipv6 acc) acc v6)
+        secondaries []
+    | _ -> []
 
   let to_notify conn ~data ~auth zone =
     (* for a given zone, compute the "ip -> key option" map of to-be-notiied
@@ -480,8 +483,8 @@ module Notification = struct
        - active connections (from the zone -> ip, key map above), used for
          let's encrypt etc. *)
     let secondaries =
-      Rr_map.Ipv4_set.fold (fun ip m -> IPM.add (Ipaddr.V4 ip) None m)
-        (secondaries data zone) IPM.empty
+      List.fold_left (fun m ip -> IPM.add ip None m)
+        IPM.empty (secondaries data zone)
     in
     let of_list = List.fold_left (fun m (key, ip) -> IPM.add ip (Some key) m) in
     let secondaries_and_keys =
