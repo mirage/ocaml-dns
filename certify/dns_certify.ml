@@ -205,28 +205,3 @@ let query rng now host csr =
         | Error e -> Error (`Bad_reply (e, reply))
     in
     Ok (out, react)
-
-let generate ?key_seed ?(bits = 4096) ?key_data key_type =
-  let g, print =
-    match key_seed with
-    | None -> None, true
-    | Some seed ->
-      let seed = Cstruct.of_string seed in
-      Some Mirage_crypto_rng.(create ~seed (module Fortuna)), false
-  in
-  let rng c = match key_data with
-    | None -> Mirage_crypto_rng.generate ?g c
-    | Some s -> Cstruct.of_string s
-  in
-  let key =
-    match key_type with
-    | `RSA -> `RSA (Mirage_crypto_pk.Rsa.generate ?g ~bits ())
-    | `ED25519 -> `ED25519 (fst (Mirage_crypto_ec.Ed25519.generate ~rng))
-    | `P256 -> `P256 (fst (Mirage_crypto_ec.P256.Dsa.generate ~rng))
-    | `P384 -> `P384 (fst (Mirage_crypto_ec.P384.Dsa.generate ~rng))
-    | `P521 -> `P521 (fst (Mirage_crypto_ec.P521.Dsa.generate ~rng))
-  in
-  (if print then
-     let pem = X509.Private_key.encode_pem key in
-     Log.info (fun m -> m "using private key@.%s" (Cstruct.to_string pem)));
-  key

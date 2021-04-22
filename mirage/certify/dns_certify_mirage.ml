@@ -83,19 +83,34 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
     in
     let not_sub subdomain = not (Domain_name.is_subdomain ~subdomain ~domain:zone) in
     if not_sub hostname then
-      Lwt.fail_with "hostname not a subdomain of zone provided by dns_key"
+      invalid_arg "hostname not a subdomain of zone provided by dns_key"
     else
-      let key = Dns_certify.generate ?key_seed ?bits ?key_data key_type in
-      let csr = Dns_certify.signing_request hostname ~more_hostnames:additional_hostnames key in
-      S.TCP.create_connection (S.tcp stack) (dns, port) >>= function
-      | Error e ->
-        Log.err (fun m -> m "error %a while connecting to name server, shutting down" S.TCP.pp_error e) ;
-        Lwt.return (Error (`Msg "couldn't connect to name server"))
-      | Ok flow ->
-        let flow = D.of_flow flow in
-        query_certificate_or_csr flow hostname keyname zone dnskey csr >>= fun certificate ->
-        S.TCP.close (D.flow flow) >|= fun () ->
-        match certificate with
-        | Error e -> Error e
-        | Ok (cert, chain) -> Ok (cert :: chain, key)
+      let key =
+        match key_data with
+        | None ->
+          let seed = match key_seed with None -> None | Some x -> Some (Cstruct.of_string x) in
+          X509.Private_key.generate ?seed ?bits key_type
+        | Some x ->
+          match X509.Private_key.of_cstruct (Cstruct.of_string x) key_type with
+          | Error (`Msg m) -> invalid_arg ("decoding of key failed: " ^ m)
+          | Ok key -> key
+      in
+      match
+        let more_hostnames = additional_hostnames in
+        Dns_certify.signing_request hostname ~more_hostnames key
+      with
+      | Error (`Msg m) -> invalid_arg ("create signing request failed: " ^ m)
+      | Ok csr ->
+        S.TCP.create_connection (S.tcp stack) (dns, port) >>= function
+        | Error e ->
+          Log.err (fun m -> m "error %a while connecting to name server"
+                      S.TCP.pp_error e);
+          Lwt.return (Error (`Msg "couldn't connect to name server"))
+        | Ok flow ->
+          let flow = D.of_flow flow in
+          query_certificate_or_csr flow hostname keyname zone dnskey csr >>= fun certificate ->
+          S.TCP.close (D.flow flow) >|= fun () ->
+          match certificate with
+          | Error e -> Error e
+          | Ok (cert, chain) -> Ok (cert :: chain, key)
 end

@@ -8,9 +8,12 @@ let find_or_generate_key key_filename keytype keydata seed bits =
     X509.Private_key.decode_pem (Cstruct.of_string data)
   | false ->
     (match keydata with
-     | None -> Ok None
-     | Some s -> Base64.decode s >>| fun s -> Some s) >>= fun key_data ->
-    let key = Dns_certify.generate ?key_seed:seed ~bits ?key_data keytype in
+     | None ->
+       let seed = match seed with None -> None | Some x -> Some (Cstruct.of_string x) in
+       Ok (X509.Private_key.generate ?seed ~bits keytype)
+     | Some s ->
+       Base64.decode s >>= fun s ->
+       X509.Private_key.of_cstruct (Cstruct.of_string s) keytype) >>= fun key ->
     let pem = X509.Private_key.encode_pem key in
     Bos.OS.File.write ~mode:0o600 key_filename (Cstruct.to_string pem) >>= fun () ->
     Ok key
@@ -49,7 +52,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype ke
       X509.Signing_request.decode_pem (Cstruct.of_string data)
     | false ->
       find_or_generate_key key_filename keytype keydata seed bits >>= fun key ->
-      let csr = Dns_certify.signing_request hostname ~more_hostnames key in
+      Dns_certify.signing_request hostname ~more_hostnames key >>= fun csr ->
       let pem = X509.Signing_request.encode_pem csr in
       Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
       Ok csr) >>= fun csr ->
@@ -169,11 +172,7 @@ let keydata =
 
 let keytype =
   let doc = "keytype to generate" in
-  let types = [
-    ("rsa", `RSA) ; ("ed25519", `ED25519) ;
-    ("p256", `P256) ; ("p384", `P384) ; ("p521", `P521)
-  ] in
-  Arg.(value & opt (enum types) `RSA & info [ "type" ] ~doc)
+  Arg.(value & opt (enum X509.Key_type.strings) `RSA & info [ "type" ] ~doc)
 
 let cert =
   let doc = "certificate filename (defaults to hostname.pem)" in
