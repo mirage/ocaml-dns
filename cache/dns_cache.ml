@@ -211,15 +211,21 @@ and 1035 6.2:
    maximum value! *)
 let week = Int32.of_int Duration.(to_sec (of_day 7))
 
-let clip_ttl_to_week entry =
+let min_ttl = Int32.of_int (Duration.(to_sec (of_hour 1)))
+
+let clip_ttl_to_min_hour_max_week entry =
   let ttl = get_ttl entry in
-  if ttl < week then entry else with_ttl week entry
+  if ttl < min_ttl
+  then with_ttl min_ttl entry
+  else if ttl >= week
+  then with_ttl week entry
+  else entry
 
 let pp_query ppf (name, query_type) =
   Fmt.pf ppf "%a (%a)" Domain_name.pp name Packet.Question.pp_qtype query_type
 
 let set cache ts name query_type rank entry  =
-  let entry' = clip_ttl_to_week entry in
+  let entry' = clip_ttl_to_min_hour_max_week entry in
   let cache' map = insert cache ?map ts name query_type rank entry' in
   match find cache name query_type with
   | map, Error _ ->
