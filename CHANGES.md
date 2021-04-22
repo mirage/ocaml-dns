@@ -1,3 +1,7 @@
+### v5.0.1 (2021-04-22)
+
+* dns-certify: adapt to X.509 0.13.0 API changes (#254 @hannesm)
+
 ### v5.0.0 (2021-04-14)
 
 * IPv6 support for client and server (Mirage, Unix, Lwt) (#249 #252 @hannesm)
