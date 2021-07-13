@@ -69,15 +69,15 @@ let create ?(size = 10000) ?(mode = `Recursive) now rng primary =
   let cache = Dns_resolver_cache.empty size in
   let cache =
     List.fold_left (fun cache (name, b) ->
-        Dns_resolver_cache.maybe_insert
-          A name now Dns_resolver_cache.Additional
-          (`Entry b) cache)
+        Dns_cache.set cache now
+          name A Dns_cache.Additional
+          (`Entry b))
       cache Dns_resolver_root.a_records
   in
   let cache =
-    Dns_resolver_cache.maybe_insert
-      Ns Domain_name.root now Dns_resolver_cache.Additional
-      (`Entry Dns_resolver_root.ns_records) cache
+    Dns_cache.set cache now
+      Domain_name.root Ns Dns_cache.Additional
+      (`Entry Dns_resolver_root.ns_records)
   in
   { rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty ; mode }
 
@@ -149,10 +149,9 @@ let find_queries t k =
     QM.remove k t, vals
 
 let stats t =
-  Logs.info (fun m -> m "stats: %a@.%a@.%d cached resource records (capacity: %d)"
+  Logs.info (fun m -> m "stats: %a@.%d cached resource records (capacity: %d)"
                 pp_stats !s
-                Dns_resolver_cache.pp_stats (Dns_resolver_cache.stats ())
-                (Dns_resolver_cache.size t.cache) (Dns_resolver_cache.capacity t.cache)) ;
+                (Dns_cache.size t.cache) (Dns_cache.capacity t.cache)) ;
   let names = fst (List.split (QM.bindings t.transit)) in
   Logs.info (fun m -> m "%d queries in transit %a" (QM.cardinal t.transit)
                 Fmt.(list ~sep:(unit "; ") pp_key) names) ;
@@ -205,9 +204,9 @@ let scrub_it mode t proto zone edns ts qtype p =
     let cache =
       List.fold_left
         (fun t (Rr_map.K ty, n, r, e) ->
-           Logs.debug (fun m -> m "maybe_insert %a %a %a"
-                            Rr_map.ppk (K ty) Domain_name.pp n Dns_resolver_cache.pp_res e) ;
-           Dns_resolver_cache.maybe_insert ty n ts r e t)
+           Logs.debug (fun m -> m "Dns_cache.set %a %a %a"
+                            Rr_map.ppk (K ty) Domain_name.pp n Dns_cache.pp_entry e) ;
+           Dns_cache.set t ts n ty r e)
         t xs
     in
     if Packet.Flags.mem `Truncation (snd p.header) && proto = `Udp then
@@ -453,12 +452,12 @@ let query_root t now proto =
     | Some x -> Ipaddr.V4 x
   in
   let ip =
-    match Dns_resolver_cache.cached t.cache now Ns Domain_name.root with
-    | Ok (`Entry Rr_map.(B (Ns, (_, names))), _) ->
+    match Dns_cache.get t.cache now Domain_name.root Ns with
+    | _, Ok `Entry Rr_map.(B (Ns, (_, names))) ->
       let ips =
         Domain_name.Host_set.fold (fun name acc ->
-            match Dns_resolver_cache.cached t.cache now A (Domain_name.raw name) with
-            | Ok (`Entry Rr_map.(B (A, (_, ips))), _) ->
+            match Dns_cache.get t.cache now (Domain_name.raw name) A with
+            | _, Ok `Entry Rr_map.(B (A, (_, ips))) ->
               Rr_map.Ipv4_set.union ips acc
             | _ -> acc)
           names Rr_map.Ipv4_set.empty

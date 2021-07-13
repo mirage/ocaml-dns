@@ -119,7 +119,7 @@ let pp = LRU.pp Fmt.(pair ~sep:(unit ": ") Domain_name.pp Entry.pp)
 
 module N = Domain_name.Set
 
-let update_ttl ~created ~now ttl =
+let compute_updated_ttl ~created ~now ttl =
   Int32.sub ttl (Int32.of_int (Duration.to_sec (Int64.sub now created)))
 
 type entry = [
@@ -173,12 +173,29 @@ let insert cache ?map ts name query_type rank entry =
 
 let update_ttl entry ~created ~now =
   let ttl = get_ttl entry in
-  let updated_ttl = update_ttl ~created ~now ttl in
+  let updated_ttl = compute_updated_ttl ~created ~now ttl in
   if updated_ttl < 0l then Error `Cache_drop else Ok (with_ttl updated_ttl entry)
 
 let get cache ts name query_type =
   metrics `Lookup;
   match snd (find cache name query_type) with
+  | Error e -> metrics `Miss; cache, Error e
+  | Ok ((created, _), entry) ->
+    match update_ttl entry ~created ~now:ts with
+    | Ok entry' -> metrics `Hit; LRU.promote name cache, Ok entry'
+    | Error e -> metrics `Drop; cache, Error e
+
+let get_or_cname cache ts name query_type =
+  metrics `Lookup;
+  match
+    match find cache name query_type with
+    | Some map, r ->
+      begin match RRMap.find_opt (K Cname) map with
+        | Some (meta, entry) -> Ok (meta, Entry.to_entry entry)
+        | None -> r
+      end
+    | _, e -> e
+  with
   | Error e -> metrics `Miss; cache, Error e
   | Ok ((created, _), entry) ->
     match update_ttl entry ~created ~now:ts with
