@@ -185,6 +185,46 @@ let get cache ts name query_type =
     | Ok entry' -> metrics `Hit; LRU.promote name cache, Ok entry'
     | Error e -> metrics `Drop; cache, Error e
 
+let find_any cache name =
+  match LRU.find name cache with
+  | None -> Error `Cache_miss
+  | Some No_domain (meta, name, soa) -> Ok (`No_domain (meta, name, soa))
+  | Some Rr_map rrs -> Ok (`Entries rrs)
+
+let get_any cache ts name =
+  metrics `Lookup;
+  match find_any cache name with
+  | Error e -> metrics `Miss; cache, Error e
+  | Ok r ->
+    let ttl created curr =
+      let ttl = compute_updated_ttl ~created ~now:ts curr in
+      if ttl < 0l then Error `Cache_drop else Ok ttl
+    in
+    LRU.promote name cache,
+    match r with
+    | `No_domain ((created, _), name, soa) ->
+      begin match ttl created soa.Soa.minimum with
+        | Error _ as e -> metrics `Drop; e
+        | Ok minimum ->
+          metrics `Hit; Ok (`No_domain (name, { soa with Soa.minimum }))
+      end
+    | `Entries rrs ->
+      let r =
+        RRMap.fold (fun _k ((created, _), v) acc ->
+            match v with
+            | Entry.Entry b ->
+              begin match ttl created (Rr_map.get_ttl b) with
+                | Ok ttl ->
+                  let B (k, v) = Rr_map.with_ttl b ttl in
+                  Rr_map.add k v acc
+                | Error _ -> acc
+              end
+            | _ -> acc) rrs Rr_map.empty
+      in
+      match Rr_map.is_empty r with
+      | true -> metrics `Drop; Error `Cache_drop
+      | false -> metrics `Hit; Ok (`Entries r)
+
 let get_or_cname cache ts name query_type =
   metrics `Lookup;
   match

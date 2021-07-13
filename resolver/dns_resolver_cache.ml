@@ -337,45 +337,57 @@ let answer t ts name typ =
     in
     flags, data
   in
-  let t, r = match typ with
-    | `Any -> Dns_cache.get_or_cname t ts name A (* TODO *)
-    | `K (Rr_map.K ty) -> Dns_cache.get_or_cname t ts name ty
-  in
-  match r with
-  | Error e ->
-    Logs.warn (fun m -> m "error %a while looking up %a, query"
-                  pp_err e pp_question (name, typ));
-    `Query name, t
-  | Ok `No_domain res ->
-    Logs.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
-    `Packet (packet t false Rcode.NXDomain Domain_name.Map.empty (to_map res)), t
-  | Ok `No_data res ->
-    Logs.debug (fun m -> m "no data while looking up %a" pp_question (name, typ));
-    `Packet (packet t false Rcode.NoError Domain_name.Map.empty (to_map res)), t
-  | Ok `Serv_fail res ->
-    Logs.debug (fun m -> m "serv fail while looking up %a" pp_question (name, typ));
-    `Packet (packet t false Rcode.ServFail Domain_name.Map.empty (to_map res)), t
-  | Ok `Entry (Rr_map.B (k, v)) ->
-    Logs.debug (fun m -> m "entry while looking up %a" pp_question (name, typ));
-    let data = Name_rr_map.singleton name k v in
-    `Packet (packet t true Rcode.NoError data Domain_name.Map.empty), t
-(*  | Ok `Entries rr_map ->
-    Logs.debug (fun m -> m "entries while looking up %a" pp_question (name, typ));
-    let data = Domain_name.Map.singleton name rr_map in
-    `Packet (packet t true Rcode.NoError data Domain_name.Map.empty), t *)
-(*  | Ok (`Alias (ttl, alias), t) ->
-    Logs.debug (fun m -> m "alias while looking up %a" pp_question (name, typ));
-    match typ with
-    | `Any ->
-      let data = Name_rr_map.singleton name Cname (ttl, alias) in
-      `Packet (packet t false Rcode.NoError data Domain_name.Map.empty), t
-    | `K (K Cname) ->
-      let data = Name_rr_map.singleton name Cname (ttl, alias) in
-      `Packet (packet t false Rcode.NoError data Domain_name.Map.empty), t
-    | `K (K ty) ->
-      match follow_cname t ts ty ~name ttl ~alias with
-      | `Out (rcode, an, au, t) -> `Packet (packet t true rcode an au), t
-      | `Query (n, t) -> `Query n, t *)
+  match typ with
+  | `Any ->
+    let t, r = Dns_cache.get_any t ts name in
+    begin match r with
+      | Error e ->
+        Logs.warn (fun m -> m "error %a while looking up %a, query"
+                      pp_err e pp_question (name, typ));
+        `Query name, t
+      | Ok `No_domain res ->
+        Logs.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
+        `Packet (packet t false Rcode.NXDomain Domain_name.Map.empty (to_map res)), t
+      | Ok `Entries rr_map ->
+        Logs.debug (fun m -> m "entries while looking up %a" pp_question (name, typ));
+        let data = Domain_name.Map.singleton name rr_map in
+        `Packet (packet t true Rcode.NoError data Domain_name.Map.empty), t
+    end
+  | `K (Rr_map.K ty) ->
+    let t, r = Dns_cache.get_or_cname t ts name ty in
+    match r with
+    | Error e ->
+      Logs.warn (fun m -> m "error %a while looking up %a, query"
+                    pp_err e pp_question (name, typ));
+      `Query name, t
+    | Ok `No_domain res ->
+      Logs.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
+      `Packet (packet t false Rcode.NXDomain Domain_name.Map.empty (to_map res)), t
+    | Ok `No_data res ->
+      Logs.debug (fun m -> m "no data while looking up %a" pp_question (name, typ));
+      `Packet (packet t false Rcode.NoError Domain_name.Map.empty (to_map res)), t
+    | Ok `Serv_fail res ->
+      Logs.debug (fun m -> m "serv fail while looking up %a" pp_question (name, typ));
+      `Packet (packet t false Rcode.ServFail Domain_name.Map.empty (to_map res)), t
+    | Ok `Entry (Rr_map.B (Cname, (ttl, alias))) ->
+      begin
+        Logs.debug (fun m -> m "alias while looking up %a" pp_question (name, typ));
+        match typ with
+        | `Any ->
+          let data = Name_rr_map.singleton name Cname (ttl, alias) in
+          `Packet (packet t false Rcode.NoError data Domain_name.Map.empty), t
+        | `K (K Cname) ->
+          let data = Name_rr_map.singleton name Cname (ttl, alias) in
+          `Packet (packet t false Rcode.NoError data Domain_name.Map.empty), t
+        | `K (K ty) ->
+          match follow_cname t ts ty ~name ttl ~alias with
+          | `Out (rcode, an, au), t -> `Packet (packet t true rcode an au), t
+          | `Query n, t -> `Query n, t
+      end
+    | Ok `Entry (Rr_map.B (k, v)) ->
+      Logs.debug (fun m -> m "entry while looking up %a" pp_question (name, typ));
+      let data = Name_rr_map.singleton name k v in
+      `Packet (packet t true Rcode.NoError data Domain_name.Map.empty), t
 
 let handle_query t ~rng ts qname qtype =
   match answer t ts qname qtype with
