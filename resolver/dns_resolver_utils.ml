@@ -40,7 +40,12 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
            asking for AAAA coffee.soup.io, get empty answer + authority *)
         (* the "sub" should be relaxed - for dig ns mail.mehnert.org I get soa in mehnert.org!
            --> but how to discover SOA/zone boundaries? *)
-        let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAuthority else Additional in
+        let rank =
+          if Packet.Flags.mem `Authoritative flags then
+            Dns_cache.AuthoritativeAuthority
+          else
+            Dns_cache.Additional
+        in
         match
           Domain_name.Map.fold (fun name rr_map acc ->
               if Domain_name.is_subdomain ~subdomain:q_name ~domain:name then
@@ -65,7 +70,12 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
         | [] -> [] (* general case when we get an answer from root server *)
       end, Domain_name.Set.empty
     | Some rr_map ->
-      let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAnswer else NonAuthoritativeAnswer in
+      let rank =
+        if Packet.Flags.mem `Authoritative flags then
+          Dns_cache.AuthoritativeAnswer
+        else
+          Dns_cache.NonAuthoritativeAnswer
+      in
       (* collect those rrsets which are of interest depending on q_type! *)
       match q_type with
       | `Any ->
@@ -77,7 +87,7 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
           rr_map ([], Domain_name.Set.empty)
       | `K (Rr_map.K Cname) ->
         begin match Rr_map.find Cname rr_map with
-          | Some v -> [ Rr_map.K Cname, q_name, rank, `Alias v ],
+          | Some v -> [ Rr_map.K Cname, q_name, rank, `Entry (B (Cname, v)) ],
                       Domain_name.Host_set.fold (fun n acc ->
                           Domain_name.Set.add (Domain_name.raw n) acc)
                         (Rr_map.names Cname v) Domain_name.Set.empty
@@ -104,7 +114,7 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
           | Some cname ->
             (* explicitly register as CNAME so it'll be found *)
             (* should we try to find further records for the new alias? *)
-            [ Rr_map.K Cname, q_name, rank, `Alias cname ],
+            [ Rr_map.K Cname, q_name, rank, `Entry (B (Cname, cname)) ],
             Domain_name.Set.singleton (snd cname)
   in
 
@@ -127,7 +137,12 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
         authority
         ([], Domain_name.Set.empty)
     in
-    let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAuthority else Additional in
+    let rank =
+      if Packet.Flags.mem `Authoritative flags then
+        Dns_cache.AuthoritativeAuthority
+      else
+        Dns_cache.Additional
+    in
     List.fold_left (fun acc (name, ns) ->
         (Rr_map.(K Ns), name, rank, `Entry Rr_map.(B (Ns, ns))) :: acc)
       [] nm, names
@@ -151,11 +166,11 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
         | Some map ->
           let a = match Rr_map.find A map with
             | None -> acc
-            | Some v -> (Rr_map.K A, name, Additional, `Entry (Rr_map.B (A, v))) :: acc
+            | Some v -> (Rr_map.K A, name, Dns_cache.Additional, `Entry (Rr_map.B (A, v))) :: acc
           in
           match Rr_map.find Aaaa map with
           | None -> a
-          | Some v -> (Rr_map.K Aaaa, name, Additional, `Entry (Rr_map.B (Aaaa, v))) :: a)
+          | Some v -> (Rr_map.K Aaaa, name, Dns_cache.Additional, `Entry (Rr_map.B (Aaaa, v))) :: a)
       names []
   in
   (* This is defined in RFC2181, Sec9 -- answer is unique if authority or
@@ -175,7 +190,7 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
                   pp_question (q_name, q_type));
     begin match q_type with
       | `Any -> []
-      | `K k -> [ k, q_name, Additional, `No_data (q_name, invalid_soa q_name) ]
+      | `K k -> [ k, q_name, Dns_cache.Additional, `No_data (q_name, invalid_soa q_name) ]
     end
   | _, _ -> answers @ ns @ glues
 
@@ -210,7 +225,12 @@ let nxdomain (_, flags) name data =
   in
   let soa = find_soa name authority in
   (* since NXDomain have CNAME semantics, we store them as CNAME *)
-  let rank = if Packet.Flags.mem `Authoritative flags then AuthoritativeAnswer else NonAuthoritativeAnswer in
+  let rank =
+    if Packet.Flags.mem `Authoritative flags then
+      Dns_cache.AuthoritativeAnswer
+    else
+      Dns_cache.NonAuthoritativeAnswer
+  in
   (* we conclude NXDomain, there are 3 cases we care about:
      no soa in authority and no cname answer -> inject an invalid_soa (avoid loops)
      a matching soa, no cname -> NoDom q_name
@@ -223,7 +243,7 @@ let nxdomain (_, flags) name data =
     in
     match cnames with
     | [] -> [ name, `No_domain soa ]
-    | rrs -> List.map (fun (name, cname) -> (name, `Alias cname)) rrs
+    | rrs -> List.map (fun (name, cname) -> (name, `Entry (Rr_map.B (Cname, cname)))) rrs
   in
   (* the cname does not matter *)
   List.map (fun (name, res) -> Rr_map.K Cname, name, rank, res) entries
@@ -249,14 +269,14 @@ let noerror_stub name typ (answer, authority) =
       in
       (* TODO unclear what to do here *)
       let typ = match typ with `Any -> Rr_map.K A | `K k -> k in
-      (typ, name, NonAuthoritativeAnswer, `No_data (name, soa)) :: acc
+      (typ, name, Dns_cache.NonAuthoritativeAnswer, `No_data (name, soa)) :: acc
     | Some (`Cname (ttl, alias)) ->
-      go ((Rr_map.K Cname, name, NonAuthoritativeAnswer, `Alias (ttl, alias)) :: acc) alias
+      go ((Rr_map.K Cname, name, Dns_cache.NonAuthoritativeAnswer, (`Entry (Rr_map.B (Cname, (ttl, alias))))) :: acc) alias
     | Some (`Entry (B (k, v))) ->
-      (K k, name, NonAuthoritativeAnswer, `Entry (Rr_map.B (k, v))) :: acc
+      (K k, name, Dns_cache.NonAuthoritativeAnswer, `Entry (Rr_map.B (k, v))) :: acc
     | Some (`Entries map) ->
       Rr_map.fold (fun Rr_map.(B (k, _) as b) acc ->
-          (Rr_map.K k, name, NonAuthoritativeAnswer, `Entry b) :: acc)
+          (Rr_map.K k, name, Dns_cache.NonAuthoritativeAnswer, `Entry b) :: acc)
         map acc
   in
   go [] name

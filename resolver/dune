@@ -2,4 +2,4 @@
  (name dns_resolver)
  (public_name dns-resolver)
  (wrapped false)
- (libraries dns dns-server lru duration randomconv))
+ (libraries dns dns.cache dns-server lru duration randomconv))

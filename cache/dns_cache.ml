@@ -91,11 +91,10 @@ end
 
 module Key = struct
   type t = [ `raw ] Domain_name.t
-  let equal a b = Domain_name.equal a b
-  let hash r v = Hashtbl.seeded_hash r v
+  let compare = Domain_name.compare
 end
 
-module LRU = Lru.M.MakeSeeded(Key)(Entry)
+module LRU = Lru.F.Make(Key)(Entry)
 
 type t = LRU.t
 
@@ -110,7 +109,7 @@ let metrics =
   let metrics = Dns.counter_metrics ~f "dns-cache" in
   (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
 
-let empty size = LRU.create ~random:true size
+let empty = LRU.empty
 
 let size = LRU.size
 
@@ -120,7 +119,7 @@ let pp = LRU.pp Fmt.(pair ~sep:(unit ": ") Domain_name.pp Entry.pp)
 
 module N = Domain_name.Set
 
-let update_ttl ~created ~now ttl =
+let compute_updated_ttl ~created ~now ttl =
   Int32.sub ttl (Int32.of_int (Duration.to_sec (Int64.sub now created)))
 
 type entry = [
@@ -162,28 +161,46 @@ let find cache name query_type =
 
 let insert cache ?map ts name query_type rank entry =
   let meta = ts, rank in
-  (match entry with
-   | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) cache
-   | `Entry _ | `No_data _ | `Serv_fail _ ->
-     let map = match map with None -> RRMap.empty | Some x -> x in
-     let map' = RRMap.add (K query_type) (meta, Entry.of_entry entry) map in
-     LRU.add name (Rr_map map') cache);
+  let cache = match entry with
+    | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) cache
+    | `Entry _ | `No_data _ | `Serv_fail _ ->
+      let map = match map with None -> RRMap.empty | Some x -> x in
+      let map' = RRMap.add (K query_type) (meta, Entry.of_entry entry) map in
+      LRU.add name (Rr_map map') cache
+  in
   (* Make sure we are within memory bounds *)
   LRU.trim cache
 
 let update_ttl entry ~created ~now =
   let ttl = get_ttl entry in
-  let updated_ttl = update_ttl ~created ~now ttl in
+  let updated_ttl = compute_updated_ttl ~created ~now ttl in
   if updated_ttl < 0l then Error `Cache_drop else Ok (with_ttl updated_ttl entry)
 
 let get cache ts name query_type =
   metrics `Lookup;
   match snd (find cache name query_type) with
-  | Error e -> metrics `Miss; Error e
+  | Error e -> metrics `Miss; cache, Error e
   | Ok ((created, _), entry) ->
     match update_ttl entry ~created ~now:ts with
-    | Ok entry' -> metrics `Hit; LRU.promote name cache; Ok entry'
-    | Error e -> metrics `Drop; Error e
+    | Ok entry' -> metrics `Hit; LRU.promote name cache, Ok entry'
+    | Error e -> metrics `Drop; cache, Error e
+
+let get_or_cname cache ts name query_type =
+  metrics `Lookup;
+  match
+    match find cache name query_type with
+    | Some map, r ->
+      begin match RRMap.find_opt (K Cname) map with
+        | Some (meta, entry) -> Ok (meta, Entry.to_entry entry)
+        | None -> r
+      end
+    | _, e -> e
+  with
+  | Error e -> metrics `Miss; cache, Error e
+  | Ok ((created, _), entry) ->
+    match update_ttl entry ~created ~now:ts with
+    | Ok entry' -> metrics `Hit; LRU.promote name cache, Ok entry'
+    | Error e -> metrics `Drop; cache, Error e
 
 (* XXX: we may want to define a minimum as well (5 minutes? 30 minutes?
    use SOA expiry?) MS used to use 24 hours in internet explorer
@@ -230,5 +247,5 @@ let set cache ts name query_type rank entry  =
     Logs.debug (fun m -> m "set: %a found rank %a insert rank %a: %d"
                    pp_query (name, `K (K query_type)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
     match compare_rank rank' rank with
-    | 1 -> ()
+    | 1 -> cache
     | _ -> metrics `Insert; cache' map
