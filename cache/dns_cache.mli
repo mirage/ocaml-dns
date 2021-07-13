@@ -67,6 +67,13 @@ val get_or_cname : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key ->
 (** [get_or_cname cache timestamp type name] is the same as [get], but if a
     [`Cache_miss] is encountered, a lookup for an alias (CNAME) is done. *)
 
+val get_any : t -> int64 -> [ `raw ] Domain_name.t ->
+  t * ([ `Entries of Rr_map.t
+       | `No_domain of [ `raw ] Domain_name.t * Soa.t ],
+       [ `Cache_miss | `Cache_drop ]) result
+(** [get_any cache timestamp name] retrieves all resource records for [name]
+    in [cache]. *)
+
 val set : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key -> rank ->
   entry -> t
 (** [set cache timestamp type name rank value] attempts to insert

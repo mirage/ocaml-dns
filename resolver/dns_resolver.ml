@@ -59,14 +59,14 @@ let pp_stats pf s =
 type t = {
   rng : int -> Cstruct.t ;
   primary : Dns_server.Primary.s ;
-  cache : Dns_resolver_cache.t ;
+  cache : Dns_cache.t ;
   transit : awaiting QM.t ;
   queried : awaiting list QM.t ;
   mode : [ `Stub | `Recursive ] ;
 }
 
 let create ?(size = 10000) ?(mode = `Recursive) now rng primary =
-  let cache = Dns_resolver_cache.empty size in
+  let cache = Dns_cache.empty size in
   let cache =
     List.fold_left (fun cache (name, b) ->
         Dns_cache.set cache now
@@ -360,9 +360,10 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
   Logs.debug (fun m -> m "handling delegation %a (for %a)" Packet.Answer.pp delegation Packet.pp req) ;
   match req.Packet.data, Packet.Question.qtype req.question with
   | `Query, Some qtype ->
-    begin match Dns_resolver_cache.answer t.cache ts (fst req.question) qtype with
-      | `Query (name, cache) ->
-        let t = { t with cache } in
+    let r, cache = Dns_resolver_cache.answer t.cache ts (fst req.question) qtype in
+    let t = { t with cache } in
+    begin match r with
+      | `Query name ->
         (* we should look into delegation for the actual delegation name,
            but instead we're looking for any glue (A) in additional *)
         let ips = Domain_name.Map.fold (fun _ rrmap ips ->
@@ -388,13 +389,13 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
               | `Query (cs, ip), t -> t, [], [ `Udp, ip, cs ]
             end
         end
-      | `Packet (flags, reply, cache) ->
+      | `Packet (flags, reply) ->
         let max_size, edns = Edns.reply req.edns in
         Logs.debug (fun m -> m "delegation reply for %a from cache: %a"
                        Packet.pp req Packet.pp_reply reply) ;
         let packet = Packet.create ?edns (fst req.header, flags) req.question (reply :> Packet.data) in
         let pkt, _ = Packet.encode ?max_size proto packet in
-        { t with cache }, [ proto, sender, sport, pkt ], []
+        t, [ proto, sender, sport, pkt ], []
         (* send it out! we've a cache hit here! *)
     end
   | _ ->

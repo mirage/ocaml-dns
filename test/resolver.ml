@@ -2,7 +2,7 @@
 
 open Dns
 
-let empty = Dns_resolver_cache.empty 100
+let empty = Dns_cache.empty 100
 
 let ip = Ipaddr.V4.of_string_exn
 let ip6 = Ipaddr.V6.of_string_exn
@@ -19,16 +19,16 @@ let rng i = Cstruct.create i
 let follow_res =
   let module M = struct
     type t =
-      [ `Out of Rcode.t * Name_rr_map.t * Name_rr_map.t * Dns_resolver_cache.t
-      | `Query of [ `raw ] Domain_name.t * Dns_resolver_cache.t
-      ]
-      let pp ppf = function
-        | `Out (rcode, answer, authority, _) -> Fmt.pf ppf "out %a answer %a authority %a" Rcode.pp rcode Name_rr_map.pp answer Name_rr_map.pp authority
-        | `Query (name, _) -> Fmt.pf ppf "query %a" Domain_name.pp name
-      let equal a b = match a, b with
-        | `Out (rc, an, au, _), `Out (rc', an', au', _) ->
+      [ `Out of Rcode.t * Name_rr_map.t * Name_rr_map.t
+      | `Query of [ `raw ] Domain_name.t
+      ] * Dns_cache.t
+      let pp ppf (r, _) = match r with
+        | `Out (rcode, answer, authority) -> Fmt.pf ppf "out %a answer %a authority %a" Rcode.pp rcode Name_rr_map.pp answer Name_rr_map.pp authority
+        | `Query name -> Fmt.pf ppf "query %a" Domain_name.pp name
+      let equal (a, _) (b, _) = match a, b with
+        | `Out (rc, an, au), `Out (rc', an', au') ->
           Rcode.compare rc rc' = 0 && Name_rr_map.equal an an' && Name_rr_map.equal au au'
-        | `Query (name, _), `Query (name', _) -> Domain_name.equal name name'
+        | `Query name, `Query name' -> Domain_name.equal name name'
         | _, _ -> false
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
@@ -41,11 +41,11 @@ let follow_cname_cycle () =
       (`Entry (B (Cname, cname)))
   in
   Alcotest.check follow_res "CNAME single cycle is detected"
-    (`Out (Rcode.NoError, circ_map, Name_rr_map.empty, cache))
+    (`Out (Rcode.NoError, circ_map, Name_rr_map.empty), cache)
     (Dns_resolver_cache.follow_cname cache 0L A
        ~name:(name "foo.com") 250l ~alias:(name "foo.com"));
   Alcotest.check follow_res "CNAME single cycle after timeout errors"
-    (`Query (name "foo.com", cache))
+    (`Query (name "foo.com"), cache)
     (Dns_resolver_cache.follow_cname cache (sec 251) A
        ~name:(name "foo.com") 250l ~alias:(name "foo.com"));
   let a = 250l, name "bar.com"
@@ -62,16 +62,43 @@ let follow_cname_cycle () =
       (Name_rr_map.singleton (name "foo.com") Cname a)
   in
   Alcotest.check follow_res "CNAME cycle is detected"
-    (`Out (Rcode.NoError, c_map, Name_rr_map.empty, cache))
+    (`Out (Rcode.NoError, c_map, Name_rr_map.empty), cache)
     (Dns_resolver_cache.follow_cname cache 0L A
        ~name:(name "bar.com") 250l ~alias:(name "foo.com"));
   Alcotest.check follow_res "Query foo.com (since it timed out)"
-    (`Query (name "foo.com", cache))
+    (`Query (name "foo.com"), cache)
     (Dns_resolver_cache.follow_cname cache (sec 251) A
        ~name:(name "bar.com") 250l ~alias:(name "foo.com"))
 
+let follow_cnames () =
+  let cname = 250l, name "bar.com" in
+  let map = Name_rr_map.singleton (name "foo.com") Cname cname in
+  let cache =
+    Dns_cache.set empty 0L (name "foo.com") A AuthoritativeAnswer
+      (`Entry (B (Cname, cname)))
+  in
+  Alcotest.check follow_res "CNAME is followed"
+    (`Query (name "bar.com"), cache)
+    (Dns_resolver_cache.follow_cname cache 0L A
+       ~name:(name "foo.com") 250l ~alias:(name "foo.com"));
+  Alcotest.check follow_res "CNAME after timeout errors"
+    (`Query (name "foo.com"), cache)
+    (Dns_resolver_cache.follow_cname cache (sec 251) A
+       ~name:(name "foo.com") 250l ~alias:(name "foo.com"));
+  let a_val = (250l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")) in
+  let a = Rr_map.(B (A, a_val)) in
+  let cache =
+    Dns_cache.set cache 0L (name "bar.com") A AuthoritativeAnswer (`Entry a)
+  in
+  let map = Name_rr_map.add (name "bar.com") A a_val map in
+  Alcotest.check follow_res "CNAME is followed"
+    (`Out (Rcode.NoError, map, Name_rr_map.empty), cache)
+    (Dns_resolver_cache.follow_cname cache 0L A
+       ~name:(name "foo.com") 250l ~alias:(name "foo.com"))
+
 let follow_cname_tests = [
   "follow_cname cycles", `Quick, follow_cname_cycle ;
+  "follow_cname works", `Quick, follow_cnames ;
 ]
 (*
 let resolve_ns_ret =
@@ -1287,7 +1314,7 @@ let scrub_tests = [
 ]
 
 let tests = [
-  "follow_cname cycles", follow_cname_tests ;
+  "follow_cname", follow_cname_tests ;
 (*  "resolve_ns", resolve_ns_tests ;
     "find_ns", find_ns_tests ; *)
   (*  "resolve", resolve_tests ;*)
