@@ -49,17 +49,17 @@ let empty_cache () =
   let cache = Dns_cache.empty 100 in
   Alcotest.check cached_r "empty cache results in Cache_miss"
     (Error `Cache_miss)
-    (Dns_cache.get cache 0L (name "an-actual-website.com") A)
+    (snd (Dns_cache.get cache 0L (name "an-actual-website.com") A))
 
 let cache_a () =
   let cache = Dns_cache.empty 100 in
   let name = name "an-actual-website.com" in
   let a = Rr_map.(B (A, (250l, Ipv4_set.singleton (ip "1.2.3.4")))) in
-  Dns_cache.set cache 0L name A AuthoritativeAnswer (`Entry a);
+  let cache = Dns_cache.set cache 0L name A AuthoritativeAnswer (`Entry a) in
   Alcotest.check cached_r "cache with A results in res"
-    (Ok (`Entry a)) (Dns_cache.get cache 0L name A) ;
+    (Ok (`Entry a)) (snd (Dns_cache.get cache 0L name A)) ;
   Alcotest.check cached_r "cache with A results in CacheMiss"
-    (Error `Cache_miss) (Dns_cache.get cache 0L name Cname)
+    (Error `Cache_miss) (snd (Dns_cache.get cache 0L name Cname))
 
 let cache_nodata () =
   let cache = Dns_cache.empty 100 in
@@ -69,19 +69,19 @@ let cache_nodata () =
   let soa = invalid_soa name in
   let nodata = `No_data (subname, soa) in
   let a = Rr_map.(B (A, (250l, Ipv4_set.singleton (ip "1.2.3.4")))) in
-  Dns_cache.set cache 0L name A AuthoritativeAnswer (`Entry a);
-  Dns_cache.set cache 0L subname A AuthoritativeAnswer nodata;
+  let cache = Dns_cache.set cache 0L name A AuthoritativeAnswer (`Entry a) in
+  let cache = Dns_cache.set cache 0L subname A AuthoritativeAnswer nodata in
   Alcotest.check cached_r "cache with A nodata results in nodata"
-    (Ok nodata) (Dns_cache.get cache 0L subname A) ;
+    (Ok nodata) (snd (Dns_cache.get cache 0L subname A)) ;
   Alcotest.check cached_r "cache with A nodata results in cache miss for NS"
-    (Error `Cache_miss) (Dns_cache.get cache 0L subname Ns) ;
+    (Error `Cache_miss) (snd (Dns_cache.get cache 0L subname Ns)) ;
   Alcotest.check cached_r "cache with A nodata results in a record"
-    (Ok (`Entry a)) (Dns_cache.get cache 0L name A) ;
+    (Ok (`Entry a)) (snd (Dns_cache.get cache 0L name A)) ;
   Alcotest.check cached_r "cache with A nodata results in cache miss for NS'"
-    (Error `Cache_miss) (Dns_cache.get cache 0L name Ns) ;
-  Dns_cache.set cache 0L subname A AuthoritativeAnswer (`Entry a);
+    (Error `Cache_miss) (snd (Dns_cache.get cache 0L name Ns)) ;
+  let cache = Dns_cache.set cache 0L subname A AuthoritativeAnswer (`Entry a) in
   Alcotest.check cached_r "cache with A nodata results in nodata"
-    (Ok (`Entry a)) (Dns_cache.get cache 0L subname A)
+    (Ok (`Entry a)) (snd (Dns_cache.get cache 0L subname A))
 
 let cache_tests = [
   "empty cache", `Quick, empty_cache ;

@@ -183,7 +183,7 @@ module Make = functor (Transport:S) ->
 struct
 
   type t = {
-    cache : Dns_cache.t ;
+    mutable cache : Dns_cache.t ;
     transport : Transport.t ;
   }
 
@@ -237,7 +237,11 @@ struct
     | Ok _ as ok -> Transport.lift ok
     | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
     | Error `Msg _ ->
-      match Dns_cache.get t.cache (Transport.clock ()) domain_name query_type |> lift_ok query_type with
+      let cache', r =
+        Dns_cache.get t.cache (Transport.clock ()) domain_name query_type
+      in
+      t.cache <- cache';
+      match lift_ok query_type r with
       | Ok _ as ok -> Transport.lift ok
       | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
       | Error `Msg _ ->
@@ -253,7 +257,10 @@ struct
          Logs.debug (fun m -> m "Receiving from NS");
          let update_cache entry =
            let rank = Dns_cache.NonAuthoritativeAnswer in
-           Dns_cache.set t.cache (Transport.clock ()) domain_name query_type rank entry
+           let cache =
+             Dns_cache.set t.cache (Transport.clock ()) domain_name query_type rank entry
+           in
+           t.cache <- cache
          in
          let rec recv_loop acc =
            Transport.recv socket >>| fun recv_buffer ->
