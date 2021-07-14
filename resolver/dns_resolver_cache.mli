@@ -24,8 +24,8 @@ val resolve_ns : Dns_cache.t -> int64 -> Domain_name.t ->
 val resolve : Dns_cache.t -> rng:(int -> Cstruct.t) ->  int64 -> [ `raw ] Domain_name.t ->
   Rr_map.k -> [ `raw ] Domain_name.t * [ `raw ] Domain_name.t * Rr_map.k * Ipaddr.t * Dns_cache.t
 
-val handle_query : Dns_cache.t -> rng:(int -> Cstruct.t) -> int64 -> [ `raw ] Domain_name.t ->
-  Packet.Question.qtype ->
+val handle_query : Dns_cache.t -> rng:(int -> Cstruct.t) -> int64 ->
+  [ `raw ] Domain_name.t * Packet.Question.qtype ->
   [ `Reply of Packet.Flags.t * Packet.reply
   | `Nothing
   | `Query of [ `raw ] Domain_name.t * ([ `raw ] Domain_name.t * Packet.Question.qtype) * Ipaddr.t ] * Dns_cache.t

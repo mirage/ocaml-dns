@@ -389,7 +389,7 @@ let answer t ts name typ =
       let data = Name_rr_map.singleton name k v in
       `Packet (packet t true Rcode.NoError data Domain_name.Map.empty), t
 
-let handle_query t ~rng ts qname qtype =
+let handle_query t ~rng ts (qname, qtype) =
   match answer t ts qname qtype with
   | `Packet (flags, data), t -> `Reply (flags, data), t
   | `Query name, t ->
