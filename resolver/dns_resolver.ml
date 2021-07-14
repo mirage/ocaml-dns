@@ -16,45 +16,19 @@ module QM = Map.Make(struct
       | x -> x
   end)
 
-type awaiting =
-  int64 * int * proto * [ `raw ] Domain_name.t * Edns.t option * Ipaddr.t * int * key * int
+type awaiting = {
+  ts : int64;
+  retry : int;
+  proto : proto;
+  zone : [ `raw ] Domain_name.t;
+  edns : Edns.t option;
+  ip : Ipaddr.t;
+  port : int;
+  question : key;
+  id : int;
+}
 
 let retry_interval = Duration.of_ms 500
-
-type stats = {
-  questions : int ;
-  responses : int ;
-  answers : int ;
-  authoritative : int ;
-  delegation : int ;
-  errors : int ;
-  drops : int ;
-  retransmits : int ;
-  total_out : int ;
-  max_out : int ;
-  total_time : int64 ;
-  max_time : int64 ;
-  drop_timeout : int ;
-  drop_send : int ;
-  retry_edns : int ;
-  tcp_upgrade : int ;
-}
-
-let empty_stats () = {
-  questions = 0 ; responses = 0 ; answers = 0 ;
-  authoritative = 0 ; delegation = 0 ;
-  errors = 0 ; drops = 0 ; retransmits = 0 ;
-  total_out = 0 ; max_out = 0 ; drop_timeout = 0 ; drop_send = 0 ;
-  retry_edns = 0 ; total_time = 0L ; max_time = 0L ; tcp_upgrade = 0 ;
-}
-
-let s = ref (empty_stats ())
-
-let pp_stats pf s =
-  let avg = if s.answers = 0 then 0L else Int64.div s.total_time (Int64.of_int s.answers) in
-  let avg_out = if s.answers = 0 then 0. else float_of_int s.total_out /. float_of_int s.answers in
-  Fmt.pf pf "%d questions, %d answers max %a (avg %a)@.%d received responses, %d authoritative, %d delegations, %d errors, %d dropped replies, %d retransmits, %d noedns retries, %d tcp upgrade@.%f average out (%d max), %d timeout drops %d max_out drops"
-    s.questions s.answers Duration.pp s.max_time Duration.pp avg s.responses s.authoritative s.delegation s.errors s.drops s.retransmits s.retry_edns s.tcp_upgrade avg_out s.max_out s.drop_timeout s.drop_send
 
 type t = {
   rng : int -> Cstruct.t ;
@@ -98,103 +72,78 @@ let build_query ?id ?(recursion_desired = false) t ts proto question retry zone 
     in
     id, flags
   in
-  let el = (ts, retry, proto, zone, edns, ip, 53, question, id) in
+  let el = { ts; retry; proto; zone; edns; ip; port = 53; question; id } in
   let transit =
     if QM.mem question t.transit then
       Logs.warn (fun m -> m "overwriting transit of %a" pp_key question) ;
     QM.add question el t.transit
   in
-  transit, Packet.create header (question :> Packet.Question.t) `Query
+  let packet = Packet.create ?edns header (question :> Packet.Question.t) `Query in
+  let cs, _ = Packet.encode proto packet in
+  { t with transit }, cs
 
-let maybe_query ?recursion_desired t ts retry out ip name typ (proto, zone, edns, orig_s, orig_p, orig_q, orig_id) =
+let maybe_query ?recursion_desired t ts await retry ip name typ =
   let k = (name, typ) in
-  let await = (ts, succ out, proto, zone, edns, orig_s, orig_p, orig_q, orig_id) in
+  let await = { await with retry = succ await.retry } in
   if QM.mem k t.queried then
     let t = { t with queried = QM.add k (await :: QM.find k t.queried) t.queried } in
     `Nothing, t
   else
-    let edns = Some (Edns.create ())
-    and proto = `Udp
-    in
     (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
-    let transit, packet = build_query ?recursion_desired t ts proto k retry zone edns ip in
-    let t = { t with transit ; queried = QM.add k [await] t.queried } in
-    let packet = Packet.with_edns packet edns in
-    Logs.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip Packet.pp packet) ;
-    let packet, _ = Packet.encode proto packet in
+    let t, packet = build_query ?recursion_desired t ts `Udp k retry await.zone (Some (Edns.create ())) ip in
+    let t = { t with queried = QM.add k [await] t.queried } in
+    Logs.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip pp_key k) ;
     `Query (packet, ip), t
 
 let was_in_transit t key id sender =
   match QM.find key t with
   | exception Not_found ->
-    s := { !s with drops = succ !s.drops } ;
     Logs.warn (fun m -> m "key %a not present in set (likely retransmitted)"
                   pp_key key);
     None, t
-  | (_ts, _retry, _proto, zone, edns, o_sender, _o_port, _o_q, o_id) ->
-    if Ipaddr.compare sender o_sender = 0 && id = o_id then
-      Some (zone, edns), QM.remove key t
+  | awaiting ->
+    if Ipaddr.compare sender awaiting.ip = 0 && id = awaiting.id then
+      Some (awaiting.zone, awaiting.edns), QM.remove key t
     else
       (Logs.warn (fun m -> m "unsolicited reply for %a (id %d vs o_id %d, sender %a vs o_sender %a)"
-                    pp_key key id o_id Ipaddr.pp sender Ipaddr.pp o_sender);
+                    pp_key key id awaiting.id Ipaddr.pp sender Ipaddr.pp awaiting.ip);
        None, t)
 
 let find_queries t k =
   match QM.find k t with
   | exception Not_found ->
     Logs.warn (fun m -> m "couldn't find entry %a in map" pp_key k) ;
-    s := { !s with drops = succ !s.drops } ;
     t, []
   | vals ->
     QM.remove k t, vals
 
-let stats t =
-  Logs.info (fun m -> m "stats: %a@.%d cached resource records (capacity: %d)"
-                pp_stats !s
-                (Dns_cache.size t.cache) (Dns_cache.capacity t.cache)) ;
-  let names = fst (List.split (QM.bindings t.transit)) in
-  Logs.info (fun m -> m "%d queries in transit %a" (QM.cardinal t.transit)
-                Fmt.(list ~sep:(unit "; ") pp_key) names) ;
-  let qs = List.map (fun (q, v) -> (List.length v, q)) (QM.bindings t.queried) in
-  Logs.info (fun m -> m "%d queries %a" (QM.cardinal t.queried)
-                Fmt.(list ~sep:(unit "; ")
-                       (pair ~sep:(unit ": ") int pp_key)) qs)
-
-let handle_query t its out ?(retry = 0) proto edns from port ts qname qtype qid =
-  if Int64.sub ts its > Int64.shift_left retry_interval 2 then begin
+let handle_query ?(retry = 0) t ts awaiting =
+  if Int64.sub ts awaiting.ts > Int64.shift_left retry_interval 2 then begin
     Logs.warn (fun m -> m "dropping q %a from %a:%d (timed out)"
-                  pp_key (qname, qtype) Ipaddr.pp from port);
-    s := { !s with drop_timeout = succ !s.drop_timeout };
+                  pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
     `Nothing, t
   end else
-    let r, cache = Dns_resolver_cache.handle_query t.cache ~rng:t.rng (* primary *) ts qname qtype in
+    let r, cache = Dns_resolver_cache.handle_query t.cache ~rng:t.rng ts awaiting.question in
     let t = { t with cache } in
     match r with
-    | `Query _ when out >= 30 ->
+    | `Query _ when awaiting.retry >= 30 ->
       Logs.warn (fun m -> m "dropping q %a from %a:%d (already sent 30 packets)"
-                    pp_key (qname, qtype) Ipaddr.pp from port);
-      s := { !s with drop_send = succ !s.drop_send };
+                    pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
       (* TODO reply with error! *)
       `Nothing, t
     | `Query (zone, (nam, typ), ip) ->
       Logs.debug (fun m -> m "have to query (zone %a) %a using ip %a"
                      Domain_name.pp zone pp_key (nam, typ) Ipaddr.pp ip);
-      maybe_query t ts retry out ip nam typ (proto, zone, edns, from, port, (qname, qtype), qid)
+      let await = { awaiting with zone } in
+      maybe_query t ts await retry ip nam typ
     | `Reply (flags, a) ->
-      let max_out = if !s.max_out < out then out else !s.max_out in
-      let time = Int64.sub ts its in
-      let max_time = if !s.max_time < time then time else !s.max_time in
-      s := { !s with
-             answers = succ !s.answers ;
-             max_out ; total_out = !s.total_out + out ;
-             max_time ; total_time = Int64.add !s.total_time time ;
-           } ;
-      let max_size, edns = Edns.reply edns in
-      let packet = Packet.create ?edns (qid, flags) ((qname, qtype) :> Packet.Question.t) (a :> Packet.data) in
+      let time = Int64.sub ts awaiting.ts in
+      let max_size, edns = Edns.reply awaiting.edns in
+      let packet = Packet.create ?edns (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (a :> Packet.data) in
       Logs.debug (fun m -> m "answering %a after %a %d out packets: %a"
-                     pp_key (qname, qtype) Duration.pp time out
+                     pp_key awaiting.question Duration.pp time awaiting.retry
                      Packet.pp packet) ;
-      let cs, _ = Packet.encode ?max_size proto packet in
+      let cs, _ = Packet.encode ?max_size awaiting.proto packet in
       `Answer cs, t
     | `Nothing -> `Nothing, t
 
@@ -230,14 +179,11 @@ let handle_primary t now ts proto sender sport packet _request buf =
     | Some reply ->
       (* delegation if authoritative is not set! *)
       if Packet.Flags.mem `Authoritative (snd reply.header) then begin
-        s := { !s with authoritative = succ !s.authoritative };
         Logs.debug (fun m -> m "authoritative reply %a" Packet.pp reply) ;
         let r = Packet.encode proto reply in
         `Reply (t, (reply, r))
       end else match reply.data with
-        | `Answer data ->
-          s := { !s with delegation = succ !s.delegation };
-          `Delegation (data, reply.additional)
+        | `Answer data -> `Delegation (data, reply.additional)
         | _ -> `None (* not authoritative, error!! *)
   in
   match Dns_server.(handle_tsig (Primary.server t) now packet buf) with
@@ -268,12 +214,12 @@ let handle_primary t now ts proto sender sport packet _request buf =
 let handle_awaiting_queries ?retry t ts (name, typ) =
   let queried, values = find_queries t.queried (name, typ) in
   let t = { t with queried } in
-  List.fold_left (fun (t, out_a, out_q) (old_ts, out, proto, _, edns, from, port, q, qid) ->
-      Logs.debug (fun m -> m "now querying %a" pp_key q) ;
-      match handle_query ?retry t old_ts out proto edns from port ts name typ qid with
+  List.fold_left (fun (t, out_a, out_q) awaiting ->
+      Logs.debug (fun m -> m "now querying %a" pp_key awaiting.question) ;
+      match handle_query ?retry t ts awaiting with
       | `Nothing, t -> t, out_a, out_q
       | `Query (pkt, dst), t -> t, out_a, (`Udp, dst, pkt) :: out_q
-      | `Answer pkt, t -> t, (proto, from, port, pkt) :: out_a, out_q)
+      | `Answer pkt, t -> t, (awaiting.proto, awaiting.ip, awaiting.port, pkt) :: out_a, out_q)
     (t, [], []) values
 
 let resolve t ts proto sender sport req =
@@ -282,9 +228,9 @@ let resolve t ts proto sender sport req =
     Logs.info (fun m -> m "resolving %a" Packet.pp req) ;
     if not (Packet.Flags.mem `Recursion_desired (snd req.Packet.header)) then
       Logs.warn (fun m -> m "recursion not desired") ;
-    s := { !s with questions = succ !s.questions };
     (* ask the cache *)
-    begin match handle_query t ts 0 proto req.edns sender sport ts (fst req.question) q_type (fst req.header) with
+    let awaiting = { ts; retry = 0; proto; zone = Domain_name.root ; edns = req.edns; ip = sender; port = sport; question = (fst req.question, q_type); id = fst req.header; } in
+    begin match handle_query t ts awaiting with
       | `Answer pkt, t -> t, [ (proto, sender, sport, pkt) ], []
       | `Nothing, t -> t, [], [] (* TODO: send a reply!? *)
       | `Query (packet, dst), t -> t, [], [ `Udp, dst, packet ]
@@ -312,18 +258,14 @@ let handle_reply t ts proto sender packet reply =
     let r = match r with
       | None -> (t, [], [])
       | Some (zone, edns) ->
-        s := { !s with responses = succ !s.responses } ;
         (* (b) now we scrub and either *)
         match scrub_it t.mode t.cache proto zone edns ts qtype packet with
         | `Query_without_edns ->
-          s := { !s with retry_edns = succ !s.retry_edns } ;
-          let transit, packet = build_query t ts proto key 1 zone None sender in
+          let t, cs = build_query t ts proto key 1 zone None sender in
           Logs.debug (fun m -> m "resolve: requery without edns %a %a"
-                         Ipaddr.pp sender Packet.pp packet) ;
-          let cs, _ = Packet.encode `Udp packet in
-          ({ t with transit }, [], [ `Udp, sender, cs ])
+                         Ipaddr.pp sender pp_key key) ;
+          (t, [], [ `Udp, sender, cs ])
         | `Upgrade_to_tcp cache ->
-          s := { !s with tcp_upgrade = succ !s.tcp_upgrade } ;
           (* RFC 2181 Sec 9: correct would be to drop entire frame, and retry with tcp *)
           (* but we're happy to retrieve the partial information, it may be useful *)
           let t = { t with cache } in
@@ -339,11 +281,10 @@ let handle_reply t ts proto sender packet reply =
             | `Recursive -> handle_awaiting_queries t ts key, false
           in
           (* TODO why is edns none here?  is edns bad over tcp? *)
-          let transit, packet = build_query ~recursion_desired t ts `Tcp key 1 zone None sender in
+          let t, cs = build_query ~recursion_desired t ts `Tcp key 1 zone None sender in
           Logs.debug (fun m -> m "resolve: upgrade to tcp %a %a"
-                         Ipaddr.pp sender Packet.pp packet) ;
-          let cs, _ = Packet.encode `Tcp packet in
-          ({ t with transit }, out_a, (`Tcp, sender, cs) :: out_q)
+                         Ipaddr.pp sender pp_key key) ;
+          (t, out_a, (`Tcp, sender, cs) :: out_q)
         | `Try_another_ns ->
           (* is this the right behaviour? by luck we'll use another path *)
           handle_awaiting_queries t ts key
@@ -380,8 +321,8 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
             Logs.debug (fun m -> m "found ip %a, maybe querying %a"
                            Ipaddr.V4.pp ip pp_key (name, qtype)) ;
             (* TODO is Domain_name.root correct here? *)
-            let key = fst req.question, qtype in
-            begin match maybe_query ~recursion_desired:true t ts 0 0 (Ipaddr.V4 ip) name qtype (proto, Domain_name.root, req.edns, sender, sport, key, fst req.header) with
+            let await = { ts; retry = 0; proto; zone = Domain_name.root; edns = req.edns; ip = sender; port = sport; question = (fst req.question, qtype); id = fst req.header; } in
+            begin match maybe_query ~recursion_desired:true t ts await 0 (Ipaddr.V4 ip) name qtype with
               | `Nothing, t ->
                 Logs.warn (fun m -> m "maybe_query for %a at %a returned nothing"
                               Domain_name.pp name Ipaddr.V4.pp ip) ;
@@ -412,13 +353,11 @@ let handle_buf t now ts query proto sender sport buf =
     Logs.err (fun m -> m "bad edns version (from %a:%d) %u for@.%a"
                  Ipaddr.pp sender sport
                  v Cstruct.hexdump_pp buf) ;
-    s := { !s with errors = succ !s.errors } ;
     t, handle_error ~error:Dns_enum.BadVersOrSig proto sender sport buf, [] *)
   | Error e ->
     Logs.err (fun m -> m "decode error (from %a:%d) %a for@.%a"
                  Ipaddr.pp sender sport
                  Packet.pp_err e Cstruct.hexdump_pp buf) ;
-    s := { !s with errors = succ !s.errors };
     let answer = match Packet.raw_error buf Rcode.FormErr with
       | None -> []
       | Some data -> [ proto, sender, sport, data ]
@@ -469,13 +408,15 @@ let query_root t now proto =
       end
     | _ -> root_ip ()
   in
-  let q = Domain_name.root, `K (Rr_map.K Ns)
+  let question = Domain_name.root, `K (Rr_map.K Ns)
   and id = Randomconv.int16 t.rng
   and edns = Some (Edns.create ())
   in
-  let el = (now, 0, proto, Domain_name.root, edns, ip, 53, q, id) in
-  let t = { t with transit = QM.add q el t.transit } in
-  let packet = Packet.create ?edns (id, Packet.Flags.empty) q `Query in
+  let el =
+    { ts = now; retry = 0; proto; zone = Domain_name.root; edns; ip; port = 53; question; id; }
+  in
+  let t = { t with transit = QM.add question el t.transit } in
+  let packet = Packet.create ?edns (id, Packet.Flags.empty) question `Query in
   let cs, _ = Packet.encode proto packet in
   t, (proto, ip, cs)
 
@@ -483,34 +424,34 @@ let max_retries = 5
 
 let err_retries t question =
   let t, reqs = find_queries t question in
-  t, List.fold_left (fun acc (_, _, proto, _, _, ip, port, q, qid) ->
-      Logs.debug (fun m -> m "now erroring to %a" pp_key q) ;
-      let packet = Packet.create (qid, Packet.Flags.empty) (q :> Packet.Question.t)
+  t, List.fold_left (fun acc awaiting ->
+      Logs.debug (fun m -> m "now erroring to %a" pp_key awaiting.question) ;
+      let packet = Packet.create (awaiting.id, Packet.Flags.empty)
+          (awaiting.question :> Packet.Question.t)
           (`Rcode_error (Rcode.ServFail, Opcode.Query, None))
       in
-      let buf, _ = Packet.encode proto packet in
-      (proto, ip, port, buf) :: acc)
+      let buf, _ = Packet.encode awaiting.proto packet in
+      (awaiting.proto, awaiting.ip, awaiting.port, buf) :: acc)
     [] reqs
 
 let try_other_timer t ts =
   let transit, rem =
     QM.partition
-      (fun _ (c, _, _, _, _, _, _, _, _) -> Int64.sub ts c < retry_interval)
+      (fun _ awaiting -> Int64.sub ts awaiting.ts < retry_interval)
       t.transit
   in
   let t = { t with transit } in
   if not (QM.is_empty transit && QM.is_empty rem) then
     Logs.debug (fun m -> m "try_other timer wheel -- keeping %d, running over %d"
                    (QM.cardinal transit) (QM.cardinal rem)) ;
-  QM.fold (fun (name, typ) (_, retry, _, _, _, qs, _, _, _) (t, out_a, out_q) ->
-      let retry = succ retry in
+  QM.fold (fun (name, typ) awaiting (t, out_a, out_q) ->
+      let retry = succ awaiting.retry in
       if retry < max_retries then begin
-        s := { !s with retransmits = succ !s.retransmits } ;
         let t, outa, outq = handle_awaiting_queries ~retry t ts (name, typ) in
         (t, outa @ out_a, outq @ out_q)
       end else begin
         Logs.info (fun m -> m "retry limit exceeded for %a at %a!"
-                      pp_key (name, typ) Ipaddr.pp qs) ;
+                      pp_key (name, typ) Ipaddr.pp awaiting.ip) ;
         let queried, out_as = err_retries t.queried (name, typ) in
         ({ t with queried }, out_as @ out_a, out_q)
       end)
@@ -519,23 +460,21 @@ let try_other_timer t ts =
 let _retry_timer t ts =
   if not (QM.is_empty t.transit) then
     Logs.debug (fun m -> m "retry timer with %d entries" (QM.cardinal t.transit)) ;
-  List.fold_left (fun (t, out_a, out_q) (key, (c, retry, proto, zone, edns, qs, _port, _query, id)) ->
-      if Int64.sub ts c < retry_interval then
+  List.fold_left (fun (t, out_a, out_q) (key, awaiting) ->
+      if Int64.sub ts awaiting.ts < retry_interval then
         (Logs.debug (fun m -> m "ignoring retransmit %a for now %a"
-                        pp_key key Duration.pp (Int64.sub ts c) ) ;
+                        pp_key key Duration.pp (Int64.sub ts awaiting.ts) ) ;
          (t, out_a, out_q))
       else
-        let retry = succ retry in
+        let retry = succ awaiting.retry in
         if retry < max_retries then begin
-          s := { !s with retransmits = succ !s.retransmits } ;
           Logs.info (fun m -> m "retransmit %a (%d of %d) to %a"
-                        pp_key key retry max_retries Ipaddr.pp qs) ;
-          let transit, packet = build_query ~id t ts proto key retry zone edns qs in
-          let cs, _ = Packet.encode `Udp packet in
-          { t with transit }, out_a, (`Udp, qs, cs) :: out_q
+                        pp_key key awaiting.retry max_retries Ipaddr.pp awaiting.ip) ;
+          let t, cs = build_query ~id:awaiting.id t ts awaiting.proto key retry awaiting.zone awaiting.edns awaiting.ip in
+          t, out_a, (`Udp, awaiting.ip, cs) :: out_q
         end else begin
           Logs.info (fun m -> m "retry limit exceeded for %a at %a!"
-                        pp_key key Ipaddr.pp qs) ;
+                        pp_key key Ipaddr.pp awaiting.ip) ;
           (* answer all outstanding requestors! *)
           let transit = QM.remove key t.transit in
           let t = { t with transit } in
