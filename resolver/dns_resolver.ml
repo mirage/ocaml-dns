@@ -30,41 +30,6 @@ type awaiting = {
 
 let retry_interval = Duration.of_ms 500
 
-type stats = {
-  questions : int ;
-  responses : int ;
-  answers : int ;
-  authoritative : int ;
-  delegation : int ;
-  errors : int ;
-  drops : int ;
-  retransmits : int ;
-  total_out : int ;
-  max_out : int ;
-  total_time : int64 ;
-  max_time : int64 ;
-  drop_timeout : int ;
-  drop_send : int ;
-  retry_edns : int ;
-  tcp_upgrade : int ;
-}
-
-let empty_stats () = {
-  questions = 0 ; responses = 0 ; answers = 0 ;
-  authoritative = 0 ; delegation = 0 ;
-  errors = 0 ; drops = 0 ; retransmits = 0 ;
-  total_out = 0 ; max_out = 0 ; drop_timeout = 0 ; drop_send = 0 ;
-  retry_edns = 0 ; total_time = 0L ; max_time = 0L ; tcp_upgrade = 0 ;
-}
-
-let s = ref (empty_stats ())
-
-let pp_stats pf s =
-  let avg = if s.answers = 0 then 0L else Int64.div s.total_time (Int64.of_int s.answers) in
-  let avg_out = if s.answers = 0 then 0. else float_of_int s.total_out /. float_of_int s.answers in
-  Fmt.pf pf "%d questions, %d answers max %a (avg %a)@.%d received responses, %d authoritative, %d delegations, %d errors, %d dropped replies, %d retransmits, %d noedns retries, %d tcp upgrade@.%f average out (%d max), %d timeout drops %d max_out drops"
-    s.questions s.answers Duration.pp s.max_time Duration.pp avg s.responses s.authoritative s.delegation s.errors s.drops s.retransmits s.retry_edns s.tcp_upgrade avg_out s.max_out s.drop_timeout s.drop_send
-
 type t = {
   rng : int -> Cstruct.t ;
   primary : Dns_server.Primary.s ;
@@ -133,7 +98,6 @@ let maybe_query ?recursion_desired t ts await retry ip name typ =
 let was_in_transit t key id sender =
   match QM.find key t with
   | exception Not_found ->
-    s := { !s with drops = succ !s.drops } ;
     Logs.warn (fun m -> m "key %a not present in set (likely retransmitted)"
                   pp_key key);
     None, t
@@ -149,28 +113,14 @@ let find_queries t k =
   match QM.find k t with
   | exception Not_found ->
     Logs.warn (fun m -> m "couldn't find entry %a in map" pp_key k) ;
-    s := { !s with drops = succ !s.drops } ;
     t, []
   | vals ->
     QM.remove k t, vals
-
-let stats t =
-  Logs.info (fun m -> m "stats: %a@.%d cached resource records (capacity: %d)"
-                pp_stats !s
-                (Dns_cache.size t.cache) (Dns_cache.capacity t.cache)) ;
-  let names = fst (List.split (QM.bindings t.transit)) in
-  Logs.info (fun m -> m "%d queries in transit %a" (QM.cardinal t.transit)
-                Fmt.(list ~sep:(unit "; ") pp_key) names) ;
-  let qs = List.map (fun (q, v) -> (List.length v, q)) (QM.bindings t.queried) in
-  Logs.info (fun m -> m "%d queries %a" (QM.cardinal t.queried)
-                Fmt.(list ~sep:(unit "; ")
-                       (pair ~sep:(unit ": ") int pp_key)) qs)
 
 let handle_query ?(retry = 0) t ts awaiting =
   if Int64.sub ts awaiting.ts > Int64.shift_left retry_interval 2 then begin
     Logs.warn (fun m -> m "dropping q %a from %a:%d (timed out)"
                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
-    s := { !s with drop_timeout = succ !s.drop_timeout };
     `Nothing, t
   end else
     let r, cache = Dns_resolver_cache.handle_query t.cache ~rng:t.rng ts awaiting.question in
@@ -179,7 +129,6 @@ let handle_query ?(retry = 0) t ts awaiting =
     | `Query _ when awaiting.retry >= 30 ->
       Logs.warn (fun m -> m "dropping q %a from %a:%d (already sent 30 packets)"
                     pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
-      s := { !s with drop_send = succ !s.drop_send };
       (* TODO reply with error! *)
       `Nothing, t
     | `Query (zone, (nam, typ), ip) ->
@@ -188,14 +137,7 @@ let handle_query ?(retry = 0) t ts awaiting =
       let await = { awaiting with zone } in
       maybe_query t ts await retry ip nam typ
     | `Reply (flags, a) ->
-      let max_out = if !s.max_out < awaiting.retry then awaiting.retry else !s.max_out in
       let time = Int64.sub ts awaiting.ts in
-      let max_time = if !s.max_time < time then time else !s.max_time in
-      s := { !s with
-             answers = succ !s.answers ;
-             max_out ; total_out = !s.total_out + awaiting.retry ;
-             max_time ; total_time = Int64.add !s.total_time time ;
-           } ;
       let max_size, edns = Edns.reply awaiting.edns in
       let packet = Packet.create ?edns (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (a :> Packet.data) in
       Logs.debug (fun m -> m "answering %a after %a %d out packets: %a"
@@ -237,14 +179,11 @@ let handle_primary t now ts proto sender sport packet _request buf =
     | Some reply ->
       (* delegation if authoritative is not set! *)
       if Packet.Flags.mem `Authoritative (snd reply.header) then begin
-        s := { !s with authoritative = succ !s.authoritative };
         Logs.debug (fun m -> m "authoritative reply %a" Packet.pp reply) ;
         let r = Packet.encode proto reply in
         `Reply (t, (reply, r))
       end else match reply.data with
-        | `Answer data ->
-          s := { !s with delegation = succ !s.delegation };
-          `Delegation (data, reply.additional)
+        | `Answer data -> `Delegation (data, reply.additional)
         | _ -> `None (* not authoritative, error!! *)
   in
   match Dns_server.(handle_tsig (Primary.server t) now packet buf) with
@@ -289,7 +228,6 @@ let resolve t ts proto sender sport req =
     Logs.info (fun m -> m "resolving %a" Packet.pp req) ;
     if not (Packet.Flags.mem `Recursion_desired (snd req.Packet.header)) then
       Logs.warn (fun m -> m "recursion not desired") ;
-    s := { !s with questions = succ !s.questions };
     (* ask the cache *)
     let awaiting = { ts; retry = 0; proto; zone = Domain_name.root ; edns = req.edns; ip = sender; port = sport; question = (fst req.question, q_type); id = fst req.header; } in
     begin match handle_query t ts awaiting with
@@ -320,17 +258,14 @@ let handle_reply t ts proto sender packet reply =
     let r = match r with
       | None -> (t, [], [])
       | Some (zone, edns) ->
-        s := { !s with responses = succ !s.responses } ;
         (* (b) now we scrub and either *)
         match scrub_it t.mode t.cache proto zone edns ts qtype packet with
         | `Query_without_edns ->
-          s := { !s with retry_edns = succ !s.retry_edns } ;
           let t, cs = build_query t ts proto key 1 zone None sender in
           Logs.debug (fun m -> m "resolve: requery without edns %a %a"
                          Ipaddr.pp sender pp_key key) ;
           (t, [], [ `Udp, sender, cs ])
         | `Upgrade_to_tcp cache ->
-          s := { !s with tcp_upgrade = succ !s.tcp_upgrade } ;
           (* RFC 2181 Sec 9: correct would be to drop entire frame, and retry with tcp *)
           (* but we're happy to retrieve the partial information, it may be useful *)
           let t = { t with cache } in
@@ -418,13 +353,11 @@ let handle_buf t now ts query proto sender sport buf =
     Logs.err (fun m -> m "bad edns version (from %a:%d) %u for@.%a"
                  Ipaddr.pp sender sport
                  v Cstruct.hexdump_pp buf) ;
-    s := { !s with errors = succ !s.errors } ;
     t, handle_error ~error:Dns_enum.BadVersOrSig proto sender sport buf, [] *)
   | Error e ->
     Logs.err (fun m -> m "decode error (from %a:%d) %a for@.%a"
                  Ipaddr.pp sender sport
                  Packet.pp_err e Cstruct.hexdump_pp buf) ;
-    s := { !s with errors = succ !s.errors };
     let answer = match Packet.raw_error buf Rcode.FormErr with
       | None -> []
       | Some data -> [ proto, sender, sport, data ]
@@ -514,7 +447,6 @@ let try_other_timer t ts =
   QM.fold (fun (name, typ) awaiting (t, out_a, out_q) ->
       let retry = succ awaiting.retry in
       if retry < max_retries then begin
-        s := { !s with retransmits = succ !s.retransmits } ;
         let t, outa, outq = handle_awaiting_queries ~retry t ts (name, typ) in
         (t, outa @ out_a, outq @ out_q)
       end else begin
@@ -536,7 +468,6 @@ let _retry_timer t ts =
       else
         let retry = succ awaiting.retry in
         if retry < max_retries then begin
-          s := { !s with retransmits = succ !s.retransmits } ;
           Logs.info (fun m -> m "retransmit %a (%d of %d) to %a"
                         pp_key key awaiting.retry max_retries Ipaddr.pp awaiting.ip) ;
           let t, cs = build_query ~id:awaiting.id t ts awaiting.proto key retry awaiting.zone awaiting.edns awaiting.ip in
