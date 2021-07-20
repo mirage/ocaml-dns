@@ -283,9 +283,9 @@ let set cache ts name query_type rank entry  =
     Logs.debug (fun m -> m "set: %a nothing found, adding: %a"
                    pp_query (name, `K (K query_type)) pp_entry entry');
     metrics `Insert; cache' map
-  | map, Ok ((_, rank'), _) ->
+  | map, Ok ((created, rank'), entry) ->
     Logs.debug (fun m -> m "set: %a found rank %a insert rank %a: %d"
                    pp_query (name, `K (K query_type)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
-    match compare_rank rank' rank with
-    | 1 -> cache
+    match update_ttl entry ~created ~now:ts, compare_rank rank' rank with
+    | Ok _, 1 -> cache
     | _ -> metrics `Insert; cache' map
