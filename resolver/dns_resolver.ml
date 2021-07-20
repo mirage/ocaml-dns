@@ -126,8 +126,8 @@ let handle_query ?(retry = 0) t ts awaiting =
     let r, cache = Dns_resolver_cache.handle_query t.cache ~rng:t.rng ts awaiting.question in
     let t = { t with cache } in
     match r with
-    | `Query _ when awaiting.retry >= 100 ->
-      Logs.warn (fun m -> m "dropping q %a from %a:%d (already sent 100 packets)"
+    | `Query _ when awaiting.retry >= 30 ->
+      Logs.warn (fun m -> m "dropping q %a from %a:%d (already sent 30 packets)"
                     pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
       (* TODO reply with error! *)
       `Nothing, t
