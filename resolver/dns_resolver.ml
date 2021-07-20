@@ -105,7 +105,7 @@ let was_in_transit t key id sender =
     if Ipaddr.compare sender awaiting.ip = 0 && id = awaiting.id then
       Some (awaiting.zone, awaiting.edns), QM.remove key t
     else
-      (Logs.warn (fun m -> m "unsolicited reply for %a (id %d vs o_id %d, sender %a vs o_sender %a)"
+      (Logs.warn (fun m -> m "unsolicited reply for %a (id %04X vs o_id %04X, sender %a vs o_sender %a)"
                     pp_key key id awaiting.id Ipaddr.pp sender Ipaddr.pp awaiting.ip);
        None, t)
 
