@@ -1,3 +1,15 @@
+### unreleased
+
+* BREAKING dns.cache: use a LRU.F.t instead of LRU.M.t (#256 @hannesm)
+* dns.cache: provide get_or_cname and get_any function (#256 #257 @hannesm)
+* BUGFIX dns.cache: update if time to live of cached entry expired
+  (reported in #259 by @dinosaure, fix by @reynir and @hannesm)
+* dns-resolver: use dns.cache instead of copy in Dns_resolver_cache (#256 @hannesm)
+* BUGFIX dns-resolver: fix responses to queries (reported in #255 by @dinosaure,
+  fix in #258 by @reynir and @hannesm)
+* dns-resolver: refactor and cleanup code, remove statistics
+  (#258 @reynir @hannesm)
+
 ### v5.0.1 (2021-04-22)
 
 * dns-certify: adapt to X.509 0.13.0 API changes (#254 @hannesm)
