@@ -36,10 +36,9 @@ type t = {
   cache : Dns_cache.t ;
   transit : awaiting QM.t ;
   queried : awaiting list QM.t ;
-  mode : [ `Stub | `Recursive ] ;
 }
 
-let create ?(size = 10000) ?(mode = `Recursive) now rng primary =
+let create ?(size = 10000) now rng primary =
   let cache = Dns_cache.empty size in
   let cache =
     List.fold_left (fun cache (name, b) ->
@@ -53,7 +52,7 @@ let create ?(size = 10000) ?(mode = `Recursive) now rng primary =
       Domain_name.root Ns Dns_cache.Additional
       (`Entry Dns_resolver_root.ns_records)
   in
-  { rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty ; mode }
+  { rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty }
 
 let pick rng = function
   | [] -> None
@@ -147,8 +146,8 @@ let handle_query ?(retry = 0) t ts awaiting =
       `Answer cs, t
     | `Nothing -> `Nothing, t
 
-let scrub_it mode t proto zone edns ts qtype p =
-  match Dns_resolver_utils.scrub ~mode zone qtype p, edns with
+let scrub_it t proto zone edns ts qtype p =
+  match Dns_resolver_utils.scrub zone qtype p, edns with
   | Ok xs, _ ->
     let cache =
       List.fold_left
@@ -259,7 +258,7 @@ let handle_reply t ts proto sender packet reply =
       | None -> (t, [], [])
       | Some (zone, edns) ->
         (* (b) now we scrub and either *)
-        match scrub_it t.mode t.cache proto zone edns ts qtype packet with
+        match scrub_it t.cache proto zone edns ts qtype packet with
         | `Query_without_edns ->
           let t, cs = build_query t ts proto key 1 zone None sender in
           Logs.debug (fun m -> m "resolve: requery without edns %a %a"
@@ -276,9 +275,7 @@ let handle_reply t ts proto sender packet reply =
           (* TODO we may want to get rid of the handle_awaiting_queries
              entirely here!? *)
           let (t, out_a, out_q), recursion_desired =
-            match t.mode with
-            | `Stub -> (t, [], []), true
-            | `Recursive -> handle_awaiting_queries t ts key, false
+            handle_awaiting_queries t ts key, false
           in
           (* TODO why is edns none here?  is edns bad over tcp? *)
           let t, cs = build_query ~recursion_desired t ts `Tcp key 1 zone None sender in
