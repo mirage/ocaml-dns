@@ -3,9 +3,8 @@
 type t
 (** The type of a DNS resolver. *)
 
-val create : ?size:int -> ?mode:[ `Recursive | `Stub ] -> int64 ->
-  (int -> Cstruct.t) -> Dns_server.Primary.s -> t
-(** [create ~size ~mode now rng primary] creates the value of a resolver,
+val create : ?size:int -> int64 -> (int -> Cstruct.t) -> Dns_server.Primary.s -> t
+(** [create ~size now rng primary] creates the value of a resolver,
    pre-filled with root NS and their IP addresses. *)
 
 val handle_buf : t -> Ptime.t -> int64 -> bool -> Dns.proto -> Ipaddr.t ->

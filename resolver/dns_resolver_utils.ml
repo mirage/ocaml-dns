@@ -248,49 +248,12 @@ let nxdomain (_, flags) name data =
   (* the cname does not matter *)
   List.map (fun (name, res) -> Rr_map.K Cname, name, rank, res) entries
 
-let noerror_stub name typ (answer, authority) =
-  (* no glue, just answers - but get all the cnames *)
-  let find_entry_or_cname name =
-    match Domain_name.Map.find name answer with
-    | None -> None
-    | Some rrmap -> match typ with
-      | `Any -> Some (`Entries rrmap)
-      | `K (Rr_map.K k) -> match Rr_map.find k rrmap with
-        | Some v -> Some (`Entry (Rr_map.B (k, v)))
-        | None -> match Rr_map.find Cname rrmap with
-          | None -> None
-          | Some (ttl, alias) -> Some (`Cname (ttl, alias))
-  in
-  let rec go acc name = match find_entry_or_cname name with
-    | None ->
-      let name, soa = match find_soa name authority with
-        | Some (name, soa) -> (name, soa)
-        | None -> name, invalid_soa name
-      in
-      (* TODO unclear what to do here *)
-      let typ = match typ with `Any -> Rr_map.K A | `K k -> k in
-      (typ, name, Dns_cache.NonAuthoritativeAnswer, `No_data (name, soa)) :: acc
-    | Some (`Cname (ttl, alias)) ->
-      go ((Rr_map.K Cname, name, Dns_cache.NonAuthoritativeAnswer, (`Entry (Rr_map.B (Cname, (ttl, alias))))) :: acc) alias
-    | Some (`Entry (B (k, v))) ->
-      (K k, name, Dns_cache.NonAuthoritativeAnswer, `Entry (Rr_map.B (k, v))) :: acc
-    | Some (`Entries map) ->
-      Rr_map.fold (fun Rr_map.(B (k, _) as b) acc ->
-          (Rr_map.K k, name, Dns_cache.NonAuthoritativeAnswer, `Entry b) :: acc)
-        map acc
-  in
-  go [] name
-
 (* stub vs recursive: maybe sufficient to look into *)
-let scrub ?(mode = `Recursive) zone qtype p =
+let scrub zone qtype p =
   Logs.debug (fun m -> m "scrubbing (bailiwick %a) data %a"
                  Domain_name.pp zone Packet.pp p);
   let qname = fst p.question in
-  match mode, p.Packet.data with
-  | `Recursive, `Answer data -> Ok (noerror zone p.header qname qtype data p.additional)
-  | `Stub, `Answer data -> Ok (noerror_stub qname qtype data)
-  | _, `Rcode_error (Rcode.NXDomain, _, data) -> Ok (nxdomain p.Packet.header qname data)
-  | `Stub, `Rcode_error (Rcode.ServFail, _, _) ->
-    let soa = invalid_soa qname in
-    Ok [ Rr_map.K Cname, qname, NonAuthoritativeAnswer, `Serv_fail (qname, soa) ]
-  | _, e -> Error (Packet.rcode_data e)
+  match p.Packet.data with
+  | `Answer data -> Ok (noerror zone p.header qname qtype data p.additional)
+  | `Rcode_error (Rcode.NXDomain, _, data) -> Ok (nxdomain p.Packet.header qname data)
+  | e -> Error (Packet.rcode_data e)
