@@ -17,12 +17,6 @@ let invalid_soa name =
     expiry = 1048576l ; minimum = 300l
   }
 
-let soa_map name soa = Name_rr_map.singleton name Soa soa
-
-let _invalid_soa_map name =
-  let soa = invalid_soa name in
-  soa_map name soa
-
 let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
   (* maybe should be passed explicitly (when we don't do qname minimisation) *)
   let in_bailiwick name = Domain_name.is_subdomain ~domain:bailiwick ~subdomain:name in

@@ -12,15 +12,6 @@ val answer : Dns_cache.t -> int64 -> [ `raw ] Domain_name.t -> Packet.Question.q
   [ `Query of [ `raw ] Domain_name.t
   | `Packet of Packet.Flags.t * Packet.reply ] * Dns_cache.t
 
-(*
-val resolve_ns : Dns_cache.t -> int64 -> Domain_name.t ->
-  [ `NeedA of Domain_name.t | `NeedCname of Domain_name.t | `HaveIPS of Rr_map.Ipv4_set.t | `NoDom | `No ] * Dns_cache.t
-*)
-
-(*val find_ns : Dns_cache.t -> (int -> Cstruct.t) -> int64 -> Domain_name.Set.t -> Domain_name.t ->
-  [ `Loop | `NeedNS | `NoDom | `No | `Cname of Domain_name.t | `HaveIP of Ipaddr.t | `NeedA of Domain_name.t | `NeedGlue of Domain_name.t ] * Dns_cache.t
-*)
-
 val resolve : Dns_cache.t -> rng:(int -> Cstruct.t) -> int64 -> [ `raw ] Domain_name.t ->
   Packet.Question.qtype -> [ `raw ] Domain_name.t * [ `raw ] Domain_name.t * Packet.Question.qtype * Ipaddr.t * Dns_cache.t
 
