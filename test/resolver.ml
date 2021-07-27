@@ -4,7 +4,8 @@ open Dns
 
 let empty = Dns_cache.empty 100
 
-let ip = Ipaddr.V4.of_string_exn
+let ip = Ipaddr.of_string_exn
+let ip4 = Ipaddr.V4.of_string_exn
 let ip6 = Ipaddr.V6.of_string_exn
 let name = Domain_name.of_string_exn
 let sec = Duration.of_sec
@@ -22,14 +23,14 @@ let follow_res =
       [ `Out of Rcode.t * Name_rr_map.t * Name_rr_map.t
       | `Query of [ `raw ] Domain_name.t
       ] * Dns_cache.t
-      let pp ppf (r, _) = match r with
-        | `Out (rcode, answer, authority) -> Fmt.pf ppf "out %a answer %a authority %a" Rcode.pp rcode Name_rr_map.pp answer Name_rr_map.pp authority
-        | `Query name -> Fmt.pf ppf "query %a" Domain_name.pp name
-      let equal (a, _) (b, _) = match a, b with
-        | `Out (rc, an, au), `Out (rc', an', au') ->
-          Rcode.compare rc rc' = 0 && Name_rr_map.equal an an' && Name_rr_map.equal au au'
-        | `Query name, `Query name' -> Domain_name.equal name name'
-        | _, _ -> false
+    let pp ppf (r, _) = match r with
+      | `Out (rcode, answer, authority) -> Fmt.pf ppf "out %a answer %a authority %a" Rcode.pp rcode Name_rr_map.pp answer Name_rr_map.pp authority
+      | `Query name -> Fmt.pf ppf "query %a" Domain_name.pp name
+    let equal (a, _) (b, _) = match a, b with
+      | `Out (rc, an, au), `Out (rc', an', au') ->
+        Rcode.compare rc rc' = 0 && Name_rr_map.equal an an' && Name_rr_map.equal au au'
+      | `Query name, `Query name' -> Domain_name.equal name name'
+      | _, _ -> false
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
@@ -85,7 +86,7 @@ let follow_cnames () =
     (`Query (name "foo.com"), cache)
     (Dns_resolver_cache.follow_cname cache (sec 251) A
        ~name:(name "foo.com") 250l ~alias:(name "foo.com"));
-  let a_val = (250l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")) in
+  let a_val = (250l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")) in
   let a = Rr_map.(B (A, a_val)) in
   let cache =
     Dns_cache.set cache 0L (name "bar.com") A AuthoritativeAnswer (`Entry a)
@@ -161,7 +162,7 @@ let scrub_empty () =
 let scrub_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4") in
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4") in
   let answer = Name_rr_map.singleton q_name A a in
   let dns = Packet.create header q (`Answer (answer, Name_rr_map.empty)) in
   Alcotest.check res "A record results in scrubbed A"
@@ -179,7 +180,7 @@ let scrub_a () =
 let scrub_a_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.(add (ip "1.2.3.4") (singleton (ip "1.2.3.5"))) in
+  let a = 1l, Rr_map.Ipv4_set.(add (ip4 "1.2.3.4") (singleton (ip4 "1.2.3.5"))) in
   let answer = Name_rr_map.singleton q_name A a in
   let dns = Packet.create header q (`Answer (answer, Name_rr_map.empty)) in
   Alcotest.check res "A records results in scrubbed A with same records"
@@ -280,7 +281,7 @@ let scrub_cname_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
   let alias = (1l, name "bar.com")
-  and a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  and a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   in
   let answer =
     let an =
@@ -325,7 +326,7 @@ let scrub_authority_ns () =
 let scrub_a_authority_ns () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer, authority =
@@ -347,7 +348,7 @@ let scrub_a_authority_ns () =
 let scrub_a_authority_ns_add_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer, authority, additional =
@@ -372,7 +373,7 @@ let scrub_a_authority_ns_add_a () =
 let scrub_a_authority_ns_bad_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer, authority, additional =
@@ -395,8 +396,8 @@ let scrub_a_authority_ns_bad_a () =
 let scrub_a_authority_ns_add_a_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
-  and a' = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.5")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
+  and a' = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.5")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer, authority, additional =
@@ -421,8 +422,8 @@ let scrub_a_authority_ns_add_a_a () =
 let scrub_a_authority_ns_ns_add_a_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
-  and a' = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.5")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
+  and a' = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.5")
   and ns = 1l, Domain_name.Host_set.(add (Domain_name.host_exn (name "ns2.foo.com"))
                                        (singleton (Domain_name.host_exn (name "ns1.foo.com"))))
   in
@@ -451,8 +452,8 @@ let scrub_a_authority_ns_ns_add_a_a () =
 let scrub_a_authority_ns_bad_ns_add_a_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
-  and a' = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.5")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
+  and a' = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.5")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   and ns' = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns2.foo.com"))
   in
@@ -482,7 +483,7 @@ let scrub_authority_ns_add_a_bad () =
   let q = q_name, `K (Rr_map.K A) in
   let ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   and ns' = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns3.foo.com"))
-  and a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  and a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   in
   let authority, additional =
     Name_rr_map.singleton q_name Ns ns,
@@ -504,7 +505,7 @@ let scrub_authority_ns_add_a_bad () =
 let scrub_authority_ns_add_a_aaaa () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   and aaaa = 1l, Rr_map.Ipv6_set.singleton (ip6 "::1")
   in
@@ -529,8 +530,8 @@ let scrub_authority_ns_add_a_aaaa () =
 let scrub_a_authority_ns_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
-  and a' = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.5")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
+  and a' = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.5")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer =
@@ -554,7 +555,7 @@ let scrub_bad_packets () =
   let q = q_name, `K (Rr_map.K A) in
   let answer =
     Domain_name.Map.singleton (name "bar.com")
-      Rr_map.(singleton A (1l, (Ipv4_set.singleton (ip "1.2.3.4"))))
+      Rr_map.(singleton A (1l, (Ipv4_set.singleton (ip4 "1.2.3.4"))))
   in
   let dns = Packet.create header q (`Answer (answer, Name_rr_map.empty)) in
   Alcotest.check res "No results in scrubbed A with bad A"
@@ -577,8 +578,8 @@ let scrub_rfc2308_2_1 () =
                                        (singleton (Domain_name.host_exn (name "ns2.xx"))))
   and alias = 1l, name "tripple.xx"
   and additional =
-    Name_rr_map.add (name "ns1.xx") A (1l, Rr_map.Ipv4_set.singleton (ip "127.0.0.2"))
-      (Name_rr_map.singleton (name "ns2.xx") A (1l, Rr_map.Ipv4_set.singleton (ip "127.0.0.3")))
+    Name_rr_map.add (name "ns1.xx") A (1l, Rr_map.Ipv4_set.singleton (ip4 "127.0.0.2"))
+      (Name_rr_map.singleton (name "ns2.xx") A (1l, Rr_map.Ipv4_set.singleton (ip4 "127.0.0.3")))
   in
   let answer = Name_rr_map.singleton q_name Cname alias
   and authority =
@@ -621,7 +622,7 @@ let bailiwick_a () =
   let q_name = name "foo" in
   let q = q_name, `K (Rr_map.K A) in
   let hdr = fst header, Packet.Flags.singleton `Authoritative in
-  let a = 300l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4") in
+  let a = 300l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4") in
   let answer = `Answer (Name_rr_map.add q_name A a
                           (Name_rr_map.singleton (name "bar") A a),
                         Name_rr_map.empty)
@@ -705,7 +706,7 @@ let bailiwick_mx () =
   let q = q_name, `K (Rr_map.K Mx) in
   let hdr = fst header, Packet.Flags.singleton `Authoritative in
   let mx = 300l, Rr_map.Mx_set.singleton { Mx.preference = 10 ; mail_exchange = Domain_name.host_exn (name "bar") }
-  and a = 300l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  and a = 300l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   in
   let mx_a = Domain_name.Map.singleton q_name Rr_map.(add A a (singleton Mx mx)) in
   let dns = Packet.create hdr q (`Answer (mx_a, Name_rr_map.empty)) in
@@ -774,7 +775,7 @@ let bailiwick_ns () =
   let q = q_name, `K (Rr_map.K Ns) in
   let hdr = fst header, Packet.Flags.singleton `Authoritative in
   let ns = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "bar"))
-  and a = 300l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  and a = 300l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   in
   let answer =
     Rr_map.K Ns, q_name, Dns_cache.AuthoritativeAnswer,
@@ -862,9 +863,60 @@ let scrub_tests = [
   "bailiwick ns", `Quick, bailiwick_ns ;
 ]
 
+let handle_query_res =
+  let module M = struct
+    type t = [
+      | `Reply of Packet.Flags.t * Packet.reply
+      | `Nothing
+      | `Query of [`raw] Domain_name.t * ([`raw] Domain_name.t * Packet.Question.qtype) * Ipaddr.t
+    ] * Dns_cache.t
+    let pp ppf = function
+      | `Reply (flags, reply), _ ->
+        Fmt.pf ppf "reply flags %a, %a"
+          Fmt.(list ~sep:(unit ", ") Packet.Flag.pp_short) (Packet.Flags.elements flags)
+          Packet.pp_reply reply
+      | `Nothing, _ -> Fmt.string ppf "nothing"
+      | `Query (zone, (qname, qtype), ip), _ ->
+        Fmt.pf ppf "zone %a, query %a (%a), IP %a"
+          Domain_name.pp zone Domain_name.pp qname
+          Packet.Question.pp_qtype qtype Ipaddr.pp ip
+    let equal a b = match fst a, fst b with
+      | `Reply (f1, r1), `Reply (f2, r2) ->
+        Packet.Flags.equal f1 f2 && Packet.equal_reply r1 r2
+      | `Nothing, `Nothing -> true
+      | `Query (z1, (q1, t1), ip1), `Query (z2, (q2, t2), ip2) ->
+        Domain_name.equal z1 z2 && Domain_name.equal q1 q2 &&
+        Packet.Question.compare_qtype t1 t2 = 0 &&
+        Ipaddr.compare ip1 ip2 = 0
+      | _ -> false
+    end in
+    (module M: Alcotest.TESTABLE with type t = M.t)
+
+let handle_query_with_cname () =
+  let cache =
+    let cname = 300l, name "reynir.dk" in
+    let ns = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns.reynir.dk")) in
+    let a = 300l, Rr_map.Ipv4_set.singleton (ip4 "127.0.0.1") in
+    let cache =
+      Dns_cache.set empty 0L (name "www.reynir.dk") Cname AuthoritativeAnswer (`Entry (B (Cname, cname)))
+    in
+    let cache =
+      Dns_cache.set cache 0L (name "reynir.dk") Ns AuthoritativeAnswer (`Entry (B (Ns, ns)))
+    in
+    Dns_cache.set cache 0L (name "ns.reynir.dk") A AuthoritativeAnswer (`Entry (B (A, a)))
+  in
+  Alcotest.check handle_query_res "..."
+    (`Query (name "reynir.dk", (name "reynir.dk", `K (Rr_map.K A)), ip "127.0.0.1"), cache)
+    (Dns_resolver_cache.handle_query cache ~rng 0L (name "www.reynir.dk", `K (Rr_map.K A)))
+
+let handle_query_tests = [
+  "cname", `Quick, handle_query_with_cname ;
+]
+
 let tests = [
   "follow_cname", follow_cname_tests ;
   "scrub", scrub_tests ;
+  "handle query", handle_query_tests ;
 ]
 
 let () = Alcotest.run "DNS resolver tests" tests
