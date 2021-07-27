@@ -169,7 +169,7 @@ let resolve t ~rng ts name typ =
   let rec go t typ name =
     Logs.debug (fun m -> m "go %a" Domain_name.pp name) ;
     match find_nearest_ns rng ts t (Domain_name.raw name) with
-    | `NeedA ns -> go t (Rr_map.K A) ns
+    | `NeedA ns -> go t (`K (Rr_map.K A)) ns
     | `HaveIP (zone, ip) -> zone, name, typ, ip, t
   in
   go t typ name
@@ -393,18 +393,8 @@ let handle_query t ~rng ts (qname, qtype) =
   match answer t ts qname qtype with
   | `Packet (flags, data), t -> `Reply (flags, data), t
   | `Query name, t ->
-    (* similar for TLSA, which uses _443._tcp.<name> (a service name!) *)
-    (* TODO unclear why it's here... *)
-    let qname', qtype' =
-      match Domain_name.service name with
-      | Error _ -> name, (match qtype with `Any -> Rr_map.K Ns | `K k -> k)
-      | Ok _ -> Domain_name.drop_label_exn ~amount:2 name, Rr_map.K Ns
-    in
-    let zone, name', typ, ip, t = resolve t ~rng ts qname' qtype' in
-    let name, typ =
-      if Domain_name.equal name' qname' then qname, qtype else name', `K typ
-    in
+    let zone, name', typ, ip, t = resolve t ~rng ts name qtype in
     Logs.debug (fun m -> m "resolve returned zone %a query %a (%a), ip %a"
-                   Domain_name.pp zone Domain_name.pp name
+                   Domain_name.pp zone Domain_name.pp name'
                    Packet.Question.pp_qtype typ Ipaddr.pp ip);
-    `Query (zone, (name, typ), ip), t
+    `Query (zone, (name', typ), ip), t
