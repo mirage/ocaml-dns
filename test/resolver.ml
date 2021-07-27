@@ -867,7 +867,6 @@ let handle_query_res =
   let module M = struct
     type t = [
       | `Reply of Packet.Flags.t * Packet.reply
-      | `Nothing
       | `Query of [`raw] Domain_name.t * ([`raw] Domain_name.t * Packet.Question.qtype) * Ipaddr.t
     ] * Dns_cache.t
     let pp ppf = function
@@ -875,7 +874,6 @@ let handle_query_res =
         Fmt.pf ppf "reply flags %a, %a"
           Fmt.(list ~sep:(unit ", ") Packet.Flag.pp_short) (Packet.Flags.elements flags)
           Packet.pp_reply reply
-      | `Nothing, _ -> Fmt.string ppf "nothing"
       | `Query (zone, (qname, qtype), ip), _ ->
         Fmt.pf ppf "zone %a, query %a (%a), IP %a"
           Domain_name.pp zone Domain_name.pp qname
@@ -883,7 +881,6 @@ let handle_query_res =
     let equal a b = match fst a, fst b with
       | `Reply (f1, r1), `Reply (f2, r2) ->
         Packet.Flags.equal f1 f2 && Packet.equal_reply r1 r2
-      | `Nothing, `Nothing -> true
       | `Query (z1, (q1, t1), ip1), `Query (z2, (q2, t2), ip2) ->
         Domain_name.equal z1 z2 && Domain_name.equal q1 q2 &&
         Packet.Question.compare_qtype t1 t2 = 0 &&

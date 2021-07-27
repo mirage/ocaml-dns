@@ -144,7 +144,6 @@ let handle_query ?(retry = 0) t ts awaiting =
                      Packet.pp packet) ;
       let cs, _ = Packet.encode ?max_size awaiting.proto packet in
       `Answer cs, t
-    | `Nothing -> `Nothing, t
 
 let scrub_it t proto zone edns ts qtype p =
   match Dns_resolver_utils.scrub zone qtype p, edns with

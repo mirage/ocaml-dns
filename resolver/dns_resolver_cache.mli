@@ -18,5 +18,4 @@ val resolve : Dns_cache.t -> rng:(int -> Cstruct.t) -> int64 -> [ `raw ] Domain_
 val handle_query : Dns_cache.t -> rng:(int -> Cstruct.t) -> int64 ->
   [ `raw ] Domain_name.t * Packet.Question.qtype ->
   [ `Reply of Packet.Flags.t * Packet.reply
-  | `Nothing
   | `Query of [ `raw ] Domain_name.t * ([ `raw ] Domain_name.t * Packet.Question.qtype) * Ipaddr.t ] * Dns_cache.t
