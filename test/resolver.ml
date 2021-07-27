@@ -4,7 +4,8 @@ open Dns
 
 let empty = Dns_cache.empty 100
 
-let ip = Ipaddr.V4.of_string_exn
+let ip = Ipaddr.of_string_exn
+let ip4 = Ipaddr.V4.of_string_exn
 let ip6 = Ipaddr.V6.of_string_exn
 let name = Domain_name.of_string_exn
 let sec = Duration.of_sec
@@ -22,14 +23,14 @@ let follow_res =
       [ `Out of Rcode.t * Name_rr_map.t * Name_rr_map.t
       | `Query of [ `raw ] Domain_name.t
       ] * Dns_cache.t
-      let pp ppf (r, _) = match r with
-        | `Out (rcode, answer, authority) -> Fmt.pf ppf "out %a answer %a authority %a" Rcode.pp rcode Name_rr_map.pp answer Name_rr_map.pp authority
-        | `Query name -> Fmt.pf ppf "query %a" Domain_name.pp name
-      let equal (a, _) (b, _) = match a, b with
-        | `Out (rc, an, au), `Out (rc', an', au') ->
-          Rcode.compare rc rc' = 0 && Name_rr_map.equal an an' && Name_rr_map.equal au au'
-        | `Query name, `Query name' -> Domain_name.equal name name'
-        | _, _ -> false
+    let pp ppf (r, _) = match r with
+      | `Out (rcode, answer, authority) -> Fmt.pf ppf "out %a answer %a authority %a" Rcode.pp rcode Name_rr_map.pp answer Name_rr_map.pp authority
+      | `Query name -> Fmt.pf ppf "query %a" Domain_name.pp name
+    let equal (a, _) (b, _) = match a, b with
+      | `Out (rc, an, au), `Out (rc', an', au') ->
+        Rcode.compare rc rc' = 0 && Name_rr_map.equal an an' && Name_rr_map.equal au au'
+      | `Query name, `Query name' -> Domain_name.equal name name'
+      | _, _ -> false
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
@@ -85,7 +86,7 @@ let follow_cnames () =
     (`Query (name "foo.com"), cache)
     (Dns_resolver_cache.follow_cname cache (sec 251) A
        ~name:(name "foo.com") 250l ~alias:(name "foo.com"));
-  let a_val = (250l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")) in
+  let a_val = (250l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")) in
   let a = Rr_map.(B (A, a_val)) in
   let cache =
     Dns_cache.set cache 0L (name "bar.com") A AuthoritativeAnswer (`Entry a)
@@ -100,455 +101,6 @@ let follow_cname_tests = [
   "follow_cname cycles", `Quick, follow_cname_cycle ;
   "follow_cname works", `Quick, follow_cnames ;
 ]
-(*
-let resolve_ns_ret =
-  let module M = struct
-    type t = [ `NeedA of Domain_name.t | `NeedCname of Domain_name.t | `HaveIPS of Rr_map.Ipv4_set.t | `No | `NoDom ] * Dns_resolver_cache.t
-    let pp ppf = function
-      | `NeedA nam, _ -> Fmt.pf ppf "need A of %a" Domain_name.pp nam
-      | `NeedCname nam, _ -> Fmt.pf ppf "need cname of %a" Domain_name.pp nam
-      | `HaveIPS ips, _ -> Fmt.pf ppf "have IPs %a" Fmt.(list ~sep:(unit ", ") Ipaddr.V4.pp) (Rr_map.Ipv4_set.elements ips)
-      | `No, _ -> Fmt.string ppf "no"
-      | `NoDom, _ -> Fmt.string ppf "nodom"
-    let equal a b = match a, b with
-      | (`NeedA n, _), (`NeedA n', _) -> Domain_name.equal n n'
-      | (`NeedCname n, _), (`NeedCname n', _) -> Domain_name.equal n n'
-      | (`HaveIPS ips, _), (`HaveIPS ips', _) -> Rr_map.Ipv4_set.equal ips ips'
-      | (`No, _), (`No, _) -> true
-      | (`NoDom, _), (`NoDom, _) -> true
-      | _, _ -> false
-  end in
-  (module M: Alcotest.TESTABLE with type t = M.t)
-
-let resolve_ns_empty () =
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in empty cache needA"
-              (`NeedA (name "foo.com"), empty)
-              (Dns_resolver_cache.resolve_ns empty 0L (name "foo.com")))
-
-let resolve_ns_cname () =
-  let cname = Rr_map.(B (Cname, (250l, name "bar.com"))) in
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.A (name "foo.com") 0L AuthoritativeAnswer (NoErr cname) empty in
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with CNAME returns needA"
-              (`NeedCname (name "bar.com"), cache)
-              (Dns_resolver_cache.resolve_ns cache 0L (name "foo.com"))) ;
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with expired CNAME returns needA"
-              (`NeedA (name "foo.com"), cache)
-              (Dns_resolver_cache.resolve_ns cache (sec 251) (name "foo.com")))
-
-let resolve_ns_noerr_aaaa () =
-  let aaaa = Rr_map.(B (Aaaa, (250l, Ipv6_set.singleton (ip6 "::1")))) in
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.AAAA (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr aaaa) empty in
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with AAAA returns needA"
-              (`NeedA (name "ns1.foo.com"), cache)
-              (Dns_resolver_cache.resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with expired AAAA returns needA"
-              (`NeedA (name "ns1.foo.com"), cache)
-              (Dns_resolver_cache.resolve_ns cache (sec 251) (name "ns1.foo.com")))
-
-let resolve_ns_a () =
-  let a_rr = Rr_map.(B (A, (250l, Ipv4_set.singleton (ip "1.2.3.4")))) in
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr a_rr) empty in
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with A returns haveIP"
-              (`HaveIPS (Rr_map.Ipv4_set.singleton (ip "1.2.3.4")), cache)
-              (Dns_resolver_cache.resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with A returns NeedA after timeout"
-              (`NeedA (name "ns1.foo.com"), cache)
-              (Dns_resolver_cache.resolve_ns cache (sec 251) (name "ns1.foo.com")))
-
-let resolve_ns_as () =
-  let a_rrs = Rr_map.(B (A, (250l, Ipv4_set.(add (ip "1.2.3.4") (singleton (ip "1.2.3.5")))))) in
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr a_rrs) empty in
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with multiple A returns all IPs"
-              (`HaveIPS Rr_map.Ipv4_set.(add (ip "1.2.3.4") (singleton (ip "1.2.3.5"))), cache)
-              (Dns_resolver_cache.resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with multiple A after TTL expired for all returns NeedA"
-              (`NeedA (name "ns1.foo.com"), cache)
-              (Dns_resolver_cache.resolve_ns cache (sec 251) (name "ns1.foo.com")))
-
-(* TODO: not sure whether the semantics is correct... now no more any errors
-   from resolve_ns, no more result type *)
-let resolve_ns_bad () =
-  let (name_soa, bad_soa) = invalid_soa (name "ns1.foo.com") in
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoData (name_soa, bad_soa)) empty in
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with nodata returns needa"
-              (`No, cache)
-              (Dns_resolver_cache.resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with expired nodata returns NeedA"
-              (`NeedA (name "ns1.foo.com"), cache)
-              (Dns_resolver_cache.resolve_ns cache (sec 301) (name "ns1.foo.com"))) ;
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoDom (name_soa, bad_soa)) empty in
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with nodom returns error"
-              (`NoDom, cache)
-              (Dns_resolver_cache.resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with nodom returns needA"
-              (`NeedA (name "ns1.foo.com"), cache)
-              (Dns_resolver_cache.resolve_ns cache (sec 301) (name "ns1.foo.com"))) ;
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (ServFail (name_soa, bad_soa)) empty in
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with servfail returns error"
-              (`No, cache)
-              (Dns_resolver_cache.resolve_ns cache 0L (name "ns1.foo.com"))) ;
-  Alcotest.(check resolve_ns_ret
-              "looking for NS in cache with expired servfail returns needA"
-              (`NeedA (name "ns1.foo.com"), cache)
-              (Dns_resolver_cache.resolve_ns cache (sec 301) (name "ns1.foo.com")))
-
-let resolve_ns_tests = [
-  "empty", `Quick, resolve_ns_empty ;
-  "cname", `Quick, resolve_ns_cname ;
-  "aaaa", `Quick, resolve_ns_noerr_aaaa ;
-  "a", `Quick, resolve_ns_a ;
-  "as", `Quick, resolve_ns_as ;
-  "nodom nodata servfail", `Quick, resolve_ns_bad ;
-]
-
-let find_ns_ret =
-  let module M = struct
-    type t = [ `Loop | `NeedNS | `No | `NoDom | `Cname of Domain_name.t | `NeedA of Domain_name.t | `HaveIP of Ipaddr.V4.t | `NeedGlue of Domain_name.t ] * Dns_resolver_cache.t
-    let pp ppf = function
-      | `NeedA name, _ -> Fmt.pf ppf "need A of %a" Domain_name.pp name
-      | `NeedGlue name, _ -> Fmt.pf ppf "need glue for %a" Domain_name.pp name
-      | `HaveIP ip, _ -> Fmt.pf ppf "have IP %a" Ipaddr.V4.pp ip
-      | `NeedNS, _ -> Fmt.string ppf "need NS"
-      | `Cname nam, _ -> Fmt.pf ppf "cname %a" Domain_name.pp nam
-      | `No, _ -> Fmt.string ppf "no"
-      | `NoDom, _ -> Fmt.string ppf "nodom"
-      | `Loop, _ -> Fmt.string ppf "loop"
-    let equal a b = match a, b with
-      | (`NeedA n, _), (`NeedA n', _) -> Domain_name.equal n n'
-      | (`NeedGlue n, _), (`NeedGlue n', _) -> Domain_name.equal n n'
-      | (`HaveIP ip, _), (`HaveIP ip', _) -> Ipaddr.V4.compare ip ip' = 0
-      | (`NeedNS, _), (`NeedNS, _) -> true
-      | (`Cname n, _), (`Cname n', _) -> Domain_name.equal n n'
-      | (`No, _), (`No, _) -> true
-      | (`NoDom, _), (`NoDom, _) -> true
-      | (`Loop, _), (`Loop, _) -> true
-      | _, _ -> false
-  end in
-  (module M: Alcotest.TESTABLE with type t = M.t)
-
-let eds = Domain_name.Set.empty
-
-let find_ns_empty () =
-  Alcotest.check find_ns_ret "looking for NS in empty cache `NeedNS"
-    (`NeedNS, empty) (Dns_resolver_cache.find_ns empty rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in empty cache for root `NeedNS"
-    (`NeedNS, empty) (Dns_resolver_cache.find_ns empty rng 0L eds Domain_name.root)
-
-let with_root =
-  let cache =
-    List.fold_left (fun cache (name, b) ->
-        Dns_resolver_cache.maybe_insert
-          Dns_enum.A name 0L Dns_resolver_entry.Additional
-          (Dns_resolver_entry.NoErr b) cache)
-      empty Dns_resolver_root.a_records
-  in
-  Dns_resolver_cache.maybe_insert
-    Dns_enum.NS Domain_name.root 0L Dns_resolver_entry.Additional
-    (Dns_resolver_entry.NoErr Dns_resolver_root.ns_records) cache
-
-let find_ns_prefilled () =
-  Alcotest.check find_ns_ret "looking for NS in empty cache `NeedNS"
-    (`NeedNS, empty) (Dns_resolver_cache.find_ns with_root rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in empty cache for root `HaveIP"
-    (`HaveIP a_root, empty)
-    (Dns_resolver_cache.find_ns with_root rng 0L eds Domain_name.root)
-
-let find_ns_cname () =
-  let cname = Rr_map.(B (Cname, (250l, name "bar.com"))) in
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr cname) empty in
-  Alcotest.check find_ns_ret "looking for NS in cache with CNAME returns cname"
-    (`Cname (name "bar.com"), cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com"))
-
-let find_ns_bad () =
-  let (bad_name, bad_rr) = invalid_soa (name "foo.com") in
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoData (bad_name, bad_rr)) empty in
-  Alcotest.check find_ns_ret "looking for NS in cache with nodata returns No"
-    (`No, cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired nodata returns NeedNS"
-    (`NeedNS, cache) (Dns_resolver_cache.find_ns cache rng (sec 301) eds (name "foo.com")) ;
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoDom (bad_name, bad_rr)) empty in
-  Alcotest.check find_ns_ret "looking for NS in cache with nodom returns No"
-    (`No, cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired nodom returns NeedNS"
-    (`NeedNS, cache) (Dns_resolver_cache.find_ns cache rng (sec 301) eds (name "foo.com")) ;
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (ServFail (bad_name, bad_rr)) empty in
-  Alcotest.check find_ns_ret "looking for NS in cache with servfail returns no"
-    (`No, cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired servfail returns NeedNS"
-    (`NeedNS, cache) (Dns_resolver_cache.find_ns cache rng (sec 301) eds (name "foo.com"))
-
-let find_ns_ns () =
-  let ns = Rr_map.(B (Ns, (250l, Domain_name.Set.singleton (name "ns1.foo.com")))) in
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr ns) empty in
-  Alcotest.check find_ns_ret "looking for NS in cache with NS returns NeedA"
-    (`NeedGlue (name "foo.com"), cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired NS returns NeedNS"
-    (`NeedNS, cache) (Dns_resolver_cache.find_ns cache rng (sec 251) eds (name "foo.com"))
-
-let find_ns_ns_and_a () =
-  let ns = Rr_map.(B (Ns, (250l, Domain_name.Set.singleton (name "ns1.foo.com"))))
-  and a = Rr_map.(B (A, (2500l, Ipv4_set.singleton (ip "1.2.3.4"))))
-  in
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr a) empty)
-  in
-  Alcotest.check find_ns_ret "looking for NS in cache with A and NS returns HaveIP"
-    (`HaveIP (ip "1.2.3.4"), cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired NS and A returns NeedNS"
-    (`NeedNS, cache) (Dns_resolver_cache.find_ns cache rng (sec 251) eds (name "foo.com"))
-
-let find_ns_ns_and_a_exp () =
-  let ns = Rr_map.(B (Ns, (2500l, Domain_name.Set.singleton (name "ns1.foo.com"))))
-  and a = Rr_map.(B (A, (250l, Ipv4_set.singleton (ip "1.2.3.4"))))
-  in
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr a) empty)
-  in
-  Alcotest.check find_ns_ret "looking for NS in cache with A and NS returns HaveIP"
-    (`HaveIP (ip "1.2.3.4"), cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired A and NS returns NeedGlue"
-    (`NeedGlue (name "foo.com"), cache) (Dns_resolver_cache.find_ns cache rng (sec 251) eds (name "foo.com"))
-
-let find_ns_ns_and_a_a_exp () =
-  let ns =
-    Rr_map.(B (Ns, (250l, Domain_name.Set.(add (name "ns1.foo.com") (singleton (name "ns2.foo.com"))))))
-  and a1 =
-    Rr_map.(B (A, (150l, Ipv4_set.(add (ip "1.2.3.4") (singleton (ip "1.2.3.2"))))))
-  and a2 =
-    Rr_map.(B (A, (200l, Ipv4_set.singleton (ip "1.2.3.5"))))
-  in
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr a1)
-         (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns2.foo.com") 0L AuthoritativeAnswer (NoErr a2)
-            empty))
-  in
-  Alcotest.check find_ns_ret "looking for NS in cache with A, A and NS, NS returns HaveIP"
-    (`HaveIP (ip "1.2.3.4"), cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired A and A, NS, NS returns HaveIP"
-    (`HaveIP (ip "1.2.3.5"), cache) (Dns_resolver_cache.find_ns cache rng (sec 151) eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired A, A, NS, NS returns Needglue foo.com"
-    (`NeedGlue (name "foo.com"), cache) (Dns_resolver_cache.find_ns cache rng (sec 201) eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired A, A, NS, NS returns NeedGlue"
-    (`NeedGlue (name "foo.com"), cache) (Dns_resolver_cache.find_ns cache rng (sec 251) eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired A, A, NS, NS returns NeedGlue"
-    (`NeedGlue (name "foo.com"), cache) (Dns_resolver_cache.find_ns cache rng (sec 2001) eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired returns NeedNS"
-    (`NeedNS, cache) (Dns_resolver_cache.find_ns cache rng (sec 2501) eds (name "foo.com"))
-
-let find_ns_ns_and_cname () =
-  let ns = Rr_map.(B (Ns, (250l, Domain_name.Set.singleton (name "ns1.foo.com"))))
-  and cname = Rr_map.(B (Cname, (2500l, name "ns1.bar.com")))
-  in
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr cname) empty)
-  in
-  (* TODO this is a bad cache entry, not sure whether this behaviour is good (following cnames) *)
-  Alcotest.check find_ns_ret "looking for NS in cache with CNAME and NS returns NeedGlue"
-    (`NeedA (name "ns1.bar.com"), cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired CNAME and NS returns NeedNS"
-    (`NeedNS, cache) (Dns_resolver_cache.find_ns cache rng (sec 251) eds (name "foo.com"))
-
-let find_ns_ns_and_aaaa () =
-  let ns = Rr_map.(B (Ns, (250l, Domain_name.Set.singleton (name "ns1.foo.com"))))
-  and aaaa = Rr_map.(B (Aaaa, (2500l, Ipv6_set.singleton (ip6 "::1"))))
-  in
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.AAAA (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr aaaa) empty)
-  in
-  Alcotest.check find_ns_ret "looking for NS in cache with AAAA and NS returns NeedGlue"
-    (`NeedGlue (name "foo.com"), cache) (Dns_resolver_cache.find_ns cache rng 0L eds (name "foo.com")) ;
-  Alcotest.check find_ns_ret "looking for NS in cache with expired NS and AAAA returns NeedNS"
-    (`NeedNS, cache) (Dns_resolver_cache.find_ns cache rng (sec 251) eds (name "foo.com"))
-
-let find_ns_tests = [
-  "empty", `Quick, find_ns_empty ;
-  "with_root", `Quick, find_ns_prefilled ;
-  "cname", `Quick, find_ns_cname ;
-  "nodata nodom servfail", `Quick, find_ns_bad ;
-  "ns", `Quick, find_ns_ns ;
-  "ns a", `Quick, find_ns_ns_and_a ;
-  "ns a exp", `Quick, find_ns_ns_and_a_exp ;
-  "ns a a exp", `Quick, find_ns_ns_and_a_a_exp ;
-  "ns cname", `Quick, find_ns_ns_and_cname ;
-  "ns aaaa", `Quick, find_ns_ns_and_aaaa ;
-]
-
-let resolve_ret =
-  let module M = struct
-    type t = Domain_name.t * Dns_enum.rr_typ * Ipaddr.V4.t * Dns_resolver_cache.t
-    let pp ppf (name, typ, ip, _) =
-      Fmt.pf ppf "requesting %a for %a (asking %a)"
-        Dns_enum.pp_rr_typ typ Domain_name.pp name
-        Ipaddr.V4.pp ip
-    let equal (n, t, i, _) (n', t', i', _) =
-      Domain_name.equal n n' && t = t' && Ipaddr.V4.compare i i' = 0
-  end in
-  (module M: Alcotest.TESTABLE with type t = M.t)
-
-let str_err =
-  let module M = struct
-    type t = string
-    let pp = Fmt.string
-    let equal _ _ = true
-  end in
-  (module M: Alcotest.TESTABLE with type t = M.t)
-
-let resolve_res = Alcotest.result resolve_ret str_err
-
-let resolve ~rng a b c d = match Dns_resolver_cache.resolve ~rng a b c d with
-  | Error e -> Error e
-  | Ok (_, a, b, c, d) -> Ok (a, b, c, d)
-
-let resolve_empty () =
-  Alcotest.check resolve_res "looking for NS in empty cache for root -> look for NS . @a_root"
-    (Ok (Domain_name.root, Dns_enum.NS, List.hd root_servers, empty))
-    (resolve ~rng empty 0L Domain_name.root Dns_enum.NS) ;
-  Alcotest.check resolve_res  "resolving A foo.com in empty cache -> look for NS . @a_root"
-    (Ok (Domain_name.root, Dns_enum.NS, List.hd root_servers, empty))
-    (resolve ~rng empty 0L (name "foo.com") Dns_enum.A) ;
-  Alcotest.check resolve_res  "resolving NS foo.com in empty cache -> look for NS . @a_root"
-    (Ok (Domain_name.root, Dns_enum.NS, List.hd root_servers, empty))
-    (resolve ~rng empty 0L (name "foo.com") Dns_enum.NS) ;
-  Alcotest.check resolve_res  "resolving PTR 1.2.3.4.in-addr.arpa in empty cache -> look for NS . @a_root"
-    (Ok (Domain_name.root, Dns_enum.NS, List.hd root_servers, empty))
-    (resolve ~rng empty 0L (name "1.2.3.4.in-addr.arpa") Dns_enum.PTR)
-
-let resolve_with_root () =
-  Alcotest.check resolve_res "looking for NS in with_root -> look for NS . @a_root"
-    (Ok (Domain_name.root, Dns_enum.NS, a_root, empty))
-    (resolve ~rng with_root 0L Domain_name.root Dns_enum.NS) ;
-  Alcotest.check resolve_res  "resolving A foo.com in with_root -> look for NS .com @a_root "
-    (Ok (name "com", Dns_enum.NS, a_root, empty))
-    (resolve ~rng with_root 0L (name "foo.com") Dns_enum.A) ;
-  Alcotest.check resolve_res  "resolving NS foo.com in with_root -> look for NS .com @a_root"
-    (Ok (name "com", Dns_enum.NS, a_root, empty))
-    (resolve ~rng with_root 0L (name "foo.com") Dns_enum.NS) ;
-  Alcotest.check resolve_res  "resolving PTR 1.2.3.4.in-addr.arpa in with_root -> look for NS .arpa @a_root"
-    (Ok (name "arpa", Dns_enum.NS, a_root, empty))
-    (resolve ~rng with_root 0L (name "1.2.3.4.in-addr.arpa") Dns_enum.PTR)
-
-let resolve_with_ns () =
-  let ns = Rr_map.(B (Ns, (250l, Domain_name.Set.singleton (name "ns1.foo.org"))))
-  in
-  let cache = Dns_resolver_cache.maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr ns) with_root in
-  Alcotest.check resolve_res "looking for A for foo.com asks for NS org"
-    (Ok (name "org", Dns_enum.NS, a_root, cache))
-    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A)
-
-let resolve_with_ns_err () =
-  let ns = Rr_map.(B (Ns, (250l, Domain_name.Set.singleton (name "ns1.foo.com"))))
-  and (bad_name, bad_soa) = invalid_soa (name "ns1.foo.com")
-  in
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoData (bad_name, bad_soa))
-         with_root)
-  in
-  Alcotest.check resolve_res "looking for A for foo.com with com NS ns1.foo.com, ns1.foo.com NoData requests NS foo.com"
-    (Ok (name "foo.com", Dns_enum.NS, a_root, cache))
-    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A) ;
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoDom (bad_name, bad_soa))
-         with_root)
-  in
-  Alcotest.check resolve_res "looking for A for foo.com with com NS ns1.foo.com, ns1.foo.com NoDom errors"
-    (Error "")
-    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A) ;
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (ServFail (bad_name, bad_soa))
-         with_root)
-  in
-  Alcotest.check resolve_res "looking for A for foo.com with com NS ns1.foo.com, ns1.foo.com ServFail requests NS foo.com"
-    (Ok (name "foo.com", Dns_enum.NS, a_root, cache))
-    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A) ;
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (ServFail (bad_name, bad_soa))
-         (Dns_resolver_cache.maybe_insert Dns_enum.A (name "com") 0L AuthoritativeAnswer (ServFail (bad_name, bad_soa))
-            with_root))
-  in
-  (* TODO: correctness? should request NS for .com! *)
-  Alcotest.check resolve_res "looking for A com with com NS ns1.foo.com, ns1.foo.com ServFail, com A ServFail asks for A foo.com"
-    (Ok (name "com", Dns_enum.A, a_root, cache))
-    (resolve ~rng cache 0L (name "com") Dns_enum.A)
-
-let resolve_with_ns_a () =
-  let ns = Rr_map.(B (Ns, (250l, Domain_name.Set.singleton (name "ns1.foo.com"))))
-  and a = Rr_map.(B (A, (250l, Ipv4_set.singleton (ip "1.2.3.4"))))
-  in
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr a)
-         with_root)
-  in
-  Alcotest.check resolve_res "looking for A for foo.com asks for NS foo.com @ns1.foo.com"
-    (Ok (name "foo.com", Dns_enum.NS, ip "1.2.3.4", cache))
-    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A)
-
-let resolve_with_ns_a_ns () =
-  let ns = Rr_map.(B (Ns, (2500l, Domain_name.Set.singleton (name "ns1.foo.com"))))
-  and a = Rr_map.(B (A, (250l, Ipv4_set.singleton (ip "1.2.3.4"))))
-  and ns2 = Rr_map.(B (Ns, (250l, Domain_name.Set.singleton (name "ns2.foo.com"))))
-  and a2 = Rr_map.(B (A, (250l, Ipv4_set.singleton (ip "1.2.3.5"))))
-  in
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns1.foo.com") 0L AuthoritativeAnswer (NoErr a)
-         (Dns_resolver_cache.maybe_insert Dns_enum.NS (name "foo.com") 0L AuthoritativeAnswer (NoErr ns2)
-            (Dns_resolver_cache.maybe_insert Dns_enum.A (name "ns2.foo.com") 0L AuthoritativeAnswer (NoErr a2)
-               with_root)))
-  in
-  Alcotest.check resolve_res "looking for A for foo.com asks for A foo.com @ns1.foo.com"
-    (Ok (name "foo.com", Dns_enum.A, ip "1.2.3.5", cache))
-    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A) ;
-  Alcotest.check resolve_res "looking for A after TTL for foo.com asks NS .com @a_root"
-    (Ok (name "com", Dns_enum.NS, a_root, cache))
-    (resolve ~rng cache (sec 251) (name "foo.com") Dns_enum.A)
-
-let resolve_cycle () =
-  let ns = Rr_map.(B (Ns, (2500l, Domain_name.Set.singleton (name "ns1.org"))))
-  and ns2 = Rr_map.(B (Ns, (250l, Domain_name.Set.singleton (name "ns1.com"))))
-  in
-  let cache =
-    Dns_resolver_cache.maybe_insert Dns_enum.NS (name "com") 0L AuthoritativeAnswer (NoErr ns)
-      (Dns_resolver_cache.maybe_insert Dns_enum.NS (name "org") 0L AuthoritativeAnswer (NoErr ns2)
-         with_root)
-  in
-  Alcotest.check resolve_res "looking for A for foo.com Errors cycle"
-    (Error "cycle detected")
-    (resolve ~rng cache 0L (name "foo.com") Dns_enum.A)
-
-let resolve_tests = [
-  "empty", `Quick, resolve_empty ;
-  "with root", `Quick, resolve_with_root ;
-  "with ns", `Quick, resolve_with_ns ;
-  "with ns err", `Quick, resolve_with_ns_err ;
-  "with ns a", `Quick, resolve_with_ns_a ;
-  "with ns a ns", `Quick, resolve_with_ns_a_ns ;
-  "cycle", `Quick, resolve_cycle ;
-]
-*)
 
 let entry_eq a b =
   match a, b with
@@ -610,7 +162,7 @@ let scrub_empty () =
 let scrub_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4") in
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4") in
   let answer = Name_rr_map.singleton q_name A a in
   let dns = Packet.create header q (`Answer (answer, Name_rr_map.empty)) in
   Alcotest.check res "A record results in scrubbed A"
@@ -628,7 +180,7 @@ let scrub_a () =
 let scrub_a_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.(add (ip "1.2.3.4") (singleton (ip "1.2.3.5"))) in
+  let a = 1l, Rr_map.Ipv4_set.(add (ip4 "1.2.3.4") (singleton (ip4 "1.2.3.5"))) in
   let answer = Name_rr_map.singleton q_name A a in
   let dns = Packet.create header q (`Answer (answer, Name_rr_map.empty)) in
   Alcotest.check res "A records results in scrubbed A with same records"
@@ -729,7 +281,7 @@ let scrub_cname_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
   let alias = (1l, name "bar.com")
-  and a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  and a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   in
   let answer =
     let an =
@@ -774,7 +326,7 @@ let scrub_authority_ns () =
 let scrub_a_authority_ns () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer, authority =
@@ -796,7 +348,7 @@ let scrub_a_authority_ns () =
 let scrub_a_authority_ns_add_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer, authority, additional =
@@ -821,7 +373,7 @@ let scrub_a_authority_ns_add_a () =
 let scrub_a_authority_ns_bad_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer, authority, additional =
@@ -844,8 +396,8 @@ let scrub_a_authority_ns_bad_a () =
 let scrub_a_authority_ns_add_a_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
-  and a' = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.5")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
+  and a' = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.5")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer, authority, additional =
@@ -870,8 +422,8 @@ let scrub_a_authority_ns_add_a_a () =
 let scrub_a_authority_ns_ns_add_a_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
-  and a' = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.5")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
+  and a' = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.5")
   and ns = 1l, Domain_name.Host_set.(add (Domain_name.host_exn (name "ns2.foo.com"))
                                        (singleton (Domain_name.host_exn (name "ns1.foo.com"))))
   in
@@ -900,8 +452,8 @@ let scrub_a_authority_ns_ns_add_a_a () =
 let scrub_a_authority_ns_bad_ns_add_a_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
-  and a' = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.5")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
+  and a' = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.5")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   and ns' = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns2.foo.com"))
   in
@@ -931,7 +483,7 @@ let scrub_authority_ns_add_a_bad () =
   let q = q_name, `K (Rr_map.K A) in
   let ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   and ns' = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns3.foo.com"))
-  and a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  and a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   in
   let authority, additional =
     Name_rr_map.singleton q_name Ns ns,
@@ -953,7 +505,7 @@ let scrub_authority_ns_add_a_bad () =
 let scrub_authority_ns_add_a_aaaa () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   and aaaa = 1l, Rr_map.Ipv6_set.singleton (ip6 "::1")
   in
@@ -978,8 +530,8 @@ let scrub_authority_ns_add_a_aaaa () =
 let scrub_a_authority_ns_a () =
   let q_name = name "foo.com" in
   let q = q_name, `K (Rr_map.K A) in
-  let a = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
-  and a' = 1l, Rr_map.Ipv4_set.singleton (ip "1.2.3.5")
+  let a = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
+  and a' = 1l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.5")
   and ns = 1l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.foo.com"))
   in
   let answer =
@@ -1003,7 +555,7 @@ let scrub_bad_packets () =
   let q = q_name, `K (Rr_map.K A) in
   let answer =
     Domain_name.Map.singleton (name "bar.com")
-      Rr_map.(singleton A (1l, (Ipv4_set.singleton (ip "1.2.3.4"))))
+      Rr_map.(singleton A (1l, (Ipv4_set.singleton (ip4 "1.2.3.4"))))
   in
   let dns = Packet.create header q (`Answer (answer, Name_rr_map.empty)) in
   Alcotest.check res "No results in scrubbed A with bad A"
@@ -1026,8 +578,8 @@ let scrub_rfc2308_2_1 () =
                                        (singleton (Domain_name.host_exn (name "ns2.xx"))))
   and alias = 1l, name "tripple.xx"
   and additional =
-    Name_rr_map.add (name "ns1.xx") A (1l, Rr_map.Ipv4_set.singleton (ip "127.0.0.2"))
-      (Name_rr_map.singleton (name "ns2.xx") A (1l, Rr_map.Ipv4_set.singleton (ip "127.0.0.3")))
+    Name_rr_map.add (name "ns1.xx") A (1l, Rr_map.Ipv4_set.singleton (ip4 "127.0.0.2"))
+      (Name_rr_map.singleton (name "ns2.xx") A (1l, Rr_map.Ipv4_set.singleton (ip4 "127.0.0.3")))
   in
   let answer = Name_rr_map.singleton q_name Cname alias
   and authority =
@@ -1057,7 +609,6 @@ let scrub_rfc2308_2_1 () =
     (Ok [ K Cname, q_name, NonAuthoritativeAnswer, `Entry (B (Cname, alias)) ])
     (Dns_resolver_utils.scrub q_name (snd q) dns)
 
-
 (* bailiwick thingies (may repeat above tests):
    - q_name is foo, q_type is A!
    - answer contains additional A records [ foo A 1.2.3.4 ; bar A 1.2.3.4 ]
@@ -1071,7 +622,7 @@ let bailiwick_a () =
   let q_name = name "foo" in
   let q = q_name, `K (Rr_map.K A) in
   let hdr = fst header, Packet.Flags.singleton `Authoritative in
-  let a = 300l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4") in
+  let a = 300l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4") in
   let answer = `Answer (Name_rr_map.add q_name A a
                           (Name_rr_map.singleton (name "bar") A a),
                         Name_rr_map.empty)
@@ -1139,7 +690,6 @@ let bailiwick_a () =
           K Ns, q_name, AuthoritativeAuthority, `Entry (B (Ns, ns)) ])
     (Dns_resolver_utils.scrub q_name (snd q) dns)
 
-
 (* similar, but with MX records:
    - query is MX, "foo"
    - answer = [ "foo" MX 10 "bar" ; "foo" A 1.2.3.4 ]
@@ -1156,7 +706,7 @@ let bailiwick_mx () =
   let q = q_name, `K (Rr_map.K Mx) in
   let hdr = fst header, Packet.Flags.singleton `Authoritative in
   let mx = 300l, Rr_map.Mx_set.singleton { Mx.preference = 10 ; mail_exchange = Domain_name.host_exn (name "bar") }
-  and a = 300l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  and a = 300l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   in
   let mx_a = Domain_name.Map.singleton q_name Rr_map.(add A a (singleton Mx mx)) in
   let dns = Packet.create hdr q (`Answer (mx_a, Name_rr_map.empty)) in
@@ -1225,7 +775,7 @@ let bailiwick_ns () =
   let q = q_name, `K (Rr_map.K Ns) in
   let hdr = fst header, Packet.Flags.singleton `Authoritative in
   let ns = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "bar"))
-  and a = 300l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")
+  and a = 300l, Rr_map.Ipv4_set.singleton (ip4 "1.2.3.4")
   in
   let answer =
     Rr_map.K Ns, q_name, Dns_cache.AuthoritativeAnswer,
@@ -1313,12 +863,57 @@ let scrub_tests = [
   "bailiwick ns", `Quick, bailiwick_ns ;
 ]
 
+let handle_query_res =
+  let module M = struct
+    type t = [
+      | `Reply of Packet.Flags.t * Packet.reply
+      | `Query of [`raw] Domain_name.t * ([`raw] Domain_name.t * Packet.Question.qtype) * Ipaddr.t
+    ] * Dns_cache.t
+    let pp ppf = function
+      | `Reply (flags, reply), _ ->
+        Fmt.pf ppf "reply flags %a, %a"
+          Fmt.(list ~sep:(unit ", ") Packet.Flag.pp_short) (Packet.Flags.elements flags)
+          Packet.pp_reply reply
+      | `Query (zone, (qname, qtype), ip), _ ->
+        Fmt.pf ppf "zone %a, query %a (%a), IP %a"
+          Domain_name.pp zone Domain_name.pp qname
+          Packet.Question.pp_qtype qtype Ipaddr.pp ip
+    let equal a b = match fst a, fst b with
+      | `Reply (f1, r1), `Reply (f2, r2) ->
+        Packet.Flags.equal f1 f2 && Packet.equal_reply r1 r2
+      | `Query (z1, (q1, t1), ip1), `Query (z2, (q2, t2), ip2) ->
+        Domain_name.equal z1 z2 && Domain_name.equal q1 q2 &&
+        Packet.Question.compare_qtype t1 t2 = 0 &&
+        Ipaddr.compare ip1 ip2 = 0
+      | _ -> false
+    end in
+    (module M: Alcotest.TESTABLE with type t = M.t)
+
+let handle_query_with_cname () =
+  let cache =
+    let cname = 300l, name "reynir.dk" in
+    let ns = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns.reynir.dk")) in
+    let a = 300l, Rr_map.Ipv4_set.singleton (ip4 "127.0.0.1") in
+    let cache =
+      Dns_cache.set empty 0L (name "www.reynir.dk") Cname AuthoritativeAnswer (`Entry (B (Cname, cname)))
+    in
+    let cache =
+      Dns_cache.set cache 0L (name "reynir.dk") Ns AuthoritativeAnswer (`Entry (B (Ns, ns)))
+    in
+    Dns_cache.set cache 0L (name "ns.reynir.dk") A AuthoritativeAnswer (`Entry (B (A, a)))
+  in
+  Alcotest.check handle_query_res "..."
+    (`Query (name "reynir.dk", (name "reynir.dk", `K (Rr_map.K A)), ip "127.0.0.1"), cache)
+    (Dns_resolver_cache.handle_query cache ~rng 0L (name "www.reynir.dk", `K (Rr_map.K A)))
+
+let handle_query_tests = [
+  "cname", `Quick, handle_query_with_cname ;
+]
+
 let tests = [
   "follow_cname", follow_cname_tests ;
-(*  "resolve_ns", resolve_ns_tests ;
-    "find_ns", find_ns_tests ; *)
-  (*  "resolve", resolve_tests ;*)
   "scrub", scrub_tests ;
+  "handle query", handle_query_tests ;
 ]
 
 let () = Alcotest.run "DNS resolver tests" tests
