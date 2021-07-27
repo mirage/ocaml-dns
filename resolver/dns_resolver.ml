@@ -431,7 +431,7 @@ let err_retries t question =
       (awaiting.proto, awaiting.ip, awaiting.port, buf) :: acc)
     [] reqs
 
-let try_other_timer t ts =
+let timer t ts =
   let transit, rem =
     QM.partition
       (fun _ awaiting -> Int64.sub ts awaiting.ts < retry_interval)
@@ -453,31 +453,3 @@ let try_other_timer t ts =
         ({ t with queried }, out_as @ out_a, out_q)
       end)
     rem (t, [], [])
-
-let _retry_timer t ts =
-  if not (QM.is_empty t.transit) then
-    Logs.debug (fun m -> m "retry timer with %d entries" (QM.cardinal t.transit)) ;
-  List.fold_left (fun (t, out_a, out_q) (key, awaiting) ->
-      if Int64.sub ts awaiting.ts < retry_interval then
-        (Logs.debug (fun m -> m "ignoring retransmit %a for now %a"
-                        pp_key key Duration.pp (Int64.sub ts awaiting.ts) ) ;
-         (t, out_a, out_q))
-      else
-        let retry = succ awaiting.retry in
-        if retry < max_retries then begin
-          Logs.info (fun m -> m "retransmit %a (%d of %d) to %a"
-                        pp_key key awaiting.retry max_retries Ipaddr.pp awaiting.ip) ;
-          let t, cs = build_query ~id:awaiting.id t ts awaiting.proto key retry awaiting.zone awaiting.edns awaiting.ip in
-          t, out_a, (`Udp, awaiting.ip, cs) :: out_q
-        end else begin
-          Logs.info (fun m -> m "retry limit exceeded for %a at %a!"
-                        pp_key key Ipaddr.pp awaiting.ip) ;
-          (* answer all outstanding requestors! *)
-          let transit = QM.remove key t.transit in
-          let t = { t with transit } in
-          let queried, out_as = err_retries t.queried key in
-          ({ t with queried }, out_as @ out_a, out_q)
-        end)
-    (t, [], []) (QM.bindings t.transit)
-
-let timer = try_other_timer
