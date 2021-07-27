@@ -166,13 +166,13 @@ let localsoa = Soa.create (Domain_name.prepend_label_exn localhost "ns")
 let invalid = Domain_name.of_string_exn "invalid"
 let invalidsoa = Soa.create (Domain_name.prepend_label_exn invalid "ns")
 
-let rfc6761_special (type req) q_name (q_typ : req Dns.Rr_map.key) : (Dns_cache.entry, unit) result =
+let rfc6761_special (type req) q_name (q_typ : req Dns.Rr_map.key) : (req Dns_cache.entry, unit) result =
   if Domain_name.is_subdomain ~domain:localhost ~subdomain:q_name then
     let open Dns.Rr_map in
     match q_typ with
-    | A -> Ok (`Entry (B (A, (300l, Ipv4_set.singleton Ipaddr.V4.localhost))))
+    | A -> Ok (`Entry (300l, Ipv4_set.singleton Ipaddr.V4.localhost))
     | Aaaa ->
-      Ok (`Entry (B (Aaaa, (300l, Ipv6_set.singleton Ipaddr.V6.localhost))))
+      Ok (`Entry (300l, Ipv6_set.singleton Ipaddr.V6.localhost))
     | _ -> Ok (`No_domain (localhost, localsoa))
   else if Domain_name.is_subdomain ~domain:invalid ~subdomain:q_name then
     Ok (`No_domain (invalid, invalidsoa))
@@ -205,24 +205,13 @@ struct
   (* result-bind-and-lift *)
   let (>>|=) a f = a >>| fun b -> Transport.lift (f b)
 
-  let lift_ok (type req) (query_type : req Dns.Rr_map.key) :
-    (Dns_cache.entry, 'a) result ->
+  let lift_ok (type req) :
+    (req Dns_cache.entry, 'a) result ->
     (req, [> `Msg of string
           | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
           | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result
     = function
-      | Ok `Entry (Dns.Rr_map.B (query_type', value)) ->
-        (* to satisfy the type checker, we need to prove that
-           - query_type (we are looking for) = query_type' (in the cache)
-           The Dns_cache does not carry this proof at the moment (using an
-           Rr_map.B : B of 'a query_type * 'a instead.
-           We do (instead of an Obj.magic) a compare of the keys, which exposes
-           the necessary proof. *)
-        begin match Dns.Rr_map.K.compare query_type' query_type with
-          | Gmap.Order.Eq -> Ok value
-          | _ ->
-            Rresult.R.error_msgf "should not happen request_type <> request_type'"
-        end
+      | Ok `Entry value -> Ok value
       | Ok (`No_data _ as nodata) -> Error nodata
       | Ok (`No_domain _ as nodom) -> Error nodom
       | Ok (`Serv_fail _)
@@ -233,7 +222,7 @@ struct
                   | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
                   | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result Transport.io =
     let domain_name = Domain_name.raw name in
-    match rfc6761_special domain_name query_type |> lift_ok query_type with
+    match rfc6761_special domain_name query_type |> lift_ok with
     | Ok _ as ok -> Transport.lift ok
     | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
     | Error `Msg _ ->
@@ -241,7 +230,7 @@ struct
         Dns_cache.get t.cache (Transport.clock ()) domain_name query_type
       in
       t.cache <- cache';
-      match lift_ok query_type r with
+      match lift_ok r with
       | Ok _ as ok -> Transport.lift ok
       | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
       | Error `Msg _ ->
@@ -273,7 +262,7 @@ struct
            in
            match Pure.parse_response state buf with
            | Ok `Data x ->
-             update_cache (`Entry (Rr_map.B (query_type, x)));
+             update_cache (`Entry x);
              Ok x |> Transport.lift
            | Ok ((`No_data _ | `No_domain _) as nodom) ->
              update_cache nodom;
@@ -285,17 +274,17 @@ struct
         Transport.close socket >>= fun () ->
         Transport.lift r
 
-  let lift_cache_error m =
+  let lift_cache_error query_type m =
     (match m with
      | Ok a -> Ok a
      | Error `Msg msg -> Error (`Msg msg)
      | Error (#Dns_cache.entry as e) ->
-       Rresult.R.error_msgf "DNS cache error @[%a@]" Dns_cache.pp_entry e)
+       Rresult.R.error_msgf "DNS cache error @[%a@]" (Dns_cache.pp_entry query_type) e)
     |> Transport.lift
 
   let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string ]) result Transport.io =
-    get_resource_record t ?nameserver query_type name >>= lift_cache_error
+    get_resource_record t ?nameserver query_type name >>= lift_cache_error query_type
 
   let gethostbyname stack ?nameserver domain =
     getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>|= fun (_ttl, resp) ->

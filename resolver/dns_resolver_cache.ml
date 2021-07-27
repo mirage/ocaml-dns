@@ -18,10 +18,10 @@ let find_nearest_ns rng ts t name =
     | xs -> Some (List.nth xs (Randomconv.int ~bound:(List.length xs) rng))
   in
   let find_ns name = match snd (Dns_cache.get t ts name Ns) with
-    | Ok `Entry Rr_map.(B (Ns, (_, names))) -> Domain_name.Host_set.elements names
+    | Ok `Entry (_, names) -> Domain_name.Host_set.elements names
     | _ -> []
   and find_a name = match snd (Dns_cache.get t ts name A) with
-    | Ok `Entry Rr_map.(B (A, (_, ips))) -> Rr_map.Ipv4_set.elements ips
+    | Ok `Entry (_, ips) -> Rr_map.Ipv4_set.elements ips
     | _ -> []
   in
   let or_root f nam =
@@ -68,7 +68,7 @@ let follow_cname t ts typ ~name ttl ~alias =
       Logs.debug (fun m -> m "follow_cname: cache miss, need to query %a"
                      Domain_name.pp name);
       `Query name, t
-    | Ok `Entry (Rr_map.B (Cname, (_, alias))) ->
+    | Ok `Alias (_, alias) ->
       let acc' = Domain_name.Map.add name (Rr_map.singleton Cname (ttl, alias)) acc in
       if Domain_name.Map.mem alias acc then begin
         Logs.warn (fun m -> m "follow_cname: cycle detected") ;
@@ -78,8 +78,8 @@ let follow_cname t ts typ ~name ttl ~alias =
                        Domain_name.pp alias);
         follow t acc' alias
       end
-    | Ok `Entry (Rr_map.B (k, v)) ->
-      let acc' = Domain_name.Map.add name Rr_map.(singleton k v) acc in
+    | Ok `Entry v ->
+      let acc' = Domain_name.Map.add name Rr_map.(singleton typ v) acc in
       Logs.debug (fun m -> m "follow_cname: entry found, returning");
       `Out (Rcode.NoError, acc', Name_rr_map.empty), t
     | Ok `No_domain res ->
@@ -143,24 +143,21 @@ let answer t ts name typ =
     | Ok `Serv_fail res ->
       Logs.debug (fun m -> m "serv fail while looking up %a" pp_question (name, typ));
       `Packet (packet t false Rcode.ServFail Domain_name.Map.empty (to_map res)), t
-    | Ok `Entry (Rr_map.B (Cname, (ttl, alias))) ->
+    | Ok `Alias (ttl, alias) ->
       begin
         Logs.debug (fun m -> m "alias while looking up %a" pp_question (name, typ));
-        match typ with
-        | `Any ->
+        match ty with
+        | Cname ->
           let data = Name_rr_map.singleton name Cname (ttl, alias) in
           `Packet (packet t false Rcode.NoError data Domain_name.Map.empty), t
-        | `K (K Cname) ->
-          let data = Name_rr_map.singleton name Cname (ttl, alias) in
-          `Packet (packet t false Rcode.NoError data Domain_name.Map.empty), t
-        | `K (K ty) ->
+        | ty ->
           match follow_cname t ts ty ~name ttl ~alias with
           | `Out (rcode, an, au), t -> `Packet (packet t true rcode an au), t
           | `Query n, t -> `Query n, t
       end
-    | Ok `Entry (Rr_map.B (k, v)) ->
+    | Ok `Entry v ->
       Logs.debug (fun m -> m "entry while looking up %a" pp_question (name, typ));
-      let data = Name_rr_map.singleton name k v in
+      let data = Name_rr_map.singleton name ty v in
       `Packet (packet t true Rcode.NoError data Domain_name.Map.empty), t
 
 let handle_query t ~rng ts (qname, qtype) =

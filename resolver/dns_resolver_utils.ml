@@ -5,6 +5,8 @@ open Dns_resolver_cache
 
 open Rresult.R.Infix
 
+type e = E : 'a Rr_map.key * 'a Dns_cache.entry -> e
+
 let invalid_soa name =
   let p pre =
     match Domain_name.(prepend_label name "invalid" >>= fun n -> prepend_label n pre) with
@@ -53,7 +55,7 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
         | (name, soa)::_ ->
           begin match q_type with
             | `Any -> [] (* i really don't know how to handle ANY NoDATA*)
-            | `K k -> [ k, q_name, rank, `No_data (name, soa) ]
+            | `K Rr_map.K k -> [ q_name, E (k, `No_data (name, soa)), rank ]
         (* this is wrong for the normal iterative algorithm:
             it asks for foo.com @root, and get .com NS in AU and A in AD
         | [] when not (Packet.Header.FS.mem `Truncation flags) ->
@@ -74,14 +76,14 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
       match q_type with
       | `Any ->
         Rr_map.fold (fun (B (k, v)) (acc, names) ->
-            (Rr_map.K k, q_name, rank, `Entry (Rr_map.B (k, v))) :: acc,
+            (q_name, E (k, `Entry v), rank) :: acc,
             Domain_name.Host_set.fold (fun n acc ->
                 Domain_name.Set.add (Domain_name.raw n) acc)
               (Rr_map.names k v) names)
           rr_map ([], Domain_name.Set.empty)
       | `K (Rr_map.K Cname) ->
         begin match Rr_map.find Cname rr_map with
-          | Some v -> [ Rr_map.K Cname, q_name, rank, `Entry (B (Cname, v)) ],
+          | Some v -> [ q_name, E (Cname, `Entry v), rank ],
                       Domain_name.Host_set.fold (fun n acc ->
                           Domain_name.Set.add (Domain_name.raw n) acc)
                         (Rr_map.names Cname v) Domain_name.Set.empty
@@ -89,12 +91,12 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
             (* case no cname *)
             Logs.warn (fun m -> m "noerror answer with right name, but no cname in %a, invalid soa for %a"
                           Name_rr_map.pp answer pp_question (q_name, q_type));
-            [ Rr_map.K Cname, q_name, rank, `No_data (q_name, invalid_soa q_name) ],
+            [ q_name, E (Cname, `No_data (q_name, invalid_soa q_name)), rank ],
             Domain_name.Set.empty
         end
       | `K (Rr_map.K k) -> match Rr_map.find k rr_map with
         | Some v ->
-          [ Rr_map.K k, q_name, rank, `Entry (B (k, v)) ],
+          [ q_name, E (k, `Entry v), rank ],
           Domain_name.Host_set.fold (fun n acc ->
               Domain_name.Set.add (Domain_name.raw n) acc)
             (Rr_map.names k v) Domain_name.Set.empty
@@ -103,12 +105,12 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
             (* case neither TYP nor cname *)
             Logs.warn (fun m -> m "noerror answer with right name, but not TYP nor cname in %a, invalid soa for %a"
                           Name_rr_map.pp answer pp_question (q_name, q_type));
-            [ Rr_map.K k, q_name, rank, `No_data (q_name, invalid_soa q_name) ],
+            [ q_name, E (k, `No_data (q_name, invalid_soa q_name)), rank ],
             Domain_name.Set.empty
           | Some cname ->
             (* explicitly register as CNAME so it'll be found *)
             (* should we try to find further records for the new alias? *)
-            [ Rr_map.K Cname, q_name, rank, `Entry (B (Cname, cname)) ],
+            [ q_name, E (Cname, `Entry cname), rank ],
             Domain_name.Set.singleton (snd cname)
   in
 
@@ -138,7 +140,7 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
         Dns_cache.Additional
     in
     List.fold_left (fun acc (name, ns) ->
-        (Rr_map.(K Ns), name, rank, `Entry Rr_map.(B (Ns, ns))) :: acc)
+        (name, E (Ns, `Entry ns), rank) :: acc)
       [] nm, names
   in
 
@@ -160,11 +162,11 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
         | Some map ->
           let a = match Rr_map.find A map with
             | None -> acc
-            | Some v -> (Rr_map.K A, name, Dns_cache.Additional, `Entry (Rr_map.B (A, v))) :: acc
+            | Some v -> (name, E (A, `Entry v), Dns_cache.Additional) :: acc
           in
           match Rr_map.find Aaaa map with
           | None -> a
-          | Some v -> (Rr_map.K Aaaa, name, Dns_cache.Additional, `Entry (Rr_map.B (Aaaa, v))) :: a)
+          | Some v -> (name, E (Aaaa, `Entry v), Dns_cache.Additional) :: a)
       names []
   in
   (* This is defined in RFC2181, Sec9 -- answer is unique if authority or
@@ -184,7 +186,7 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
                   pp_question (q_name, q_type));
     begin match q_type with
       | `Any -> []
-      | `K k -> [ k, q_name, Dns_cache.Additional, `No_data (q_name, invalid_soa q_name) ]
+      | `K Rr_map.K k -> [ q_name, E (k,`No_data (q_name, invalid_soa q_name)), Dns_cache.Additional ]
     end
   | _, _ -> answers @ ns @ glues
 
@@ -236,11 +238,11 @@ let nxdomain (_, flags) name data =
       | Some x -> x
     in
     match cnames with
-    | [] -> [ name, `No_domain soa ]
-    | rrs -> List.map (fun (name, cname) -> (name, `Entry (Rr_map.B (Cname, cname)))) rrs
+    | [] -> [ name, E (Cname, `No_domain soa) ]
+    | rrs -> List.map (fun (name, cname) -> (name, E (Cname, `Entry cname))) rrs
   in
   (* the cname does not matter *)
-  List.map (fun (name, res) -> Rr_map.K Cname, name, rank, res) entries
+  List.map (fun (name, res) -> name, res, rank) entries
 
 (* stub vs recursive: maybe sufficient to look into *)
 let scrub zone qtype p =

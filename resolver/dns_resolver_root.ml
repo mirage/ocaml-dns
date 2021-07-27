@@ -27,11 +27,11 @@ let ns_records =
     let add_to_set set (name, _) = Domain_name.Host_set.add name set in
     List.fold_left add_to_set Domain_name.Host_set.empty root_servers
   in
-  Rr_map.(B (Ns, (ns_ttl, ns)))
+  (ns_ttl, ns)
 
 let a_records =
   List.map (fun (name, ip) ->
-      Domain_name.raw name, Rr_map.(B (A, (a_ttl, Ipv4_set.singleton ip))))
+      Domain_name.raw name, (a_ttl, Rr_map.Ipv4_set.singleton ip))
     root_servers
 
 let reserved_zone_records =
