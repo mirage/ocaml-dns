@@ -27,7 +27,7 @@ let jump _ serverip port zone key serial =
   match notify zone serial key now with
   | Error s -> Error (`Msg (Fmt.strf "signing %a" Dns_tsig.pp_s s))
   | Ok (request, data, mac) ->
-    let data_len = Cstruct.len data in
+    let data_len = Cstruct.length data in
     Logs.debug (fun m -> m "built data %d" data_len) ;
     let socket = Dns_cli.connect_tcp serverip port in
     Dns_cli.send_tcp socket data ;

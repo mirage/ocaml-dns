@@ -21,7 +21,7 @@ module Pure = struct
       | `Udp -> cs
       | `Tcp ->
         let len_field = Cstruct.create 2 in
-        Cstruct.BE.set_uint16 len_field 0 (Cstruct.len cs) ;
+        Cstruct.BE.set_uint16 len_field 0 (Cstruct.length cs) ;
         Cstruct.concat [len_field ; cs]
     end, { protocol ; query ; key = record_type }
 
@@ -57,12 +57,12 @@ module Pure = struct
     | `Tcp ->
       match Cstruct.BE.get_uint16 buf 0 with
         | exception Invalid_argument _ -> Error () (* TODO *)
-        | pkt_len when pkt_len > Cstruct.len buf -2 ->
+        | pkt_len when pkt_len > Cstruct.length buf -2 ->
           Logs.debug (fun m -> m "Partial: %d >= %d-2"
-                          pkt_len (Cstruct.len buf));
+                          pkt_len (Cstruct.length buf));
           Error () (* TODO return remaining # *)
         | pkt_len ->
-          if 2 + pkt_len < Cstruct.len buf then
+          if 2 + pkt_len < Cstruct.length buf then
             Logs.warn (fun m -> m "Extraneous data in DNS response");
           Ok (Cstruct.sub buf 2 pkt_len)
 
@@ -265,7 +265,7 @@ struct
          let rec recv_loop acc =
            Transport.recv socket >>| fun recv_buffer ->
            Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
-                          (Cstruct.len recv_buffer)) ;
+                          (Cstruct.length recv_buffer)) ;
            let buf =
              if Cstruct.(equal empty acc)
              then recv_buffer

@@ -751,7 +751,7 @@ module Dnskey = struct
     Cstruct.BE.set_uint16 buf off t.flags ;
     Cstruct.set_uint8 buf (off + 2) 3 ;
     Cstruct.set_uint8 buf (off + 3) (algorithm_to_int t.algorithm) ;
-    let kl = Cstruct.len t.key in
+    let kl = Cstruct.length t.key in
     Cstruct.blit t.key 0 buf (off + 4) kl ;
     names, off + 4 + kl
 
@@ -958,7 +958,7 @@ module Tlsa = struct
     Cstruct.set_uint8 buf off (cert_usage_to_int tlsa.cert_usage) ;
     Cstruct.set_uint8 buf (off + 1) (selector_to_int tlsa.selector) ;
     Cstruct.set_uint8 buf (off + 2) (matching_type_to_int tlsa.matching_type) ;
-    let l = Cstruct.len tlsa.data in
+    let l = Cstruct.length tlsa.data in
     Cstruct.blit tlsa.data 0 buf (off + 3) l ;
     names, off + 3 + l
 end
@@ -1056,7 +1056,7 @@ module Sshfp = struct
   let encode sshfp names buf off =
     Cstruct.set_uint8 buf off (algorithm_to_int sshfp.algorithm) ;
     Cstruct.set_uint8 buf (succ off) (typ_to_int sshfp.typ) ;
-    let l = Cstruct.len sshfp.fingerprint in
+    let l = Cstruct.length sshfp.fingerprint in
     Cstruct.blit sshfp.fingerprint 0 buf (off + 2) l ;
     names, off + l + 2
 end
@@ -1248,20 +1248,20 @@ module Tsig = struct
   (* TODO maybe revise, esp. all the guards *)
   let decode names buf ~off =
     let open Rresult.R.Infix in
-    guard (Cstruct.len buf - off >= 6) `Partial >>= fun () ->
+    guard (Cstruct.length buf - off >= 6) `Partial >>= fun () ->
     let ttl = Cstruct.BE.get_uint32 buf off in
     guard (ttl = 0l) (`Malformed (off, Fmt.strf "tsig ttl is not zero %lu" ttl)) >>= fun () ->
     let len = Cstruct.BE.get_uint16 buf (off + 4) in
     let rdata_start = off + 6 in
-    guard (Cstruct.len buf - rdata_start >= len) `Partial >>= fun () ->
+    guard (Cstruct.length buf - rdata_start >= len) `Partial >>= fun () ->
     Name.decode names buf ~off:rdata_start >>= fun (algorithm, names, off') ->
     Name.host rdata_start algorithm >>= fun algorithm ->
-    guard (Cstruct.len buf - off' >= 10) `Partial >>= fun () ->
+    guard (Cstruct.length buf - off' >= 10) `Partial >>= fun () ->
     let signed = decode_48bit_time buf off'
     and fudge = Cstruct.BE.get_uint16 buf (off' + 6)
     and mac_len = Cstruct.BE.get_uint16 buf (off' + 8)
     in
-    guard (Cstruct.len buf - off' >= 10 + mac_len + 6) `Partial >>= fun () ->
+    guard (Cstruct.length buf - off' >= 10 + mac_len + 6) `Partial >>= fun () ->
     let mac = Cstruct.sub buf (off' + 10) mac_len
     and original_id = Cstruct.BE.get_uint16 buf (off' + 10 + mac_len)
     and error = Cstruct.BE.get_uint16 buf (off' + 12 + mac_len)
@@ -1269,7 +1269,7 @@ module Tsig = struct
     in
     let rdata_end = off' + 10 + mac_len + 6 + other_len in
     guard (rdata_end - rdata_start = len) `Partial >>= fun () ->
-    guard (Cstruct.len buf >= rdata_end) `Partial >>= fun () ->
+    guard (Cstruct.length buf >= rdata_end) `Partial >>= fun () ->
     guard (other_len = 0 || other_len = 6)
       (`Malformed (off' + 14 + mac_len, "other timestamp should be 0 or 6 bytes!")) >>= fun () ->
     algorithm_of_name ~off:rdata_start algorithm >>= fun algorithm ->
@@ -1319,7 +1319,7 @@ module Tsig = struct
     let names, off = Name.encode ~compress:false algo names buf off in
     encode_48bit_time buf ~off t.signed ;
     encode_16bit_time buf ~off:(off + 6) t.fudge ;
-    let mac_len = Cstruct.len t.mac in
+    let mac_len = Cstruct.length t.mac in
     Cstruct.BE.set_uint16 buf (off + 8) mac_len ;
     Cstruct.blit t.mac 0 buf (off + 10) mac_len ;
     Cstruct.BE.set_uint16 buf (off + 10 + mac_len) t.original_id ;
@@ -1377,7 +1377,7 @@ module Tsig = struct
       Cstruct.BE.set_uint16 typ 0 rtyp ;
       typ
     and mac =
-      let len = Cstruct.len t.mac in
+      let len = Cstruct.length t.mac in
       let l = Cstruct.create 2 in
       Cstruct.BE.set_uint16 l 0 len ;
       let orig = Cstruct.create 2 in
@@ -1387,7 +1387,7 @@ module Tsig = struct
     let rdata = Cstruct.concat (mid @ mac @ [ fin ]) in
     let len =
       let buf = Cstruct.create 2 in
-      Cstruct.BE.set_uint16 buf 0 (Cstruct.len rdata) ;
+      Cstruct.BE.set_uint16 buf 0 (Cstruct.length rdata) ;
       buf
     in
     Cstruct.concat [ name ; typ ; clttl ; len ; rdata ]
@@ -1462,7 +1462,7 @@ module Edns = struct
   let encode_extension t buf off =
     let code = extension_to_int t in
     let v = extension_payload t in
-    let l = Cstruct.len v in
+    let l = Cstruct.length v in
     Cstruct.BE.set_uint16 buf off code ;
     Cstruct.BE.set_uint16 buf (off + 2) l ;
     Cstruct.blit v 0 buf (off + 4) l ;
@@ -1550,7 +1550,7 @@ module Edns = struct
     let open Rresult.R.Infix in
     (* EDNS is special -- the incoming off points to before name type clas *)
     (* name must be the root, typ is OPT, class is used for length *)
-    guard (Cstruct.len buf - off >= 11) `Partial >>= fun () ->
+    guard (Cstruct.length buf - off >= 11) `Partial >>= fun () ->
     guard (Cstruct.get_uint8 buf off = 0) (`Malformed (off, "bad edns (must be 0)")) >>= fun () ->
     (* crazyness: payload_size is encoded in class *)
     let payload_size = Cstruct.BE.get_uint16 buf (off + 3)
@@ -1913,8 +1913,8 @@ module Rr_map = struct
   let text : type c. ?origin:'a Domain_name.t -> ?default_ttl:int32 ->
     'b Domain_name.t -> c key -> c -> string = fun ?origin ?default_ttl n t v ->
     let hex cs =
-      let buf = Bytes.create (Cstruct.len cs * 2) in
-      for i = 0 to pred (Cstruct.len cs) do
+      let buf = Bytes.create (Cstruct.length cs * 2) in
+      for i = 0 to pred (Cstruct.length cs) do
         let byte = Cstruct.get_uint8 cs i in
         let up, low = byte lsr 4, byte land 0x0F in
         let to_hex_char v = char_of_int (if v < 10 then 0x30 + v else 0x37 + v) in
@@ -2162,14 +2162,14 @@ module Rr_map = struct
 
   let decode names buf off (K typ) =
     let open Rresult.R.Infix in
-    guard (Cstruct.len buf - off >= 6) `Partial >>= fun () ->
+    guard (Cstruct.length buf - off >= 6) `Partial >>= fun () ->
     let ttl = Cstruct.BE.get_uint32 buf off
     and len = Cstruct.BE.get_uint16 buf (off + 4)
     and rdata_start = off + 6
     in
     guard (Int32.logand ttl 0x8000_0000l = 0l)
       (`Malformed (off, Fmt.strf "bad TTL (high bit set) %lu" ttl)) >>= fun () ->
-    guard (Cstruct.len buf - rdata_start >= len) `Partial >>= fun () ->
+    guard (Cstruct.length buf - rdata_start >= len) `Partial >>= fun () ->
     guard (len <= max_rdata_length)
       (`Malformed (off + 4, Fmt.strf "length %d exceeds maximum rdata size" len)) >>= fun () ->
     (match typ with
@@ -2371,7 +2371,7 @@ module Packet = struct
     let decode buf =
       let open Rresult.R.Infix in
       (* we only access the first 4 bytes, but anything <12 is a bad DNS frame *)
-      guard (Cstruct.len buf >= len) `Partial >>= fun () ->
+      guard (Cstruct.length buf >= len) `Partial >>= fun () ->
       let hdr = Cstruct.BE.get_uint16 buf 2 in
       let op = (hdr land 0x7800) lsr 11
       and rc = hdr land 0x000F
@@ -2482,7 +2482,7 @@ module Packet = struct
   let decode_ntc names buf off =
     let open Rresult.R.Infix in
     Name.decode names buf ~off >>= fun (name, names, off) ->
-    guard (Cstruct.len buf - off >= 4) `Partial >>= fun () ->
+    guard (Cstruct.length buf - off >= 4) `Partial >>= fun () ->
     let typ = Cstruct.BE.get_uint16 buf off
     and cls = Cstruct.BE.get_uint16 buf (off + 2)
     (* CLS is interpreted differently by OPT, thus no int_to_clas called here *)
@@ -2973,7 +2973,7 @@ module Packet = struct
       let open Rresult.R.Infix in
       decode_ntc names buf off >>= fun ((name, typ, cls), names, off) ->
       let off' = off + 6 in
-      guard (Cstruct.len buf >= off') `Partial >>= fun () ->
+      guard (Cstruct.length buf >= off') `Partial >>= fun () ->
       let ttl = Cstruct.BE.get_uint32 buf off in
       guard (ttl = 0l) (`Malformed (off, Fmt.strf "prereq TTL not zero %lu" ttl)) >>= fun () ->
       let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
@@ -3042,7 +3042,7 @@ module Packet = struct
       let open Rresult.R.Infix in
       decode_ntc names buf off >>= fun ((name, typ, cls), names, off) ->
       let off' = off + 6 in
-      guard (Cstruct.len buf >= off') `Partial >>= fun () ->
+      guard (Cstruct.length buf >= off') `Partial >>= fun () ->
       let ttl = Cstruct.BE.get_uint32 buf off in
       let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
       let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.strf "update rdlength must be zero %d" rlen)) in
@@ -3332,8 +3332,8 @@ module Packet = struct
       guard allow_trunc `Partial >>= fun () ->
       Ok (additional, edns, tsig)
     | `Full (off, additional, edns, tsig) ->
-      (if Cstruct.len buf > off then
-         let n = Cstruct.len buf - off in
+      (if Cstruct.length buf > off then
+         let n = Cstruct.length buf - off in
          Log.warn (fun m -> m "received %d extra bytes %a"
                        n Cstruct.hexdump_pp (Cstruct.sub buf off n))) ;
       Ok (additional, edns, tsig)
@@ -3550,7 +3550,7 @@ module Packet = struct
         with Invalid_argument _ -> (* set truncated *)
           (* if we failed to store data into buf, set truncation bit! *)
           Cstruct.set_uint8 buf 2 (0x02 lor (Cstruct.get_uint8 buf 2)) ;
-          Cstruct.len buf, true
+          Cstruct.length buf, true
       in
       Cstruct.sub buf 0 off, trunc
     in
@@ -3598,7 +3598,7 @@ module Packet = struct
   let raw_error buf rcode =
     (* copy id from header, retain opcode, set rcode to ServFail
        if we receive a fragment < 12 bytes, it's not worth bothering *)
-    if Cstruct.len buf < 12 then
+    if Cstruct.length buf < 12 then
       None
     else
       let query = Cstruct.get_uint8 buf 2 lsr 7 = 0 in

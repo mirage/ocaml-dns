@@ -68,8 +68,8 @@ module Transport : Dns_client.S
     Lwt.catch (fun () ->
       with_timeout ctx
       (Lwt_unix.send ctx.fd (Cstruct.to_bytes tx) 0
-        (Cstruct.len tx) [] >>= fun res ->
-      if res <> Cstruct.len tx then
+        (Cstruct.length tx) [] >>= fun res ->
+      if res <> Cstruct.length tx then
         Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
       else
         Lwt_result.return ()))

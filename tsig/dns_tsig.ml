@@ -28,14 +28,14 @@ let add_tsig ?max_size name tsig buf =
   Cstruct.BE.set_uint16 buf 10 (succ (Cstruct.BE.get_uint16 buf 10)) ;
   let tsig = Tsig.encode_full name tsig in
   match max_size with
-  | Some x when x - Cstruct.len buf < Cstruct.len tsig -> None
+  | Some x when x - Cstruct.length buf < Cstruct.length tsig -> None
   | _ -> Some (Cstruct.(append buf tsig))
 
 let mac_to_prep = function
   | None -> Cstruct.create 0
   | Some mac ->
     let l = Cstruct.create 2 in
-    Cstruct.BE.set_uint16 l 0 (Cstruct.len mac) ;
+    Cstruct.BE.set_uint16 l 0 (Cstruct.length mac) ;
     Cstruct.append l mac
 
 let sign ?mac ?max_size name tsig ~key p buf =
@@ -90,7 +90,7 @@ let verify_raw ?mac now name ~key tsig tbs =
   let priv = Cstruct.of_string priv in
   let computed = compute_tsig name tsig ~key:priv (Cstruct.append prep tbs) in
   let mac = tsig.Tsig.mac in
-  guard (Cstruct.len mac = Cstruct.len computed) (`Bad_truncation (name, tsig)) >>= fun () ->
+  guard (Cstruct.length mac = Cstruct.length computed) (`Bad_truncation (name, tsig)) >>= fun () ->
   guard (Cstruct.equal computed mac) (`Invalid_mac (name, tsig)) >>= fun () ->
   guard (Tsig.valid_time now tsig) (`Bad_timestamp (name, tsig, key)) >>= fun () ->
   Rresult.R.of_option ~none:(fun () -> Error (`Bad_timestamp (name, tsig, key)))
