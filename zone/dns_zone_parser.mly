@@ -152,7 +152,7 @@ generic_type s generic_rdata {
          and selector = Tlsa.int_to_selector $5
          and matching_type = Tlsa.int_to_matching_type $7
          in
-         if Cstruct.len $9 > max_rdata_length - 3 then
+         if Cstruct.length $9 > max_rdata_length - 3 then
            parse_error "TLSA payload exceeds maximum rdata size";
          let tlsa = { Tlsa.cert_usage ; selector ; matching_type ; data = $9 } in
          B (Tlsa, (0l, Rr_map.Tlsa_set.singleton tlsa ))
@@ -164,7 +164,7 @@ generic_type s generic_rdata {
          let algorithm = Sshfp.int_to_algorithm $3
          and typ = Sshfp.int_to_typ $5
          in
-         if Cstruct.len $7 > max_rdata_length - 2 then
+         if Cstruct.length $7 > max_rdata_length - 2 then
            parse_error "SSHFP payload exceeds maximum rdata size";
          let sshfp = { Sshfp.algorithm ; typ ; fingerprint = $7 } in
          B (Sshfp, (0l, Rr_map.Sshfp_set.singleton sshfp))

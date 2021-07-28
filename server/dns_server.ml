@@ -1102,7 +1102,7 @@ module Primary = struct
         let tsig_size =
           let dl d = String.length (Domain_name.to_string d) + 2 in
           dl name (* key name *) + 10 (* type class ttl rdlen *) +
-          16 (* base tsig *) + Cstruct.len tsig.Tsig.mac +
+          16 (* base tsig *) + Cstruct.length tsig.Tsig.mac +
           dl (Tsig.algorithm_to_name tsig.Tsig.algorithm) (* algo name *)
         in
         let t', answer, out, notify = handle_inner tsig_size (Some name) in

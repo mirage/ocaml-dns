@@ -31,7 +31,7 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
   | Error s ->
     Error (`Msg (Fmt.strf "tsig sign error %a" Dns_tsig.pp_s s))
   | Ok (data, mac) ->
-    let data_len = Cstruct.len data in
+    let data_len = Cstruct.length data in
     Logs.debug (fun m -> m "built data %d" data_len) ;
     let socket = Dns_cli.connect_tcp serverip port in
     Dns_cli.send_tcp socket data ;

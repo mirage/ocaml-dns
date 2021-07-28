@@ -14,7 +14,7 @@ let connect_tcp ip port =
 
 (* TODO EINTR, SIGPIPE *)
 let send_tcp sock buf =
-  let size = Cstruct.len buf in
+  let size = Cstruct.length buf in
   let size_cs =
     let b = Cstruct.create 2 in
     Cstruct.BE.set_uint16 b 0 size ;

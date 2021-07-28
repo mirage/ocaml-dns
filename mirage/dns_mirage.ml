@@ -38,7 +38,7 @@ module Make (S : Mirage_stack.V4V6) = struct
 
   let rec read_exactly f length =
     let dst_ip, dst_port = T.dst f.flow in
-    if Cstruct.len f.linger >= length then
+    if Cstruct.length f.linger >= length then
       let a, b = Cstruct.split f.linger length in
       f.linger <- b ;
       Lwt.return (Ok a)
@@ -58,7 +58,7 @@ module Make (S : Mirage_stack.V4V6) = struct
 
   let send_udp stack src_port dst dst_port data =
     Log.debug (fun m -> m "udp: sending %d bytes from %d to %a:%d"
-                 (Cstruct.len data) src_port Ipaddr.pp dst dst_port) ;
+                 (Cstruct.length data) src_port Ipaddr.pp dst dst_port) ;
     U.write ~src_port ~dst ~dst_port (S.udp stack) data >|= function
     | Error e -> Log.warn (fun m -> m "udp: failure %a while sending from %d to %a:%d"
                               U.pp_error e src_port Ipaddr.pp dst dst_port)
@@ -66,9 +66,9 @@ module Make (S : Mirage_stack.V4V6) = struct
 
   let send_tcp flow answer =
     let dst_ip, dst_port = T.dst flow in
-    Log.debug (fun m -> m "tcp: sending %d bytes to %a:%d" (Cstruct.len answer) Ipaddr.pp dst_ip dst_port) ;
+    Log.debug (fun m -> m "tcp: sending %d bytes to %a:%d" (Cstruct.length answer) Ipaddr.pp dst_ip dst_port) ;
     let len = Cstruct.create 2 in
-    Cstruct.BE.set_uint16 len 0 (Cstruct.len answer) ;
+    Cstruct.BE.set_uint16 len 0 (Cstruct.length answer) ;
     T.write flow (Cstruct.append len answer) >>= function
     | Ok () -> Lwt.return (Ok ())
     | Error e ->

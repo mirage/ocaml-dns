@@ -1441,7 +1441,7 @@ module Axfr = struct
     let axfr_req = n_of_s "one.com", `Axfr in
     let bufs = buf_axfr_test s axfr_req in
     Alcotest.(check int __LOC__ 1 (List.length bufs));
-    Alcotest.(check int __LOC__ 65535 (Cstruct.len (List.hd bufs)));
+    Alcotest.(check int __LOC__ 65535 (Cstruct.length (List.hd bufs)));
     match Packet.decode (List.hd bufs) with
     | Ok _ -> ()
     | Error e ->
@@ -1454,8 +1454,8 @@ module Axfr = struct
     let axfr_req = n_of_s "one.com", `Axfr in
     let bufs = buf_axfr_test s axfr_req in
     Alcotest.(check int __LOC__ 2 (List.length bufs));
-    Alcotest.(check int __LOC__ 65500 (Cstruct.len (List.hd bufs)));
-    Alcotest.(check int __LOC__ 75 (Cstruct.len (List.hd (List.tl bufs))))
+    Alcotest.(check int __LOC__ 65500 (Cstruct.length (List.hd bufs)));
+    Alcotest.(check int __LOC__ 75 (Cstruct.length (List.hd (List.tl bufs))))
 
   let axfr_encoding_big_zone_multiple_splits () =
     (* a zone split over multiple packages *)
@@ -1518,7 +1518,7 @@ module Axfr = struct
     let axfr_req = n_of_s "one.com", `Axfr in
     let bufs = signed_buf_axfr_test s keyname key axfr_req in
     Alcotest.(check int __LOC__ 1 (List.length bufs));
-    Alcotest.(check int __LOC__ 65535 (Cstruct.len (List.hd bufs)))
+    Alcotest.(check int __LOC__ 65535 (Cstruct.length (List.hd bufs)))
 
   let axfr_encoding_big_zone_one_split_tsig () =
     let trie = signed_zone "0" in
@@ -1526,8 +1526,8 @@ module Axfr = struct
     let axfr_req = n_of_s "one.com", `Axfr in
     let bufs = signed_buf_axfr_test s keyname key axfr_req in
     Alcotest.(check int __LOC__ 2 (List.length bufs));
-    Alcotest.(check int __LOC__ 65500 (Cstruct.len (List.hd bufs)));
-    Alcotest.(check int __LOC__ 184 (Cstruct.len (List.hd (List.tl bufs))))
+    Alcotest.(check int __LOC__ 65500 (Cstruct.length (List.hd bufs)));
+    Alcotest.(check int __LOC__ 184 (Cstruct.length (List.hd (List.tl bufs))))
 
   let tests = [
     "encoding", `Quick, axfr_encoding ;

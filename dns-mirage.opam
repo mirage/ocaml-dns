@@ -10,6 +10,7 @@ license: "BSD-2-Clause"
 depends: [
   "dune" {>= "1.2.0"}
   "ocaml" {>= "4.07.0"}
+  "cstruct" {>= "6.0.0"}
   "dns" {= version}
   "ipaddr" {>= "4.0.0"}
   "lwt" {>= "4.2.1"}

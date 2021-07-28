@@ -125,7 +125,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
           Lwt.return_unit
         | Ok (`Data cs) ->
           let rec handle_data data =
-            let cs_len = Cstruct.len data in
+            let cs_len = Cstruct.length data in
             if cs_len > 2 then
               let len = Cstruct.BE.get_uint16 data 0 in
               if cs_len - 2 >= len then
@@ -146,7 +146,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
             else
               read_loop ~linger:data t flow
           in
-          handle_data (if Cstruct.len linger = 0 then cs else Cstruct.append linger cs)
+          handle_data (if Cstruct.length linger = 0 then cs else Cstruct.append linger cs)
 
       let connect ?nameserver:ns t =
         match t.flow with
