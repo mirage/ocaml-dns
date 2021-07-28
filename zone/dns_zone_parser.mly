@@ -49,7 +49,9 @@ let parse_uint32 s =
 let parse_ipv6 s =
   Ipaddr.V6.of_string_exn s
 
-let add_to_map name (Rr_map.B (k, v)) = Name_rr_map.add name k v
+let add_to_map name ~ttl (Rr_map.B (k, v)) =
+  let v = Rr_map.with_ttl k v ttl in
+  Name_rr_map.add name k v
 %}
 
 %token EOF
@@ -104,11 +106,11 @@ origin: SORIGIN s domain { state.origin <- $3 }
 ttl: STTL s int32 { state.ttl <- $3 }
 
 rrline:
-   owner s int32 s rrclass s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $7 $3) state.zone }
- | owner s rrclass s int32 s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $7 $5) state.zone  }
- | owner s rrclass s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $5 state.ttl) state.zone }
- | owner s int32 s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $5 $3) state.zone }
- | owner s rr { state.zone <- add_to_map $1 (Rr_map.with_ttl $3 state.ttl) state.zone }
+   owner s int32 s rrclass s rr { state.zone <- add_to_map $1 ~ttl:$3 $7 state.zone }
+ | owner s rrclass s int32 s rr { state.zone <- add_to_map $1 ~ttl:$5 $7 state.zone  }
+ | owner s rrclass s rr { state.zone <- add_to_map $1 ~ttl:state.ttl $5 state.zone }
+ | owner s int32 s rr { state.zone <- add_to_map $1 ~ttl:$3 $5 state.zone }
+ | owner s rr { state.zone <- add_to_map $1 ~ttl:state.ttl $3 state.zone }
 
 rrclass:
    CLASS_IN {}
