@@ -138,13 +138,15 @@ let pp_entry ppf entry =
   | `Serv_fail ns -> Fmt.(prefix (unit "serv fail ") pp_ns) ppf ns
 
 let get_ttl = function
-  | `Entry b -> Rr_map.get_ttl b
+  | `Entry Rr_map.B (k, v) -> Rr_map.ttl k v
   | `No_data (_, soa) -> soa.Soa.minimum
   | `No_domain (_, soa) -> soa.Soa.minimum
   | `Serv_fail (_, soa) -> soa.Soa.minimum
 
 let with_ttl ttl = function
-  | `Entry b -> `Entry (Rr_map.with_ttl b ttl)
+  | `Entry Rr_map.B (k, v) ->
+    let v' = Rr_map.with_ttl k v ttl in
+    `Entry (Rr_map.B (k, v'))
   | `No_data (name, soa) -> `No_data (name, { soa with Soa.minimum = ttl })
   | `No_domain (name, soa) -> `No_domain (name, { soa with Soa.minimum = ttl })
   | `Serv_fail (name, soa) -> `Serv_fail (name, { soa with Soa.minimum = ttl })
@@ -212,11 +214,11 @@ let get_any cache ts name =
       let r =
         RRMap.fold (fun _k ((created, _), v) acc ->
             match v with
-            | Entry.Entry b ->
-              begin match ttl created (Rr_map.get_ttl b) with
+            | Entry.Entry B (k, v) ->
+              begin match ttl created (Rr_map.ttl k v) with
                 | Ok ttl ->
-                  let B (k, v) = Rr_map.with_ttl b ttl in
-                  Rr_map.add k v acc
+                  let v' = Rr_map.with_ttl k v ttl in
+                  Rr_map.add k v' acc
                 | Error _ -> acc
               end
             | _ -> acc) rrs Rr_map.empty

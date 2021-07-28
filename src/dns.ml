@@ -2023,7 +2023,7 @@ module Rr_map = struct
     in
     String.concat "\n" strs
 
-  let get_ttl : b -> int32 = fun (B (k, v)) ->
+  let ttl : type a. a key -> a -> int32 = fun k v ->
     match k, v with
     | Cname, (ttl, _) -> ttl
     | Mx, (ttl, _) -> ttl
@@ -2040,22 +2040,22 @@ module Rr_map = struct
     | Sshfp, (ttl, _) -> ttl
     | Unknown _, (ttl, _) -> ttl
 
-  let with_ttl : b -> int32 -> b = fun (B (k, v)) ttl ->
+  let with_ttl : type a. a key -> a -> int32 -> a = fun k v ttl ->
     match k, v with
-    | Cname, (_, cname) -> B (k, (ttl, cname))
-    | Mx, (_, mxs) -> B (k, (ttl, mxs))
-    | Ns, (_, ns) -> B (k, (ttl, ns))
-    | Ptr, (_, ptr) -> B (k, (ttl, ptr))
-    | Soa, soa -> B (k, soa)
-    | Txt, (_, txts) -> B (k, (ttl, txts))
-    | A, (_, ips) -> B (k, (ttl, ips))
-    | Aaaa, (_, ips) -> B (k, (ttl, ips))
-    | Srv, (_, srvs) -> B (k, (ttl, srvs))
-    | Dnskey, keys -> B (k, keys)
-    | Caa, (_, caas) -> B (k, (ttl, caas))
-    | Tlsa, (_, tlsas) -> B (k, (ttl, tlsas))
-    | Sshfp, (_, sshfps) -> B (k, (ttl, sshfps))
-    | Unknown _, (_, datas) -> B (k, (ttl, datas))
+    | Cname, (_, cname) -> ttl, cname
+    | Mx, (_, mxs) -> ttl, mxs
+    | Ns, (_, ns) -> ttl, ns
+    | Ptr, (_, ptr) -> ttl, ptr
+    | Soa, soa -> soa
+    | Txt, (_, txts) -> ttl, txts
+    | A, (_, ips) -> ttl, ips
+    | Aaaa, (_, ips) -> ttl, ips
+    | Srv, (_, srvs) -> ttl, srvs
+    | Dnskey, keys -> keys
+    | Caa, (_, caas) -> ttl, caas
+    | Tlsa, (_, tlsas) -> ttl, tlsas
+    | Sshfp, (_, sshfps) -> ttl, sshfps
+    | Unknown _, (_, datas) -> ttl, datas
 
   let split : type a. a key -> a -> a * a option = fun k v ->
     match k, v with

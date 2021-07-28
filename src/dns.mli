@@ -758,11 +758,11 @@ module Rr_map : sig
   val text : ?origin:'a Domain_name.t -> ?default_ttl:int32 -> 'b Domain_name.t -> 'c rr -> 'c -> string
   (** [text ~origin ~default_ttl name k v] is the zone file data for [k, v]. *)
 
-  val get_ttl : b -> int32
-  (** [get_ttl b] returns the time-to-live of [b]. *)
+  val ttl : 'a key -> 'a -> int32
+  (** [get_ttl k v] returns the time-to-live of [v]. *)
 
-  val with_ttl : b -> int32 -> b
-  (** [with_ttl b ttl] updates [ttl] in [b]. *)
+  val with_ttl : 'a key -> 'a -> int32 -> 'a
+  (** [with_ttl k v ttl] updates [ttl] in [v]. *)
 
 end
 

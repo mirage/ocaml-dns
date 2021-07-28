@@ -69,7 +69,7 @@ let follow_cname t ts typ ~name ttl ~alias =
                      Domain_name.pp name);
       `Query name, t
     | Ok `Entry (Rr_map.B (Cname, (_, alias))) ->
-      let acc' = Domain_name.Map.add name Rr_map.(singleton Cname (ttl, alias)) acc in
+      let acc' = Domain_name.Map.add name (Rr_map.singleton Cname (ttl, alias)) acc in
       if Domain_name.Map.mem alias acc then begin
         Logs.warn (fun m -> m "follow_cname: cycle detected") ;
         `Out (Rcode.NoError, acc', Name_rr_map.empty), t
