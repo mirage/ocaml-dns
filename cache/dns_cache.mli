@@ -45,25 +45,25 @@ val pp : t Fmt.t
 
 (** The polymorphic variant of an entry: a resource record, or no data,
     no domain, or a server failure. *)
-type entry = [
-  | `Entry of Rr_map.b
+type 'a entry = [
+  | `Entry of 'a
   | `No_data of [ `raw ] Domain_name.t * Soa.t
   | `No_domain of [ `raw ] Domain_name.t * Soa.t
   | `Serv_fail of [ `raw ] Domain_name.t * Soa.t
 ]
 
-val pp_entry : entry Fmt.t
+val pp_entry : 'a Rr_map.key -> 'a entry Fmt.t
 (** [pp_entry ppf entry] pretty-prints [entry] on [ppf]. *)
 
 val get : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key ->
-  t * (entry, [ `Cache_miss | `Cache_drop ]) result
+  t * ('a entry, [ `Cache_miss | `Cache_drop ]) result
 (** [get cache timestamp type name] retrieves the query [type, name] from the
     [cache] using [timestamp]. If the time to live is exceeded, a [`Cache_drop]
     is returned. If there is no entry in the cache, a [`Cache_miss] is
     returned. *)
 
 val get_or_cname : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key ->
-  t * (entry, [ `Cache_miss | `Cache_drop ]) result
+  t * ([ 'a entry | `Alias of int32 * [`raw] Domain_name.t], [ `Cache_miss | `Cache_drop ]) result
 (** [get_or_cname cache timestamp type name] is the same as [get], but if a
     [`Cache_miss] is encountered, a lookup for an alias (CNAME) is done. *)
 
@@ -75,7 +75,7 @@ val get_any : t -> int64 -> [ `raw ] Domain_name.t ->
     in [cache]. *)
 
 val set : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key -> rank ->
-  entry -> t
+  'a entry -> t
 (** [set cache timestamp type name rank value] attempts to insert
     [type, name, value] into the [cache] using the [timestamp] and [rank]. If
     an entry already exists with a higher [rank], the [cache] is unchanged. *)

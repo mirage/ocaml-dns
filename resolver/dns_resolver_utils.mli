@@ -2,9 +2,10 @@
 
 open Dns
 
+type e = E : 'a Rr_map.key * 'a Dns_cache.entry -> e
+
 val scrub : [ `raw ] Domain_name.t -> Packet.Question.qtype -> Packet.t ->
-  ((Rr_map.k * [ `raw ] Domain_name.t * Dns_cache.rank * Dns_cache.entry) list,
-   Rcode.t) result
+  (([ `raw ] Domain_name.t * e * Dns_cache.rank) list, Rcode.t) result
 (** [scrub bailiwick packet] returns a list of entries to-be-added to the
     cache. This respects only in-bailiwick resources records, and qualifies the
     [packet]. The purpose is to avoid cache poisoning by not accepting all

@@ -150,9 +150,9 @@ let scrub_it t proto zone edns ts qtype p =
   | Ok xs, _ ->
     let cache =
       List.fold_left
-        (fun t (Rr_map.K ty, n, r, e) ->
+        (fun t (n, Dns_resolver_utils.E (ty, e), r) ->
            Logs.debug (fun m -> m "Dns_cache.set %a %a %a"
-                            Rr_map.ppk (K ty) Domain_name.pp n Dns_cache.pp_entry e) ;
+                            Rr_map.ppk (K ty) Domain_name.pp n (Dns_cache.pp_entry ty) e) ;
            Dns_cache.set t ts n ty r e)
         t xs
     in
@@ -389,11 +389,11 @@ let query_root t now proto =
   in
   let ip =
     match Dns_cache.get t.cache now Domain_name.root Ns with
-    | _, Ok `Entry Rr_map.(B (Ns, (_, names))) ->
+    | _, Ok `Entry (_, names) ->
       let ips =
         Domain_name.Host_set.fold (fun name acc ->
             match Dns_cache.get t.cache now (Domain_name.raw name) A with
-            | _, Ok `Entry Rr_map.(B (A, (_, ips))) ->
+            | _, Ok `Entry (_, ips) ->
               Rr_map.Ipv4_set.union ips acc
             | _ -> acc)
           names Rr_map.Ipv4_set.empty
