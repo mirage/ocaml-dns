@@ -142,7 +142,7 @@ module type S = sig
   type context
   type +'a io
   type io_addr
-  type ns_addr = ([`TCP | `UDP]) * io_addr
+  type ns_addr = Dns.proto * io_addr
   type stack
   type t
 
@@ -237,8 +237,7 @@ struct
         let proto, _ = match nameserver with
           | None -> Transport.nameserver t.transport | Some x -> x in
         let tx, state =
-          Pure.make_query Transport.rng
-            (match proto with `UDP -> `Udp | `TCP -> `Tcp) name query_type
+          Pure.make_query Transport.rng proto name query_type
         in
         Transport.connect ?nameserver t.transport >>| fun socket ->
         Logs.debug (fun m -> m "Connected to NS.");
@@ -268,7 +267,7 @@ struct
              update_cache nodom;
              Error nodom |> Transport.lift
            | Error `Msg xxx -> Error (`Msg xxx) |> Transport.lift
-           | Ok `Partial when proto = `TCP -> recv_loop buf
+           | Ok `Partial when proto = `Tcp -> recv_loop buf
            | Ok `Partial -> Error (`Msg "Truncated UDP response") |> Transport.lift
          in recv_loop Cstruct.empty) >>= fun r ->
         Transport.close socket >>= fun () ->
