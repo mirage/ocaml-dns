@@ -67,6 +67,11 @@ module type S = sig
   val lift : 'a -> 'a io
 end
 
+module With_tls : functor (T : S) -> S
+  with type io_addr = Tls.Config.client * T.io_addr
+   and type +'a io = 'a T.io
+   and type stack = T.stack
+
 module Make : functor (T : S) ->
 sig
 

@@ -161,6 +161,140 @@ module type S = sig
   val lift : 'a -> 'a io
 end
 
+module With_tls (T : S) = struct
+  type +'a io = 'a T.io
+
+  type io_addr = Tls.Config.client * T.io_addr
+
+  type ns_addr = Dns.proto * io_addr
+
+  type stack = T.stack
+
+  type t = {
+    nameserver : ns_addr ;
+    t : T.t ;
+  }
+
+  type context = {
+    t : t ;
+    context : T.context ;
+    mutable tls : (Tls.Engine.state, [ `Msg of string ]) result ;
+    mutable linger : Cstruct.t ;
+  }
+
+  let create ?nameserver ~timeout stack =
+    (* TODO: default authenticator! *)
+    let tls, ns = match nameserver with
+      | None ->
+        Tls.Config.client ~authenticator:(fun ~host:_ _ -> Ok None) (), None
+      | Some (_proto, (tls, ns)) -> tls, Some (`Tcp, ns)
+    in
+    let t = T.create ?nameserver:ns ~timeout stack in
+    let nameserver = `Tcp, (tls, snd (T.nameserver t)) in
+    { nameserver ; t }
+
+  let nameserver t = t.nameserver
+
+  let bind = T.bind
+
+  let lift = T.lift
+
+  let (>>=) = T.bind
+
+  let rng = T.rng
+  let clock = T.clock
+
+  let (>>==) a b = a >>= function
+    | Ok x -> b x
+    | Error `Msg m -> lift (Error ((`Msg m) :> [> `Msg of string ]))
+
+  let send t data =
+    lift t.tls >>== fun tls ->
+    match Tls.Engine.send_application_data tls [data] with
+    | None ->
+      t.tls <- Error (`Msg "couldn't send data");
+      lift (Error (`Msg "expected to be ready to send data"))
+    | Some (tls', out) ->
+      t.tls <- Ok tls';
+      T.send t.context out
+
+  let read_react t =
+    let handle tls buf =
+      match Tls.Engine.handle_tls tls buf with
+      | Ok (r, `Response resp, `Data data) ->
+        (match resp with
+         | Some x -> T.send t.context x
+         | None -> T.lift (Ok ())) >>== fun () ->
+        (match r with
+         | `Ok tls' -> t.tls <- Ok tls'
+         | `Eof -> t.tls <- Error (`Msg "end of file")
+         | `Alert a ->
+           let m = Sexplib.Sexp.to_string_hum (Tls.Packet.sexp_of_alert_type a) in
+           t.tls <- Error (`Msg ("TLS alert " ^ m)));
+        lift t.tls >>== fun _ ->
+        lift (Ok (match data with None -> Cstruct.empty | Some x -> x))
+      | Error (f, `Response r) ->
+        T.send t.context r >>== fun () ->
+        let msg = `Msg (Tls.Engine.string_of_failure f) in
+        t.tls <- Error msg;
+        lift (Error msg)
+    in
+    match t.tls with
+    | Error _ as e -> lift e
+    | Ok _tls ->
+      T.recv t.context >>== fun recv ->
+      match t.tls with
+      | Ok tls when Cstruct.length recv > 0 -> handle tls recv
+      | Ok _ ->
+        let e = `Msg "end of file" in
+        t.tls <- Error e;
+        lift (Error e)
+      | Error _ as e -> lift e
+
+  let rec recv t =
+    if Cstruct.length t.linger > 0 then
+      let data = t.linger in
+      t.linger <- Cstruct.empty;
+      lift (Ok data)
+    else
+      read_react t >>== fun d ->
+      if Cstruct.length d = 0 then
+        recv t
+      else
+        lift (Ok d)
+
+  let connect ?(nameserver : ns_addr option) t : (context, [> `Msg of string ]) result io =
+    let tls, nameserver = match nameserver with
+      | None ->
+        let proto, (tls_client, ns) = t.nameserver in
+        tls_client, (proto, ns)
+      | Some (proto, (tls_client, ns)) -> tls_client, (proto, ns)
+    in
+    T.connect ~nameserver t.t >>== fun context ->
+    let tls, out = Tls.Engine.client tls in
+    T.send context out >>== fun () ->
+    let rec drain_handshake ctx =
+      match ctx.tls with
+      | Ok tls when not (Tls.Engine.handshake_in_progress tls) -> lift (Ok ctx)
+      | _ ->
+        read_react ctx >>== fun data ->
+        ctx.linger <- Cstruct.append ctx.linger data;
+        drain_handshake ctx
+    in
+    let context = { t ; context ; tls = Ok tls ; linger = Cstruct.empty } in
+    drain_handshake context
+
+  let close t =
+    (match t.tls with
+    | Ok tls ->
+      let _tls', out = Tls.Engine.send_close_notify tls in
+      t.tls <- Error (`Msg "connection closed");
+      T.send t.context out >>= fun _ ->
+      lift ()
+    | Error _ -> lift ()) >>= fun () ->
+    T.close t.context
+end
+
 let localhost = Domain_name.of_string_exn "localhost"
 let localsoa = Soa.create (Domain_name.prepend_label_exn localhost "ns")
 let invalid = Domain_name.of_string_exn "invalid"
