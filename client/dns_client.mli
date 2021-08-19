@@ -8,6 +8,9 @@ val default_resolver : string * string
     (/hexadecimal) form of the default resolver. Currently it is the IP address
     of the UncensoredDNS.org anycast service. *)
 
+val default_resolver_hostname : [`host] Domain_name.t
+(** [default_resolver_hostname] is the hostname of the default resolver. *)
+
 module type S = sig
   type context
   (** A context is a network connection initialized by {!T.connect} *)

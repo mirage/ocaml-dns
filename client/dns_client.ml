@@ -137,6 +137,8 @@ end
 
 (* Anycast address of uncensoreddns.org *)
 let default_resolver = "91.239.100.100", "2001:67c:28a4::"
+let default_resolver_hostname =
+  Domain_name.(host_exn (of_string_exn "anycast.uncensoreddns.org"))
 
 module type S = sig
   type context

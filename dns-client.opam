@@ -32,6 +32,7 @@ depends: [
   "mirage-crypto-rng" {>= "0.8.0"}
   "alcotest" {with-test}
   "tls" {>= "0.14.0"}
+  "ca-certs-nss"
 ]
 synopsis: "Pure DNS resolver API"
 description: """

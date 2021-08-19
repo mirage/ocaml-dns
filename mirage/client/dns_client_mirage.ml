@@ -3,7 +3,7 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_client_mirage" ~doc:"effectful DNS client layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4V6) = struct
+module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Mirage_stack.V4V6) = struct
 
   module Transport : Dns_client.S
     with type stack = S.t
@@ -65,5 +65,22 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
       | Ok () -> Ok ())
   end
 
-  include Dns_client.Make(Transport)
+  include Dns_client.Make(Dns_client.With_tls(Transport))
+
+  module Cas = Ca_certs_nss.Make(P)
+
+  let create ?size ?nameserver ?timeout stack =
+    let nameserver = match nameserver with
+      | None ->
+        begin match Cas.authenticator () with
+          | Error (`Msg m) -> invalid_arg m
+          | Ok authenticator ->
+            let peer_name = Dns_client.default_resolver_hostname in
+            `Tcp,
+            (Tls.Config.client ~peer_name ~authenticator (),
+             (Ipaddr.of_string_exn (fst Dns_client.default_resolver), 853))
+        end
+      | Some ns -> ns
+    in
+    create ?size ~nameserver ?timeout stack
 end

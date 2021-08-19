@@ -193,7 +193,24 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
             Lwt.return (Ok ()))
     end
 
-    include Dns_client.Make(Transport)
+    include Dns_client.Make(Dns_client.With_tls(Transport))
+
+    module Cas = Ca_certs_nss.Make(P)
+
+    let create ?size ?nameserver ?timeout stack =
+      let nameserver = match nameserver with
+        | None ->
+          begin match Cas.authenticator () with
+            | Error (`Msg m) -> invalid_arg m
+            | Ok authenticator ->
+              let peer_name = Dns_client.default_resolver_hostname in
+              `Tcp,
+              (Tls.Config.client ~peer_name ~authenticator (),
+               (Ipaddr.of_string_exn (fst Dns_client.default_resolver), 853))
+          end
+        | Some ns -> ns
+      in
+      create ?size ~nameserver ?timeout stack
   end
 
   (* likely this should contain:
@@ -369,7 +386,6 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         | None -> resolve t packet.Packet.question packet.Packet.data build_reply
 
   let create ?nameserver ?(size = 10000) ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
-    let nameserver = match nameserver with None -> None | Some ns -> Some (`Tcp, (ns, 53)) in
     let client = Client.create ~size ?nameserver stack in
     let server = Dns_server.Primary.server primary in
     let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in

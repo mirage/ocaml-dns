@@ -25,6 +25,7 @@ depends: [
   "mirage-random" {>= "2.0.0"}
   "mirage-stack" {>= "2.2.0"}
   "metrics"
+  "ca-certs-nss"
 ]
 
 build: [
