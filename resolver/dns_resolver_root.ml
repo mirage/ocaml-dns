@@ -31,7 +31,7 @@ let ns_records =
 
 let a_records =
   List.map (fun (name, ip) ->
-      Domain_name.raw name, (a_ttl, Rr_map.Ipv4_set.singleton ip))
+      Domain_name.raw name, (a_ttl, Ipaddr.V4.Set.singleton ip))
     root_servers
 
 let reserved_zone_records =

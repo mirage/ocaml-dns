@@ -306,10 +306,10 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
         let ips = Domain_name.Map.fold (fun _ rrmap ips ->
             match Rr_map.(find A rrmap) with
             | None -> ips
-            | Some (_, ips') -> Rr_map.Ipv4_set.union ips ips')
-            add_data Rr_map.Ipv4_set.empty
+            | Some (_, ips') -> Ipaddr.V4.Set.union ips ips')
+            add_data Ipaddr.V4.Set.empty
         in
-        begin match pick t.rng (Rr_map.Ipv4_set.elements ips) with
+        begin match pick t.rng (Ipaddr.V4.Set.elements ips) with
           | None ->
             Logs.err (fun m -> m "something is wrong, delegation but no IP");
             t, [], []
@@ -393,12 +393,11 @@ let query_root t now proto =
       let ips =
         Domain_name.Host_set.fold (fun name acc ->
             match Dns_cache.get t.cache now (Domain_name.raw name) A with
-            | _, Ok `Entry (_, ips) ->
-              Rr_map.Ipv4_set.union ips acc
+            | _, Ok `Entry (_, ips) -> Ipaddr.V4.Set.union ips acc
             | _ -> acc)
-          names Rr_map.Ipv4_set.empty
+          names Ipaddr.V4.Set.empty
       in
-      begin match pick t.rng (Rr_map.Ipv4_set.elements ips) with
+      begin match pick t.rng (Ipaddr.V4.Set.elements ips) with
         | Some ip -> Ipaddr.V4 ip
         | None -> root_ip ()
       end

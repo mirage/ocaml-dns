@@ -24,7 +24,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
     let sport () = 1024 + Randomconv.int ~bound:48128 R.generate in
     let state = ref t in
     let tcp_in = ref FM.empty in
-    let tcp_out = ref Dns.IM.empty in
+    let tcp_out = ref Ipaddr.Map.empty in
 
     let rec client_out dst port =
       T.create_connection (S.tcp stack) (dst, port) >|= function
@@ -36,14 +36,14 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
       | Ok flow ->
         Log.debug (fun m -> m "established new outgoing TCP connection to %a:%d"
                       Ipaddr.pp dst port);
-        tcp_out := Dns.IM.add dst flow !tcp_out ;
+        tcp_out := Ipaddr.Map.add dst flow !tcp_out ;
         Lwt.async (fun () ->
             let f = Dns.of_flow flow in
             let rec loop () =
               Dns.read_tcp f >>= function
               | Error () ->
                 Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.pp dst) ;
-                tcp_out := Dns.IM.remove dst !tcp_out ;
+                tcp_out := Ipaddr.Map.remove dst !tcp_out ;
                 Lwt.return_unit
               | Ok data ->
                 let now = Ptime.v (P.now_d_ps ()) in
@@ -59,7 +59,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
             loop ()) ;
         Ok ()
     and client_tcp dst port data =
-      match Dns.IM.find dst !tcp_out with
+      match Ipaddr.Map.find_opt dst !tcp_out with
       | None ->
         begin
           client_out dst port >>= function
@@ -73,10 +73,10 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
         Dns.send_tcp x data >>= function
         | Ok () -> Lwt.return_unit
         | Error () ->
-          tcp_out := Dns.IM.remove dst !tcp_out ;
+          tcp_out := Ipaddr.Map.remove dst !tcp_out ;
           client_tcp dst port data
     and maybe_tcp dst port data =
-      (match Dns.IM.find dst !tcp_out with
+      (match Ipaddr.Map.find_opt dst !tcp_out with
        | Some flow -> Dns.send_tcp flow data
        | None -> Lwt.return (Error ())) >>= function
       | Ok () -> Lwt.return_unit

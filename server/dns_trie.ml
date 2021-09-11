@@ -320,12 +320,12 @@ let check trie =
             Error (`Empty (name, K Txt))
         | B (A, (ttl, a)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Rr_map.Ipv4_set.is_empty a then
+          else if Ipaddr.V4.Set.is_empty a then
             Error (`Empty (name, K A))
           else Ok ()
         | B (Aaaa, (ttl, aaaa)) ->
           if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Rr_map.Ipv6_set.is_empty aaaa then
+          else if Ipaddr.V6.Set.is_empty aaaa then
             Error (`Empty (name, K Aaaa))
           else Ok ()
         | B (Srv, (ttl, srvs)) ->

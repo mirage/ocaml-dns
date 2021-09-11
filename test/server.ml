@@ -33,12 +33,12 @@ module Trie = struct
 
   let glue_ok =
     let module M = struct
-      type t = (int32 * Rr_map.Ipv4_set.t) option * (int32 * Rr_map.Ipv6_set.t) option
+      type t = (int32 * Ipaddr.V4.Set.t) option * (int32 * Ipaddr.V6.Set.t) option
       let pp ppf (v4, v6) =
         let pp_v4 ppf v4 =
-          Fmt.(list ~sep:(unit ",") Ipaddr.V4.pp) ppf (Rr_map.Ipv4_set.elements v4)
+          Fmt.(list ~sep:(unit ",") Ipaddr.V4.pp) ppf (Ipaddr.V4.Set.elements v4)
         and pp_v6 ppf v6 =
-          Fmt.(list ~sep:(unit ",") Ipaddr.V6.pp) ppf (Rr_map.Ipv6_set.elements v6)
+          Fmt.(list ~sep:(unit ",") Ipaddr.V6.pp) ppf (Ipaddr.V6.Set.elements v6)
         in
         Fmt.pf ppf "V4 %a@ V6 %a"
           Fmt.(option ~none:(unit "none") (pair ~sep:(unit ", ") int32 pp_v4)) v4
@@ -46,12 +46,12 @@ module Trie = struct
       let equal a b = match a, b with
         | (None, None), (None, None) -> true
         | (Some (ttl, v4), None), (Some (ttl', v4'), None) ->
-          ttl = ttl' && Rr_map.Ipv4_set.equal v4 v4'
+          ttl = ttl' && Ipaddr.V4.Set.equal v4 v4'
         | (None, Some (ttl, v6)), (None, Some (ttl', v6')) ->
-          ttl = ttl' && Rr_map.Ipv6_set.equal v6 v6'
+          ttl = ttl' && Ipaddr.V6.Set.equal v6 v6'
         | (Some (ttl, v4), Some (ttl6, v6)), (Some (ttl', v4'), Some (ttl6', v6')) ->
-          ttl = ttl' && Rr_map.Ipv4_set.equal v4 v4' &&
-            ttl6 = ttl6' && Rr_map.Ipv6_set.equal v6 v6'
+          ttl = ttl' && Ipaddr.V4.Set.equal v4 v4' &&
+            ttl6 = ttl6' && Ipaddr.V6.Set.equal v6 v6'
         | _ -> false
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
@@ -101,7 +101,7 @@ module Trie = struct
     Alcotest.(check (result b_ok e) "lookup_b for SOA . is SOA"
                 (Ok (Rr_map.B (Rr_map.Soa, soa)))
                 (lookup_b Domain_name.root Soa t)) ;
-    let a_record = (23l, Rr_map.Ipv4_set.singleton (ip "1.4.5.2")) in
+    let a_record = (23l, Ipaddr.V4.Set.singleton (ip "1.4.5.2")) in
     let t = insert (n_of_s "foo.com") Rr_map.A a_record t in
     Alcotest.(check (result l_ok e) "lookup_with_cname for A foo.com is A"
                 (Ok (Rr_map.B (Rr_map.A, a_record),
@@ -190,7 +190,7 @@ module Trie = struct
                 "lookup_b for MX bar.foo.com (after insert) is NoDomain"
                 (Error (`NotFound (n_of_s "foo.com", soa)))
                 (lookup_b (n_of_s "bar.foo.com") Mx t)) ;
-    let a_record = (12l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4")) in
+    let a_record = (12l, Ipaddr.V4.Set.singleton (ip "1.2.3.4")) in
     let t = insert (n_of_s "foo.com") Rr_map.A a_record t in
     Alcotest.(check (result l_ok e)
                 "lookup_with_cname for AAAA foo.com (after insert) is NoData"
@@ -428,7 +428,7 @@ module Trie = struct
                 (zone (n_of_s "bar.com") t))
 
   let no_soa () =
-    let a_record = (23l, Rr_map.Ipv4_set.singleton (ip "1.4.5.2")) in
+    let a_record = (23l, Ipaddr.V4.Set.singleton (ip "1.4.5.2")) in
     let t = insert (n_of_s "ns1.foo.com") Rr_map.A a_record empty in
     Alcotest.(check (result b_ok e) "lookup_with_cname for NS foo.com without SOA fails"
                 (Error `NotAuthoritative)
@@ -488,7 +488,7 @@ module S = struct
     let soa = Soa.create ~serial:1l ns in
     Dns_trie.insert (n_of_s "one.com") Rr_map.Soa soa
       (Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, Domain_name.Host_set.singleton ns)
-         (Dns_trie.insert ns Rr_map.A (300l, Rr_map.Ipv4_set.singleton Ipaddr.V4.localhost)
+         (Dns_trie.insert ns Rr_map.A (300l, Ipaddr.V4.Set.singleton Ipaddr.V4.localhost)
             Dns_trie.empty))
 
   let simple () =
@@ -508,7 +508,7 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.2")) data)
+           (300l, Ipaddr.V4.Set.singleton (ipv4_of_s "10.0.0.2")) data)
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
@@ -525,7 +525,7 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.two.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.2")) data)
+           (300l, Ipaddr.V4.Set.singleton (ipv4_of_s "10.0.0.2")) data)
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
@@ -540,7 +540,7 @@ module S = struct
         Domain_name.(Host_set.(add (host_exn (n_of_s "ns.one.com"))
                                  (singleton (host_exn (n_of_s "ns2.one.com")))))
       and ips =
-        Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.2") (singleton (ipv4_of_s "1.2.3.4")))
+        Ipaddr.V4.Set.(add (ipv4_of_s "10.0.0.2") (singleton (ipv4_of_s "1.2.3.4")))
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A (300l, ips) data)
@@ -561,9 +561,9 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.2"))
+           (300l, Ipaddr.V4.Set.singleton (ipv4_of_s "10.0.0.2"))
            (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
-              (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.3"))
+              (300l, Ipaddr.V4.Set.singleton (ipv4_of_s "10.0.0.3"))
               data))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data' in
@@ -583,9 +583,9 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.2") (singleton (ipv4_of_s "10.0.0.3"))))
+           (300l, Ipaddr.V4.Set.(add (ipv4_of_s "10.0.0.2") (singleton (ipv4_of_s "10.0.0.3"))))
            (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
-              (300l, Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.3") (singleton (ipv4_of_s "10.0.0.4"))))
+              (300l, Ipaddr.V4.Set.(add (ipv4_of_s "10.0.0.3") (singleton (ipv4_of_s "10.0.0.4"))))
               data))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data' in
@@ -612,11 +612,11 @@ module S = struct
            (Dns_trie.insert (n_of_s "foo.com") Rr_map.Soa soa'
               (Dns_trie.insert (n_of_s "bar.com") Rr_map.Soa soa''
                  (Dns_trie.insert (n_of_s "ns.foo.com") Rr_map.A
-                    (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.2"))
+                    (300l, Ipaddr.V4.Set.singleton (ipv4_of_s "10.0.0.2"))
                     (Dns_trie.insert (n_of_s "ns.bar.com") Rr_map.A
-                       (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.3"))
+                       (300l, Ipaddr.V4.Set.singleton (ipv4_of_s "10.0.0.3"))
                        (Dns_trie.insert (n_of_s "ns.one.com") Rr_map.A
-                          (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "10.0.0.4"))
+                          (300l, Ipaddr.V4.Set.singleton (ipv4_of_s "10.0.0.4"))
                           Dns_trie.empty))))))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate data in
@@ -664,9 +664,9 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "1.1.1.1"))
+           (300l, Ipaddr.V4.Set.singleton (ipv4_of_s "1.1.1.1"))
            (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
-              (300l, Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.1") (singleton (ipv4_of_s "192.168.1.1"))))
+              (300l, Ipaddr.V4.Set.(add (ipv4_of_s "10.0.0.1") (singleton (ipv4_of_s "192.168.1.1"))))
               data))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data' in
@@ -690,9 +690,9 @@ module S = struct
       in
       Dns_trie.insert (n_of_s "one.com") Rr_map.Ns (300l, ns)
         (Dns_trie.insert (n_of_s "ns2.one.com") Rr_map.A
-           (300l, Rr_map.Ipv4_set.singleton (ipv4_of_s "5.6.7.8"))
+           (300l, Ipaddr.V4.Set.singleton (ipv4_of_s "5.6.7.8"))
            (Dns_trie.insert (n_of_s "ns3.one.com") Rr_map.A
-              (300l, Rr_map.Ipv4_set.(add (ipv4_of_s "10.0.0.1") (singleton (ipv4_of_s "192.168.1.1"))))
+              (300l, Ipaddr.V4.Set.(add (ipv4_of_s "10.0.0.1") (singleton (ipv4_of_s "192.168.1.1"))))
               data))
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data' in
@@ -927,11 +927,11 @@ module A = struct
   let example_zone =
     Name_rr_map.(add (n_of_s "one.com") Rr_map.Ns (300l, example_ns)
                    (add (n_of_s "ns.one.com") Rr_map.A
-                      (300l, Rr_map.Ipv4_set.singleton (ip_of_s "1.2.3.4"))
+                      (300l, Ipaddr.V4.Set.singleton (ip_of_s "1.2.3.4"))
                       (add (n_of_s "ns2.one.com") Rr_map.A
-                         (300l, Rr_map.Ipv4_set.singleton (ip_of_s "5.6.7.8"))
+                         (300l, Ipaddr.V4.Set.singleton (ip_of_s "5.6.7.8"))
                          (add (n_of_s "ns3.one.com") Rr_map.A
-                            (300l, Rr_map.Ipv4_set.(add (ip_of_s "10.0.0.1") (singleton (ip_of_s "192.168.1.1"))))
+                            (300l, Ipaddr.V4.Set.(add (ip_of_s "10.0.0.1") (singleton (ip_of_s "192.168.1.1"))))
                             empty))))
 
   let example_trie =
@@ -972,7 +972,7 @@ module A = struct
     let query = Packet.Question.create (n_of_s "ns.one.com") A in
     let answer =
       Name_rr_map.singleton (n_of_s "ns.one.com") A
-        (300l, Rr_map.Ipv4_set.singleton (ip_of_s "1.2.3.4"))
+        (300l, Ipaddr.V4.Set.singleton (ip_of_s "1.2.3.4"))
     in
     Alcotest.(check h_q_test __LOC__
                 (Ok (Packet.Flags.singleton `Authoritative, (answer, auth)))
@@ -1066,7 +1066,7 @@ module A = struct
     Alcotest.(check (result ixfr_test rcode_test) __LOC__ (Ok (soa, `Empty))
                 (handle_ixfr_request server cache `Tcp key ixfr_req soa));
     let soa' = { soa with serial = Int32.succ soa.serial } in
-    let foo, entry_k, entry_v = n_of_s "foo.one.com", Rr_map.A, (300l, Rr_map.Ipv4_set.singleton (ip_of_s "127.0.0.1")) in
+    let foo, entry_k, entry_v = n_of_s "foo.one.com", Rr_map.A, (300l, Ipaddr.V4.Set.singleton (ip_of_s "127.0.0.1")) in
     let trie' =
       Dns_trie.insert (n_of_s "one.com") Soa soa'
         (Dns_trie.insert foo entry_k entry_v (Primary.data primary))
@@ -1162,7 +1162,7 @@ module A = struct
     let q = Packet.Question.create (n_of_s "one.com") Soa in
     let foo, entry_key, entry_val =
       n_of_s "foo.one.com", Rr_map.A,
-      (300l, Rr_map.Ipv4_set.singleton (ip_of_s "127.0.0.1"))
+      (300l, Ipaddr.V4.Set.singleton (ip_of_s "127.0.0.1"))
     in
     let up =
       Domain_name.Map.empty,
@@ -1216,7 +1216,7 @@ module A = struct
     let q = Packet.Question.create (n_of_s "foo.one.com") Soa in
     let foo, entry_key, entry_val =
       n_of_s "foo.one.com", Rr_map.A,
-      (300l, Rr_map.Ipv4_set.singleton (ip_of_s "127.0.0.1"))
+      (300l, Ipaddr.V4.Set.singleton (ip_of_s "127.0.0.1"))
     in
     let up =
       Domain_name.Map.empty,
@@ -1247,7 +1247,7 @@ module A = struct
     let q = Packet.Question.create (n_of_s "one.com") Soa in
     let foo, entry_key, entry_val =
       n_of_s "foo.one.com", Rr_map.A,
-      (300l, Rr_map.Ipv4_set.singleton (ip_of_s "127.0.0.1"))
+      (300l, Ipaddr.V4.Set.singleton (ip_of_s "127.0.0.1"))
     in
     let up =
       Domain_name.Map.empty,
@@ -1595,7 +1595,7 @@ $TTL 2560
                   serial = 1l ; refresh = 86400l ; retry = 10800l ;
                   expiry = 1048576l ; minimum }
       in
-      let a = Rr_map.Ipv4_set.singleton (Ipaddr.V4.of_string_exn "1.2.3.4") in
+      let a = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "1.2.3.4") in
       Name_rr_map.(add z Rr_map.Ns (minimum, ns)
                      (add z Rr_map.Soa soa
                         (singleton (n_of_s "*.example") Rr_map.A (minimum, a))))
@@ -1636,7 +1636,7 @@ subdel.example.          3600     NS    ns.example.net.
     let rrs =
       let z = n_of_s "example" in
       let host1 = n_of_s "host1.example" in
-      let host1_a = Rr_map.Ipv4_set.singleton (Ipaddr.V4.of_string_exn "192.0.2.1")
+      let host1_a = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "192.0.2.1")
       and srv1 =
         let srv = Srv.{ priority = 1 ; weight = 2 ; port = 3 ; target = Domain_name.host_exn host1 } in
         Rr_map.Srv_set.singleton srv

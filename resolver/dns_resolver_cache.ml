@@ -21,7 +21,7 @@ let find_nearest_ns rng ts t name =
     | Ok `Entry (_, names) -> Domain_name.Host_set.elements names
     | _ -> []
   and find_a name = match snd (Dns_cache.get t ts name A) with
-    | Ok `Entry (_, ips) -> Rr_map.Ipv4_set.elements ips
+    | Ok `Entry (_, ips) -> Ipaddr.V4.Set.elements ips
     | _ -> []
   in
   let or_root f nam =

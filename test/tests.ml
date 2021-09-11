@@ -441,7 +441,7 @@ module Packet = struct
       let up =
         Domain_name.Map.singleton
           (n_of_s "www.example.com")
-          [ Update.Remove_single Rr_map.(B (A, (0l, Ipv4_set.singleton Ipaddr.V4.localhost))) ]
+          [ Update.Remove_single Rr_map.(B (A, (0l, Ipaddr.V4.Set.singleton Ipaddr.V4.localhost))) ]
       in
       (Domain_name.Map.empty, up)
     and zone = Question.create (n_of_s "example.com") Soa
@@ -458,7 +458,7 @@ module Packet = struct
     and prereq =
       let pre =
         Domain_name.Map.singleton (n_of_s "www.example.com")
-          [ Update.Exists_data Rr_map.(B (A, (0l, Ipv4_set.singleton Ipaddr.V4.localhost)))]
+          [ Update.Exists_data Rr_map.(B (A, (0l, Ipaddr.V4.Set.singleton Ipaddr.V4.localhost)))]
       in
       (pre, Domain_name.Map.empty)
     and zone = Question.create (n_of_s "example.com") Soa
@@ -543,8 +543,8 @@ b0 42 00 30 00 00 23 00  55 00 00 00 65 00 00 29
     and question = n_of_s "ccc.de", `Any
     and an, additional =
       let isdn = match Rr_map.I.of_int 20 with Ok x -> x | Error _ -> Alcotest.fail "expected unexpected" in
-      let ip s = Rr_map.Ipv4_set.singleton (Ipaddr.V4.of_string_exn s)
-      and ip6 s = Rr_map.Ipv6_set.singleton (Ipaddr.V6.of_string_exn s)
+      let ip s = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn s)
+      and ip6 s = Ipaddr.V6.Set.singleton (Ipaddr.V6.of_string_exn s)
       in
       Domain_name.Map.singleton (n_of_s "ccc.de")
         (Rr_map.add Soa {

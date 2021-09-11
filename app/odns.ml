@@ -44,7 +44,7 @@ let do_a nameserver ns_port is_udp domains _ =
         Logs.debug (fun m -> m "looking up %a" Domain_name.pp domain);
         Dns_client_lwt.(getaddrinfo t A domain)
         >|= function
-        | Ok (_ttl, addrs) when Dns.Rr_map.Ipv4_set.is_empty addrs ->
+        | Ok (_ttl, addrs) when Ipaddr.V4.Set.is_empty addrs ->
           (* handle empty response? *)
           Logs.app (fun m -> m ";%a. IN %a"
                        Domain_name.pp domain

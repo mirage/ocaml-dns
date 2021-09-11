@@ -119,7 +119,7 @@ val lookup_any : 'a Domain_name.t -> t ->
     that and the authority information. *)
 
 val lookup_glue : 'a Domain_name.t -> t ->
-  (int32 * Rr_map.Ipv4_set.t) option * (int32 * Rr_map.Ipv6_set.t) option
+  (int32 * Ipaddr.V4.Set.t) option * (int32 * Ipaddr.V6.Set.t) option
 (** [lookup_glue k t] finds glue records (A, AAAA) for [k] in [t]. It ignores
     potential DNS invariants, e.g. that there is no surrounding zone. *)
 

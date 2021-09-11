@@ -7,13 +7,6 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Make (S : Mirage_stack.V4V6) = struct
 
-  module IS = Set.Make(Ipaddr)
-
-  module IM = struct
-    include Map.Make(Ipaddr)
-    let find k t = try Some (find k t) with Not_found -> None
-  end
-
   module IPM = struct
     include Map.Make(struct
         type t = Ipaddr.t * int
