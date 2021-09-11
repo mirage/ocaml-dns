@@ -464,11 +464,11 @@ module Notification = struct
           let v4, v6 = Dns_trie.lookup_glue ns trie in
           let acc =
             of_opt (fun acc (_, ipv4) ->
-                Rr_map.Ipv4_set.fold (fun ip acc -> Ipaddr.V4 ip :: acc)
+                Ipaddr.V4.Set.fold (fun ip acc -> Ipaddr.V4 ip :: acc)
                   ipv4 acc) acc v4
           in
           of_opt (fun acc (_, ipv6) ->
-              Rr_map.Ipv6_set.fold (fun ip acc -> Ipaddr.V6 ip :: acc)
+              Ipaddr.V6.Set.fold (fun ip acc -> Ipaddr.V6 ip :: acc)
                 ipv6 acc) acc v6)
         secondaries []
     | _ -> []

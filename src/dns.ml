@@ -1606,8 +1606,6 @@ end
 module Rr_map = struct
   module Mx_set = Set.Make(Mx)
   module Txt_set = Set.Make(Txt)
-  module Ipv4_set = Set.Make(Ipaddr.V4)
-  module Ipv6_set = Set.Make(Ipaddr.V6)
   module Srv_set = Set.Make(Srv)
   module Dnskey_set = Set.Make(Dnskey)
   module Caa_set = Set.Make(Caa)
@@ -1636,8 +1634,8 @@ module Rr_map = struct
     | Ns : Domain_name.Host_set.t with_ttl rr
     | Mx : Mx_set.t with_ttl rr
     | Cname : Cname.t with_ttl rr
-    | A : Ipv4_set.t with_ttl rr
-    | Aaaa : Ipv6_set.t with_ttl rr
+    | A : Ipaddr.V4.Set.t with_ttl rr
+    | Aaaa : Ipaddr.V6.Set.t with_ttl rr
     | Ptr : Ptr.t with_ttl rr
     | Srv : Srv_set.t with_ttl rr
     | Dnskey : Dnskey_set.t with_ttl rr
@@ -1686,8 +1684,8 @@ module Rr_map = struct
     | Ptr, (_, name), (_, name') -> Domain_name.equal name name'
     | Soa, soa, soa' -> Soa.compare soa soa' = 0
     | Txt, (_, txts), (_, txts') -> Txt_set.equal txts txts'
-    | A, (_, aas), (_, aas') -> Ipv4_set.equal aas aas'
-    | Aaaa, (_, aaaas), (_, aaaas') -> Ipv6_set.equal aaaas aaaas'
+    | A, (_, aas), (_, aas') -> Ipaddr.V4.Set.equal aas aas'
+    | Aaaa, (_, aaaas), (_, aaaas') -> Ipaddr.V6.Set.equal aaaas aaaas'
     | Srv, (_, srvs), (_, srvs') -> Srv_set.equal srvs srvs'
     | Dnskey, (_, keys), (_, keys') -> Dnskey_set.equal keys keys'
     | Caa, (_, caas), (_, caas') -> Caa_set.equal caas caas'
@@ -1781,11 +1779,11 @@ module Rr_map = struct
         mx ((names, off), 0)
     | Cname, (ttl, alias) -> rr names (Cname.encode alias) off ttl, 1
     | A, (ttl, addresses) ->
-      Ipv4_set.fold (fun address ((names, off), count) ->
+      Ipaddr.V4.Set.fold (fun address ((names, off), count) ->
         rr names (A.encode address) off ttl, succ count)
         addresses ((names, off), 0)
     | Aaaa, (ttl, aaaas) ->
-      Ipv6_set.fold (fun address ((names, off), count) ->
+      Ipaddr.V6.Set.fold (fun address ((names, off), count) ->
           rr names (Aaaa.encode address) off ttl, succ count)
         aaaas ((names, off), 0)
     | Ptr, (ttl, rev) -> rr names (Ptr.encode rev) off ttl, 1
@@ -1831,8 +1829,8 @@ module Rr_map = struct
     | Ptr, _, ptr -> ptr
     | Soa, _, soa -> soa
     | Txt, (_, txts), (ttl, txts') -> (ttl, Txt_set.union txts txts')
-    | A, (_, ips), (ttl, ips') -> (ttl, Ipv4_set.union ips ips')
-    | Aaaa, (_, ips), (ttl, ips') -> (ttl, Ipv6_set.union ips ips')
+    | A, (_, ips), (ttl, ips') -> (ttl, Ipaddr.V4.Set.union ips ips')
+    | Aaaa, (_, ips), (ttl, ips') -> (ttl, Ipaddr.V6.Set.union ips ips')
     | Srv, (_, srvs), (ttl, srvs') -> (ttl, Srv_set.union srvs srvs')
     | Dnskey, (_, keys), (ttl, keys') -> (ttl, Dnskey_set.union keys keys')
     | Caa, (_, caas), (ttl, caas') -> (ttl, Caa_set.union caas caas')
@@ -1863,11 +1861,11 @@ module Rr_map = struct
       let s = Txt_set.diff txts rm in
       if Txt_set.is_empty s then None else Some (ttl, s)
     | A, (ttl, ips), (_, rm) ->
-      let s = Ipv4_set.diff ips rm in
-      if Ipv4_set.is_empty s then None else Some (ttl, s)
+      let s = Ipaddr.V4.Set.diff ips rm in
+      if Ipaddr.V4.Set.is_empty s then None else Some (ttl, s)
     | Aaaa, (ttl, ips), (_, rm) ->
-      let s = Ipv6_set.diff ips rm in
-      if Ipv6_set.is_empty s then None else Some (ttl, s)
+      let s = Ipaddr.V6.Set.diff ips rm in
+      if Ipaddr.V6.Set.is_empty s then None else Some (ttl, s)
     | Srv, (ttl, srvs), (_, rm) ->
       let s = Srv_set.diff srvs rm in
       if Srv_set.is_empty s then None else Some (ttl, s)
@@ -1970,11 +1968,11 @@ module Rr_map = struct
             Fmt.strf "%s\t%aTXT\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) txt :: acc)
           txts []
       | A, (ttl, a) ->
-        Ipv4_set.fold (fun ip acc ->
+        Ipaddr.V4.Set.fold (fun ip acc ->
           Fmt.strf "%s\t%aA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V4.to_string ip) :: acc)
           a []
       | Aaaa, (ttl, aaaa) ->
-        Ipv6_set.fold (fun ip acc ->
+        Ipaddr.V6.Set.fold (fun ip acc ->
             Fmt.strf "%s\t%aAAAA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V6.to_string ip) :: acc)
           aaaa []
       | Srv, (ttl, srvs) ->
@@ -2085,19 +2083,19 @@ module Rr_map = struct
       in
       (ttl, Txt_set.singleton one), rest'
     | A, (ttl, ips) ->
-      let one = Ipv4_set.choose ips in
-      let rest = Ipv4_set.remove one ips in
+      let one = Ipaddr.V4.Set.choose ips in
+      let rest = Ipaddr.V4.Set.remove one ips in
       let rest' =
-        if Ipv4_set.is_empty rest then None else Some (ttl, rest)
+        if Ipaddr.V4.Set.is_empty rest then None else Some (ttl, rest)
       in
-      (ttl, Ipv4_set.singleton one), rest'
+      (ttl, Ipaddr.V4.Set.singleton one), rest'
     | Aaaa, (ttl, ips) ->
-      let one = Ipv6_set.choose ips in
-      let rest = Ipv6_set.remove one ips in
+      let one = Ipaddr.V6.Set.choose ips in
+      let rest = Ipaddr.V6.Set.remove one ips in
       let rest' =
-        if Ipv6_set.is_empty rest then None else Some (ttl, rest)
+        if Ipaddr.V6.Set.is_empty rest then None else Some (ttl, rest)
       in
-      (ttl, Ipv6_set.singleton one), rest'
+      (ttl, Ipaddr.V6.Set.singleton one), rest'
     | Srv, (ttl, srvs) ->
       let one = Srv_set.choose srvs in
       let rest = Srv_set.remove one srvs in
@@ -2187,10 +2185,10 @@ module Rr_map = struct
        (B (Cname, (ttl, alias)), names, off)
      | A ->
        A.decode names buf ~off:rdata_start ~len >>| fun (address, names, off) ->
-       (B (A, (ttl, Ipv4_set.singleton address)), names, off)
+       (B (A, (ttl, Ipaddr.V4.Set.singleton address)), names, off)
      | Aaaa ->
        Aaaa.decode names buf ~off:rdata_start ~len >>| fun (address, names, off) ->
-       (B (Aaaa, (ttl, Ipv6_set.singleton address)), names, off)
+       (B (Aaaa, (ttl, Ipaddr.V6.Set.singleton address)), names, off)
      | Ptr ->
        Ptr.decode names buf ~off:rdata_start ~len >>| fun (rev, names, off) ->
        (B (Ptr, (ttl, rev)), names, off)

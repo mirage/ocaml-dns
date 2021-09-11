@@ -9,7 +9,7 @@ let create_update zone hostname ip_address =
       Domain_name.Map.singleton hostname
         [
           Packet.Update.Remove (Rr_map.K A) ;
-          Packet.Update.Add Rr_map.(B (A, (60l, Ipv4_set.singleton ip_address)))
+          Packet.Update.Add Rr_map.(B (A, (60l, Ipaddr.V4.Set.singleton ip_address)))
         ]
     in
     (Domain_name.Map.empty, up)

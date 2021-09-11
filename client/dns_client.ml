@@ -170,9 +170,9 @@ let rfc6761_special (type req) q_name (q_typ : req Dns.Rr_map.key) : (req Dns_ca
   if Domain_name.is_subdomain ~domain:localhost ~subdomain:q_name then
     let open Dns.Rr_map in
     match q_typ with
-    | A -> Ok (`Entry (300l, Ipv4_set.singleton Ipaddr.V4.localhost))
+    | A -> Ok (`Entry (300l, Ipaddr.V4.Set.singleton Ipaddr.V4.localhost))
     | Aaaa ->
-      Ok (`Entry (300l, Ipv6_set.singleton Ipaddr.V6.localhost))
+      Ok (`Entry (300l, Ipaddr.V6.Set.singleton Ipaddr.V6.localhost))
     | _ -> Ok (`No_domain (localhost, localsoa))
   else if Domain_name.is_subdomain ~domain:invalid ~subdomain:q_name then
     Ok (`No_domain (invalid, invalidsoa))
@@ -287,13 +287,13 @@ struct
 
   let gethostbyname stack ?nameserver domain =
     getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>|= fun (_ttl, resp) ->
-    match Dns.Rr_map.Ipv4_set.choose_opt resp with
+    match Ipaddr.V4.Set.choose_opt resp with
     | None -> Error (`Msg "No A record found")
     | Some ip -> Ok ip
 
   let gethostbyname6 stack ?nameserver domain =
     getaddrinfo stack ?nameserver Dns.Rr_map.Aaaa domain >>|= fun (_ttl, res) ->
-    match Dns.Rr_map.Ipv6_set.choose_opt res with
+    match Ipaddr.V6.Set.choose_opt res with
     | None -> Error (`Msg "No AAAA record found")
     | Some ip -> Ok ip
 end

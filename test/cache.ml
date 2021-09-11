@@ -51,7 +51,7 @@ let empty_cache () =
 let cache_a () =
   let cache = Dns_cache.empty 100 in
   let name = name "an-actual-website.com" in
-  let a = 250l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4") in
+  let a = 250l, Ipaddr.V4.Set.singleton (ip "1.2.3.4") in
   let cache = Dns_cache.set cache 0L name A AuthoritativeAnswer (`Entry a) in
   Alcotest.check (cached_r Rr_map.A) "cache with A results in res"
     (Ok (`Entry a)) (snd (Dns_cache.get cache 0L name A)) ;
@@ -65,7 +65,7 @@ let cache_nodata () =
   in
   let soa = invalid_soa name in
   let nodata = `No_data (subname, soa) in
-  let a = 250l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4") in
+  let a = 250l, Ipaddr.V4.Set.singleton (ip "1.2.3.4") in
   let cache = Dns_cache.set cache 0L name A AuthoritativeAnswer (`Entry a) in
   let cache = Dns_cache.set cache 0L subname A AuthoritativeAnswer nodata in
   Alcotest.check (cached_r Rr_map.A) "cache with A nodata results in nodata"
@@ -109,7 +109,7 @@ let cname_empty_cache () =
 
 let cname_cache_a () =
   let name = name "foo.com" in
-  let a = 250l, Rr_map.Ipv4_set.singleton (ip "1.2.3.4") in
+  let a = 250l, Ipaddr.V4.Set.singleton (ip "1.2.3.4") in
   let cache = Dns_cache.set empty 0L name A AuthoritativeAnswer (`Entry a) in
   Alcotest.check (cached_cname_r Rr_map.A) "cache with A results in res"
     (Ok (`Entry a))

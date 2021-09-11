@@ -12,7 +12,7 @@ depends: [
   "ocaml" {>= "4.07.0"}
   "cstruct" {>= "6.0.0"}
   "dns" {= version}
-  "ipaddr" {>= "4.0.0"}
+  "ipaddr" {>= "5.2.0"}
   "lwt" {>= "4.2.1"}
   "mirage-stack" {>= "2.2.0"}
 ]

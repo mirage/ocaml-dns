@@ -30,12 +30,12 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
 
   let primary ?(on_update = fun ~old:_ ~authenticated_key:_ ~update_source:_ _ -> Lwt.return_unit) ?(on_notify = fun _ _ -> Lwt.return None) ?(timer = 2) ?(port = 53) stack t =
     let state = ref t in
-    let tcp_out = ref Dns.IM.empty in
+    let tcp_out = ref Ipaddr.Map.empty in
 
     let drop ip =
-      if Dns.IM.mem ip !tcp_out then begin
+      if Ipaddr.Map.mem ip !tcp_out then begin
         inc `Tcp_cache_drop;
-        tcp_out := Dns.IM.remove ip !tcp_out ;
+        tcp_out := Ipaddr.Map.remove ip !tcp_out ;
         state := Dns_server.Primary.closed !state ip
       end
     in
@@ -51,7 +51,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
         Lwt.return (Error ())
       | Ok flow ->
         inc `Tcp_cache_add;
-        tcp_out := Dns.IM.add ip flow !tcp_out ;
+        tcp_out := Ipaddr.Map.add ip flow !tcp_out ;
         Lwt.async (recv_task ip dport flow);
         Lwt.return (Ok flow)
     in
@@ -63,7 +63,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
         | Ok flow -> Dns.send_tcp_multiple flow data
         | Error () -> Lwt.return (Error ())
       in
-      (match Dns.IM.find ip !tcp_out with
+      (match Ipaddr.Map.find_opt ip !tcp_out with
        | None -> connect_and_send ip
        | Some f -> Dns.send_tcp_multiple f data >>= function
          | Ok () -> Lwt.return (Ok ())
@@ -107,7 +107,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
             Dns_server.Primary.handle_buf !state now ts `Tcp ip port data
           in
           let n' = match n with
-            | Some `Keep -> inc `Tcp_cache_add ; inc `Tcp_keep ; tcp_out := Dns.IM.add ip flow !tcp_out ; None
+            | Some `Keep -> inc `Tcp_cache_add ; inc `Tcp_keep ; tcp_out := Ipaddr.Map.add ip flow !tcp_out ; None
             | Some `Notify soa -> Some (`Notify soa)
             | Some `Signed_notify soa -> Some (`Signed_notify soa)
             | None -> None
@@ -165,7 +165,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
 
   let secondary ?(on_update = fun ~old:_ _trie -> Lwt.return_unit) ?(timer = 5) ?(port = 53) stack t =
     let state = ref t in
-    let tcp_out = ref Dns.IM.empty in
+    let tcp_out = ref Ipaddr.Map.empty in
 
     let maybe_update_state t =
       let old = !state in
@@ -179,10 +179,10 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
     in
 
     let rec close ip =
-      (match Dns.IM.find ip !tcp_out with
+      (match Ipaddr.Map.find_opt ip !tcp_out with
        | None -> Lwt.return_unit
        | Some f -> T.close f) >>= fun () ->
-      tcp_out := Dns.IM.remove ip !tcp_out ;
+      tcp_out := Ipaddr.Map.remove ip !tcp_out ;
       let now = Ptime.v (P.now_d_ps ()) in
       let elapsed = M.elapsed_ns () in
       let state', out = Dns_server.Secondary.closed !state now elapsed ip in
@@ -219,7 +219,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
     and request (ip, data) =
       inc `Notify;
       let dport = 53 in
-      match Dns.IM.find ip !tcp_out with
+      match Ipaddr.Map.find_opt ip !tcp_out with
       | None ->
         begin
           Log.debug (fun m -> m "creating connection to %a:%d" Ipaddr.pp ip dport) ;
@@ -230,7 +230,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
                         T.pp_error e Ipaddr.pp ip dport) ;
             close ip
           | Ok flow ->
-            tcp_out := Dns.IM.add ip flow !tcp_out ;
+            tcp_out := Ipaddr.Map.add ip flow !tcp_out ;
             Dns.send_tcp_multiple flow data >>= function
             | Error () -> close ip
             | Ok () ->
@@ -244,7 +244,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
           Log.warn (fun m -> m "closing tcp flow to %a:%d, retrying request"
                        Ipaddr.pp ip dport) ;
           T.close flow >>= fun () ->
-          tcp_out := Dns.IM.remove ip !tcp_out ;
+          tcp_out := Ipaddr.Map.remove ip !tcp_out ;
           request (ip, data)
     and request_one (ip, d) = request (ip, [ d ])
     in
@@ -271,12 +271,12 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
     let tcp_cb flow =
       inc `Tcp;
       let dst_ip, dst_port = T.dst flow in
-      tcp_out := Dns.IM.add dst_ip flow !tcp_out ;
+      tcp_out := Ipaddr.Map.add dst_ip flow !tcp_out ;
       Log.debug (fun m -> m "tcp connection from %a:%d" Ipaddr.pp dst_ip dst_port) ;
       let f = Dns.of_flow flow in
       let rec loop () =
         Dns.read_tcp f >>= function
-        | Error () -> tcp_out := Dns.IM.remove dst_ip !tcp_out ; Lwt.return_unit
+        | Error () -> tcp_out := Ipaddr.Map.remove dst_ip !tcp_out ; Lwt.return_unit
         | Ok data ->
           inc `Tcp_query;
           let now = Ptime.v (P.now_d_ps ()) in
@@ -296,7 +296,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
             inc `Tcp_answer;
             Dns.send_tcp flow data >>= function
             | Ok () -> loop ()
-            | Error () -> tcp_out := Dns.IM.remove dst_ip !tcp_out ; Lwt.return_unit
+            | Error () -> tcp_out := Ipaddr.Map.remove dst_ip !tcp_out ; Lwt.return_unit
       in
       loop ()
     in

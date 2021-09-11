@@ -667,8 +667,6 @@ module Rr_map : sig
 
   module Mx_set : Set.S with type elt = Mx.t
   module Txt_set : Set.S with type elt = Txt.t
-  module Ipv4_set : Set.S with type elt = A.t
-  module Ipv6_set : Set.S with type elt = Aaaa.t
   module Srv_set : Set.S with type elt = Srv.t
   module Dnskey_set : Set.S with type elt = Dnskey.t
   module Caa_set : Set.S with type elt = Caa.t
@@ -690,8 +688,8 @@ module Rr_map : sig
     | Ns : Domain_name.Host_set.t with_ttl rr
     | Mx : Mx_set.t with_ttl rr
     | Cname : Cname.t with_ttl rr
-    | A : Ipv4_set.t with_ttl rr
-    | Aaaa : Ipv6_set.t with_ttl rr
+    | A : Ipaddr.V4.Set.t with_ttl rr
+    | Aaaa : Ipaddr.V6.Set.t with_ttl rr
     | Ptr : Ptr.t with_ttl rr
     | Srv : Srv_set.t with_ttl rr
     | Dnskey : Dnskey_set.t with_ttl rr

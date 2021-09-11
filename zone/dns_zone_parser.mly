@@ -125,7 +125,7 @@ generic_type s generic_rdata {
   | Error _ -> parse_error "type code reserved, not generic"
 }
      /* RFC 1035 */
- | TYPE_A s ipv4 { B (A, (0l, Rr_map.Ipv4_set.singleton $3)) }
+ | TYPE_A s ipv4 { B (A, (0l, Ipaddr.V4.Set.singleton $3)) }
  | TYPE_NS s hostname { B (Ns, (0l, Domain_name.Host_set.singleton $3)) }
  | TYPE_CNAME s domain { B (Cname, (0l, $3)) }
  | TYPE_SOA s domain s domain s int32 s int32 s int32 s int32 s int32
@@ -171,7 +171,7 @@ generic_type s generic_rdata {
        with
        | Invalid_argument err -> parse_error err
      }
- | TYPE_AAAA s ipv6 { B (Aaaa, (0l, Rr_map.Ipv6_set.singleton $3)) }
+ | TYPE_AAAA s ipv6 { B (Aaaa, (0l, Ipaddr.V6.Set.singleton $3)) }
  | TYPE_DNSKEY s int16 s int8 s int8 s charstring
      { if not ($5 = 3) then
          parse_error ("DNSKEY protocol is not 3, but " ^ string_of_int $5) ;
