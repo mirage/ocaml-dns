@@ -18,7 +18,11 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
       timeout_ns : int64 ;
       stack : stack ;
     }
-    type context = { t : t ; flow : S.TCP.flow ; timeout_ns : int64 ref }
+    type context = {
+      t : t ;
+      flow : S.TCP.flow ;
+      mutable timeout_ns : int64
+    }
 
     let create
         ?(nameserver = `Tcp, (Ipaddr.V4 (Ipaddr.V4.of_string_exn (fst Dns_client.default_resolver)), 53))
@@ -31,38 +35,46 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
     let clock = C.elapsed_ns
 
     let with_timeout time_left f =
-      let timeout = T.sleep_ns !time_left >|= fun () -> Error (`Msg "DNS request timeout") in
+      let timeout =
+        T.sleep_ns time_left >|= fun () ->
+        Error (`Msg "DNS request timeout")
+      in
       let start = clock () in
       Lwt.pick [ f ; timeout ] >|= fun result ->
       let stop = clock () in
-      time_left := Int64.sub !time_left (Int64.sub stop start);
-      result
+      result, Int64.sub time_left (Int64.sub stop start)
 
     let bind = Lwt.bind
     let lift = Lwt.return
 
     let connect ?nameserver:ns t =
       let _proto, addr = match ns with None -> nameserver t | Some x -> x in
-      let time_left = ref t.timeout_ns in
-      with_timeout time_left (S.TCP.create_connection (S.tcp t.stack) addr >|= function
-      | Error e ->
-        Log.err (fun m -> m "error connecting to nameserver %a"
-                    S.TCP.pp_error e) ;
-        Error (`Msg "connect failure")
-      | Ok flow -> Ok { t ; flow ; timeout_ns = time_left })
+      with_timeout t.timeout_ns
+        (S.TCP.create_connection (S.tcp t.stack) addr >|= function
+          | Error e ->
+            Log.err (fun m -> m "error connecting to nameserver %a"
+                        S.TCP.pp_error e) ;
+            Error (`Msg "connect failure")
+          | Ok flow -> Ok flow) >|= function
+      | Ok flow, timeout_ns -> Ok { t ; flow ; timeout_ns }
+      | Error _ as e, _ -> e
 
     let close { flow ; _ } = S.TCP.close flow
 
     let recv ctx =
       with_timeout ctx.timeout_ns (S.TCP.read ctx.flow >|= function
-      | Error e -> Error (`Msg (Fmt.to_to_string S.TCP.pp_error e))
-      | Ok (`Data cs) -> Ok cs
-      | Ok `Eof -> Ok Cstruct.empty)
+        | Error e -> Error (`Msg (Fmt.to_to_string S.TCP.pp_error e))
+        | Ok (`Data cs) -> Ok cs
+        | Ok `Eof -> Ok Cstruct.empty) >|= function
+      | Ok x, timeout_ns -> ctx.timeout_ns <- timeout_ns; Ok x
+      | Error _ as e, _ -> e
 
     let send ctx s =
       with_timeout ctx.timeout_ns (S.TCP.write ctx.flow s >|= function
-      | Error e -> Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e))
-      | Ok () -> Ok ())
+        | Error e -> Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e))
+        | Ok () -> Ok ()) >|= function
+      | Ok (), timeout_ns -> ctx.timeout_ns <- timeout_ns; Ok ()
+      | Error _ as e, _ -> e
   end
 
   include Dns_client.Make(Transport)

@@ -13,7 +13,11 @@ module Transport : Dns_client.S
     nameserver : ns_addr ;
     timeout_ns : int64 ;
   }
-  type context = { t : t ; fd : Lwt_unix.file_descr ; timeout_ns : int64 ref }
+  type context = {
+    t : t ;
+    fd : Lwt_unix.file_descr ;
+    mutable timeout_ns : int64
+  }
 
   let read_file file =
     try
@@ -53,11 +57,14 @@ module Transport : Dns_client.S
   let clock = Mtime_clock.elapsed_ns
 
   let with_timeout ctx f =
-    let timeout = Lwt_unix.sleep (Duration.to_f !(ctx.timeout_ns)) >|= fun () -> Error (`Msg "DNS request timeout") in
+    let timeout =
+      Lwt_unix.sleep (Duration.to_f ctx.timeout_ns) >|= fun () ->
+      Error (`Msg "DNS request timeout")
+    in
     let start = clock () in
     Lwt.pick [ f ; timeout ] >|= fun result ->
     let stop = clock () in
-    ctx.timeout_ns := Int64.sub !(ctx.timeout_ns) (Int64.sub stop start);
+    ctx.timeout_ns <- Int64.sub ctx.timeout_ns (Int64.sub stop start);
     result
 
   let close { fd ; _ } =
@@ -107,7 +114,7 @@ module Transport : Dns_client.S
         let fam = match server with Ipaddr.V4 _ -> Lwt_unix.PF_INET | Ipaddr.V6 _ -> Lwt_unix.PF_INET6 in
         let socket = Lwt_unix.socket fam socket_type proto_number in
         let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
-        let ctx = { t ; fd = socket ; timeout_ns = ref t.timeout_ns } in
+        let ctx = { t ; fd = socket ; timeout_ns = t.timeout_ns } in
         Lwt.catch (fun () ->
             (* SO_RCVTIMEO does not work in Lwt: it results in an EAGAIN, which
                is handled by re-queuing the event *)

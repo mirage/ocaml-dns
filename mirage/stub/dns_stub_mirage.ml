@@ -83,7 +83,11 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         mutable flow : S.TCP.flow option ;
         mutable requests : (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t IM.t ;
       }
-      type context = { t : t ; timeout_ns : int64 ref ; mutable id : int }
+      type context = {
+        t : t ;
+        mutable timeout_ns : int64 ;
+        mutable id : int ;
+      }
 
       let create
           ?(nameserver = `Tcp, (Ipaddr.V4 (Ipaddr.V4.of_string_exn (fst Dns_client.default_resolver)), 53))
@@ -95,13 +99,15 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
       let rng = R.generate ?g:None
       let clock = C.elapsed_ns
 
-      let with_timeout time_left f =
-        let timeout = T.sleep_ns !time_left >|= fun () -> Error (`Msg "DNS request timeout") in
+      let with_timeout timeout_ns f =
+        let timeout =
+          T.sleep_ns timeout_ns >|= fun () ->
+          Error (`Msg "DNS request timeout")
+        in
         let start = clock () in
         Lwt.pick [ f ; timeout ] >|= fun result ->
         let stop = clock () in
-        time_left := Int64.sub !time_left (Int64.sub stop start);
-        result
+        result, Int64.sub timeout_ns (Int64.sub stop start)
 
       let bind = Lwt.bind
       let lift = Lwt.return
@@ -150,20 +156,21 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
 
       let connect ?nameserver:ns t =
         match t.flow with
-        | Some _ -> Lwt.return (Ok ({ t ; timeout_ns = ref t.timeout_ns ; id = 0 }))
+        | Some _ -> Lwt.return (Ok ({ t ; timeout_ns = t.timeout_ns ; id = 0 }))
         | None ->
           let _proto, addr = match ns with None -> nameserver t | Some x -> x in
-          let time_left = ref t.timeout_ns in
-          with_timeout time_left (S.TCP.create_connection (S.tcp t.stack) addr >|= function
-          | Error e ->
-            Log.err (fun m -> m "error connecting to nameserver %a"
-                        S.TCP.pp_error e) ;
-            Error (`Msg "connect failure")
-          | Ok flow ->
+          with_timeout t.timeout_ns (S.TCP.create_connection (S.tcp t.stack) addr >|= function
+            | Error e ->
+              Log.err (fun m -> m "error connecting to nameserver %a"
+                          S.TCP.pp_error e) ;
+              Error (`Msg "connect failure")
+            | Ok flow -> Ok flow) >|= function
+          | Ok flow, timeout_ns ->
             metrics `Recursive_connections;
             Lwt.async (fun () -> read_loop t flow);
             t.flow <- Some flow;
-            Ok ({ t ; timeout_ns = time_left ; id = 0 }))
+            Ok { t ; timeout_ns ; id = 0 }
+          | Error _ as e, _ -> e
 
       let close _f =
         (* ignoring this here *)
@@ -172,25 +179,27 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
       let recv { t ; timeout_ns ; id } =
         let cond = Lwt_condition.create () in
         t.requests <- IM.add id cond t.requests;
-        with_timeout timeout_ns (Lwt_condition.wait cond) >|= fun data ->
+        with_timeout timeout_ns (Lwt_condition.wait cond) >|= fun (data, _) ->
         t.requests <- IM.remove id t.requests;
         match data with
         | Ok cs -> Ok cs
         | Error `Msg m -> Error (`Msg m)
 
-      let send ({ t ; timeout_ns ; _ } as f) s =
+      let send ({ t ; timeout_ns ; _ } as ctx) s =
         match t.flow with
         | None -> Lwt.return (Error (`Msg "no connection to resolver"))
         | Some flow ->
           let id = Cstruct.BE.get_uint16 s 2 in
-          f.id <- id;
+          ctx.id <- id;
           with_timeout timeout_ns (S.TCP.write flow s >>= function
-          | Error e ->
-            t.flow <- None;
-            Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
-          | Ok () ->
-            metrics `Recursive_queries;
-            Lwt.return (Ok ()))
+            | Error e ->
+              t.flow <- None;
+              Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
+            | Ok () ->
+              metrics `Recursive_queries;
+              Lwt.return (Ok ())) >|= function
+          | Ok (), timeout_ns -> ctx.timeout_ns <- timeout_ns; Ok ()
+          | Error _ as e, _ -> e
     end
 
     include Dns_client.Make(Transport)
