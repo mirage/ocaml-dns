@@ -103,15 +103,15 @@ module Transport : Dns_client.S
       match ns with None -> nameserver t | Some x -> x
     in
     Lwt.catch (fun () ->
-        begin match proto with
-          | `Udp ->
-            Lwt_unix.((getprotobyname "udp") >|= fun x -> x.p_proto,
-                                                          SOCK_DGRAM)
-          | `Tcp ->
-            Lwt_unix.((getprotobyname "tcp") >|= fun x -> x.p_proto,
-                                                          SOCK_STREAM)
-        end >>= fun (proto_number, socket_type) ->
-        let fam = match server with Ipaddr.V4 _ -> Lwt_unix.PF_INET | Ipaddr.V6 _ -> Lwt_unix.PF_INET6 in
+        Lwt_unix.(match proto with
+            | `Udp -> getprotobyname "udp" >|= fun x -> x.p_proto, SOCK_DGRAM
+            | `Tcp -> getprotobyname "tcp" >|= fun x -> x.p_proto, SOCK_STREAM)
+        >>= fun (proto_number, socket_type) ->
+        let fam =
+          match server with
+          | Ipaddr.V4 _ -> Lwt_unix.PF_INET
+          | Ipaddr.V6 _ -> Lwt_unix.PF_INET6
+        in
         let socket = Lwt_unix.socket fam socket_type proto_number in
         let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
         let ctx = { t ; fd = socket ; timeout_ns = t.timeout_ns } in
