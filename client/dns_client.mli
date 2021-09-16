@@ -48,8 +48,7 @@ module type S = sig
   val clock : unit -> int64
   (** [clock t] is the monotonic clock. *)
 
-  val connect : ?nameserver:ns_addr -> t -> (context, [> `Msg of string ])
-      result io
+  val connect : t -> (context, [> `Msg of string ]) result io
   (** [connect addr] is a new connection ([context]) to [addr], or an error. *)
 
   val send : context -> Cstruct.t -> (unit, [> `Msg of string ]) result io
@@ -82,38 +81,37 @@ sig
   val nameserver : t -> T.ns_addr
   (** [nameserver state] returns the default nameserver to be used. *)
 
-  val getaddrinfo : t -> ?nameserver:T.ns_addr -> 'response Dns.Rr_map.key ->
+  val getaddrinfo : t -> 'response Dns.Rr_map.key ->
     'a Domain_name.t ->
     ('response, [> `Msg of string ]) result T.io
-  (** [getaddrinfo state nameserver query_type name] is the
-      [query_type]-dependent response from [nameserver] regarding [name], or
+  (** [getaddrinfo state query_type name] is the
+      [query_type]-dependent response regarding [name], or
       an [Error _] message. See {!Dns_client.query_state} for more information
       about the result types. *)
 
-  val gethostbyname : t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
+  val gethostbyname : t -> [ `host ] Domain_name.t ->
     (Ipaddr.V4.t, [> `Msg of string ]) result T.io
-  (** [gethostbyname state ~nameserver hostname] is the IPv4 address of
-      [hostname] resolved via the [state] and [nameserver] specified.
+  (** [gethostbyname state hostname] is the IPv4 address of
+      [hostname] resolved via the [state] specified.
       If the query fails, or if the [domain] does not have any IPv4 addresses,
       an [Error _] message is returned. Any extraneous IPv4 addresses are
       ignored. For an example of using this API, see [unix/ohost.ml] in the
       distribution of this package. *)
 
-  val gethostbyname6 : t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
+  val gethostbyname6 : t -> [ `host ] Domain_name.t ->
     (Ipaddr.V6.t, [> `Msg of string ]) result T.io
-  (** [gethostbyname6 state ~nameserver hostname] is the IPv6 address of
-      [hostname] resolved via the [state] and [nameserver] specified.
+  (** [gethostbyname6 state hostname] is the IPv6 address of
+      [hostname] resolved via the [state] specified.
 
       It is the IPv6 equivalent of {!gethostbyname}. *)
 
-  val get_resource_record : t -> ?nameserver:T.ns_addr ->
-    'response Dns.Rr_map.key -> 'a Domain_name.t ->
+  val get_resource_record : t -> 'response Dns.Rr_map.key -> 'a Domain_name.t ->
     ('response,
      [> `Msg of string
      | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
      | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result T.io
-    (** [get_resource_record state ~nameserver query_type name] resolves
-        [query_type, name] via the [state] and [nameserver] specified. The
+    (** [get_resource_record state query_type name] resolves
+        [query_type, name] via the [state] specified. The
         behaviour is equivalent to {!getaddrinfo}, apart from the error return
         value - [get_resource_record] distinguishes some errors, at the moment
         [No_data] if the [name] exists, but not the [query_type], and

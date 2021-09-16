@@ -47,8 +47,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
     let bind = Lwt.bind
     let lift = Lwt.return
 
-    let connect ?nameserver:ns t =
-      let _proto, addr = match ns with None -> nameserver t | Some x -> x in
+    let connect t =
+      let _proto, addr = nameserver t in
       with_timeout t.timeout_ns
         (S.TCP.create_connection (S.tcp t.stack) addr >|= function
           | Error e ->

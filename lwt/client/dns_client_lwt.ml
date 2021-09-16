@@ -98,10 +98,8 @@ module Transport : Dns_client.S
   let bind = Lwt.bind
   let lift = Lwt.return
 
-  let connect ?nameserver:ns t =
-    let (proto, (server, port)) =
-      match ns with None -> nameserver t | Some x -> x
-    in
+  let connect t =
+    let (proto, (server, port)) = nameserver t in
     Lwt.catch (fun () ->
         Lwt_unix.(match proto with
             | `Udp -> getprotobyname "udp" >|= fun x -> x.p_proto, SOCK_DGRAM

@@ -160,7 +160,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
             | Ok () -> query_one flow data)
           t.requests (Lwt.return (Ok ()))
 
-      let rec connect_ns ?(timeout = Duration.of_sec 5) (proto, addr) t =
+      let rec connect_ns ?(timeout = Duration.of_sec 5) t =
+        let _proto, addr = nameserver t in
         with_timeout timeout
           (S.TCP.create_connection (S.tcp t.stack) addr >>= function
             | Error e ->
@@ -173,7 +174,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
               Lwt.async (fun () ->
                   read_loop t flow >>= fun () ->
                   if not (IM.is_empty t.requests) then
-                    connect_ns ~timeout (proto, addr) t >|= function
+                    connect_ns ~timeout t >|= function
                     | Error (`Msg msg), _ ->
                       Log.err (fun m -> m "error while connecting to %a: %s"
                                   Ipaddr.pp (fst addr) msg);
@@ -183,12 +184,11 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
                     Lwt.return_unit);
               req_all flow t)
 
-      let connect ?nameserver:ns t =
+      let connect t =
         match t.flow with
         | Some _ -> Lwt.return (Ok ({ t ; timeout_ns = t.timeout_ns ; data = Cstruct.empty }))
         | None ->
-          let remote = match ns with None -> nameserver t | Some x -> x in
-          connect_ns ~timeout:t.timeout_ns remote t >|= function
+          connect_ns ~timeout:t.timeout_ns t >|= function
           | Ok (), timeout_ns -> Ok { t ; timeout_ns ; data = Cstruct.empty }
           | Error `Msg msg, _ -> Error (`Msg msg)
 

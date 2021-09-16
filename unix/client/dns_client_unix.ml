@@ -78,10 +78,8 @@ module Transport : Dns_client.S
       r
 
   (* there is no connect timeouts, just a request timeout (unix: receive timeout) *)
-  let connect ?nameserver:ns t =
-    let proto, (server, port) =
-      match ns with None -> nameserver t | Some x -> x
-    in
+  let connect t =
+    let proto, (server, port) = nameserver t in
     try
       begin match proto with
         | `Udp -> Ok Unix.((getprotobyname "udp").p_proto)

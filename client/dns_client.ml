@@ -152,7 +152,7 @@ module type S = sig
   val rng : int -> Cstruct.t
   val clock : unit -> int64
 
-  val connect : ?nameserver:ns_addr -> t -> (context, [> `Msg of string ]) result io
+  val connect : t -> (context, [> `Msg of string ]) result io
   val send : context -> Cstruct.t -> (unit, [> `Msg of string ]) result io
   val recv : context -> (Cstruct.t, [> `Msg of string ]) result io
   val close : context -> unit io
@@ -217,7 +217,7 @@ struct
       | Ok (`Serv_fail _)
       | Error _ -> Error (`Msg "")
 
-  let get_resource_record (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
+  let get_resource_record (type requested) t (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string
                   | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
                   | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result Transport.io =
@@ -234,12 +234,11 @@ struct
       | Ok _ as ok -> Transport.lift ok
       | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
       | Error `Msg _ ->
-        let proto, _ = match nameserver with
-          | None -> Transport.nameserver t.transport | Some x -> x in
+        let proto, _ = Transport.nameserver t.transport in
         let tx, state =
           Pure.make_query Transport.rng proto name query_type
         in
-        Transport.connect ?nameserver t.transport >>| fun socket ->
+        Transport.connect t.transport >>| fun socket ->
         Logs.debug (fun m -> m "Connected to NS.");
         (Transport.send socket tx >>| fun () ->
          Logs.debug (fun m -> m "Receiving from NS");
@@ -281,18 +280,18 @@ struct
        Rresult.R.error_msgf "DNS cache error @[%a@]" (Dns_cache.pp_entry query_type) e)
     |> Transport.lift
 
-  let getaddrinfo (type requested) t ?nameserver (query_type:requested Dns.Rr_map.key) name
+  let getaddrinfo (type requested) t (query_type:requested Dns.Rr_map.key) name
     : (requested, [> `Msg of string ]) result Transport.io =
-    get_resource_record t ?nameserver query_type name >>= lift_cache_error query_type
+    get_resource_record t query_type name >>= lift_cache_error query_type
 
-  let gethostbyname stack ?nameserver domain =
-    getaddrinfo stack ?nameserver Dns.Rr_map.A domain >>|= fun (_ttl, resp) ->
+  let gethostbyname stack domain =
+    getaddrinfo stack Dns.Rr_map.A domain >>|= fun (_ttl, resp) ->
     match Ipaddr.V4.Set.choose_opt resp with
     | None -> Error (`Msg "No A record found")
     | Some ip -> Ok ip
 
-  let gethostbyname6 stack ?nameserver domain =
-    getaddrinfo stack ?nameserver Dns.Rr_map.Aaaa domain >>|= fun (_ttl, res) ->
+  let gethostbyname6 stack domain =
+    getaddrinfo stack Dns.Rr_map.Aaaa domain >>|= fun (_ttl, res) ->
     match Ipaddr.V6.Set.choose_opt res with
     | None -> Error (`Msg "No AAAA record found")
     | Some ip -> Ok ip
