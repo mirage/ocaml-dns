@@ -81,12 +81,12 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         timeout_ns : int64 ;
         stack : stack ;
         mutable flow : S.TCP.flow option ;
-        mutable requests : (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t IM.t ;
+        mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
       }
       type context = {
         t : t ;
         mutable timeout_ns : int64 ;
-        mutable id : int ;
+        mutable data : Cstruct.t ;
       }
 
       let create
@@ -112,22 +112,15 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
       let bind = Lwt.bind
       let lift = Lwt.return
 
-      let cancel_all t =
-        IM.iter (fun _id cond ->
-            Lwt_condition.broadcast cond (Error (`Msg "disconnected")))
-          t.requests
-
       let rec read_loop ?(linger = Cstruct.empty) t flow =
         S.TCP.read flow >>= function
         | Error e ->
           t.flow <- None;
           Log.err (fun m -> m "error %a reading from resolver" S.TCP.pp_error e);
-          cancel_all t;
           Lwt.return_unit
         | Ok `Eof ->
           t.flow <- None;
           Log.info (fun m -> m "end of file reading from resolver");
-          cancel_all t;
           Lwt.return_unit
         | Ok (`Data cs) ->
           let rec handle_data data =
@@ -143,7 +136,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
                 let id = Cstruct.BE.get_uint16 packet 2 in
                 (match IM.find_opt id t.requests with
                  | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
-                 | Some cond ->
+                 | Some (_, cond) ->
                    metrics `Recursive_answers;
                    Lwt_condition.broadcast cond (Ok packet));
                 handle_data rest
@@ -154,43 +147,73 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
           in
           handle_data (if Cstruct.length linger = 0 then cs else Cstruct.append linger cs)
 
+      let query_one flow data =
+        S.TCP.write flow data >>= function
+        | Error e ->
+          Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
+        | Ok () -> Lwt.return (Ok ())
+
+      let req_all flow t =
+        IM.fold (fun _id (data, _) r ->
+            r >>= function
+            | Error _ as e -> Lwt.return e
+            | Ok () -> query_one flow data)
+          t.requests (Lwt.return (Ok ()))
+
+      let rec connect_ns ?(timeout = Duration.of_sec 5) (proto, addr) t =
+        with_timeout timeout
+          (S.TCP.create_connection (S.tcp t.stack) addr >>= function
+            | Error e ->
+              Log.err (fun m -> m "error connecting to nameserver %a: %a"
+                          Ipaddr.pp (fst addr) S.TCP.pp_error e) ;
+              Lwt.return (Error (`Msg "connect failure"))
+            | Ok flow ->
+              metrics `Recursive_connections;
+              t.flow <- Some flow;
+              Lwt.async (fun () ->
+                  read_loop t flow >>= fun () ->
+                  if not (IM.is_empty t.requests) then
+                    connect_ns ~timeout (proto, addr) t >|= function
+                    | Error (`Msg msg), _ ->
+                      Log.err (fun m -> m "error while connecting to %a: %s"
+                                  Ipaddr.pp (fst addr) msg);
+                      ()
+                    | Ok (), _ -> ()
+                  else
+                    Lwt.return_unit);
+              req_all flow t)
+
       let connect ?nameserver:ns t =
         match t.flow with
-        | Some _ -> Lwt.return (Ok ({ t ; timeout_ns = t.timeout_ns ; id = 0 }))
+        | Some _ -> Lwt.return (Ok ({ t ; timeout_ns = t.timeout_ns ; data = Cstruct.empty }))
         | None ->
-          let _proto, addr = match ns with None -> nameserver t | Some x -> x in
-          with_timeout t.timeout_ns (S.TCP.create_connection (S.tcp t.stack) addr >|= function
-            | Error e ->
-              Log.err (fun m -> m "error connecting to nameserver %a"
-                          S.TCP.pp_error e) ;
-              Error (`Msg "connect failure")
-            | Ok flow -> Ok flow) >|= function
-          | Ok flow, timeout_ns ->
-            metrics `Recursive_connections;
-            Lwt.async (fun () -> read_loop t flow);
-            t.flow <- Some flow;
-            Ok { t ; timeout_ns ; id = 0 }
-          | Error _ as e, _ -> e
+          let remote = match ns with None -> nameserver t | Some x -> x in
+          connect_ns ~timeout:t.timeout_ns remote t >|= function
+          | Ok (), timeout_ns -> Ok { t ; timeout_ns ; data = Cstruct.empty }
+          | Error `Msg msg, _ -> Error (`Msg msg)
 
       let close _f =
         (* ignoring this here *)
         Lwt.return_unit
 
-      let recv { t ; timeout_ns ; id } =
-        let cond = Lwt_condition.create () in
-        t.requests <- IM.add id cond t.requests;
-        with_timeout timeout_ns (Lwt_condition.wait cond) >|= fun (data, _) ->
-        t.requests <- IM.remove id t.requests;
-        match data with
-        | Ok cs -> Ok cs
-        | Error `Msg m -> Error (`Msg m)
+      let recv { t ; timeout_ns ; data } =
+        if Cstruct.length data > 2 then
+          let cond = Lwt_condition.create () in
+          let id = Cstruct.BE.get_uint16 data 2 in
+          t.requests <- IM.add id (data, cond) t.requests;
+          with_timeout timeout_ns (Lwt_condition.wait cond) >|= fun (data, _) ->
+          t.requests <- IM.remove id t.requests;
+          match data with
+          | Ok cs -> Ok cs
+          | Error `Msg m -> Error (`Msg m)
+        else
+          Lwt.return (Error (`Msg "invalid context (data length <= 2)"))
 
       let send ({ t ; timeout_ns ; _ } as ctx) s =
         match t.flow with
         | None -> Lwt.return (Error (`Msg "no connection to resolver"))
         | Some flow ->
-          let id = Cstruct.BE.get_uint16 s 2 in
-          ctx.id <- id;
+          ctx.data <- s;
           with_timeout timeout_ns (S.TCP.write flow s >>= function
             | Error e ->
               t.flow <- None;
