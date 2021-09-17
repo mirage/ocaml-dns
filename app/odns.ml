@@ -30,14 +30,14 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Dns.Tlsa.t)) =
 
 let ns ip port is_udp = match ip with
   | None -> None
-  | Some ip -> if is_udp then Some (`Udp, (ip, port)) else Some (`Tcp, (ip, port))
+  | Some ip -> if is_udp then Some (`Udp, [ ip, port ]) else Some (`Tcp, [ ip, port ])
 
 let do_a nameserver ns_port is_udp domains _ =
-  let nameserver = ns nameserver ns_port is_udp in
-  let t = Dns_client_lwt.create ?nameserver () in
-  let (_, (ns_ip, _)) = Dns_client_lwt.nameserver t in
+  let nameservers = ns nameserver ns_port is_udp in
+  let t = Dns_client_lwt.create ?nameservers () in
+  let (_, ns) = Dns_client_lwt.nameservers t in
   Logs.info (fun m -> m "querying NS %a for A records of %a"
-                Ipaddr.pp ns_ip Fmt.(list ~sep:(unit", ") Domain_name.pp) domains);
+                Ipaddr.pp (fst (List.hd ns)) Fmt.(list ~sep:(unit", ") Domain_name.pp) domains);
   let job =
     Lwt_list.iter_p (fun domain ->
         let open Lwt in
@@ -63,10 +63,10 @@ let for_all_domains nameserver ns_port is_udp ~domains typ f =
   (* [for_all_domains] is a utility function that lets us avoid duplicating
      this block of code in all the subcommands.
      We leave {!do_a} simple to provide a more readable example. *)
-  let nameserver = ns nameserver ns_port is_udp in
-  let t = Dns_client_lwt.create ?nameserver () in
-  let _, (ns_ip, _) = Dns_client_lwt.nameserver t in
-  Logs.info (fun m -> m "NS: %a" Ipaddr.pp ns_ip);
+  let nameservers = ns nameserver ns_port is_udp in
+  let t = Dns_client_lwt.create ?nameservers () in
+  let _, ns = Dns_client_lwt.nameservers t in
+  Logs.info (fun m -> m "NS: %a" Ipaddr.pp (fst (List.hd ns)));
   let open Lwt in
   match Lwt_main.run
           (Lwt_list.iter_p

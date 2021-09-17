@@ -9,10 +9,10 @@ module Transport : Dns_client.S
    and type +'a io = 'a
 = struct
   type io_addr = Ipaddr.t * int
-  type ns_addr = Dns.proto * io_addr
   type stack = unit
   type t = {
-    nameserver : ns_addr ;
+    protocol : Dns.proto ;
+    nameservers : io_addr list ;
     timeout_ns : int64 ;
   }
   type context = {
@@ -34,28 +34,24 @@ module Transport : Dns_client.S
         Error (`Msg ("Error reading file: " ^ file))
     with _ -> Error (`Msg ("Error opening file " ^ file))
 
-  let create ?nameserver ~timeout () =
-    let nameserver =
+  let create ?nameservers ~timeout () =
+    let protocol, nameservers =
       Rresult.R.(get_ok (of_option ~none:(fun () ->
-          let ip =
+          let ips =
             match
               read_file "/etc/resolv.conf" >>= fun data ->
-              Dns_resolvconf.parse data >>= fun nameservers ->
-              List.fold_left (fun acc ns ->
-                  match acc, ns with
-                  | Ok ip, _ -> Ok ip
-                  | _, `Nameserver ip -> Ok ip)
-                (Error (`Msg "no nameserver")) nameservers
+              Dns_resolvconf.parse data >>| fun nameservers ->
+              List.map (function `Nameserver ip -> (ip, 53)) nameservers
             with
-            | Error _ -> Ipaddr.(V4 (V4.of_string_exn (fst Dns_client.default_resolver)))
-            | Ok ip -> ip
+            | Error _ | Ok [] -> Dns_client.default_resolvers
+            | Ok ips -> ips
           in
-          Ok (`Tcp, (ip, 53)))
-          nameserver))
+          Ok (`Tcp, ips))
+          nameservers))
     in
-    { nameserver ; timeout_ns = timeout }
+    { protocol ; nameservers ; timeout_ns = timeout }
 
-  let nameserver { nameserver ; _ } = nameserver
+  let nameservers { protocol ; nameservers ; _ } = protocol, nameservers
   let clock = Mtime_clock.elapsed_ns
   let rng = Mirage_crypto_rng.generate ?g:None
 
@@ -79,25 +75,27 @@ module Transport : Dns_client.S
 
   (* there is no connect timeouts, just a request timeout (unix: receive timeout) *)
   let connect t =
-    let proto, (server, port) = nameserver t in
-    try
-      begin match proto with
-        | `Udp -> Ok Unix.((getprotobyname "udp").p_proto, SOCK_DGRAM)
-        | `Tcp -> Ok Unix.((getprotobyname "tcp").p_proto, SOCK_STREAM)
-      end >>= fun (proto_number, sock_typ) ->
-      let fam = match server with Ipaddr.V4 _ -> Unix.PF_INET | Ipaddr.V6 _ -> Unix.PF_INET6 in
-      let socket = Unix.socket fam sock_typ proto_number in
-      let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
-      let ctx = { t ; fd = socket ; timeout_ns = t.timeout_ns } in
+    match nameservers t with
+    | _, [] -> Error (`Msg "empty nameserver list")
+    | proto, (server, port) :: _ ->
       try
-        with_timeout ctx (fun fd ->
-          Unix.connect fd addr;
-          Ok ctx)
+        begin match proto with
+          | `Udp -> Ok Unix.((getprotobyname "udp").p_proto, SOCK_DGRAM)
+          | `Tcp -> Ok Unix.((getprotobyname "tcp").p_proto, SOCK_STREAM)
+        end >>= fun (proto_number, sock_typ) ->
+        let fam = match server with Ipaddr.V4 _ -> Unix.PF_INET | Ipaddr.V6 _ -> Unix.PF_INET6 in
+        let socket = Unix.socket fam sock_typ proto_number in
+        let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
+        let ctx = { t ; fd = socket ; timeout_ns = t.timeout_ns } in
+        try
+          with_timeout ctx (fun fd ->
+            Unix.connect fd addr;
+            Ok ctx)
+        with e ->
+          close ctx;
+          Error (`Msg (Printexc.to_string e))
       with e ->
-        close ctx;
         Error (`Msg (Printexc.to_string e))
-    with e ->
-      Error (`Msg (Printexc.to_string e))
 
   let send ctx (tx : Cstruct.t) =
     let str = Cstruct.to_string tx in

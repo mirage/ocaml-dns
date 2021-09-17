@@ -81,7 +81,7 @@ end
    Dns_client.Make. The mock data uses the default_debug_info reference cell.
 *)
 
-type debug_info = Cstruct.t list ref
+type debug_info = Cstruct.t
 let default_debug_info = ref []
 
 module Transport (*: Dns_client.S
@@ -90,15 +90,14 @@ module Transport (*: Dns_client.S
    and type +'a io = 'a *)
 = struct
   type io_addr = debug_info
-  type ns_addr = Dns.proto * io_addr
   type stack = Dns.proto
-  type context = debug_info
+  type context = debug_info list ref
   type t = Dns.proto
   type +'a io = 'a
 
-  let create ?nameserver:_ ~timeout:_ proto = proto
+  let create ?nameservers:_ ~timeout:_ proto = proto
 
-  let nameserver proto = proto, default_debug_info
+  let nameservers proto = proto, !default_debug_info
   let rng = Cstruct.create
   let clock () = 0L
 

@@ -3,10 +3,10 @@
         and [connect] and so on. leaving this stuff here for now until a
         better solution presents itself. *)
 
-val default_resolver : string * string
-(** [default_resolver] is a pair of IPv4 and IPv6 address in dotted-decimal
-    (/hexadecimal) form of the default resolver. Currently it is the IP address
-    of the UncensoredDNS.org anycast service. *)
+val default_resolvers : (Ipaddr.t * int) list
+(** [default_resolver] is a list of IPv6 and IPv4 address of the default
+    resolver. Currently it is the IP address of the UncensoredDNS.org
+    anycast service. *)
 
 module type S = sig
   type context
@@ -21,24 +21,19 @@ module type S = sig
       it can carry additional information for purposes of cryptographic
       verification. *)
 
-  type ns_addr = Dns.proto * io_addr
-  (** A pair of the transport protocol and the [io_addr]. We need to know the
-      protocol used so we can prefix packets for DNS-over-TCP and set correct
-      socket options etc. therefore we can't just use the opaque [io_addr]. *)
-
   type stack
   (** A stack with which to connect. *)
 
   type t
   (** The abstract state of a DNS client. *)
 
-  val create : ?nameserver:ns_addr -> timeout:int64 -> stack -> t
-  (** [create ~nameserver ~timeout stack] creates the state record of the DNS
+  val create : ?nameservers:(Dns.proto * io_addr list) -> timeout:int64 -> stack -> t
+  (** [create ~nameservers ~timeout stack] creates the state record of the DNS
       client. We use [timeout] (ns) as a cumulative time budget for connect
       and request timeouts. *)
 
-  val nameserver : t -> ns_addr
-  (** The address of a nameserver that is supposed to work with
+  val nameservers : t -> Dns.proto * io_addr list
+  (** The address of a nameservers that is supposed to work with
       the underlying context, can be used if the user does not want to
       bother with configuring their own.*)
 
@@ -71,15 +66,15 @@ sig
 
   type t
 
-  val create : ?size:int -> ?nameserver:T.ns_addr -> ?timeout:int64 ->
+  val create : ?size:int -> ?nameservers:(Dns.proto * T.io_addr list) -> ?timeout:int64 ->
     T.stack -> t
-  (** [create ~size ~nameserver ~timeout stack] creates the state of the DNS
-      client. We use [timeout] (ns, default 3s) as a time budget for connect and
+  (** [create ~size ~nameservers ~timeout stack] creates the state of the DNS
+      client. We use [timeout] (ns, default 5s) as a time budget for connect and
       request timeouts. To specify a timeout, use
-      [create ~timeout:(Duration.of_sec 5)]. *)
+      [create ~timeout:(Duration.of_sec 3)]. *)
 
-  val nameserver : t -> T.ns_addr
-  (** [nameserver state] returns the default nameserver to be used. *)
+  val nameservers : t -> Dns.proto * T.io_addr list
+  (** [nameservers state] returns the list of nameservers to be used. *)
 
   val getaddrinfo : t -> 'response Dns.Rr_map.key ->
     'a Domain_name.t ->

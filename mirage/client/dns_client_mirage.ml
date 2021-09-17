@@ -13,10 +13,10 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
      and type io_addr = Ipaddr.t * int = struct
     type stack = S.t
     type io_addr = Ipaddr.t * int
-    type ns_addr = Dns.proto * io_addr
     type +'a io = 'a Lwt.t
     type t = {
-      nameserver : ns_addr ;
+      protocol : Dns.proto ;
+      nameservers : io_addr list ;
       timeout_ns : int64 ;
       stack : stack ;
       mutable flow : S.TCP.flow option ;
@@ -28,13 +28,14 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
       mutable data : Cstruct.t ;
     }
 
-    let create
-        ?(nameserver = `Tcp, (Ipaddr.V4 (Ipaddr.V4.of_string_exn (fst Dns_client.default_resolver)), 53))
-        ~timeout
-        stack =
-      { nameserver ; timeout_ns = timeout ; stack ; flow = None ; requests = IM.empty }
+    let create ?nameservers ~timeout stack =
+      let protocol, nameservers = match nameservers with
+        | None | Some (_, []) -> `Tcp, Dns_client.default_resolvers
+        | Some ns -> ns
+      in
+      { protocol ; nameservers ; timeout_ns = timeout ; stack ; flow = None ; requests = IM.empty }
 
-    let nameserver { nameserver ; _ } = nameserver
+    let nameservers { protocol ; nameservers ; _ } = protocol, nameservers
     let rng = R.generate ?g:None
     let clock = C.elapsed_ns
 
@@ -98,27 +99,29 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
         t.requests (Lwt.return (Ok ()))
 
     let rec connect_ns ?(timeout = Duration.of_sec 5) t =
-      let _proto, addr = nameserver t in
-      with_timeout timeout
-        (S.TCP.create_connection (S.tcp t.stack) addr >>= function
-          | Error e ->
-            Log.err (fun m -> m "error connecting to nameserver %a: %a"
-                        Ipaddr.pp (fst addr) S.TCP.pp_error e) ;
-            Lwt.return (Error (`Msg "connect failure"))
-          | Ok flow ->
-            t.flow <- Some flow;
-            Lwt.async (fun () ->
-                read_loop t flow >>= fun () ->
-                if not (IM.is_empty t.requests) then
-                  connect_ns ~timeout t >|= function
-                  | Error (`Msg msg), _ ->
-                    Log.err (fun m -> m "error while connecting to %a: %s"
-                                Ipaddr.pp (fst addr) msg);
-                    ()
-                  | Ok (), _ -> ()
-                else
-                  Lwt.return_unit);
-            req_all flow t)
+      match t.nameservers with
+      | [] -> Lwt.return (Error (`Msg "empty list of nameservers"), timeout)
+      | addr :: _ ->
+        with_timeout timeout
+          (S.TCP.create_connection (S.tcp t.stack) addr >>= function
+            | Error e ->
+              Log.err (fun m -> m "error connecting to nameserver %a: %a"
+                          Ipaddr.pp (fst addr) S.TCP.pp_error e) ;
+              Lwt.return (Error (`Msg "connect failure"))
+            | Ok flow ->
+              t.flow <- Some flow;
+              Lwt.async (fun () ->
+                  read_loop t flow >>= fun () ->
+                  if not (IM.is_empty t.requests) then
+                    connect_ns ~timeout t >|= function
+                    | Error (`Msg msg), _ ->
+                      Log.err (fun m -> m "error while connecting to %a: %s"
+                                  Ipaddr.pp (fst addr) msg);
+                      ()
+                    | Ok (), _ -> ()
+                  else
+                    Lwt.return_unit);
+              req_all flow t)
 
     let connect t =
       match t.flow with

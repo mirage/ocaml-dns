@@ -136,19 +136,21 @@ module Pure = struct
 end
 
 (* Anycast address of uncensoreddns.org *)
-let default_resolver = "91.239.100.100", "2001:67c:28a4::"
+let default_resolvers = [
+  Ipaddr.of_string_exn "91.239.100.100", 53 ;
+  Ipaddr.of_string_exn "2001:67c:28a4::", 53 ;
+]
 
 module type S = sig
   type context
   type +'a io
   type io_addr
-  type ns_addr = Dns.proto * io_addr
   type stack
   type t
 
-  val create : ?nameserver:ns_addr -> timeout:int64 -> stack -> t
+  val create : ?nameservers:(Dns.proto * io_addr list) -> timeout:int64 -> stack -> t
 
-  val nameserver : t -> ns_addr
+  val nameservers : t -> Dns.proto * io_addr list
   val rng : int -> Cstruct.t
   val clock : unit -> int64
 
@@ -187,12 +189,12 @@ struct
     transport : Transport.t ;
   }
 
-  let create ?(size=32) ?nameserver ?(timeout = Duration.of_sec 5) stack =
+  let create ?(size = 32) ?nameservers ?(timeout = Duration.of_sec 5) stack =
     { cache = Dns_cache.empty size ;
-      transport = Transport.create ?nameserver ~timeout stack
+      transport = Transport.create ?nameservers ~timeout stack
     }
 
-  let nameserver { transport; _ } = Transport.nameserver transport
+  let nameservers { transport; _ } = Transport.nameservers transport
 
   let (>>=) = Transport.bind
 
@@ -234,7 +236,7 @@ struct
       | Ok _ as ok -> Transport.lift ok
       | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
       | Error `Msg _ ->
-        let proto, _ = Transport.nameserver t.transport in
+        let proto, _ = Transport.nameservers t.transport in
         let tx, state =
           Pure.make_query Transport.rng proto name query_type
         in
