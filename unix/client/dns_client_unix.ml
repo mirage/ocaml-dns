@@ -82,11 +82,11 @@ module Transport : Dns_client.S
     let proto, (server, port) = nameserver t in
     try
       begin match proto with
-        | `Udp -> Ok Unix.((getprotobyname "udp").p_proto)
-        | `Tcp -> Ok Unix.((getprotobyname "tcp").p_proto)
-      end >>= fun proto_number ->
+        | `Udp -> Ok Unix.((getprotobyname "udp").p_proto, SOCK_DGRAM)
+        | `Tcp -> Ok Unix.((getprotobyname "tcp").p_proto, SOCK_STREAM)
+      end >>= fun (proto_number, sock_typ) ->
       let fam = match server with Ipaddr.V4 _ -> Unix.PF_INET | Ipaddr.V6 _ -> Unix.PF_INET6 in
-      let socket = Unix.socket fam Unix.SOCK_STREAM proto_number in
+      let socket = Unix.socket fam sock_typ proto_number in
       let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
       let ctx = { t ; fd = socket ; timeout_ns = t.timeout_ns } in
       try
