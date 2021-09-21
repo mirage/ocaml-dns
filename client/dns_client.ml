@@ -137,8 +137,8 @@ end
 
 (* Anycast address of uncensoreddns.org *)
 let default_resolvers = [
-  Ipaddr.of_string_exn "91.239.100.100", 53 ;
   Ipaddr.of_string_exn "2001:67c:28a4::", 53 ;
+  Ipaddr.of_string_exn "91.239.100.100", 53 ;
 ]
 
 module type S = sig
