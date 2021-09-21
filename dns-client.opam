@@ -30,6 +30,7 @@ depends: [
   "mirage-clock" {>= "3.0.0"}
   "mtime" {>= "1.2.0"}
   "mirage-crypto-rng" {>= "0.8.0"}
+  "happy-eyeballs" {>= "0.0.6"}
   "alcotest" {with-test}
 ]
 synopsis: "Pure DNS resolver API"

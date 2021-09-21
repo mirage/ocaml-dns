@@ -19,6 +19,9 @@ module Transport : Dns_client.S
     timeout_ns : int64 ;
     mutable fd : Lwt_unix.file_descr option ;
     mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
+    mutable he : Happy_eyeballs.t ;
+    mutable waiters : ((Ipaddr.t * int) * Lwt_unix.file_descr, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
+    timer_condition : unit Lwt_condition.t ;
   }
   type context = {
     t : t ;
@@ -39,6 +42,71 @@ module Transport : Dns_client.S
         Error (`Msg ("Error reading file: " ^ file))
     with _ -> Error (`Msg ("Error opening file " ^ file))
 
+  let now = Mtime_clock.elapsed_ns
+
+  let he_timer_interval = Duration.of_ms 500
+
+  let close_socket fd =
+    Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
+
+  let rec handle_action t action =
+    (match action with
+     | Happy_eyeballs.Connect (host, id, (ip, port)) ->
+       Lwt_unix.(getprotobyname "tcp" >|= fun x -> x.p_proto) >>= fun proto_number ->
+       let fam =
+         Ipaddr.(Lwt_unix.(match ip with V4 _ -> PF_INET | V6 _ -> PF_INET6))
+       in
+       let socket = Lwt_unix.socket fam Lwt_unix.SOCK_STREAM proto_number in
+       let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr ip, port) in
+       Lwt.catch (fun () ->
+            Lwt_unix.connect socket addr >>= fun () ->
+            let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
+            t.waiters <- waiters;
+            begin match r with
+              | Some waiter -> Lwt.wakeup_later waiter (Ok ((ip, port), socket)); Lwt.return_unit
+              | None -> close_socket socket
+            end >|= fun () ->
+            Some (Happy_eyeballs.Connected (host, id, (ip, port))))
+        (fun e ->
+           Log.err (fun m -> m "connection to %a:%d failed: %s" Ipaddr.pp ip port
+             (Printexc.to_string e));
+           close_socket socket >|= fun () ->
+           Some (Happy_eyeballs.Connection_failed (host, id, (ip, port))))
+    | Connect_failed (_host, id) ->
+      let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
+      t.waiters <- waiters;
+      begin match r with
+        | Some waiter -> Lwt.wakeup_later waiter (Error (`Msg "connection failed"))
+        | None -> ()
+      end;
+      Lwt.return None
+    | a ->
+      Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
+      Lwt.return None) >>= function
+     | None -> Lwt.return_unit
+     | Some event ->
+       let he, actions = Happy_eyeballs.event t.he (now ()) event in
+       t.he <- he;
+       Lwt_list.iter_p (handle_action t) actions
+
+  let handle_timer_actions t actions =
+    Lwt.async (fun () -> Lwt_list.iter_p (fun a -> handle_action t a) actions)
+
+  let rec he_timer t =
+    let open Lwt.Infix in
+    let rec loop () =
+      let he, actions = Happy_eyeballs.timer t.he (now ()) in
+      t.he <- he ;
+      match actions with
+      | `Suspend -> he_timer t
+      | `Act actions ->
+        handle_timer_actions t actions ;
+        Lwt_unix.sleep (Duration.to_f he_timer_interval) >>= fun () ->
+        loop ()
+    in
+    Lwt_condition.wait t.timer_condition >>= fun () ->
+    loop ()
+
   let create ?nameservers ~timeout () =
     let protocol, nameservers =
       Rresult.R.(get_ok (of_option ~none:(fun () ->
@@ -54,7 +122,18 @@ module Transport : Dns_client.S
           Ok (`Tcp, ips))
           nameservers))
     in
-    { protocol ; nameservers ; timeout_ns = timeout ; fd = None ; requests = IM.empty }
+    let t = {
+      protocol ;
+      nameservers ;
+      timeout_ns = timeout ;
+      fd = None ;
+      requests = IM.empty ;
+      he = Happy_eyeballs.create (now ()) ;
+      waiters = Happy_eyeballs.Waiter_map.empty ;
+      timer_condition = Lwt_condition.create () ;
+    } in
+    Lwt.async (fun () -> he_timer t);
+    t
 
   let nameservers { protocol; nameservers ; _ } = protocol, nameservers
   let rng = Mirage_crypto_rng.generate ?g:None
@@ -70,9 +149,6 @@ module Transport : Dns_client.S
     let stop = clock () in
     ctx.timeout_ns <- Int64.sub ctx.timeout_ns (Int64.sub stop start);
     result
-
-  let close_socket fd =
-    Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
 
   let close { fd ; _ } = match fd with
     | None -> Lwt.return_unit
@@ -177,36 +253,35 @@ module Transport : Dns_client.S
         | Ok () -> query_one fd data)
       t.requests (Lwt.return (Ok ()))
 
-  let rec connect_via_tcp_to_ns ?(timeout = Duration.of_sec 5) (t : t) (server, port) =
+  let rec connect_via_tcp_to_ns (t : t) =
     match t.fd with
     | Some _ -> Lwt.return (Ok ())
     | None ->
-      Lwt_unix.(getprotobyname "tcp" >|= fun x -> x.p_proto) >>= fun proto_number ->
-      let fam =
-        Ipaddr.(Lwt_unix.(match server with V4 _ -> PF_INET | V6 _ -> PF_INET6))
-      in
-      let socket = Lwt_unix.socket fam Lwt_unix.SOCK_STREAM proto_number in
-      let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
-      Lwt.catch (fun () ->
-           Lwt_unix.connect socket addr >|= fun () ->
-           Ok ())
-        (fun e ->
-           close_socket socket >|= fun () ->
-           Error (`Msg (Printexc.to_string e))) >>= function
-       | Error _ as e -> Lwt.return e
-       | Ok () ->
-         t.fd <- Some socket;
-         Lwt.async (fun () ->
-             read_loop t socket >>= fun () ->
-             if IM.is_empty t.requests then
-               Lwt.return_unit
-             else
-               connect_via_tcp_to_ns ~timeout t (server, port) >|= function
-               | Error (`Msg msg) ->
-                 Log.err (fun m -> m "error while connecting to %a: %s"
-                   Ipaddr.pp server msg)
-               | Ok () -> ());
-         req_all socket t
+      let waiter, notify = Lwt.task () in
+      let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
+      t.waiters <- waiters;
+      let he, actions = Happy_eyeballs.connect_ip t.he (now ()) ~id t.nameservers in
+      t.he <- he;
+      Lwt_condition.signal t.timer_condition ();
+      Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
+      waiter >>= function
+      | Error `Msg msg ->
+        Lwt.return
+          (Rresult.R.error_msgf "error %s connecting to resolver %a"
+            msg Fmt.(list ~sep:(unit ",") (pair ~sep:(unit ":") Ipaddr.pp int))
+            t.nameservers)
+      | Ok ((_server, _port), socket) ->
+        t.fd <- Some socket;
+        Lwt.async (fun () ->
+            read_loop t socket >>= fun () ->
+            if IM.is_empty t.requests then
+              Lwt.return_unit
+            else
+              connect_via_tcp_to_ns t >|= function
+              | Error (`Msg msg) ->
+                Log.err (fun m -> m "error while connecting to resolver: %s"  msg)
+              | Ok () -> ());
+        req_all socket t
 
   let connect t =
     match t.nameservers with
@@ -216,7 +291,7 @@ module Transport : Dns_client.S
       match t.protocol with
       | `Tcp ->
         begin
-          connect_via_tcp_to_ns t (server, port) >|= function
+          connect_via_tcp_to_ns t >|= function
           | Ok () -> Ok ctx
           | Error `Msg msg -> Error (`Msg msg)
         end
