@@ -3,6 +3,8 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_client_mirage" ~doc:"effectful DNS client layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
+module IM = Map.Make(Int)
+
 module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4V6) = struct
 
   module Transport : Dns_client.S
@@ -11,58 +13,226 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
      and type io_addr = Ipaddr.t * int = struct
     type stack = S.t
     type io_addr = Ipaddr.t * int
-    type ns_addr = Dns.proto * io_addr
     type +'a io = 'a Lwt.t
     type t = {
-      nameserver : ns_addr ;
+      protocol : Dns.proto ;
+      nameservers : io_addr list ;
       timeout_ns : int64 ;
       stack : stack ;
+      mutable flow : S.TCP.flow option ;
+      mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
+      mutable he : Happy_eyeballs.t ;
+      mutable waiters : ((Ipaddr.t * int) * S.TCP.flow, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
+      timer_condition : unit Lwt_condition.t ;
     }
-    type context = { t : t ; flow : S.TCP.flow ; timeout_ns : int64 ref }
+    type context = {
+      t : t ;
+      mutable timeout_ns : int64 ;
+      mutable data : Cstruct.t ;
+    }
 
-    let create
-        ?(nameserver = `Tcp, (Ipaddr.V4 (Ipaddr.V4.of_string_exn (fst Dns_client.default_resolver)), 53))
-        ~timeout
-        stack =
-      { nameserver ; timeout_ns = timeout ; stack }
+    let now = C.elapsed_ns
 
-    let nameserver { nameserver ; _ } = nameserver
+    let he_timer_interval = Duration.of_ms 500
+
+    let rec handle_action t action =
+      (match action with
+       | Happy_eyeballs.Connect (host, id, addr) ->
+         begin
+           S.TCP.create_connection (S.tcp t.stack) addr >>= function
+           | Error e ->
+             Log.err (fun m -> m "error connecting to nameserver %a: %a"
+                         Ipaddr.pp (fst addr) S.TCP.pp_error e) ;
+             Lwt.return (Some (Happy_eyeballs.Connection_failed (host, id, addr)))
+           | Ok flow ->
+             let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
+             t.waiters <- waiters;
+             begin match r with
+               | Some waiter -> Lwt.wakeup_later waiter (Ok (addr, flow)); Lwt.return_unit
+               | None -> S.TCP.close flow
+             end >|= fun () ->
+             Some (Happy_eyeballs.Connected (host, id, addr))
+         end
+       | Connect_failed (_host, id) ->
+         let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
+         t.waiters <- waiters;
+         begin match r with
+           | Some waiter -> Lwt.wakeup_later waiter (Error (`Msg "connection failed"))
+           | None -> ()
+         end;
+         Lwt.return None
+       | a ->
+         Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
+         Lwt.return None) >>= function
+       | None -> Lwt.return_unit
+       | Some event ->
+         let he, actions = Happy_eyeballs.event t.he (now ()) event in
+         t.he <- he;
+         Lwt_list.iter_p (handle_action t) actions
+
+    let handle_timer_actions t actions =
+      Lwt.async (fun () -> Lwt_list.iter_p (fun a -> handle_action t a) actions)
+
+    let rec he_timer t =
+      let open Lwt.Infix in
+      let rec loop () =
+        let he, actions = Happy_eyeballs.timer t.he (now ()) in
+        t.he <- he ;
+        match actions with
+        | `Suspend -> he_timer t
+        | `Act actions ->
+          handle_timer_actions t actions ;
+          T.sleep_ns he_timer_interval >>= fun () ->
+          loop ()
+      in
+      Lwt_condition.wait t.timer_condition >>= fun () ->
+      loop ()
+
+    let create ?nameservers ~timeout stack =
+      let protocol, nameservers = match nameservers with
+        | None | Some (_, []) -> `Tcp, Dns_client.default_resolvers
+        | Some ns -> ns
+      in
+      let t = {
+        protocol ;
+        nameservers ;
+        timeout_ns = timeout ;
+        stack ;
+        flow = None ;
+        requests = IM.empty ;
+        he = Happy_eyeballs.create (now ()) ;
+        waiters = Happy_eyeballs.Waiter_map.empty ;
+        timer_condition = Lwt_condition.create () ;
+      } in
+      Lwt.async (fun () -> he_timer t);
+      t
+
+    let nameservers { protocol ; nameservers ; _ } = protocol, nameservers
     let rng = R.generate ?g:None
     let clock = C.elapsed_ns
 
     let with_timeout time_left f =
-      let timeout = T.sleep_ns !time_left >|= fun () -> Error (`Msg "DNS request timeout") in
+      let timeout =
+        T.sleep_ns time_left >|= fun () ->
+        Error (`Msg "DNS request timeout")
+      in
       let start = clock () in
       Lwt.pick [ f ; timeout ] >|= fun result ->
       let stop = clock () in
-      time_left := Int64.sub !time_left (Int64.sub stop start);
-      result
+      result, Int64.sub time_left (Int64.sub stop start)
 
     let bind = Lwt.bind
     let lift = Lwt.return
 
-    let connect ?nameserver:ns t =
-      let _proto, addr = match ns with None -> nameserver t | Some x -> x in
-      let time_left = ref t.timeout_ns in
-      with_timeout time_left (S.TCP.create_connection (S.tcp t.stack) addr >|= function
+    let rec read_loop ?(linger = Cstruct.empty) t flow =
+      S.TCP.read flow >>= function
       | Error e ->
-        Log.err (fun m -> m "error connecting to nameserver %a"
-                    S.TCP.pp_error e) ;
-        Error (`Msg "connect failure")
-      | Ok flow -> Ok { t ; flow ; timeout_ns = time_left })
+        t.flow <- None;
+        Log.err (fun m -> m "error %a reading from resolver" S.TCP.pp_error e);
+        Lwt.return_unit
+      | Ok `Eof ->
+        t.flow <- None;
+        Log.info (fun m -> m "end of file reading from resolver");
+        Lwt.return_unit
+      | Ok (`Data cs) ->
+        let rec handle_data data =
+          let cs_len = Cstruct.length data in
+          if cs_len > 2 then
+            let len = Cstruct.BE.get_uint16 data 0 in
+            if cs_len - 2 >= len then
+              let packet, rest =
+                if cs_len - 2 = len
+                then data, Cstruct.empty
+                else Cstruct.split data (len + 2)
+              in
+              let id = Cstruct.BE.get_uint16 packet 2 in
+              (match IM.find_opt id t.requests with
+               | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
+               | Some (_, cond) -> Lwt_condition.broadcast cond (Ok packet));
+              handle_data rest
+            else
+              read_loop ~linger:data t flow
+          else
+            read_loop ~linger:data t flow
+        in
+        handle_data (if Cstruct.length linger = 0 then cs else Cstruct.append linger cs)
 
-    let close { flow ; _ } = S.TCP.close flow
+    let query_one flow data =
+      S.TCP.write flow data >>= function
+      | Error e ->
+        Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
+      | Ok () -> Lwt.return (Ok ())
 
-    let recv ctx =
-      with_timeout ctx.timeout_ns (S.TCP.read ctx.flow >|= function
-      | Error e -> Error (`Msg (Fmt.to_to_string S.TCP.pp_error e))
-      | Ok (`Data cs) -> Ok cs
-      | Ok `Eof -> Ok Cstruct.empty)
+    let req_all flow t =
+      IM.fold (fun _id (data, _) r ->
+          r >>= function
+          | Error _ as e -> Lwt.return e
+          | Ok () -> query_one flow data)
+        t.requests (Lwt.return (Ok ()))
 
-    let send ctx s =
-      with_timeout ctx.timeout_ns (S.TCP.write ctx.flow s >|= function
-      | Error e -> Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e))
-      | Ok () -> Ok ())
+    let rec connect_ns t =
+      let waiter, notify = Lwt.task () in
+      let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
+      t.waiters <- waiters;
+      let he, actions = Happy_eyeballs.connect_ip t.he (now ()) ~id t.nameservers in
+      t.he <- he;
+      Lwt_condition.signal t.timer_condition ();
+      Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
+      waiter >>= function
+      | Error `Msg msg ->
+        Log.err (fun m -> m "error connecting to nameserver %s" msg);
+        Lwt.return (Error (`Msg "connect failure"))
+      | Ok (_addr, flow) ->
+        t.flow <- Some flow;
+        Lwt.async (fun () ->
+           read_loop t flow >>= fun () ->
+           if not (IM.is_empty t.requests) then
+             connect_ns t >|= function
+             | Error `Msg msg ->
+               Log.err (fun m -> m "error while connecting to resolver: %s" msg)
+             | Ok () -> ()
+           else
+             Lwt.return_unit);
+        req_all flow t
+
+    let connect t =
+      let ctx = { t ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
+      match t.flow with
+      | Some _ -> Lwt.return (Ok ctx)
+      | None ->
+        connect_ns t >|= function
+        | Ok () -> Ok ctx
+        | Error `Msg msg -> Error (`Msg msg)
+
+    let close _f =
+      (* ignoring this here *)
+      Lwt.return_unit
+
+    let recv { t ; timeout_ns ; data } =
+      if Cstruct.length data > 2 then
+        let cond = Lwt_condition.create () in
+        let id = Cstruct.BE.get_uint16 data 2 in
+        t.requests <- IM.add id (data, cond) t.requests;
+        with_timeout timeout_ns (Lwt_condition.wait cond) >|= fun (data, _) ->
+        t.requests <- IM.remove id t.requests;
+        match data with
+        | Ok cs -> Ok cs
+        | Error `Msg m -> Error (`Msg m)
+      else
+        Lwt.return (Error (`Msg "invalid context (data length <= 2)"))
+
+    let send ({ t ; timeout_ns ; _ } as ctx) s =
+      match t.flow with
+      | None -> Lwt.return (Error (`Msg "no connection to resolver"))
+      | Some flow ->
+        ctx.data <- s;
+        with_timeout timeout_ns (S.TCP.write flow s >>= function
+          | Error e ->
+            t.flow <- None;
+            Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
+          | Ok () -> Lwt.return (Ok ())) >|= function
+        | Ok (), timeout_ns -> ctx.timeout_ns <- timeout_ns; Ok ()
+        | Error _ as e, _ -> e
   end
 
   include Dns_client.Make(Transport)

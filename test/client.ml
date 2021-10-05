@@ -78,13 +78,11 @@ module Parse_response_tests = struct
 end
 
 (* {!Transport} provides a mock implementation of the transport used by
-   Dns_client.Make. The mock data is passed as type context and io_addr in
-   connect/recv/send by supplying the optional ?nameserver argument.
+   Dns_client.Make. The mock data uses the default_debug_info reference cell.
 *)
 
-type debug_info = Cstruct.t list ref
-let default_debug_info =
-  ref []
+type debug_info = Cstruct.t
+let default_debug_info = ref []
 
 module Transport (*: Dns_client.S
   with type io_addr = debug_info
@@ -92,17 +90,14 @@ module Transport (*: Dns_client.S
    and type +'a io = 'a *)
 = struct
   type io_addr = debug_info
-  type ns_addr = [`Tcp | `Udp] * io_addr
-  type stack = unit
-  type context = debug_info
-  type t = unit
+  type stack = Dns.proto
+  type context = debug_info list ref
+  type t = Dns.proto
   type +'a io = 'a
 
-  let create
-      ?nameserver:_ ~timeout:_ () =
-    ()
+  let create ?nameservers:_ ~timeout:_ proto = proto
 
-  let nameserver _ = `Tcp,  default_debug_info
+  let nameservers proto = proto, !default_debug_info
   let rng = Cstruct.create
   let clock () = 0L
 
@@ -113,13 +108,9 @@ module Transport (*: Dns_client.S
 
   let close _ = ()
 
-  let connect ?nameserver:ns _ =
-    match ns with
-    | None -> Ok default_debug_info
-    | Some (_, mock_responses) -> Ok mock_responses
+  let connect _ = Ok default_debug_info
 
-  let send _ _ =
-    Ok ()
+  let send _ _ = Ok ()
 
   let recv (mock_responses : context) =
     match !mock_responses with
@@ -157,9 +148,9 @@ module Gethostbyname_tests = struct
        ae 00 06 03 6e 73 32 c0  39 c0 35 00 01 00 01 00
        02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
        02 40 8a 00 04 17 15 f3  77" in
-    let t = create () in
-    let ns = `Tcp, ref [ipv4_buf] in
-    match gethostbyname t domain_name ~nameserver:ns with
+    let t = create `Tcp in
+    default_debug_info := [ipv4_buf];
+    match gethostbyname t domain_name with
     | Ok _ip -> ()
     | Error _ -> failwith "foo.com should have been returned"
 
@@ -175,13 +166,13 @@ module Gethostbyname_tests = struct
        ae 00 06 03 6e 73 32 c0  39 c0 35 00 01 00 01 00
        02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
        02 40 8a 00 04 17 15 f3  77" in
-    let t = create () in
-    let ns = `Tcp, ref [ipv4_buf] in
-    match gethostbyname t domain_name ~nameserver:ns with
+    let t = create `Tcp in
+    default_debug_info := [ipv4_buf];
+    match gethostbyname t domain_name with
     | Error _ -> failwith "foo.com should have been returned"
     | Ok _ip ->
-      let empty_ns_responses = `Tcp, ref [] in
-      match gethostbyname t domain_name ~nameserver:empty_ns_responses with
+      default_debug_info := [];
+      match gethostbyname t domain_name with
       | Error _ -> failwith "should have been cached"
       | Ok _ -> () (* we returned content, but the wire stayed silent *)
 
@@ -197,16 +188,16 @@ module Gethostbyname_tests = struct
        ae 00 06 03 6e 73 32 c0  39 c0 35 00 01 00 01 00
        02 40 8a 00 04 17 15 f2  58 c0 51 00 01 00 01 00
        02 40 8a 00 04 17 15 f3  77" in
-    let t = Dns_client_with_time_machine.create () in
-    let ns = `Tcp, ref [ipv4_buf] in
-    match Dns_client_with_time_machine.gethostbyname t domain_name ~nameserver:ns with
+    let t = Dns_client_with_time_machine.create `Tcp in
+    default_debug_info := [ipv4_buf];
+    match Dns_client_with_time_machine.gethostbyname t domain_name with
     | Error _ -> failwith "foo.com should have been returned"
     | Ok _ip ->
-      let mock_ns_responses = `Tcp, ref [ipv4_buf] in
-      match Dns_client_with_time_machine.gethostbyname t domain_name ~nameserver:mock_ns_responses with
+      default_debug_info := [ipv4_buf];
+      match Dns_client_with_time_machine.gethostbyname t domain_name with
       | Error _ -> failwith "should have been cached"
       | Ok _ -> (* we returned content, AND the wire was used *)
-        assert (!(snd mock_ns_responses) = [])
+        assert (!default_debug_info = [])
 
   let tests = [
     "foo.com is valid", `Quick, foo_com_is_valid;
@@ -255,9 +246,9 @@ module Getaddrinfo_tests = struct
       00 00 00 0a c0 a6 00 1c  00 01 00 01 d1 ba 00 10
       20 01 48 60 48 02 00 38  00 00 00 00 00 00 00 0a" in
 
-    let mock_state = create () in
-    let ns = `Tcp, ref [ipv4_buf] in
-    match getaddrinfo mock_state Dns.Rr_map.Mx domain_name ~nameserver:ns with
+    let mock_state = create `Tcp in
+    default_debug_info := [ipv4_buf];
+    match getaddrinfo mock_state Dns.Rr_map.Mx domain_name with
     | Ok (_ttl, mx_set) ->
       let make_mx_record (preference, domain_name) =
         Dns.Mx.{
@@ -285,9 +276,9 @@ module Getaddrinfo_tests = struct
     let udp_buf = Cstruct.of_hex
       "     00 00 81 80 00 01  00 05 00 04 00 0f 06 67
       6f 6f 67 6c 65 03 63 6f  " in
-    let mock_state = create () in
-    let ns = `Udp, ref [udp_buf] in
-    match getaddrinfo mock_state Dns.Rr_map.Mx domain_name ~nameserver:ns with
+    let mock_state = create `Udp in
+    default_debug_info := [udp_buf];
+    match getaddrinfo mock_state Dns.Rr_map.Mx domain_name with
     | Error `Msg actual ->
       let expected = "Truncated UDP response" in
       Alcotest.(check string "reports the truncated UDP packet failure" expected actual)
@@ -313,9 +304,9 @@ c0 42 0a 68 6f 73 74 6d 61 73 74 65 72 06 66 61
 73 74 6c 79 c0 22 78 39 c6 29 00 00 0e 10 00 00
 02 58 00 09 3a 80 00 00 00 1e|}
     in
-    let mock_state = create () in
-    let ns = `Udp, ref [udp_buf] in
-    match getaddrinfo mock_state Dns.Rr_map.Aaaa domain_name ~nameserver:ns with
+    let mock_state = create `Udp in
+    default_debug_info := [udp_buf];
+    match getaddrinfo mock_state Dns.Rr_map.Aaaa domain_name with
     | Error `Msg actual ->
       let expected = "DNS cache error no data fastly.net" in
       let len = String.length expected in

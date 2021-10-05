@@ -44,9 +44,6 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
       | `Queries -> "queries"
       | `Decoding_errors -> "decoding-errors"
       | `Tcp_connections -> "tcp-connections"
-      | `Recursive_queries -> "recursive-questions"
-      | `Recursive_answers -> "recursive-answers"
-      | `Recursive_connections -> "recursive-connections"
       | `Authoritative_answers -> "authoritative-answers"
       | `Authoritative_errors -> "authoritative-errors"
       | `Reserved_answers -> "reserved-answers"
@@ -61,140 +58,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
     let metrics = Dns.counter_metrics ~f "stub-resolver" in
     (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
 
-  module IM = Map.Make(struct
-      type t = int
-      let compare : int -> int -> int = fun a b -> compare a b
-    end)
-
-  module Client = struct
-    module Transport : Dns_client.S
-      with type stack = S.t
-       and type +'a io = 'a Lwt.t
-       and type io_addr = Ipaddr.t * int = struct
-      type stack = S.t
-      type io_addr = Ipaddr.t * int
-      type ns_addr = Dns.proto * io_addr
-      type +'a io = 'a Lwt.t
-
-      type t = {
-        nameserver : ns_addr ;
-        timeout_ns : int64 ;
-        stack : stack ;
-        mutable flow : S.TCP.flow option ;
-        mutable requests : (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t IM.t ;
-      }
-      type context = { t : t ; timeout_ns : int64 ref ; mutable id : int }
-
-      let create
-          ?(nameserver = `Tcp, (Ipaddr.V4 (Ipaddr.V4.of_string_exn (fst Dns_client.default_resolver)), 53))
-          ~timeout
-          stack =
-        { nameserver ; timeout_ns = timeout ; stack ; flow = None ; requests = IM.empty }
-
-      let nameserver { nameserver ; _ } = nameserver
-      let rng = R.generate ?g:None
-      let clock = C.elapsed_ns
-
-      let with_timeout time_left f =
-        let timeout = T.sleep_ns !time_left >|= fun () -> Error (`Msg "DNS request timeout") in
-        let start = clock () in
-        Lwt.pick [ f ; timeout ] >|= fun result ->
-        let stop = clock () in
-        time_left := Int64.sub !time_left (Int64.sub stop start);
-        result
-
-      let bind = Lwt.bind
-      let lift = Lwt.return
-
-      let cancel_all t =
-        IM.iter (fun _id cond ->
-            Lwt_condition.broadcast cond (Error (`Msg "disconnected")))
-          t.requests
-
-      let rec read_loop ?(linger = Cstruct.empty) t flow =
-        S.TCP.read flow >>= function
-        | Error e ->
-          t.flow <- None;
-          Log.err (fun m -> m "error %a reading from resolver" S.TCP.pp_error e);
-          cancel_all t;
-          Lwt.return_unit
-        | Ok `Eof ->
-          t.flow <- None;
-          Log.info (fun m -> m "end of file reading from resolver");
-          cancel_all t;
-          Lwt.return_unit
-        | Ok (`Data cs) ->
-          let rec handle_data data =
-            let cs_len = Cstruct.length data in
-            if cs_len > 2 then
-              let len = Cstruct.BE.get_uint16 data 0 in
-              if cs_len - 2 >= len then
-                let packet, rest =
-                  if cs_len - 2 = len
-                  then data, Cstruct.empty
-                  else Cstruct.split data (len + 2)
-                in
-                let id = Cstruct.BE.get_uint16 packet 2 in
-                (match IM.find_opt id t.requests with
-                 | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
-                 | Some cond ->
-                   metrics `Recursive_answers;
-                   Lwt_condition.broadcast cond (Ok packet));
-                handle_data rest
-              else
-                read_loop ~linger:data t flow
-            else
-              read_loop ~linger:data t flow
-          in
-          handle_data (if Cstruct.length linger = 0 then cs else Cstruct.append linger cs)
-
-      let connect ?nameserver:ns t =
-        match t.flow with
-        | Some _ -> Lwt.return (Ok ({ t ; timeout_ns = ref t.timeout_ns ; id = 0 }))
-        | None ->
-          let _proto, addr = match ns with None -> nameserver t | Some x -> x in
-          let time_left = ref t.timeout_ns in
-          with_timeout time_left (S.TCP.create_connection (S.tcp t.stack) addr >|= function
-          | Error e ->
-            Log.err (fun m -> m "error connecting to nameserver %a"
-                        S.TCP.pp_error e) ;
-            Error (`Msg "connect failure")
-          | Ok flow ->
-            metrics `Recursive_connections;
-            Lwt.async (fun () -> read_loop t flow);
-            t.flow <- Some flow;
-            Ok ({ t ; timeout_ns = time_left ; id = 0 }))
-
-      let close _f =
-        (* ignoring this here *)
-        Lwt.return_unit
-
-      let recv { t ; timeout_ns ; id } =
-        let cond = Lwt_condition.create () in
-        t.requests <- IM.add id cond t.requests;
-        with_timeout timeout_ns (Lwt_condition.wait cond) >|= fun data ->
-        t.requests <- IM.remove id t.requests;
-        match data with
-        | Ok cs -> Ok cs
-        | Error `Msg m -> Error (`Msg m)
-
-      let send ({ t ; timeout_ns ; _ } as f) s =
-        match t.flow with
-        | None -> Lwt.return (Error (`Msg "no connection to resolver"))
-        | Some flow ->
-          let id = Cstruct.BE.get_uint16 s 2 in
-          f.id <- id;
-          with_timeout timeout_ns (S.TCP.write flow s >>= function
-          | Error e ->
-            t.flow <- None;
-            Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
-          | Ok () ->
-            metrics `Recursive_queries;
-            Lwt.return (Ok ()))
-    end
-
-    include Dns_client.Make(Transport)
-  end
+  module Client = Dns_client_mirage.Make(R)(T)(C)(S)
 
   (* likely this should contain:
      - a primary server (handling updates)
@@ -368,9 +232,12 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         | Some data -> metrics `Reserved_answers ; Lwt.return (Some data)
         | None -> resolve t packet.Packet.question packet.Packet.data build_reply
 
-  let create ?nameserver ?(size = 10000) ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
-    let nameserver = match nameserver with None -> None | Some ns -> Some (`Tcp, (ns, 53)) in
-    let client = Client.create ~size ?nameserver stack in
+  let create ?nameservers ?(size = 10000) ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
+    let nameservers = match nameservers with
+      | None -> None
+      | Some ns -> Some (`Tcp, List.map (fun ns -> (ns, 53)) ns)
+    in
+    let client = Client.create ~size ?nameservers stack in
     let server = Dns_server.Primary.server primary in
     let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in
     let t = { client ; reserved ; server ; on_update } in

@@ -3,10 +3,10 @@
         and [connect] and so on. leaving this stuff here for now until a
         better solution presents itself. *)
 
-val default_resolver : string * string
-(** [default_resolver] is a pair of IPv4 and IPv6 address in dotted-decimal
-    (/hexadecimal) form of the default resolver. Currently it is the IP address
-    of the UncensoredDNS.org anycast service. *)
+val default_resolvers : (Ipaddr.t * int) list
+(** [default_resolver] is a list of IPv6 and IPv4 address of the default
+    resolver. Currently it is the IP address of the UncensoredDNS.org
+    anycast service. *)
 
 module type S = sig
   type context
@@ -21,24 +21,19 @@ module type S = sig
       it can carry additional information for purposes of cryptographic
       verification. *)
 
-  type ns_addr = Dns.proto * io_addr
-  (** A pair of the transport protocol and the [io_addr]. We need to know the
-      protocol used so we can prefix packets for DNS-over-TCP and set correct
-      socket options etc. therefore we can't just use the opaque [io_addr]. *)
-
   type stack
   (** A stack with which to connect. *)
 
   type t
   (** The abstract state of a DNS client. *)
 
-  val create : ?nameserver:ns_addr -> timeout:int64 -> stack -> t
-  (** [create ~nameserver ~timeout stack] creates the state record of the DNS
+  val create : ?nameservers:(Dns.proto * io_addr list) -> timeout:int64 -> stack -> t
+  (** [create ~nameservers ~timeout stack] creates the state record of the DNS
       client. We use [timeout] (ns) as a cumulative time budget for connect
       and request timeouts. *)
 
-  val nameserver : t -> ns_addr
-  (** The address of a nameserver that is supposed to work with
+  val nameservers : t -> Dns.proto * io_addr list
+  (** The address of a nameservers that is supposed to work with
       the underlying context, can be used if the user does not want to
       bother with configuring their own.*)
 
@@ -48,8 +43,7 @@ module type S = sig
   val clock : unit -> int64
   (** [clock t] is the monotonic clock. *)
 
-  val connect : ?nameserver:ns_addr -> t -> (context, [> `Msg of string ])
-      result io
+  val connect : t -> (context, [> `Msg of string ]) result io
   (** [connect addr] is a new connection ([context]) to [addr], or an error. *)
 
   val send : context -> Cstruct.t -> (unit, [> `Msg of string ]) result io
@@ -72,48 +66,47 @@ sig
 
   type t
 
-  val create : ?size:int -> ?nameserver:T.ns_addr -> ?timeout:int64 ->
+  val create : ?size:int -> ?nameservers:(Dns.proto * T.io_addr list) -> ?timeout:int64 ->
     T.stack -> t
-  (** [create ~size ~nameserver ~timeout stack] creates the state of the DNS
-      client. We use [timeout] (ns, default 3s) as a time budget for connect and
+  (** [create ~size ~nameservers ~timeout stack] creates the state of the DNS
+      client. We use [timeout] (ns, default 5s) as a time budget for connect and
       request timeouts. To specify a timeout, use
-      [create ~timeout:(Duration.of_sec 5)]. *)
+      [create ~timeout:(Duration.of_sec 3)]. *)
 
-  val nameserver : t -> T.ns_addr
-  (** [nameserver state] returns the default nameserver to be used. *)
+  val nameservers : t -> Dns.proto * T.io_addr list
+  (** [nameservers state] returns the list of nameservers to be used. *)
 
-  val getaddrinfo : t -> ?nameserver:T.ns_addr -> 'response Dns.Rr_map.key ->
+  val getaddrinfo : t -> 'response Dns.Rr_map.key ->
     'a Domain_name.t ->
     ('response, [> `Msg of string ]) result T.io
-  (** [getaddrinfo state nameserver query_type name] is the
-      [query_type]-dependent response from [nameserver] regarding [name], or
+  (** [getaddrinfo state query_type name] is the
+      [query_type]-dependent response regarding [name], or
       an [Error _] message. See {!Dns_client.query_state} for more information
       about the result types. *)
 
-  val gethostbyname : t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
+  val gethostbyname : t -> [ `host ] Domain_name.t ->
     (Ipaddr.V4.t, [> `Msg of string ]) result T.io
-  (** [gethostbyname state ~nameserver hostname] is the IPv4 address of
-      [hostname] resolved via the [state] and [nameserver] specified.
+  (** [gethostbyname state hostname] is the IPv4 address of
+      [hostname] resolved via the [state] specified.
       If the query fails, or if the [domain] does not have any IPv4 addresses,
       an [Error _] message is returned. Any extraneous IPv4 addresses are
       ignored. For an example of using this API, see [unix/ohost.ml] in the
       distribution of this package. *)
 
-  val gethostbyname6 : t -> ?nameserver:T.ns_addr -> [ `host ] Domain_name.t ->
+  val gethostbyname6 : t -> [ `host ] Domain_name.t ->
     (Ipaddr.V6.t, [> `Msg of string ]) result T.io
-  (** [gethostbyname6 state ~nameserver hostname] is the IPv6 address of
-      [hostname] resolved via the [state] and [nameserver] specified.
+  (** [gethostbyname6 state hostname] is the IPv6 address of
+      [hostname] resolved via the [state] specified.
 
       It is the IPv6 equivalent of {!gethostbyname}. *)
 
-  val get_resource_record : t -> ?nameserver:T.ns_addr ->
-    'response Dns.Rr_map.key -> 'a Domain_name.t ->
+  val get_resource_record : t -> 'response Dns.Rr_map.key -> 'a Domain_name.t ->
     ('response,
      [> `Msg of string
      | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
      | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result T.io
-    (** [get_resource_record state ~nameserver query_type name] resolves
-        [query_type, name] via the [state] and [nameserver] specified. The
+    (** [get_resource_record state query_type name] resolves
+        [query_type, name] via the [state] specified. The
         behaviour is equivalent to {!getaddrinfo}, apart from the error return
         value - [get_resource_record] distinguishes some errors, at the moment
         [No_data] if the [name] exists, but not the [query_type], and
