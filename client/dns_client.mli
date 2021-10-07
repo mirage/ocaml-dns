@@ -3,7 +3,9 @@
         and [connect] and so on. leaving this stuff here for now until a
         better solution presents itself. *)
 
-val default_resolvers : (Ipaddr.t * int) list
+val default_resolver_hostname : [`host] Domain_name.t
+
+val default_resolvers : Ipaddr.t list
 (** [default_resolver] is a list of IPv6 and IPv4 address of the default
     resolver. Currently it is the IP address of the UncensoredDNS.org
     anycast service. *)

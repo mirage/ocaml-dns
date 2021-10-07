@@ -89,7 +89,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
 
     let create ?nameservers ~timeout stack =
       let nameservers = match nameservers with
-        | None | Some (`Tcp, []) -> Dns_client.default_resolvers
+        | None | Some (`Tcp, []) ->
+          List.map (fun ip -> ip, 53) Dns_client.default_resolvers
         | Some (`Udp, _) -> invalid_arg "UDP is not supported"
         | Some (`Tcp, ns) -> ns
       in

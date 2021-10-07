@@ -2,5 +2,5 @@
   (name        dns_client_lwt)
   (modules     dns_client_lwt)
   (public_name dns-client.lwt)
-  (libraries   lwt lwt.unix dns dns-client dns-client.resolvconf mtime.clock.os mirage-crypto-rng.lwt ipaddr.unix happy-eyeballs)
+  (libraries   lwt lwt.unix dns dns-client dns-client.resolvconf mtime.clock.os mirage-crypto-rng.lwt ipaddr.unix happy-eyeballs tls.lwt ca-certs)
   (wrapped     false))

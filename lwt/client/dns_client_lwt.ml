@@ -6,26 +6,26 @@ let src = Logs.Src.create "dns_client_lwt" ~doc:"effectful DNS lwt layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 module Transport : Dns_client.S
- with type io_addr = Ipaddr.t * int
+ with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of [ `host ] Domain_name.t option * Ipaddr.t * int ]
  and type +'a io = 'a Lwt.t
  and type stack = unit
 = struct
-  type io_addr = Ipaddr.t * int
+  type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of [ `host ] Domain_name.t option * Ipaddr.t * int ]
   type +'a io = 'a Lwt.t
   type stack = unit
   type t = {
     nameservers : io_addr list ;
     timeout_ns : int64 ;
-    mutable fd : Lwt_unix.file_descr option ;
     (* TODO: avoid race, use a mvar instead of condition *)
+    mutable fd : [ `Plain of Lwt_unix.file_descr | `Tls of Tls_lwt.Unix.t ] option ;
     mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
     mutable he : Happy_eyeballs.t ;
     mutable waiters : ((Ipaddr.t * int) * Lwt_unix.file_descr, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
     timer_condition : unit Lwt_condition.t ;
+    authenticator : X509.Authenticator.t ;
   }
   type context = {
     t : t ;
-    fd : Lwt_unix.file_descr option ;
     mutable timeout_ns : int64 ;
     mutable data : Cstruct.t ;
   }
@@ -117,10 +117,18 @@ module Transport : Dns_client.S
         match
           read_file "/etc/resolv.conf" >>= fun data ->
           Dns_resolvconf.parse data >>|
-          List.map (fun (`Nameserver ip) -> (ip, 53))
+          List.concat_map (fun (`Nameserver ip) -> [`Tls (None, ip, 853) ; `Plaintext (ip, 53)])
         with
-        | Error _  | Ok [] -> Dns_client.default_resolvers
+        | Error _  | Ok [] ->
+          List.concat_map (fun ip -> [
+              `Tls (Some Dns_client.default_resolver_hostname, ip, 853);
+              `Plaintext (ip, 53)
+            ]) Dns_client.default_resolvers
         | Ok ips -> ips
+    in
+    let authenticator = match Ca_certs.authenticator () with
+      | Ok a -> a
+      | Error `Msg m -> invalid_arg ("failed to load trust anchors: " ^ m)
     in
     let t = {
       nameservers ;
@@ -130,6 +138,7 @@ module Transport : Dns_client.S
       he = Happy_eyeballs.create (now ()) ;
       waiters = Happy_eyeballs.Waiter_map.empty ;
       timer_condition = Lwt_condition.create () ;
+      authenticator ;
     } in
     Lwt.async (fun () -> he_timer t);
     t
@@ -149,25 +158,29 @@ module Transport : Dns_client.S
     ctx.timeout_ns <- Int64.sub ctx.timeout_ns (Int64.sub stop start);
     result
 
-  let close { fd ; _ } = match fd with
-    | None -> Lwt.return_unit
-    | Some fd -> close_socket fd
+  let close _ = Lwt.return_unit
+
+  let send_query fd tx =
+    Lwt.catch (fun () ->
+      match fd with
+      | `Plain fd ->
+        Lwt_unix.send fd (Cstruct.to_bytes tx) 0
+          (Cstruct.length tx) [] >>= fun res ->
+        if res <> Cstruct.length tx then
+          Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
+        else
+          Lwt_result.return ()
+      | `Tls fd ->
+        Lwt_result.ok (Tls_lwt.Unix.write fd tx))
+      (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
 
   let send ctx tx =
     if Cstruct.length tx > 2 then
-      Lwt.catch (fun () ->
-        match ctx.t.fd with
-        | None -> Lwt.return (Error (`Msg "no connection to the nameserver established"))
-        | Some fd ->
-          ctx.data <- tx;
-          with_timeout ctx
-            (Lwt_unix.send fd (Cstruct.to_bytes tx) 0
-              (Cstruct.length tx) [] >>= fun res ->
-             if res <> Cstruct.length tx then
-               Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
-             else
-               Lwt_result.return ()))
-       (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
+      match ctx.t.fd with
+      | None -> Lwt.return (Error (`Msg "no connection to the nameserver established"))
+      | Some fd ->
+        ctx.data <- tx;
+        with_timeout ctx (send_query fd tx)
     else
       Lwt.return (Error (`Msg "invalid DNS packet (data length <= 2)"))
 
@@ -185,17 +198,26 @@ module Transport : Dns_client.S
   let lift = Lwt.return
 
   let rec read_loop ?(linger = Cstruct.empty) (t : t) fd =
-    let recv_buffer = Bytes.make 2048 '\000' in
     Lwt.catch (fun () ->
-      Lwt_unix.recv fd recv_buffer 0 (Bytes.length recv_buffer) [])
+      match fd with
+      | `Plain fd ->
+        let recv_buffer = Bytes.make 2048 '\000' in
+        Lwt_unix.recv fd recv_buffer 0 (Bytes.length recv_buffer) [] >|= fun r ->
+        (r, Cstruct.of_bytes recv_buffer)
+      | `Tls fd ->
+        let recv_buffer = Cstruct.create 2048 in
+        Tls_lwt.Unix.read fd recv_buffer >|= fun r ->
+        (r, recv_buffer))
      (fun e ->
       Log.err (fun m -> m "error %s reading from resolver" (Printexc.to_string e));
-      Lwt.return 0) >>= function
-     | 0 ->
-       close_socket fd >|= fun () ->
+      Lwt.return (0, Cstruct.empty)) >>= function
+     | (0, _) ->
+       (match fd with
+       | `Plain fd -> close_socket fd
+       | `Tls fd -> Tls_lwt.Unix.close fd) >|= fun () ->
        t.fd <- None;
        Log.info (fun m -> m "end of file reading from resolver")
-     | read_len ->
+     | (read_len, cs) ->
        let rec handle_data data =
          let cs_len = Cstruct.length data in
          if cs_len > 2 then
@@ -217,24 +239,14 @@ module Transport : Dns_client.S
          else
            read_loop ~linger:data t fd
        in
-       let cs = Cstruct.of_bytes ~len:read_len recv_buffer in
+       let cs = Cstruct.sub cs 0 read_len in
        handle_data (if Cstruct.length linger = 0 then cs else Cstruct.append linger cs)
-
-  let query_one fd data =
-    Lwt.catch (fun () ->
-      Lwt_unix.send fd (Cstruct.to_bytes data) 0
-        (Cstruct.length data) [] >>= fun res ->
-      if res <> Cstruct.length data then
-        Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
-      else
-        Lwt_result.return ())
-     (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
 
   let req_all fd t =
     IM.fold (fun _id (data, _) r ->
         r >>= function
         | Error _ as e -> Lwt.return e
-        | Ok () -> query_one fd data)
+        | Ok () -> send_query fd data)
       t.requests (Lwt.return (Ok ()))
 
   let rec connect_via_tcp_to_ns (t : t) =
@@ -244,7 +256,8 @@ module Transport : Dns_client.S
       let waiter, notify = Lwt.task () in
       let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
       t.waiters <- waiters;
-      let he, actions = Happy_eyeballs.connect_ip t.he (now ()) ~id t.nameservers in
+      let ns = List.map (function `Plaintext (ip, port) | `Tls (_, ip, port) -> ip, port) t.nameservers in
+      let he, actions = Happy_eyeballs.connect_ip t.he (now ()) ~id ns in
       t.he <- he;
       Lwt_condition.signal t.timer_condition ();
       Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
@@ -253,8 +266,16 @@ module Transport : Dns_client.S
         Lwt.return
           (Rresult.R.error_msgf "error %s connecting to resolver %a"
             msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
-            t.nameservers)
-      | Ok ((_server, _port), socket) ->
+            (List.map (function `Plaintext (ip, p) | `Tls (_, ip, p) -> ip, p) t.nameservers))
+      | Ok ((serverip, port), socket) ->
+        let config = List.find (function `Plaintext (ip, p) | `Tls (_, ip, p) -> Ipaddr.compare ip serverip = 0 && p = port) t.nameservers in
+        (match config with
+         | `Plaintext _ -> Lwt.return (`Plain socket)
+         | `Tls (peer_name, ip, _) ->
+           let ip = match peer_name with None -> Some ip | Some _ -> None in
+           let tls = Tls.Config.client ~authenticator:t.authenticator ?peer_name ?ip () in
+           Tls_lwt.Unix.client_of_fd tls socket >|= fun f ->
+           `Tls f) >>= fun socket ->
         t.fd <- Some socket;
         Lwt.async (fun () ->
             read_loop t socket >>= fun () ->
@@ -268,7 +289,7 @@ module Transport : Dns_client.S
         req_all socket t
 
   let connect t =
-    let ctx = { t ; fd = None ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
+    let ctx = { t ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
     connect_via_tcp_to_ns t >|= function
     | Ok () -> Ok ctx
     | Error `Msg msg -> Error (`Msg msg)
