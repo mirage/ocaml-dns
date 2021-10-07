@@ -25,7 +25,7 @@ let bindings t =
   go Domain_name.root t
 
 let pp_map name ppf map =
-  Fmt.(list ~sep:(unit "@.") string) ppf
+  Fmt.(list ~sep:(any "@.") string) ppf
     (List.map (Rr_map.text_b name) (Rr_map.bindings map))
 
 let pp ppf t = List.iter (fun (name, map) -> pp_map name ppf map) (bindings t)
@@ -41,7 +41,7 @@ type e = [ `Delegation of [ `raw ] Domain_name.t * (int32 * Domain_name.Host_set
 let pp_e ppf = function
   | `Delegation (name, (ttl, ns)) ->
     Fmt.pf ppf "delegation %a to TTL %lu %a" Domain_name.pp name ttl
-      Fmt.(list ~sep:(unit ",@,") Domain_name.pp) (Domain_name.Host_set.elements ns)
+      Fmt.(list ~sep:(any ",@,") Domain_name.pp) (Domain_name.Host_set.elements ns)
   | `EmptyNonTerminal (name, soa) ->
     Fmt.pf ppf "empty non terminal %a SOA %a" Domain_name.pp name Soa.pp soa
   | `NotAuthoritative -> Fmt.string ppf "not authoritative"

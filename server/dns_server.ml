@@ -135,9 +135,9 @@ module Authentication = struct
         | Ok (_, dnskeys) ->
           Log.warn (fun m -> m "replacing Dnskeys (name %a, present %a, add %a)"
                        Domain_name.pp name
-                       Fmt.(list ~sep:(unit ",") Dnskey.pp)
+                       Fmt.(list ~sep:(any ",") Dnskey.pp)
                        (Rr_map.Dnskey_set.elements dnskeys)
-                       Fmt.(list ~sep:(unit ";") Dnskey.pp)
+                       Fmt.(list ~sep:(any ";") Dnskey.pp)
                        (Rr_map.Dnskey_set.elements keys) );
           keys
       in
@@ -202,7 +202,7 @@ let with_data t data = { t with data }
 let text name data =
   match Dns_trie.entries name data with
   | Error e ->
-    Error (`Msg (Fmt.strf "text: couldn't find zone %a: %a"
+    Error (`Msg (Fmt.str "text: couldn't find zone %a: %a"
                    Domain_name.pp name Dns_trie.pp_e e))
   | Ok (soa, map) ->
     let buf = Buffer.create 1024 in
@@ -311,7 +311,7 @@ let handle_axfr_request t proto key ((zone, _) as question) =
   match Dns_trie.entries zone t.data with
   | Ok (soa, entries) ->
     Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
-                 Fmt.(option ~none:(unit "none") Domain_name.pp) key
+                 Fmt.(option ~none:(any "none") Domain_name.pp) key
                  Packet.Question.pp question);
     Ok (soa, entries)
   | Error e ->
@@ -331,7 +331,7 @@ let find_trie m name serial =
 let handle_ixfr_request t m proto key ((zone, _) as question) soa =
   authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone >>= fun () ->
   Log.info (fun m -> m "transfer key %a authorised for IXFR %a"
-               Fmt.(option ~none:(unit "none") Domain_name.pp) key
+               Fmt.(option ~none:(any "none") Domain_name.pp) key
                Packet.Question.pp question);
   let old = match find_trie m zone soa.Soa.serial with
     | None -> Dns_trie.empty
@@ -613,9 +613,9 @@ module Notification = struct
   let notify conn ns server now ts zone soa =
     let remotes = to_notify conn ~data:server.data ~auth:server.auth zone in
     Log.debug (fun m -> m "notifying %a: %a" Domain_name.pp zone
-                  Fmt.(list ~sep:(unit ",@ ")
-                         (pair ~sep:(unit ", key ") Ipaddr.pp
-                            (option ~none:(unit "none") Domain_name.pp)))
+                  Fmt.(list ~sep:(any ",@ ")
+                         (pair ~sep:(any ", key ") Ipaddr.pp
+                            (option ~none:(any "none") Domain_name.pp)))
                   (IPM.bindings remotes));
     IPM.fold (fun ip key (ns, outs) ->
         let ns, out = notify_one ns server now ts zone soa ip key in
@@ -738,7 +738,7 @@ let update_data trie zone (prereq, update) =
 let handle_update t _proto key (zone, _) u =
   if Authentication.access `Update ?key ~zone then begin
     Log.info (fun m -> m "update key %a authorised for update %a"
-                 Fmt.(option ~none:(unit "none") Domain_name.pp) key
+                 Fmt.(option ~none:(any "none") Domain_name.pp) key
                  Packet.Update.pp u);
     match Domain_name.host zone with
     | Ok z -> update_data t.data z u
@@ -1025,7 +1025,7 @@ module Primary = struct
       (t, m, l, ns'), None, [], None
     | `Notify soa ->
       Log.warn (fun m -> m "unsolicited notify request %a (replying anyways)"
-                   Fmt.(option ~none:(unit "no") Soa.pp) soa);
+                   Fmt.(option ~none:(any "no") Soa.pp) soa);
       let action =
         if Authentication.access `Notify ?key ~zone:(fst p.question) then
           Some (`Notify soa)
@@ -1050,7 +1050,7 @@ module Primary = struct
       let answer = Packet.raw_error buf rcode in
       Log.warn (fun m -> m "error %a while %a sent %a, answering with %a"
                    Rcode.pp rcode Ipaddr.pp ip Cstruct.hexdump_pp buf
-                   Fmt.(option ~none:(unit "no") Cstruct.hexdump_pp) answer);
+                   Fmt.(option ~none:(any "no") Cstruct.hexdump_pp) answer);
       tx_metrics (`Rcode_error (rcode, Opcode.Query, None));
       let answer = match answer with None -> [] | Some err -> [ err ] in
       t, answer, [], None, None
@@ -1774,7 +1774,7 @@ module Secondary = struct
     | `Rcode_error (rc, op, data) ->
       Log.err (fun m -> m "ignoring rcode error %a for op %a data %a"
                   Rcode.pp rc Opcode.pp op
-                  Fmt.(option ~none:(unit "no") Packet.Answer.pp) data);
+                  Fmt.(option ~none:(any "no") Packet.Answer.pp) data);
       (t, zones), None, None
 
   let find_mac zones p =

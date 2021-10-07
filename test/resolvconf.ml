@@ -6,7 +6,7 @@ let ok =
       let pp_one ppf = function
         | `Nameserver ip -> Fmt.pf ppf "nameserver %a" Ipaddr.pp ip
       in
-      Fmt.(list ~sep:(unit "\n") pp_one)
+      Fmt.(list ~sep:(any "\n") pp_one)
     let equal a b = compare a b = 0 (* TODO polymorphic equality *)
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)

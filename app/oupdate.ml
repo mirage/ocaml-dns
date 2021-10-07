@@ -29,7 +29,7 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
   let p = create_update zone hostname ip_address in
   match Dns_tsig.encode_and_sign ~proto:`Tcp p now dnskey keyname with
   | Error s ->
-    Error (`Msg (Fmt.strf "tsig sign error %a" Dns_tsig.pp_s s))
+    Error (`Msg (Fmt.str "tsig sign error %a" Dns_tsig.pp_s s))
   | Ok (data, mac) ->
     let data_len = Cstruct.length data in
     Logs.debug (fun m -> m "built data %d" data_len) ;
@@ -39,16 +39,16 @@ let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
     (try (Unix.close socket) with _ -> ()) ;
     match Dns_tsig.decode_and_verify now dnskey keyname ~mac read_data with
     | Error e ->
-      Error (`Msg (Fmt.strf "nsupdate error %a" Dns_tsig.pp_e e))
+      Error (`Msg (Fmt.str "nsupdate error %a" Dns_tsig.pp_e e))
     | Ok (reply, _, _) ->
       match Packet.reply_matches_request ~request:p reply with
       | Ok `Update_ack ->
         Logs.app (fun m -> m "successful and signed update!") ;
         Ok ()
       | Ok r ->
-        Error (`Msg (Fmt.strf "nsupdate expected update ack, received %a" Packet.pp_reply r))
+        Error (`Msg (Fmt.str "nsupdate expected update ack, received %a" Packet.pp_reply r))
       | Error e ->
-        Error (`Msg (Fmt.strf "nsupdate error %a (reply %a does not match request %a)"
+        Error (`Msg (Fmt.str "nsupdate error %a (reply %a does not match request %a)"
                        Packet.pp_mismatch e Packet.pp reply Packet.pp p))
 
 open Cmdliner

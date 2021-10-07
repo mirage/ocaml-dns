@@ -92,7 +92,7 @@ module Entry = struct
       Fmt.pf ppf "no domain (%a) %a SOA %a" pp_meta meta Domain_name.pp name Soa.pp soa
     | Rr_map rr ->
       Fmt.pf ppf "entries: %a"
-        Fmt.(list ~sep:(unit ";@,") (pair Rr_map.ppk pp_entry))
+        Fmt.(list ~sep:(any ";@,") (pair Rr_map.ppk pp_entry))
         (RRMap.bindings rr)
 end
 
@@ -122,7 +122,7 @@ let size = LRU.size
 
 let capacity = LRU.capacity
 
-let pp = LRU.pp Fmt.(pair ~sep:(unit ": ") Domain_name.pp Entry.pp)
+let pp = LRU.pp Fmt.(pair ~sep:(any ": ") Domain_name.pp Entry.pp)
 
 module N = Domain_name.Set
 
@@ -133,9 +133,9 @@ let pp_entry key ppf entry =
   let pp_ns ppf (name, soa) = Fmt.pf ppf "%a SOA %a" Domain_name.pp name Soa.pp soa in
   match entry with
   | `Entry v -> Fmt.pf ppf "entry %a" Rr_map.pp_b (B (key, v))
-  | `No_data ns -> Fmt.(prefix (unit "no data ") pp_ns) ppf ns
-  | `No_domain ns -> Fmt.(prefix (unit "no domain ") pp_ns) ppf ns
-  | `Serv_fail ns -> Fmt.(prefix (unit "serv fail ") pp_ns) ppf ns
+  | `No_data ns -> Fmt.(append (any "no data ") pp_ns) ppf ns
+  | `No_domain ns -> Fmt.(append (any "no domain ") pp_ns) ppf ns
+  | `Serv_fail ns -> Fmt.(append (any "serv fail ") pp_ns) ppf ns
 
 let get_ttl k = function
   | `Entry v -> Rr_map.ttl k v

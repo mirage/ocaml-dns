@@ -37,7 +37,7 @@ let do_a nameserver ns_port is_udp domains _ =
   let t = Dns_client_lwt.create ?nameservers () in
   let (_, ns) = Dns_client_lwt.nameservers t in
   Logs.info (fun m -> m "querying NS %a for A records of %a"
-                Ipaddr.pp (fst (List.hd ns)) Fmt.(list ~sep:(unit", ") Domain_name.pp) domains);
+                Ipaddr.pp (fst (List.hd ns)) Fmt.(list ~sep:(any ", ") Domain_name.pp) domains);
   let job =
     Lwt_list.iter_p (fun domain ->
         let open Lwt in
@@ -170,7 +170,7 @@ let parse_domain : [ `raw ] Domain_name.t Arg.conv =
   ( fun name ->
       Domain_name.of_string name
       |> Rresult.R.reword_error
-        (fun (`Msg m) -> Fmt.strf "Invalid domain: %S: %s" name m)
+        (fun (`Msg m) -> Fmt.str "Invalid domain: %S: %s" name m)
       |> Rresult.R.to_presult) ,
   Domain_name.pp
 

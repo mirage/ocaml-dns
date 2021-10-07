@@ -34,7 +34,7 @@ let nsupdate_csr sock host keyname zone dnskey csr =
     let data = Dns_cli.recv_tcp sock in
     match cb data with
     | Ok () -> Ok ()
-    | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Dns_certify.pp_u_err e))
+    | Error e -> Error (`Msg (Fmt.str "nsupdate reply error %a" Dns_certify.pp_u_err e))
 
 let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype keydata seed bits cert force =
   Mirage_crypto_rng_unix.initialize ();
@@ -100,7 +100,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype ke
        Ok true
      | Error (`Msg m) -> Error (`Msg m)
      | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
-       Error (`Msg (Fmt.strf "error %a while parsing TLSA reply"
+       Error (`Msg (Fmt.str "error %a while parsing TLSA reply"
                       Dns_certify.pp_q_err e)))
   >>= (function
   | false -> Ok ()

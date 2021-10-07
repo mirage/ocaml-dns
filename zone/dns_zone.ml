@@ -25,6 +25,6 @@ let parse buf =
     let lexbuf = Lexing.from_string buf in
     Ok (Dns_zone_parser.zfile Dns_zone_lexer.token lexbuf)
   with
-    | Parsing.Parse_error -> Error (`Msg (Fmt.strf "zone parse error at line %d" Dns_zone_state.(state.lineno)))
-    | Dns_zone_state.Zone_parse_problem s -> Error (`Msg (Fmt.strf "zone parse problem at line %d: %s" Dns_zone_state.(state.lineno) s))
+    | Parsing.Parse_error -> Error (`Msg (Fmt.str "zone parse error at line %d" Dns_zone_state.(state.lineno)))
+    | Dns_zone_state.Zone_parse_problem s -> Error (`Msg (Fmt.str "zone parse problem at line %d: %s" Dns_zone_state.(state.lineno) s))
     | exn -> Error (`Msg (Printexc.to_string exn))

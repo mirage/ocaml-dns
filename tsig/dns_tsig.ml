@@ -75,7 +75,7 @@ let sign ?mac ?max_size name tsig ~key p buf =
         | None ->
           Log.err (fun m -> m "dns_tsig sign failed query %a with tsig %a too big (max_size %a) truncated packet %a:@.%a"
                     Packet.pp p Tsig.pp tsig Packet.pp p'
-                    Fmt.(option ~none:(unit "none") int) max_size
+                    Fmt.(option ~none:(any "none") int) max_size
                     Cstruct.hexdump_pp new_buf) ;
           None
         | Some out -> Some (out, mac)

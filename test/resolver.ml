@@ -115,7 +115,7 @@ let res =
       let pp_elem ppf (n, Dns_resolver_utils.E (t, e), r) =
         Fmt.pf ppf "%a %a (%a): %a" Domain_name.pp n Rr_map.ppk (K t) Dns_cache.pp_rank r (Dns_cache.pp_entry t) e
       in
-      Fmt.pf ppf "%a" Fmt.(list ~sep:(unit ";@,") pp_elem) xs
+      Fmt.pf ppf "%a" Fmt.(list ~sep:(any ";@,") pp_elem) xs
     let equal a a' =
       let eq (n, Dns_resolver_utils.E (t, e), r) (n', Dns_resolver_utils.E (t', e'), r') =
         Domain_name.equal n n' && match Rr_map.K.compare t t' with
@@ -868,7 +868,7 @@ let handle_query_res =
     let pp ppf = function
       | `Reply (flags, reply), _ ->
         Fmt.pf ppf "reply flags %a, %a"
-          Fmt.(list ~sep:(unit ", ") Packet.Flag.pp_short) (Packet.Flags.elements flags)
+          Fmt.(list ~sep:(any ", ") Packet.Flag.pp_short) (Packet.Flags.elements flags)
           Packet.pp_reply reply
       | `Query (zone, (qname, qtype), ip), _ ->
         Fmt.pf ppf "zone %a, query %a (%a), IP %a"

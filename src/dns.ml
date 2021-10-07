@@ -67,7 +67,7 @@ module Class = struct
     | 4 -> Ok HESIOD
     | 254 -> Ok NONE
     | 255 -> Ok ANY_CLASS
-    | c -> Error (`Not_implemented (off, Fmt.strf "class %X" c))
+    | c -> Error (`Not_implemented (off, Fmt.str "class %X" c))
 
   let to_string = function
     | IN -> "IN"
@@ -105,7 +105,7 @@ module Opcode = struct
     | 2 -> Ok Status
     | 4 -> Ok Notify
     | 5 -> Ok Update
-    | x -> Error (`Not_implemented (off, Fmt.strf "opcode 0x%X" x))
+    | x -> Error (`Not_implemented (off, Fmt.str "opcode 0x%X" x))
 
   let to_string = function
     | Query -> "Query"
@@ -163,7 +163,7 @@ module Rcode = struct
     | 17 -> Ok BadKey | 18 -> Ok BadTime | 19 -> Ok BadMode
     | 20 -> Ok BadName | 21 -> Ok BadAlg | 22 -> Ok BadTrunc
     | 23 -> Ok BadCookie
-    | x -> Error (`Not_implemented (off, Fmt.strf "rcode 0x%04X" x))
+    | x -> Error (`Not_implemented (off, Fmt.str "rcode 0x%04X" x))
   let to_string = function
     | NoError -> "no error" | FormErr -> "form error"
     | ServFail -> "server failure" | NXDomain -> "no such domain"
@@ -200,7 +200,7 @@ module Name = struct
       | i when i >= ptr_tag ->
         let ptr = (i - ptr_tag) lsl 8 + Cstruct.get_uint8 buf (succ off) in
         Ok ((`P ptr, off), offsets, off + 2)
-      | i when i >= 64 -> Error (`Malformed (off, Fmt.strf "label tag 0x%x" i)) (* bit patterns starting with 10 or 01 *)
+      | i when i >= 64 -> Error (`Malformed (off, Fmt.str "label tag 0x%x" i)) (* bit patterns starting with 10 or 01 *)
       | i -> (* this is clearly < 64! *)
         let name = Cstruct.to_string (Cstruct.sub buf (succ off) i) in
         aux ((name, off) :: offsets) (succ off + i)
@@ -292,7 +292,7 @@ module Name = struct
 
   let host off name =
     Rresult.R.reword_error (function `Msg _ ->
-        `Malformed (off, Fmt.strf "invalid hostname %a" Domain_name.pp name))
+        `Malformed (off, Fmt.str "invalid hostname %a" Domain_name.pp name))
       (Domain_name.host name)
 
   (*
@@ -742,7 +742,7 @@ module Dnskey = struct
     and algo = Cstruct.get_uint8 buf (off + 3)
     in
     guard (proto = 3)
-      (`Not_implemented (off + 2, Fmt.strf "dnskey protocol 0x%x" proto)) >>| fun () ->
+      (`Not_implemented (off + 2, Fmt.str "dnskey protocol 0x%x" proto)) >>| fun () ->
     let algorithm = int_to_algorithm algo in
     let key = Cstruct.sub buf (off + 4) (len - 4) in
     { flags ; algorithm ; key }, names, off + len
@@ -793,7 +793,7 @@ module Caa = struct
 
   let pp ppf t =
     Fmt.pf ppf "CAA critical %b tag %s value %a"
-      t.critical t.tag Fmt.(list ~sep:(unit "; ") string) t.value
+      t.critical t.tag Fmt.(list ~sep:(any "; ") string) t.value
 
   let compare a b =
     andThen (compare a.critical b.critical)
@@ -808,7 +808,7 @@ module Caa = struct
     and tl = Cstruct.get_uint8 buf (succ off)
     in
     guard (tl > 0 && tl < 16)
-      (`Not_implemented (succ off, Fmt.strf "caa tag 0x%x" tl)) >>= fun () ->
+      (`Not_implemented (succ off, Fmt.str "caa tag 0x%x" tl)) >>= fun () ->
     let tag = Cstruct.sub buf (off + 2) tl in
     let tag = Cstruct.to_string tag in
     let vs = 2 + tl in
@@ -1149,7 +1149,7 @@ module Tsig = struct
     (fun ?(off = 0) (b : [ `host ] Domain_name.t) ->
        try Ok (snd (List.find (fun (n, _) -> Domain_name.equal b n) map))
        with Not_found ->
-         let m = Fmt.strf "algorithm name %a" Domain_name.pp b in
+         let m = Fmt.str "algorithm name %a" Domain_name.pp b in
          Error (`Not_implemented (off, m)))
 
   let pp_algorithm ppf a = Domain_name.pp ppf (algorithm_to_name a)
@@ -1175,15 +1175,15 @@ module Tsig = struct
   let ptime_of_int64 ?(off = 0) s =
     let d, ps = Int64.(div s s_in_d, mul (rem s s_in_d) ps_in_s) in
     if d < Int64.of_int min_int || d > Int64.of_int max_int then
-      Error (`Malformed (off, Fmt.strf "timestamp does not fit in time range %Ld" s))
+      Error (`Malformed (off, Fmt.str "timestamp does not fit in time range %Ld" s))
     else
       match Ptime.Span.of_d_ps (Int64.to_int d, ps) with
       | Some span ->
         begin match Ptime.of_span span with
           | Some ts -> Ok ts
-          | None -> Error (`Malformed (off, Fmt.strf "span does not fit into timestamp %Ld" s))
+          | None -> Error (`Malformed (off, Fmt.str "span does not fit into timestamp %Ld" s))
         end
-      | None -> Error (`Malformed (off, Fmt.strf "timestamp does not fit %Ld" s))
+      | None -> Error (`Malformed (off, Fmt.str "timestamp does not fit %Ld" s))
 
   let valid_time now tsig =
     let ts = tsig.signed
@@ -1234,7 +1234,7 @@ module Tsig = struct
       pp_algorithm t.algorithm
       (Ptime.pp_rfc3339 ()) t.signed Ptime.Span.pp t.fudge
       Cstruct.hexdump_pp t.mac t.original_id Rcode.pp t.error
-      Fmt.(option ~none:(unit "none") (Ptime.pp_rfc3339 ())) t.other
+      Fmt.(option ~none:(any "none") (Ptime.pp_rfc3339 ())) t.other
 
   let decode_48bit_time buf off =
     let a = Cstruct.BE.get_uint16 buf off
@@ -1250,7 +1250,7 @@ module Tsig = struct
     let open Rresult.R.Infix in
     guard (Cstruct.length buf - off >= 6) `Partial >>= fun () ->
     let ttl = Cstruct.BE.get_uint32 buf off in
-    guard (ttl = 0l) (`Malformed (off, Fmt.strf "tsig ttl is not zero %lu" ttl)) >>= fun () ->
+    guard (ttl = 0l) (`Malformed (off, Fmt.str "tsig ttl is not zero %lu" ttl)) >>= fun () ->
     let len = Cstruct.BE.get_uint16 buf (off + 4) in
     let rdata_start = off + 6 in
     guard (Cstruct.length buf - rdata_start >= len) `Partial >>= fun () ->
@@ -1415,7 +1415,7 @@ module Edns = struct
   let pp_extension ppf = function
     | Nsid cs -> Fmt.pf ppf "nsid %a" Cstruct.hexdump_pp cs
     | Cookie cs -> Fmt.pf ppf "cookie %a" Cstruct.hexdump_pp cs
-    | Tcp_keepalive i -> Fmt.pf ppf "keepalive %a" Fmt.(option ~none:(unit "none") int) i
+    | Tcp_keepalive i -> Fmt.pf ppf "keepalive %a" Fmt.(option ~none:(any "none") int) i
     | Padding i -> Fmt.pf ppf "padding %d" i
     | Extension (t, v) -> Fmt.pf ppf "unknown option %d: %a" t Cstruct.hexdump_pp v
 
@@ -1483,7 +1483,7 @@ module Edns = struct
       (begin match tl with
          | 0 -> Ok None
          | 2 -> Ok (Some (Cstruct.BE.get_uint16 v 0))
-         | _ -> Error (`Not_implemented (off, Fmt.strf "edns keepalive 0x%x" tl))
+         | _ -> Error (`Not_implemented (off, Fmt.str "edns keepalive 0x%x" tl))
        end >>= fun i ->
        Ok (Tcp_keepalive i, len))
     | Some `padding -> Ok (Padding tl, len)
@@ -1533,7 +1533,7 @@ module Edns = struct
   let pp ppf opt =
     Fmt.(pf ppf "EDNS rcode %u version %u dnssec_ok %b payload_size %u extensions %a"
            opt.extended_rcode opt.version opt.dnssec_ok opt.payload_size
-           (list ~sep:(unit ", ") pp_extension) opt.extensions)
+           (list ~sep:(any ", ") pp_extension) opt.extensions)
 
   let decode_extensions buf ~len =
     let open Rresult.R.Infix in
@@ -1940,24 +1940,24 @@ module Rr_map = struct
       | Some d when Int32.compare ttl d = 0 -> None
       | _ -> Some ttl
     in
-    let ttl_fmt = Fmt.(option (suffix (unit "\t") uint32)) in
+    let ttl_fmt = Fmt.(option (append uint32 (any "\t"))) in
     let str_name = name n in
     let strs =
       match t, v with
       | Cname, (ttl, alias) ->
-        [ Fmt.strf "%s\t%aCNAME\t%s" str_name ttl_fmt (ttl_opt ttl) (name alias) ]
+        [ Fmt.str "%s\t%aCNAME\t%s" str_name ttl_fmt (ttl_opt ttl) (name alias) ]
       | Mx, (ttl, mxs) ->
         Mx_set.fold (fun { preference ; mail_exchange } acc ->
-            Fmt.strf "%s\t%aMX\t%u\t%s" str_name ttl_fmt (ttl_opt ttl) preference (name mail_exchange) :: acc)
+            Fmt.str "%s\t%aMX\t%u\t%s" str_name ttl_fmt (ttl_opt ttl) preference (name mail_exchange) :: acc)
           mxs []
       | Ns, (ttl, ns) ->
         Domain_name.Host_set.fold (fun ns acc ->
-            Fmt.strf "%s\t%aNS\t%s" str_name ttl_fmt (ttl_opt ttl) (name ns) :: acc)
+            Fmt.str "%s\t%aNS\t%s" str_name ttl_fmt (ttl_opt ttl) (name ns) :: acc)
           ns []
       | Ptr, (ttl, ptr) ->
-        [ Fmt.strf "%s\t%aPTR\t%s" str_name ttl_fmt (ttl_opt ttl) (name ptr) ]
+        [ Fmt.str "%s\t%aPTR\t%s" str_name ttl_fmt (ttl_opt ttl) (name ptr) ]
       | Soa, soa ->
-        [ Fmt.strf "%s\t%aSOA\t%s\t%s\t%lu\t%lu\t%lu\t%lu\t%lu" str_name
+        [ Fmt.str "%s\t%aSOA\t%s\t%s\t%lu\t%lu\t%lu\t%lu\t%lu" str_name
             ttl_fmt (ttl_opt soa.minimum)
             (name soa.nameserver)
             (name soa.hostmaster)
@@ -1965,26 +1965,26 @@ module Rr_map = struct
             soa.expiry soa.minimum ]
       | Txt, (ttl, txts) ->
         Txt_set.fold (fun txt acc ->
-            Fmt.strf "%s\t%aTXT\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) txt :: acc)
+            Fmt.str "%s\t%aTXT\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) txt :: acc)
           txts []
       | A, (ttl, a) ->
         Ipaddr.V4.Set.fold (fun ip acc ->
-          Fmt.strf "%s\t%aA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V4.to_string ip) :: acc)
+          Fmt.str "%s\t%aA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V4.to_string ip) :: acc)
           a []
       | Aaaa, (ttl, aaaa) ->
         Ipaddr.V6.Set.fold (fun ip acc ->
-            Fmt.strf "%s\t%aAAAA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V6.to_string ip) :: acc)
+            Fmt.str "%s\t%aAAAA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V6.to_string ip) :: acc)
           aaaa []
       | Srv, (ttl, srvs) ->
         Srv_set.fold (fun srv acc ->
-            Fmt.strf "%s\t%aSRV\t%u\t%u\t%u\t%s"
+            Fmt.str "%s\t%aSRV\t%u\t%u\t%u\t%s"
               str_name ttl_fmt (ttl_opt ttl)
               srv.priority srv.weight srv.port
               (name srv.target) :: acc)
           srvs []
       | Dnskey, (ttl, keys) ->
         Dnskey_set.fold (fun key acc ->
-            Fmt.strf "%s%a\tDNSKEY\t%u\t3\t%d\t%s"
+            Fmt.str "%s%a\tDNSKEY\t%u\t3\t%d\t%s"
               str_name ttl_fmt (ttl_opt ttl)
               key.flags
               (Dnskey.algorithm_to_int key.algorithm)
@@ -1992,14 +1992,14 @@ module Rr_map = struct
           keys []
       | Caa, (ttl, caas) ->
         Caa_set.fold (fun caa acc ->
-            Fmt.strf "%s\t%aCAA\t%s\t%s\t\"%s\""
+            Fmt.str "%s\t%aCAA\t%s\t%s\t\"%s\""
               str_name ttl_fmt (ttl_opt ttl)
               (if caa.critical then "128" else "0")
               caa.tag (String.concat ";" caa.value) :: acc)
           caas []
       | Tlsa, (ttl, tlsas) ->
         Tlsa_set.fold (fun tlsa acc ->
-            Fmt.strf "%s\t%aTLSA\t%u\t%u\t%u\t%s"
+            Fmt.str "%s\t%aTLSA\t%u\t%u\t%u\t%s"
               str_name ttl_fmt (ttl_opt ttl)
               (Tlsa.cert_usage_to_int tlsa.cert_usage)
               (Tlsa.selector_to_int tlsa.selector)
@@ -2008,14 +2008,14 @@ module Rr_map = struct
           tlsas []
       | Sshfp, (ttl, sshfps) ->
         Sshfp_set.fold (fun sshfp acc ->
-            Fmt.strf "%s\t%aSSHFP\t%u\t%u\t%s" str_name ttl_fmt (ttl_opt ttl)
+            Fmt.str "%s\t%aSSHFP\t%u\t%u\t%s" str_name ttl_fmt (ttl_opt ttl)
               (Sshfp.algorithm_to_int sshfp.algorithm)
               (Sshfp.typ_to_int sshfp.typ)
               (hex sshfp.fingerprint) :: acc)
           sshfps []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
-            Fmt.strf "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
+            Fmt.str "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
               (I.to_int x) (String.length data) (hex (Cstruct.of_string data)) :: acc)
           datas []
     in
@@ -2166,10 +2166,10 @@ module Rr_map = struct
     and rdata_start = off + 6
     in
     guard (Int32.logand ttl 0x8000_0000l = 0l)
-      (`Malformed (off, Fmt.strf "bad TTL (high bit set) %lu" ttl)) >>= fun () ->
+      (`Malformed (off, Fmt.str "bad TTL (high bit set) %lu" ttl)) >>= fun () ->
     guard (Cstruct.length buf - rdata_start >= len) `Partial >>= fun () ->
     guard (len <= max_rdata_length)
-      (`Malformed (off + 4, Fmt.strf "length %d exceeds maximum rdata size" len)) >>= fun () ->
+      (`Malformed (off + 4, Fmt.str "length %d exceeds maximum rdata size" len)) >>= fun () ->
     (match typ with
      | Soa ->
        Soa.decode names buf ~off:rdata_start ~len >>| fun (soa, names, off) ->
@@ -2231,7 +2231,7 @@ module Name_rr_map = struct
 
   let pp ppf map =
     List.iter (fun (name, rr_map) ->
-        Fmt.(list ~sep:(unit "@.") string) ppf
+        Fmt.(list ~sep:(any "@.") string) ppf
           (List.map (Rr_map.text_b name) (Rr_map.bindings rr_map)))
       (Domain_name.Map.bindings map)
 
@@ -2345,7 +2345,7 @@ module Packet = struct
         id (if query then "query" else "response")
         Opcode.pp operation
         Rcode.pp rcode
-        Fmt.(list ~sep:(unit ", ") Flag.pp) (Flags.elements flags)
+        Fmt.(list ~sep:(any ", ") Flag.pp) (Flags.elements flags)
 
     let len = 12
 
@@ -2537,13 +2537,13 @@ module Packet = struct
       Class.of_int ~off c >>= fun clas ->
       match typ with
       | `Edns | `Tsig ->
-        let msg = Fmt.strf "bad RRTYp in question %a" Rr_map.pp_rr typ in
+        let msg = Fmt.str "bad RRTYp in question %a" Rr_map.pp_rr typ in
         Error (`Malformed (off, msg))
       | (`Axfr | `Ixfr | `Any | `K _ as t) ->
         if clas = Class.IN then
           Ok ((name, t), names, off)
         else
-          Error (`Not_implemented (off, Fmt.strf "bad class in question 0x%x" c))
+          Error (`Not_implemented (off, Fmt.str "bad class in question 0x%x" c))
 
     let encode names buf off (name, typ) =
       Rr_map.encode_ntc names buf off
@@ -2562,13 +2562,13 @@ module Packet = struct
     let open Rresult.R.Infix in
     decode_ntc names buf off >>= fun ((name, typ, clas), names, off) ->
     guard (clas = Class.(to_int IN))
-      (`Not_implemented (off, Fmt.strf "rr class not IN 0x%x" clas)) >>= fun () ->
+      (`Not_implemented (off, Fmt.str "rr class not IN 0x%x" clas)) >>= fun () ->
     match typ with
     | `K k ->
       Rr_map.decode names buf off k >>| fun (b, names, off) ->
       (name, b, names, off)
     | _ ->
-      Error (`Not_implemented (off, Fmt.strf "unexpected RR typ %a"
+      Error (`Not_implemented (off, Fmt.str "unexpected RR typ %a"
                                  Rr_map.pp_rr typ))
 
   let rec decode_n_aux add f names buf off acc = function
@@ -2603,15 +2603,15 @@ module Packet = struct
       (map, Some edns, None), names, off'
     | `Tsig when tsig ->
       guard (clas = Class.(to_int ANY_CLASS))
-        (`Malformed (off, Fmt.strf "tsig class must be ANY 0x%x" clas)) >>= fun () ->
+        (`Malformed (off, Fmt.str "tsig class must be ANY 0x%x" clas)) >>= fun () ->
       Tsig.decode names buf ~off:off' >>| fun (tsig, names, off') ->
       (map, edns, Some (name, tsig, off)), names, off'
     | `K t ->
       guard (clas = Class.(to_int IN))
-        (`Malformed (off, Fmt.strf "additional class must be IN 0x%x" clas)) >>= fun () ->
+        (`Malformed (off, Fmt.str "additional class must be IN 0x%x" clas)) >>= fun () ->
       Rr_map.decode names buf off' t >>| fun (B (k, v), names, off') ->
       (Name_rr_map.add name k v map, edns, None), names, off'
-    | _ -> Error (`Malformed (off, Fmt.strf "decode additional, unexpected rr %a"
+    | _ -> Error (`Malformed (off, Fmt.str "decode additional, unexpected rr %a"
                                 Rr_map.pp_rr typ))
 
   let rec decode_n_additional names buf off map edns tsig = function
@@ -2713,7 +2713,7 @@ module Packet = struct
          characterized to be `First in here, but user code needs to handle this)
       *)
       guard (ancount >= 1)
-        (`Malformed (6, Fmt.strf "AXFR needs at least one RRs in answer %d" ancount)) >>= fun () ->
+        (`Malformed (6, Fmt.str "AXFR needs at least one RRs in answer %d" ancount)) >>= fun () ->
       decode_rr names buf off >>= fun (name, B (k, v), names, off) ->
       if ancount = 1 then
         match k, v with
@@ -2868,7 +2868,7 @@ module Packet = struct
       let open Rresult.R.Infix in
       guard (not (Flags.mem `Truncation flags)) `Partial >>= fun () ->
       guard (ancount >= 1)
-        (`Malformed (6, Fmt.strf "IXFR needs at least one RRs in answer %d" ancount)) >>= fun () ->
+        (`Malformed (6, Fmt.str "IXFR needs at least one RRs in answer %d" ancount)) >>= fun () ->
       decode_rr names buf off >>= fun (name, b, names, off) ->
       match ensure_soa b with
       | Error () -> Error (`Malformed (off, "IXFR first RR not a SOA"))
@@ -2973,9 +2973,9 @@ module Packet = struct
       let off' = off + 6 in
       guard (Cstruct.length buf >= off') `Partial >>= fun () ->
       let ttl = Cstruct.BE.get_uint32 buf off in
-      guard (ttl = 0l) (`Malformed (off, Fmt.strf "prereq TTL not zero %lu" ttl)) >>= fun () ->
+      guard (ttl = 0l) (`Malformed (off, Fmt.str "prereq TTL not zero %lu" ttl)) >>= fun () ->
       let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
-      let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.strf "prereq rdlength must be zero %d" rlen)) in
+      let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.str "prereq rdlength must be zero %d" rlen)) in
       Class.of_int cls >>= fun c ->
       match c, typ with
       | ANY_CLASS, `Any -> r0 >>= fun () -> Ok (name, Name_inuse, names, off')
@@ -2985,7 +2985,7 @@ module Packet = struct
       | IN, `K k->
         Rr_map.decode names buf off k >>= fun (rdata, names, off'') ->
         Ok (name, Exists_data rdata, names, off'')
-      | _ -> Error (`Malformed (off, Fmt.strf "prereq bad class 0x%x or typ %a"
+      | _ -> Error (`Malformed (off, Fmt.str "prereq bad class 0x%x or typ %a"
                                   cls Rr_map.pp_rr typ))
 
     let encode_prereq names buf off count name = function
@@ -3043,8 +3043,8 @@ module Packet = struct
       guard (Cstruct.length buf >= off') `Partial >>= fun () ->
       let ttl = Cstruct.BE.get_uint32 buf off in
       let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
-      let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.strf "update rdlength must be zero %d" rlen)) in
-      let ttl0 = guard (ttl = 0l) (`Malformed (off, Fmt.strf "update ttl must be zero %lu" ttl)) in
+      let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.str "update rdlength must be zero %d" rlen)) in
+      let ttl0 = guard (ttl = 0l) (`Malformed (off, Fmt.str "update ttl must be zero %lu" ttl)) in
       Class.of_int cls >>= fun c ->
       match c, typ with
       | ANY_CLASS, `Any ->
@@ -3062,7 +3062,7 @@ module Packet = struct
       | IN, `K k ->
         Rr_map.decode names buf off k >>= fun (rdata, names, off) ->
         Ok (name, Add rdata, names, off)
-      | _ -> Error (`Malformed (off, Fmt.strf "bad update class 0x%x" cls))
+      | _ -> Error (`Malformed (off, Fmt.str "bad update class 0x%x" cls))
 
     let encode_update names buf off count name = function
       | Remove typ ->
@@ -3098,13 +3098,13 @@ module Packet = struct
 
     let pp ppf (prereq, update) =
       Fmt.pf ppf "%a@ %a"
-        Fmt.(list ~sep:(unit ";@ ")
-               (pair ~sep:(unit ":") Domain_name.pp
-                  (list ~sep:(unit ", ") pp_prereq)))
+        Fmt.(list ~sep:(any ";@ ")
+               (pair ~sep:(any ":") Domain_name.pp
+                  (list ~sep:(any ", ") pp_prereq)))
         (Domain_name.Map.bindings prereq)
-        Fmt.(list ~sep:(unit ";@ ")
-               (pair ~sep:(unit ":") Domain_name.pp
-                  (list ~sep:(unit ", ") pp_update)))
+        Fmt.(list ~sep:(any ";@ ")
+               (pair ~sep:(any ":") Domain_name.pp
+                  (list ~sep:(any ", ") pp_update)))
         (Domain_name.Map.bindings update)
 
     let decode _header question buf names off =
@@ -3117,7 +3117,7 @@ module Packet = struct
         Domain_name.Map.add name (base @ [a]) map
       in
       guard (snd question = `K Rr_map.(K Soa))
-        (`Malformed (off, Fmt.strf "update question not SOA %a" Rr_map.pp_rr (snd question))) >>= fun () ->
+        (`Malformed (off, Fmt.str "update question not SOA %a" Rr_map.pp_rr (snd question))) >>= fun () ->
       decode_n add_to_list decode_prereq names buf off Domain_name.Map.empty prcount >>= fun (names, off, prereq) ->
       decode_n add_to_list decode_update names buf off Domain_name.Map.empty upcount >>= fun (names, off, update) ->
       Ok ((prereq, update), names, off)
@@ -3154,7 +3154,7 @@ module Packet = struct
 
   let pp_request ppf = function
     | `Query -> Fmt.string ppf "query"
-    | `Notify soa -> Fmt.pf ppf "notify %a" Fmt.(option ~none:(unit "no") Soa.pp) soa
+    | `Notify soa -> Fmt.pf ppf "notify %a" Fmt.(option ~none:(any "no") Soa.pp) soa
     | `Axfr_request -> Fmt.string ppf "axfr request"
     | `Ixfr_request soa -> Fmt.pf ppf "ixfr request %a" Soa.pp soa
     | `Update u -> Fmt.pf ppf "update %a" Update.pp u
@@ -3201,7 +3201,7 @@ module Packet = struct
     | `Update_ack -> Fmt.string ppf "update ack"
     | `Rcode_error (rc, op, q) ->
       Fmt.pf ppf "rcode %a op %a q %a" Rcode.pp rc Opcode.pp op
-        Fmt.(option ~none:(unit "no data") Answer.pp) q
+        Fmt.(option ~none:(any "no data") Answer.pp) q
 
   type data = [ request | reply ]
 
@@ -3272,8 +3272,8 @@ module Packet = struct
       Question.pp t.question
       pp_data t.data
       Name_rr_map.pp t.additional
-      Fmt.(option ~none:(unit "no") Edns.pp) t.edns
-      Fmt.(option ~none:(unit "no") pp_tsig) t.tsig
+      Fmt.(option ~none:(any "no") Edns.pp) t.edns
+      Fmt.(option ~none:(any "no") pp_tsig) t.tsig
 
   let equal a b =
     Header.compare a.header b.header = 0 &&
@@ -3390,18 +3390,18 @@ module Packet = struct
           | Opcode.Update ->
             Update.decode header question buf names off >>| fun (update, names, off) ->
             `Update update, names, off
-          | x -> Error (`Not_implemented (2, Fmt.strf "unsupported opcode %a" Opcode.pp x))
+          | x -> Error (`Not_implemented (2, Fmt.str "unsupported opcode %a" Opcode.pp x))
         end >>| fun (request, names, off) ->
         request, names, off, true, false
       end else begin match rcode with
         | Rcode.NoError -> begin match operation with
             | Opcode.Query -> begin match snd question with
                 | `Axfr ->
-                  guard (au_count = 0) (`Malformed (8, Fmt.strf "AXFR with aucount %d > 0" au_count)) >>= fun () ->
+                  guard (au_count = 0) (`Malformed (8, Fmt.str "AXFR with aucount %d > 0" au_count)) >>= fun () ->
                   Axfr.decode header buf names off an_count >>| fun (axfr, names, off) ->
                   axfr, names, off, true, false
                 | `Ixfr ->
-                  guard (au_count = 0) (`Malformed (8, Fmt.strf "IXFR with aucount %d > 0" au_count)) >>= fun () ->
+                  guard (au_count = 0) (`Malformed (8, Fmt.str "IXFR with aucount %d > 0" au_count)) >>= fun () ->
                   Ixfr.decode header buf names off an_count >>| fun (ixfr, names, off) ->
                   `Ixfr_reply ixfr, names, off, true, false
                 | _ ->
@@ -3416,7 +3416,7 @@ module Packet = struct
               guard (an_count = 0) (`Update_ack_answer_count an_count) >>= fun () ->
               guard (au_count = 0) (`Update_ack_authority_count au_count) >>| fun () ->
               `Update_ack, names, off, true, false
-            | x -> Error (`Not_implemented (2, Fmt.strf "unsupported opcode %a"
+            | x -> Error (`Not_implemented (2, Fmt.str "unsupported opcode %a"
                                               Opcode.pp x))
           end
         | x ->

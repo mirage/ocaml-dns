@@ -36,13 +36,13 @@ module Trie = struct
       type t = (int32 * Ipaddr.V4.Set.t) option * (int32 * Ipaddr.V6.Set.t) option
       let pp ppf (v4, v6) =
         let pp_v4 ppf v4 =
-          Fmt.(list ~sep:(unit ",") Ipaddr.V4.pp) ppf (Ipaddr.V4.Set.elements v4)
+          Fmt.(list ~sep:(any ",") Ipaddr.V4.pp) ppf (Ipaddr.V4.Set.elements v4)
         and pp_v6 ppf v6 =
-          Fmt.(list ~sep:(unit ",") Ipaddr.V6.pp) ppf (Ipaddr.V6.Set.elements v6)
+          Fmt.(list ~sep:(any ",") Ipaddr.V6.pp) ppf (Ipaddr.V6.Set.elements v6)
         in
         Fmt.pf ppf "V4 %a@ V6 %a"
-          Fmt.(option ~none:(unit "none") (pair ~sep:(unit ", ") int32 pp_v4)) v4
-          Fmt.(option ~none:(unit "none") (pair ~sep:(unit ", ") int32 pp_v6)) v6
+          Fmt.(option ~none:(any "none") (pair ~sep:(any ", ") int32 pp_v4)) v4
+          Fmt.(option ~none:(any "none") (pair ~sep:(any ", ") int32 pp_v6)) v6
       let equal a b = match a, b with
         | (None, None), (None, None) -> true
         | (Some (ttl, v4), None), (Some (ttl', v4'), None) ->
@@ -61,7 +61,7 @@ module Trie = struct
       type t = Rr_map.b * ([ `raw ] Domain_name.t * int32 * Domain_name.Host_set.t)
       let pp ppf (v, (name, ttl, ns)) =
         Fmt.pf ppf "%a auth %a TTL %lu %a" Rr_map.pp_b v Domain_name.pp name ttl
-          Fmt.(list ~sep:(unit ",@,") Domain_name.pp) (Domain_name.Host_set.elements ns)
+          Fmt.(list ~sep:(any ",@,") Domain_name.pp) (Domain_name.Host_set.elements ns)
       let equal (a, (name, ttl, ns)) (a', (name', ttl', ns')) =
         ttl = ttl' && Domain_name.equal name name' && Domain_name.Host_set.equal ns ns' &&
         Rr_map.equalb a a'
@@ -948,7 +948,7 @@ module A = struct
     let fl_test =
       let module M = struct
         type t = Packet.Flags.t
-        let pp ppf t = Fmt.(list ~sep:(unit ",") Packet.Flag.pp) ppf (Packet.Flags.elements t)
+        let pp ppf t = Fmt.(list ~sep:(any ",") Packet.Flag.pp) ppf (Packet.Flags.elements t)
         let equal = Packet.Flags.equal
       end in
       (module M: Alcotest.TESTABLE with type t = M.t)
@@ -1107,7 +1107,7 @@ module A = struct
         let pp_one ppf (name, soa) =
           Fmt.pf ppf "zone %a soa %a" Domain_name.pp name Soa.pp soa
         in
-        Fmt.(list ~sep:(unit ", ") pp_one)
+        Fmt.(list ~sep:(any ", ") pp_one)
       let equal a b =
         List.length a = List.length b &&
         List.for_all2 (fun (n,s) (n',s') ->

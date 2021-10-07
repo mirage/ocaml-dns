@@ -268,7 +268,7 @@ module Transport : Dns_client.S
       | Error `Msg msg ->
         Lwt.return
           (Rresult.R.error_msgf "error %s connecting to resolver %a"
-            msg Fmt.(list ~sep:(unit ",") (pair ~sep:(unit ":") Ipaddr.pp int))
+            msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
             t.nameservers)
       | Ok ((_server, _port), socket) ->
         t.fd <- Some socket;

@@ -120,7 +120,7 @@ module Pure = struct
           | None -> Error (`Msg "invalid reply, no SOA in nodomain")
         end
       | r ->
-        Error (`Msg (Fmt.strf "Ok %a, expected answer" Packet.pp_reply r))
+        Error (`Msg (Fmt.str "Ok %a, expected answer" Packet.pp_reply r))
 
   let parse_response (type requested)
     : requested Rr_map.key query_state -> Cstruct.t ->

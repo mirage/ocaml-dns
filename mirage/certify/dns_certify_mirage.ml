@@ -21,7 +21,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
       | Ok () -> D.read_tcp flow >|= function
         | Error () -> Error (`Msg "tcp receive err")
         | Ok data -> match cb data with
-          | Error e -> Error (`Msg (Fmt.strf "nsupdate reply error %a" Dns_certify.pp_u_err e))
+          | Error e -> Error (`Msg (Fmt.str "nsupdate reply error %a" Dns_certify.pp_u_err e))
           | Ok () -> Ok ()
 
   let query_certificate flow name csr =

@@ -25,7 +25,7 @@ let jump _ serverip port zone key serial =
   Logs.app (fun m -> m "notifying to %a:%d zone %a serial %lu"
                Ipaddr.pp serverip port Domain_name.pp zone serial) ;
   match notify zone serial key now with
-  | Error s -> Error (`Msg (Fmt.strf "signing %a" Dns_tsig.pp_s s))
+  | Error s -> Error (`Msg (Fmt.str "signing %a" Dns_tsig.pp_s s))
   | Ok (request, data, mac) ->
     let data_len = Cstruct.length data in
     Logs.debug (fun m -> m "built data %d" data_len) ;
@@ -41,25 +41,25 @@ let jump _ serverip port zone key serial =
             | Ok `Notify_ack ->
               Logs.app (fun m -> m "successful notify!") ;
               Ok ()
-            | Ok r -> Error (`Msg (Fmt.strf "expected notify ack, got %a" Packet.pp_reply r))
-            | Error e -> Error (`Msg (Fmt.strf "notify reply %a is not ok %a"
+            | Ok r -> Error (`Msg (Fmt.str "expected notify ack, got %a" Packet.pp_reply r))
+            | Error e -> Error (`Msg (Fmt.str "notify reply %a is not ok %a"
                                         Packet.pp reply Packet.pp_mismatch e))
           end
         | Error e ->
-          Error (`Msg (Fmt.strf "failed to decode notify reply! %a" Packet.pp_err e))
+          Error (`Msg (Fmt.str "failed to decode notify reply! %a" Packet.pp_err e))
       end
     | Some (keyname, _, dnskey) ->
       match Dns_tsig.decode_and_verify now dnskey keyname ?mac read_data with
       | Error e ->
-        Error (`Msg (Fmt.strf "failed to decode TSIG signed notify reply! %a" Dns_tsig.pp_e e))
+        Error (`Msg (Fmt.str "failed to decode TSIG signed notify reply! %a" Dns_tsig.pp_e e))
       | Ok (reply, _, _) ->
         match Packet.reply_matches_request ~request reply with
         | Ok `Notify_ack ->
           Logs.app (fun m -> m "successful TSIG signed notify!") ;
           Ok ()
-        | Ok r -> Error (`Msg (Fmt.strf "expected notify ack, got %a" Packet.pp_reply r))
+        | Ok r -> Error (`Msg (Fmt.str "expected notify ack, got %a" Packet.pp_reply r))
         | Error e ->
-          Error (`Msg (Fmt.strf "expected reply to %a %a, got %a!"
+          Error (`Msg (Fmt.str "expected reply to %a %a, got %a!"
                          Packet.pp_mismatch e
                          Packet.pp request Packet.pp reply))
 
