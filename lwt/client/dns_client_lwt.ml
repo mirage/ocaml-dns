@@ -14,10 +14,10 @@ module Transport : Dns_client.S
   type +'a io = 'a Lwt.t
   type stack = unit
   type t = {
-    protocol : Dns.proto ;
     nameservers : io_addr list ;
     timeout_ns : int64 ;
     mutable fd : Lwt_unix.file_descr option ;
+    (* TODO: avoid race, use a mvar instead of condition *)
     mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
     mutable he : Happy_eyeballs.t ;
     mutable waiters : ((Ipaddr.t * int) * Lwt_unix.file_descr, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
@@ -108,22 +108,21 @@ module Transport : Dns_client.S
     loop ()
 
   let create ?nameservers ~timeout () =
-    let protocol, nameservers =
-      Rresult.R.(get_ok (of_option ~none:(fun () ->
-          let ips =
-            match
-              read_file "/etc/resolv.conf" >>= fun data ->
-              Dns_resolvconf.parse data >>|
-              List.map (fun (`Nameserver ip) -> (ip, 53))
-            with
-            | Error _  | Ok [] -> Dns_client.default_resolvers
-            | Ok ips -> ips
-          in
-          Ok (`Tcp, ips))
-          nameservers))
+    let nameservers =
+      match nameservers with
+      | Some (`Udp, _) -> invalid_arg "UDP is not supported"
+      | Some (`Tcp, ns) -> ns
+      | None ->
+        let open Rresult.R.Infix in
+        match
+          read_file "/etc/resolv.conf" >>= fun data ->
+          Dns_resolvconf.parse data >>|
+          List.map (fun (`Nameserver ip) -> (ip, 53))
+        with
+        | Error _  | Ok [] -> Dns_client.default_resolvers
+        | Ok ips -> ips
     in
     let t = {
-      protocol ;
       nameservers ;
       timeout_ns = timeout ;
       fd = None ;
@@ -135,7 +134,7 @@ module Transport : Dns_client.S
     Lwt.async (fun () -> he_timer t);
     t
 
-  let nameservers { protocol; nameservers ; _ } = protocol, nameservers
+  let nameservers { nameservers ; _ } = `Tcp, nameservers
   let rng = Mirage_crypto_rng.generate ?g:None
   let clock = Mtime_clock.elapsed_ns
 
@@ -155,47 +154,32 @@ module Transport : Dns_client.S
     | Some fd -> close_socket fd
 
   let send ctx tx =
-    Lwt.catch (fun () ->
-      let fd = match ctx.t.protocol with `Udp -> ctx.fd | `Tcp -> ctx.t.fd in
-      match fd with
-      | None -> Lwt.return (Error (`Msg "no connection to the nameserver established"))
-      | Some fd ->
-        ctx.data <- tx;
-        with_timeout ctx
-          (Lwt_unix.send fd (Cstruct.to_bytes tx) 0
-            (Cstruct.length tx) [] >>= fun res ->
-           if res <> Cstruct.length tx then
-             Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
-           else
-             Lwt_result.return ()))
-     (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
+    if Cstruct.length tx > 2 then
+      Lwt.catch (fun () ->
+        match ctx.t.fd with
+        | None -> Lwt.return (Error (`Msg "no connection to the nameserver established"))
+        | Some fd ->
+          ctx.data <- tx;
+          with_timeout ctx
+            (Lwt_unix.send fd (Cstruct.to_bytes tx) 0
+              (Cstruct.length tx) [] >>= fun res ->
+             if res <> Cstruct.length tx then
+               Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
+             else
+               Lwt_result.return ()))
+       (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
+    else
+      Lwt.return (Error (`Msg "invalid DNS packet (data length <= 2)"))
 
   let recv ctx =
-    match ctx.t.protocol, ctx.fd with
-    | `Udp, None -> Lwt.return (Error (`Msg "invalid state of DNS client (no connection)"))
-    | `Udp, Some fd ->
-      let recv_buffer = Bytes.make 2048 '\000' in
-      Lwt.catch (fun () ->
-        with_timeout ctx
-          (Lwt_unix.recv fd recv_buffer 0 (Bytes.length recv_buffer) []
-          >>= fun read_len ->
-          if read_len > 0 then
-            Lwt_result.return (Cstruct.of_bytes ~len:read_len recv_buffer)
-          else
-            Lwt_result.fail (`Msg "Empty response")))
-      (fun e -> Lwt_result.fail (`Msg (Printexc.to_string e)))
-    | `Tcp, _ ->
-      if Cstruct.length ctx.data > 2 then
-        let cond = Lwt_condition.create () in
-        let id = Cstruct.BE.get_uint16 ctx.data 2 in
-        ctx.t.requests <- IM.add id (ctx.data, cond) ctx.t.requests;
-        with_timeout ctx (Lwt_condition.wait cond) >|= fun data ->
-        ctx.t.requests <- IM.remove id ctx.t.requests;
-        match data with
-        | Ok cs -> Ok cs
-        | Error `Msg m -> Error (`Msg m)
-      else
-        Lwt.return (Error (`Msg "invalid context (data length <= 2)"))
+    let cond = Lwt_condition.create () in
+    let id = Cstruct.BE.get_uint16 ctx.data 2 in
+    ctx.t.requests <- IM.add id (ctx.data, cond) ctx.t.requests;
+    with_timeout ctx (Lwt_condition.wait cond) >|= fun data ->
+    ctx.t.requests <- IM.remove id ctx.t.requests;
+    match data with
+    | Ok cs -> Ok cs
+    | Error `Msg m -> Error (`Msg m)
 
   let bind = Lwt.bind
   let lift = Lwt.return
@@ -284,38 +268,10 @@ module Transport : Dns_client.S
         req_all socket t
 
   let connect t =
-    match t.nameservers with
-    | [] -> Lwt.return (Error (`Msg "No nameservers!"))
-    | (server, port) :: _ ->
-      let ctx = { t ; fd = None ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
-      match t.protocol with
-      | `Tcp ->
-        begin
-          connect_via_tcp_to_ns t >|= function
-          | Ok () -> Ok ctx
-          | Error `Msg msg -> Error (`Msg msg)
-        end
-      | `Udp ->
-        Lwt.catch (fun () ->
-          Lwt_unix.(getprotobyname "udp" >|= fun x -> x.p_proto) >>= fun proto_number ->
-          let fam =
-            Ipaddr.(Lwt_unix.(match server with V4 _ -> PF_INET | V6 _ -> PF_INET6))
-          in
-          let socket = Lwt_unix.socket fam Lwt_unix.SOCK_DGRAM proto_number in
-          let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
-          let ctx = { ctx with fd = Some socket } in
-          Lwt.catch (fun () ->
-              (* SO_RCVTIMEO does not work in Lwt: it results in an EAGAIN, which
-                 is handled by re-queuing the event *)
-              with_timeout ctx
-                (Lwt_unix.connect socket addr >|= fun () -> Ok ()) >>= function
-                | Ok () -> Lwt_result.return ctx
-                | Error e -> close ctx >|= fun () -> Error e)
-            (fun e ->
-               close ctx >|= fun () ->
-               Error (`Msg (Printexc.to_string e))))
-        (fun e ->
-           Lwt_result.fail (`Msg (Printexc.to_string e)))
+    let ctx = { t ; fd = None ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
+    connect_via_tcp_to_ns t >|= function
+    | Ok () -> Ok ctx
+    | Error `Msg msg -> Error (`Msg msg)
 end
 
 (* Now that we have our {!Transport} implementation we can include the logic

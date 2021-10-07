@@ -15,7 +15,6 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
     type io_addr = Ipaddr.t * int
     type +'a io = 'a Lwt.t
     type t = {
-      protocol : Dns.proto ;
       nameservers : io_addr list ;
       timeout_ns : int64 ;
       stack : stack ;
@@ -89,12 +88,12 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
       loop ()
 
     let create ?nameservers ~timeout stack =
-      let protocol, nameservers = match nameservers with
-        | None | Some (_, []) -> `Tcp, Dns_client.default_resolvers
-        | Some ns -> ns
+      let nameservers = match nameservers with
+        | None | Some (`Tcp, []) -> Dns_client.default_resolvers
+        | Some (`Udp, _) -> invalid_arg "UDP is not supported"
+        | Some (`Tcp, ns) -> ns
       in
       let t = {
-        protocol ;
         nameservers ;
         timeout_ns = timeout ;
         stack ;
@@ -107,7 +106,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
       Lwt.async (fun () -> he_timer t);
       t
 
-    let nameservers { protocol ; nameservers ; _ } = protocol, nameservers
+    let nameservers { nameservers ; _ } = `Tcp, nameservers
     let rng = R.generate ?g:None
     let clock = C.elapsed_ns
 
