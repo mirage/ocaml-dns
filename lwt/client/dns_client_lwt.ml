@@ -6,11 +6,11 @@ let src = Logs.Src.create "dns_client_lwt" ~doc:"effectful DNS lwt layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 module Transport : Dns_client.S
- with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of [ `host ] Domain_name.t option * Ipaddr.t * int ]
+ with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
  and type +'a io = 'a Lwt.t
  and type stack = unit
 = struct
-  type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of [ `host ] Domain_name.t option * Ipaddr.t * int ]
+  type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
   type +'a io = 'a Lwt.t
   type stack = unit
   type t = {
@@ -22,7 +22,6 @@ module Transport : Dns_client.S
     mutable he : Happy_eyeballs.t ;
     mutable waiters : ((Ipaddr.t * int) * Lwt_unix.file_descr, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
     timer_condition : unit Lwt_condition.t ;
-    authenticator : X509.Authenticator.t ;
   }
   type context = {
     t : t ;
@@ -113,22 +112,25 @@ module Transport : Dns_client.S
       | Some (`Udp, _) -> invalid_arg "UDP is not supported"
       | Some (`Tcp, ns) -> ns
       | None ->
+        let authenticator = match Ca_certs.authenticator () with
+          | Ok a -> a
+          | Error `Msg m -> invalid_arg ("failed to load trust anchors: " ^ m)
+        in
         let open Rresult.R.Infix in
         match
           read_file "/etc/resolv.conf" >>= fun data ->
           Dns_resolvconf.parse data >>|
-          List.concat_map (fun (`Nameserver ip) -> [`Tls (None, ip, 853) ; `Plaintext (ip, 53)])
+          List.concat_map (fun (`Nameserver ip) ->
+              let tls = Tls.Config.client ~authenticator ~ip () in
+              [ `Tls (tls, ip, 853) ; `Plaintext (ip, 53) ])
         with
         | Error _  | Ok [] ->
+          let peer_name = Dns_client.default_resolver_hostname in
+          let tls_config = Tls.Config.client ~authenticator ~peer_name () in
           List.concat_map (fun ip -> [
-              `Tls (Some Dns_client.default_resolver_hostname, ip, 853);
-              `Plaintext (ip, 53)
+              `Tls (tls_config, ip, 853); `Plaintext (ip, 53)
             ]) Dns_client.default_resolvers
         | Ok ips -> ips
-    in
-    let authenticator = match Ca_certs.authenticator () with
-      | Ok a -> a
-      | Error `Msg m -> invalid_arg ("failed to load trust anchors: " ^ m)
     in
     let t = {
       nameservers ;
@@ -138,7 +140,6 @@ module Transport : Dns_client.S
       he = Happy_eyeballs.create (clock ()) ;
       waiters = Happy_eyeballs.Waiter_map.empty ;
       timer_condition = Lwt_condition.create () ;
-      authenticator ;
     } in
     Lwt.async (fun () -> he_timer t);
     t
@@ -278,10 +279,8 @@ module Transport : Dns_client.S
         let config = find_ns t.nameservers addr in
         (match config with
          | `Plaintext _ -> Lwt.return (`Plain socket)
-         | `Tls (peer_name, ip, _) ->
-           let ip = match peer_name with None -> Some ip | Some _ -> None in
-           let tls = Tls.Config.client ~authenticator:t.authenticator ?peer_name ?ip () in
-           Tls_lwt.Unix.client_of_fd tls socket >|= fun f ->
+         | `Tls (tls_cfg, _, _) ->
+           Tls_lwt.Unix.client_of_fd tls_cfg socket >|= fun f ->
            `Tls f) >>= fun socket ->
         t.fd <- Some socket;
         Lwt.async (fun () ->

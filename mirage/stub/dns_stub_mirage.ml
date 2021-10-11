@@ -235,7 +235,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
   let create ?nameservers ?(size = 10000) ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
     let nameservers = match nameservers with
       | None -> None
-      | Some ns -> Some (`Tcp, List.map (fun ns -> `Plaintext (ns, 53)) ns)
+      | Some ns -> Some (`Tcp, ns)
     in
     let client = Client.create ~size ?nameservers stack in
     let server = Dns_server.Primary.server primary in

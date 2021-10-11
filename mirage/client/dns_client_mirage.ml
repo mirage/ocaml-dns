@@ -13,9 +13,9 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
   module Transport : Dns_client.S
     with type stack = S.t
      and type +'a io = 'a Lwt.t
-     and type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of [`host] Domain_name.t option * Ipaddr.t * int ] = struct
+     and type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ] = struct
     type stack = S.t
-    type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of [`host] Domain_name.t option * Ipaddr.t * int ]
+    type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
     type +'a io = 'a Lwt.t
     type t = {
       nameservers : io_addr list ;
@@ -26,7 +26,6 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
       mutable he : Happy_eyeballs.t ;
       mutable waiters : ((Ipaddr.t * int) * S.TCP.flow, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
       timer_condition : unit Lwt_condition.t ;
-      authenticator : X509.Authenticator.t ;
     }
     type context = {
       t : t ;
@@ -93,13 +92,19 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
     let create ?nameservers ~timeout stack =
       let nameservers = match nameservers with
         | None | Some (`Tcp, []) ->
-          List.map (fun ip -> `Plaintext (ip, 53)) Dns_client.default_resolvers
+          let authenticator = match CA.authenticator () with
+            | Ok a -> a
+            | Error `Msg m -> invalid_arg ("bad CA certificates " ^ m)
+          in
+          let tls_cfg =
+            let peer_name = Dns_client.default_resolver_hostname in
+            Tls.Config.client ~authenticator ~peer_name ()
+          in
+          List.concat_map
+            (fun ip -> [ `Tls (tls_cfg, ip, 853) ; `Plaintext (ip, 53) ])
+            Dns_client.default_resolvers
         | Some (`Udp, _) -> invalid_arg "UDP is not supported"
         | Some (`Tcp, ns) -> ns
-      in
-      let authenticator = match CA.authenticator () with
-        | Ok a -> a
-        | Error `Msg m -> invalid_arg ("bad CA certificates " ^ m)
       in
       let t = {
         nameservers ;
@@ -110,7 +115,6 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         he = Happy_eyeballs.create (clock ()) ;
         waiters = Happy_eyeballs.Waiter_map.empty ;
         timer_condition = Lwt_condition.create () ;
-        authenticator ;
       } in
       Lwt.async (fun () -> he_timer t);
       t
@@ -234,10 +238,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         let config = find_ns t.nameservers addr in
         (match config with
          | `Plaintext _ -> Lwt.return (`Plain flow)
-         | `Tls (peer_name, ip, _port) ->
-           let ip = match peer_name with None -> Some ip | Some _ -> None in
-           let tls = Tls.Config.client ~authenticator:t.authenticator ?peer_name ?ip () in
-           TLS.client_of_flow tls flow >>= function
+         | `Tls (tls_cfg, _ip, _port) ->
+           TLS.client_of_flow tls_cfg flow >>= function
            | Error e ->
              Log.err (fun m -> m "error %a establishing TLS connection to %a:%d"
                          TLS.pp_write_error e Ipaddr.pp (fst addr) (snd addr));

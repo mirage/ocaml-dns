@@ -34,9 +34,10 @@ let ns ip port = match ip with
 
 let pp_nameserver ppf = function
   | `Plaintext (ip, port) -> Fmt.pf ppf "TCP %a:%d" Ipaddr.pp ip port
-  | `Tls (host, ip, port) ->
+  | `Tls (tls_cfg, ip, port) ->
     Fmt.pf ppf "TLS %a:%d%a" Ipaddr.pp ip port
-      Fmt.(option ~none:(any "") (append (any "#") Domain_name.pp)) host
+      Fmt.(option ~none:(any "") (append (any "#") Domain_name.pp))
+      ((Tls.Config.of_client tls_cfg).Tls.Config.peer_name)
 
 let do_a nameserver ns_port domains _ =
   let nameservers = ns nameserver ns_port in
