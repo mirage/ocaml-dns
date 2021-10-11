@@ -32,8 +32,12 @@ depends: [
   "mirage-crypto-rng" {>= "0.8.0"}
   "happy-eyeballs" {>= "0.0.6"}
   "alcotest" {with-test}
+  "tls" {>= "0.15.0"}
+  "tls-mirage" {>= "0.15.0"}
+  "ca-certs"
+  "ca-certs-nss"
 ]
-synopsis: "Pure DNS resolver API"
+synopsis: "DNS resolver API"
 description: """
-A pure resolver implementation using uDNS.
+A resolver implementation using uDNS.
 """

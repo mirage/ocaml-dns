@@ -42,7 +42,7 @@ module Transport : Dns_client.S
         Error (`Msg ("Error reading file: " ^ file))
     with _ -> Error (`Msg ("Error opening file " ^ file))
 
-  let now = Mtime_clock.elapsed_ns
+  let clock = Mtime_clock.elapsed_ns
 
   let he_timer_interval = Duration.of_ms 500
 
@@ -85,7 +85,7 @@ module Transport : Dns_client.S
       Lwt.return None) >>= function
      | None -> Lwt.return_unit
      | Some event ->
-       let he, actions = Happy_eyeballs.event t.he (now ()) event in
+       let he, actions = Happy_eyeballs.event t.he (clock ()) event in
        t.he <- he;
        Lwt_list.iter_p (handle_action t) actions
 
@@ -95,7 +95,7 @@ module Transport : Dns_client.S
   let rec he_timer t =
     let open Lwt.Infix in
     let rec loop () =
-      let he, actions = Happy_eyeballs.timer t.he (now ()) in
+      let he, actions = Happy_eyeballs.timer t.he (clock ()) in
       t.he <- he ;
       match actions with
       | `Suspend -> he_timer t
@@ -135,7 +135,7 @@ module Transport : Dns_client.S
       timeout_ns = timeout ;
       fd = None ;
       requests = IM.empty ;
-      he = Happy_eyeballs.create (now ()) ;
+      he = Happy_eyeballs.create (clock ()) ;
       waiters = Happy_eyeballs.Waiter_map.empty ;
       timer_condition = Lwt_condition.create () ;
       authenticator ;
@@ -145,7 +145,6 @@ module Transport : Dns_client.S
 
   let nameservers { nameservers ; _ } = `Tcp, nameservers
   let rng = Mirage_crypto_rng.generate ?g:None
-  let clock = Mtime_clock.elapsed_ns
 
   let with_timeout ctx f =
     let timeout =
@@ -249,6 +248,14 @@ module Transport : Dns_client.S
         | Ok () -> send_query fd data)
       t.requests (Lwt.return (Ok ()))
 
+  let to_pairs =
+    List.map (function `Plaintext (ip, port) | `Tls (_, ip, port) -> ip, port)
+
+  let find_ns ns (addr, port) =
+    List.find (function `Plaintext (ip, p) | `Tls (_, ip, p) ->
+        Ipaddr.compare ip addr = 0 && p = port)
+      ns
+
   let rec connect_via_tcp_to_ns (t : t) =
     match t.fd with
     | Some _ -> Lwt.return (Ok ())
@@ -256,8 +263,8 @@ module Transport : Dns_client.S
       let waiter, notify = Lwt.task () in
       let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
       t.waiters <- waiters;
-      let ns = List.map (function `Plaintext (ip, port) | `Tls (_, ip, port) -> ip, port) t.nameservers in
-      let he, actions = Happy_eyeballs.connect_ip t.he (now ()) ~id ns in
+      let ns = to_pairs t.nameservers in
+      let he, actions = Happy_eyeballs.connect_ip t.he (clock ()) ~id ns in
       t.he <- he;
       Lwt_condition.signal t.timer_condition ();
       Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
@@ -266,9 +273,9 @@ module Transport : Dns_client.S
         Lwt.return
           (Rresult.R.error_msgf "error %s connecting to resolver %a"
             msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
-            (List.map (function `Plaintext (ip, p) | `Tls (_, ip, p) -> ip, p) t.nameservers))
-      | Ok ((serverip, port), socket) ->
-        let config = List.find (function `Plaintext (ip, p) | `Tls (_, ip, p) -> Ipaddr.compare ip serverip = 0 && p = port) t.nameservers in
+            (to_pairs t.nameservers))
+      | Ok (addr, socket) ->
+        let config = find_ns t.nameservers addr in
         (match config with
          | `Plaintext _ -> Lwt.return (`Plain socket)
          | `Tls (peer_name, ip, _) ->

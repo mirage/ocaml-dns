@@ -5,24 +5,28 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module IM = Map.Make(Int)
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) (S : Mirage_stack.V4V6) = struct
+module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Mirage_stack.V4V6) = struct
+
+  module TLS = Tls_mirage.Make(S.TCP)
+  module CA = Ca_certs_nss.Make(P)
 
   module Transport : Dns_client.S
     with type stack = S.t
      and type +'a io = 'a Lwt.t
-     and type io_addr = Ipaddr.t * int = struct
+     and type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of [`host] Domain_name.t option * Ipaddr.t * int ] = struct
     type stack = S.t
-    type io_addr = Ipaddr.t * int
+    type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of [`host] Domain_name.t option * Ipaddr.t * int ]
     type +'a io = 'a Lwt.t
     type t = {
       nameservers : io_addr list ;
       timeout_ns : int64 ;
       stack : stack ;
-      mutable flow : S.TCP.flow option ;
+      mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
       mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
       mutable he : Happy_eyeballs.t ;
       mutable waiters : ((Ipaddr.t * int) * S.TCP.flow, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
       timer_condition : unit Lwt_condition.t ;
+      authenticator : X509.Authenticator.t ;
     }
     type context = {
       t : t ;
@@ -30,8 +34,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
       mutable data : Cstruct.t ;
     }
 
-    let now = C.elapsed_ns
-
+    let clock = M.elapsed_ns
     let he_timer_interval = Duration.of_ms 500
 
     let rec handle_action t action =
@@ -65,7 +68,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
          Lwt.return None) >>= function
        | None -> Lwt.return_unit
        | Some event ->
-         let he, actions = Happy_eyeballs.event t.he (now ()) event in
+         let he, actions = Happy_eyeballs.event t.he (clock ()) event in
          t.he <- he;
          Lwt_list.iter_p (handle_action t) actions
 
@@ -75,7 +78,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
     let rec he_timer t =
       let open Lwt.Infix in
       let rec loop () =
-        let he, actions = Happy_eyeballs.timer t.he (now ()) in
+        let he, actions = Happy_eyeballs.timer t.he (clock ()) in
         t.he <- he ;
         match actions with
         | `Suspend -> he_timer t
@@ -90,9 +93,13 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
     let create ?nameservers ~timeout stack =
       let nameservers = match nameservers with
         | None | Some (`Tcp, []) ->
-          List.map (fun ip -> ip, 53) Dns_client.default_resolvers
+          List.map (fun ip -> `Plaintext (ip, 53)) Dns_client.default_resolvers
         | Some (`Udp, _) -> invalid_arg "UDP is not supported"
         | Some (`Tcp, ns) -> ns
+      in
+      let authenticator = match CA.authenticator () with
+        | Ok a -> a
+        | Error `Msg m -> invalid_arg ("bad CA certificates " ^ m)
       in
       let t = {
         nameservers ;
@@ -100,16 +107,16 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
         stack ;
         flow = None ;
         requests = IM.empty ;
-        he = Happy_eyeballs.create (now ()) ;
+        he = Happy_eyeballs.create (clock ()) ;
         waiters = Happy_eyeballs.Waiter_map.empty ;
         timer_condition = Lwt_condition.create () ;
+        authenticator ;
       } in
       Lwt.async (fun () -> he_timer t);
       t
 
     let nameservers { nameservers ; _ } = `Tcp, nameservers
     let rng = R.generate ?g:None
-    let clock = C.elapsed_ns
 
     let with_timeout time_left f =
       let timeout =
@@ -125,16 +132,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
     let lift = Lwt.return
 
     let rec read_loop ?(linger = Cstruct.empty) t flow =
-      S.TCP.read flow >>= function
-      | Error e ->
-        t.flow <- None;
-        Log.err (fun m -> m "error %a reading from resolver" S.TCP.pp_error e);
-        Lwt.return_unit
-      | Ok `Eof ->
-        t.flow <- None;
-        Log.info (fun m -> m "end of file reading from resolver");
-        Lwt.return_unit
-      | Ok (`Data cs) ->
+      let process cs =
         let rec handle_data data =
           let cs_len = Cstruct.length data in
           if cs_len > 2 then
@@ -156,12 +154,53 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
             read_loop ~linger:data t flow
         in
         handle_data (if Cstruct.length linger = 0 then cs else Cstruct.append linger cs)
+      in
+      match flow with
+      | `Plain flow ->
+        begin
+          S.TCP.read flow >>= function
+          | Error e ->
+            t.flow <- None;
+            Log.err (fun m -> m "error %a reading from resolver" S.TCP.pp_error e);
+            Lwt.return_unit
+          | Ok `Eof ->
+            t.flow <- None;
+            Log.info (fun m -> m "end of file reading from resolver");
+            Lwt.return_unit
+          | Ok (`Data cs) ->
+            process cs
+        end
+      | `Tls flow ->
+        begin
+          TLS.read flow >>= function
+          | Error e ->
+            t.flow <- None;
+            Log.err (fun m -> m "error %a reading from resolver" TLS.pp_error e);
+            Lwt.return_unit
+          | Ok `Eof ->
+            t.flow <- None;
+            Log.info (fun m -> m "end of file reading from resolver");
+            Lwt.return_unit
+          | Ok (`Data cs) ->
+            process cs
+        end
 
     let query_one flow data =
-      S.TCP.write flow data >>= function
-      | Error e ->
-        Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
-      | Ok () -> Lwt.return (Ok ())
+      match flow with
+      | `Plain flow ->
+        begin
+          S.TCP.write flow data >>= function
+          | Error e ->
+            Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
+          | Ok () -> Lwt.return (Ok ())
+        end
+      | `Tls flow ->
+        begin
+          TLS.write flow data >>= function
+          | Error e ->
+            Lwt.return (Error (`Msg (Fmt.to_to_string TLS.pp_write_error e)))
+          | Ok () -> Lwt.return (Ok ())
+        end
 
     let req_all flow t =
       IM.fold (fun _id (data, _) r ->
@@ -170,19 +209,40 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
           | Ok () -> query_one flow data)
         t.requests (Lwt.return (Ok ()))
 
+    let to_pairs =
+      List.map (function `Plaintext (ip, port) | `Tls (_, ip, port) -> ip, port)
+
+    let find_ns ns (addr, port) =
+      List.find (function `Plaintext (ip, p) | `Tls (_, ip, p) ->
+          Ipaddr.compare ip addr = 0 && p = port)
+        ns
+
     let rec connect_ns t =
       let waiter, notify = Lwt.task () in
       let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
       t.waiters <- waiters;
-      let he, actions = Happy_eyeballs.connect_ip t.he (now ()) ~id t.nameservers in
+      let ns = to_pairs t.nameservers in
+      let he, actions = Happy_eyeballs.connect_ip t.he (clock ()) ~id ns in
       t.he <- he;
       Lwt_condition.signal t.timer_condition ();
       Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
       waiter >>= function
       | Error `Msg msg ->
-        Log.err (fun m -> m "error connecting to nameserver %s" msg);
+        Log.err (fun m -> m "error connecting to resolver %s" msg);
         Lwt.return (Error (`Msg "connect failure"))
-      | Ok (_addr, flow) ->
+      | Ok (addr, flow) ->
+        let config = find_ns t.nameservers addr in
+        (match config with
+         | `Plaintext _ -> Lwt.return (`Plain flow)
+         | `Tls (peer_name, ip, _port) ->
+           let ip = match peer_name with None -> Some ip | Some _ -> None in
+           let tls = Tls.Config.client ~authenticator:t.authenticator ?peer_name ?ip () in
+           TLS.client_of_flow tls flow >>= function
+           | Error e ->
+             Log.err (fun m -> m "error %a establishing TLS connection to %a:%d"
+                         TLS.pp_write_error e Ipaddr.pp (fst addr) (snd addr));
+             Lwt.fail_with "TLS handshake error"
+           | Ok tls -> Lwt.return (`Tls tls)) >>= fun flow ->
         t.flow <- Some flow;
         Lwt.async (fun () ->
            read_loop t flow >>= fun () ->
@@ -226,11 +286,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (C : Mirage_clock.MCLOCK) 
       | None -> Lwt.return (Error (`Msg "no connection to resolver"))
       | Some flow ->
         ctx.data <- s;
-        with_timeout timeout_ns (S.TCP.write flow s >>= function
-          | Error e ->
-            t.flow <- None;
-            Lwt.return (Error (`Msg (Fmt.to_to_string S.TCP.pp_write_error e)))
-          | Ok () -> Lwt.return (Ok ())) >|= function
+        with_timeout timeout_ns (query_one flow s) >|= function
         | Ok (), timeout_ns -> ctx.timeout_ns <- timeout_ns; Ok ()
         | Error _ as e, _ -> e
   end
