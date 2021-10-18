@@ -58,7 +58,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
     let metrics = Dns.counter_metrics ~f "stub-resolver" in
     (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
 
-  module Client = Dns_client_mirage.Make(R)(T)(C)(S)
+  module Client = Dns_client_mirage.Make(R)(T)(C)(P)(S)
 
   (* likely this should contain:
      - a primary server (handling updates)
@@ -235,7 +235,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
   let create ?nameservers ?(size = 10000) ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
     let nameservers = match nameservers with
       | None -> None
-      | Some ns -> Some (`Tcp, List.map (fun ns -> (ns, 53)) ns)
+      | Some ns -> Some (`Tcp, ns)
     in
     let client = Client.create ~size ?nameservers stack in
     let server = Dns_server.Primary.server primary in

@@ -28,16 +28,18 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Dns.Tlsa.t)) =
         | n -> loop ((String.sub hex n 56)::acc) (n+56)
       in loop [] 0)
 
-let ns ip port is_udp = match ip with
-  | None -> None
-  | Some ip -> if is_udp then Some (`Udp, [ ip, port ]) else Some (`Tcp, [ ip, port ])
+let pp_nameserver ppf = function
+  | `Plaintext (ip, port) -> Fmt.pf ppf "TCP %a:%d" Ipaddr.pp ip port
+  | `Tls (tls_cfg, ip, port) ->
+    Fmt.pf ppf "TLS %a:%d%a" Ipaddr.pp ip port
+      Fmt.(option ~none:(any "") (append (any "#") Domain_name.pp))
+      ((Tls.Config.of_client tls_cfg).Tls.Config.peer_name)
 
-let do_a nameserver ns_port is_udp domains _ =
-  let nameservers = ns nameserver ns_port is_udp in
+let do_a nameservers domains () =
   let t = Dns_client_lwt.create ?nameservers () in
   let (_, ns) = Dns_client_lwt.nameservers t in
   Logs.info (fun m -> m "querying NS %a for A records of %a"
-                Ipaddr.pp (fst (List.hd ns)) Fmt.(list ~sep:(any ", ") Domain_name.pp) domains);
+                pp_nameserver (List.hd ns) Fmt.(list ~sep:(any ", ") Domain_name.pp) domains);
   let job =
     Lwt_list.iter_p (fun domain ->
         let open Lwt in
@@ -59,14 +61,13 @@ let do_a nameserver ns_port is_udp domains _ =
   match Lwt_main.run job with
   | () -> Ok () (* TODO handle errors *)
 
-let for_all_domains nameserver ns_port is_udp ~domains typ f =
+let for_all_domains nameservers ~domains typ f =
   (* [for_all_domains] is a utility function that lets us avoid duplicating
      this block of code in all the subcommands.
      We leave {!do_a} simple to provide a more readable example. *)
-  let nameservers = ns nameserver ns_port is_udp in
   let t = Dns_client_lwt.create ?nameservers () in
   let _, ns = Dns_client_lwt.nameservers t in
-  Logs.info (fun m -> m "NS: %a" Ipaddr.pp (fst (List.hd ns)));
+  Logs.info (fun m -> m "NS: %a" pp_nameserver (List.hd ns));
   let open Lwt in
   match Lwt_main.run
           (Lwt_list.iter_p
@@ -87,16 +88,16 @@ let pp_response typ domain = function
   | Error _ -> ()
   | Ok resp -> Logs.app (fun m -> m "%a" pp_zone (domain, typ, resp))
 
-let do_aaaa nameserver ns_port is_udp domains _ =
-  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Aaaa
+let do_aaaa nameserver domains () =
+  for_all_domains nameserver ~domains Dns.Rr_map.Aaaa
     (pp_response Dns.Rr_map.Aaaa)
 
-let do_mx nameserver ns_port is_udp domains _ =
-  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Mx
+let do_mx nameserver domains () =
+  for_all_domains nameserver ~domains Dns.Rr_map.Mx
     (pp_response Dns.Rr_map.Mx)
 
-let do_tlsa nameserver ns_port is_udp domains _ =
-  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Tlsa
+let do_tlsa nameserver domains () =
+  for_all_domains nameserver ~domains Dns.Rr_map.Tlsa
     (fun domain -> function
        | Ok (ttl, tlsa_resp) ->
          Dns.Rr_map.Tlsa_set.iter (fun tlsa ->
@@ -105,8 +106,8 @@ let do_tlsa nameserver ns_port is_udp domains _ =
        | Error _ -> () )
 
 
-let do_txt nameserver ns_port is_udp domains _ =
-  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Txt
+let do_txt nameserver domains () =
+  for_all_domains nameserver ~domains Dns.Rr_map.Txt
     (fun _domain -> function
        | Ok (ttl, txtset) ->
          Dns.Rr_map.Txt_set.iter (fun txtrr ->
@@ -115,17 +116,17 @@ let do_txt nameserver ns_port is_udp domains _ =
        | Error _ -> () )
 
 
-let do_any _nameserver _is_udp _domains _ =
+let do_any _nameserver _domains () =
   (* TODO *)
   Error (`Msg "ANY functionality is not present atm due to refactorings, come back later")
 
-let do_dkim nameserver ns_port is_udp (selector:string) domains _ =
+let do_dkim nameserver (selector:string) domains () =
   let domains = List.map (fun original_domain ->
       Domain_name.prepend_label_exn
         (Domain_name.prepend_label_exn
            (original_domain) "_domainkey") selector
     ) domains in
-  for_all_domains nameserver ns_port is_udp ~domains Dns.Rr_map.Txt
+  for_all_domains nameserver ~domains Dns.Rr_map.Txt
     (fun _domain -> function
        | Ok (_ttl, txtset) ->
          Dns.Rr_map.Txt_set.iter (fun txt ->
@@ -139,12 +140,12 @@ open Cmdliner
 let sdocs = Manpage.s_common_options
 
 let setup_log =
-  let _setup_log (style_renderer:Fmt.style_renderer option) level : unit =
+  let setup_log (style_renderer:Fmt.style_renderer option) level : unit =
     Fmt_tty.setup_std_outputs ?style_renderer () ;
     Logs.set_level level ;
     Logs.set_reporter (Logs_fmt.reporter ())
   in
-  Term.(const _setup_log $ Fmt_cli.style_renderer ~docs:sdocs ()
+  Term.(const setup_log $ Fmt_cli.style_renderer ~docs:sdocs ()
         $ Logs_cli.level ~docs:sdocs ())
 
 let parse_ns : Ipaddr.t Arg.conv =
@@ -162,9 +163,112 @@ let arg_port : 'a Term.t =
   let doc = "Port of nameserver" in
   Arg.(value & opt int 53 & info ~docv:"NS-PORT" ~doc ["ns-port"])
 
-let arg_udp =
-  let doc = "Connect via UDP to resolver" in
-  Arg.(value & flag & info [ "udp" ] ~doc)
+let hostname : [ `host ] Domain_name.t Arg.conv =
+  ( fun name ->
+      Result.map_error
+        (fun (`Msg m) -> Fmt.str "Invalid domain: %S: %s" name m)
+        (Result.bind
+           (Domain_name.of_string name)
+           Domain_name.host)
+      |> Rresult.R.to_presult) ,
+  Domain_name.pp
+
+let tls_hostname =
+  let doc = "Hostname to use for TLS authentication" in
+  Arg.(value & opt (some hostname) None &
+       info ~docv:"HOSTNAME" ~doc ["tls-hostname"])
+
+let tls_ca_file =
+  let doc = "TLS trust anchor file" in
+  Arg.(value & opt (some file) None &
+       info ~docv:"CAs" ~doc ["tls-ca-file"])
+
+let tls_ca_dir =
+  let doc = "TLS trust anchor directory" in
+  Arg.(value & opt (some dir) None &
+       info ~docv:"CAs" ~doc ["tls-ca-directory"])
+
+let tls_cert_fp =
+  let doc = "TLS certificate fingerprint" in
+  Arg.(value & opt (some string) None &
+       info ~docv:"FP" ~doc ["tls-cert-fingerprint"])
+
+let tls_key_fp =
+  let doc = "TLS public key fingerprint" in
+  Arg.(value & opt (some string) None &
+       info ~docv:"FP" ~doc ["tls-key-fingerprint"])
+
+let no_tls =
+  let doc = "Disable DNS-over-TLS" in
+  Arg.(value & flag & info ~docv:"no-tls" ~doc ["no-tls"])
+
+let nameserver =
+  let (let*) = Result.bind in
+  let ns no_tls ca_file ca_dir cert_fp key_fp hostname ip port =
+    if no_tls then
+      Option.map (fun ip -> `Tcp, [ `Plaintext (ip, port)]) ip
+    else
+      match ip with
+      | None -> None
+      | Some ip ->
+        let auth peer_name ip =
+          let cfg =
+            Result.map
+              (fun authenticator -> Tls.Config.client ~authenticator ?peer_name ?ip ())
+          in
+          let time () = Some (Ptime_clock.now ()) in
+          let of_fp data =
+            let hash, fp =
+              let h_of_string = function
+                | "md5" -> Some `MD5
+                | "sha" | "sha1" -> Some `SHA1
+                | "sha224" -> Some `SHA224
+                | "sha256" -> Some `SHA256
+                | "sha384" -> Some `SHA384
+                | "sha512" -> Some `SHA512
+                | _ -> None
+              in
+              match String.split_on_char ':' data with
+              | [] -> invalid_arg "empty fingerprint"
+              | [ fp ] -> `SHA256, fp
+              | hash :: rt -> match h_of_string (String.lowercase_ascii hash) with
+                | Some h -> h, String.concat "" rt
+                | None -> invalid_arg ("unknown hash: " ^ hash)
+            in
+            let `Hex hex = Hex.of_string fp in
+            hash, Cstruct.of_string hex
+          in
+          match ca_file, ca_dir, cert_fp, key_fp with
+          | None, None, None, None -> cfg (Ca_certs.authenticator ())
+          | Some f, None, None, None ->
+            let* data = Bos.OS.File.read (Fpath.v f) in
+            let* certs = X509.Certificate.decode_pem_multiple (Cstruct.of_string data) in
+            cfg (Ok (X509.Authenticator.chain_of_trust ~time certs))
+          | None, Some d, None, None ->
+            let* files = Bos.OS.Dir.contents (Fpath.v d) in
+            let* certs =
+              List.fold_left (fun r f ->
+                  let* acc = r in
+                  let* data = Bos.OS.File.read f in
+                  let* cert = X509.Certificate.decode_pem (Cstruct.of_string data) in
+                  Ok (cert :: acc))
+                (Ok []) files
+            in
+            cfg (Ok (X509.Authenticator.chain_of_trust ~time certs))
+          | None, None, Some fp, None ->
+            let hash, fingerprint = of_fp fp in
+            cfg (Ok (X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprint))
+          | None, None, None, Some fp ->
+            let hash, fingerprint = of_fp fp in
+            cfg (Ok (X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprint))
+          | _ -> invalid_arg "only one of cert-file, cert-dir, key-fingerprint, cert-fingerprint is supported"
+        in
+        let ip' = match hostname with None -> Some ip | Some _ -> None in
+        let tls = Result.get_ok (auth hostname ip') in
+        Some (`Tcp, [ `Tls (tls, ip, if port = 53 then 853 else port);
+                      `Plaintext (ip, port) ])
+  in
+  Term.(const ns $ no_tls $ tls_ca_file $ tls_ca_dir $ tls_cert_fp $ tls_key_fp $ tls_hostname $ arg_ns $ arg_port)
 
 let parse_domain : [ `raw ] Domain_name.t Arg.conv =
   ( fun name ->
@@ -189,7 +293,7 @@ let cmd_a : unit Term.t * Term.info =
   let man = [
     `P {| Output mimics that of $(b,dig A )$(i,DOMAIN)|}
   ] in
-  Term.(term_result (const do_a $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_a $ nameserver $ arg_domains $ setup_log)),
   Term.info "a" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_aaaa : unit Term.t * Term.info =
@@ -197,7 +301,7 @@ let cmd_aaaa : unit Term.t * Term.info =
   let man = [
     `P {| Output mimics that of $(b,dig AAAA )$(i,DOMAIN)|}
   ] in
-  Term.(term_result (const do_aaaa $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_aaaa $ nameserver $ arg_domains $ setup_log)),
   Term.info "aaaa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_mx : unit Term.t * Term.info =
@@ -205,7 +309,7 @@ let cmd_mx : unit Term.t * Term.info =
   let man = [
     `P {| Output mimics that of $(b,dig MX )$(i,DOMAIN)|}
   ] in
-  Term.(term_result (const do_mx $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_mx $ nameserver $ arg_domains $ setup_log)),
   Term.info "mx" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_tlsa : unit Term.t * Term.info =
@@ -227,7 +331,7 @@ let cmd_tlsa : unit Term.t * Term.info =
     `P {| $(b,_993._tcp) (IMAP) |} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_tlsa $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_tlsa $ nameserver $ arg_domains $ setup_log)),
   Term.info "tlsa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_txt : unit Term.t * Term.info =
@@ -239,7 +343,7 @@ let cmd_txt : unit Term.t * Term.info =
           It would be nice to mirror `dig` output here.|} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_txt $ arg_ns $ arg_port $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_txt $ nameserver $ arg_domains $ setup_log)),
   Term.info "txt" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_any : unit Term.t * Term.info =
@@ -250,7 +354,7 @@ let cmd_any : unit Term.t * Term.info =
     `P {| The output will be fairly similar to $(b,dig ANY )$(i,example.com)|} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_any $ arg_ns $ arg_udp $ arg_domains $ setup_log)),
+  Term.(term_result (const do_any $ nameserver $ arg_domains $ setup_log)),
   Term.info "any" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmd_dkim : unit Term.t * Term.info =
@@ -266,7 +370,7 @@ let cmd_dkim : unit Term.t * Term.info =
        |} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_dkim $ arg_ns $ arg_port $ arg_udp $ arg_selector
+  Term.(term_result (const do_dkim $ nameserver $ arg_selector
                      $ arg_domains $ setup_log)),
   Term.info "dkim" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 

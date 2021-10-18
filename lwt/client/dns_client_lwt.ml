@@ -6,18 +6,18 @@ let src = Logs.Src.create "dns_client_lwt" ~doc:"effectful DNS lwt layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 module Transport : Dns_client.S
- with type io_addr = Ipaddr.t * int
+ with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
  and type +'a io = 'a Lwt.t
  and type stack = unit
 = struct
-  type io_addr = Ipaddr.t * int
+  type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
   type +'a io = 'a Lwt.t
   type stack = unit
   type t = {
-    protocol : Dns.proto ;
     nameservers : io_addr list ;
     timeout_ns : int64 ;
-    mutable fd : Lwt_unix.file_descr option ;
+    (* TODO: avoid race, use a mvar instead of condition *)
+    mutable fd : [ `Plain of Lwt_unix.file_descr | `Tls of Tls_lwt.Unix.t ] option ;
     mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
     mutable he : Happy_eyeballs.t ;
     mutable waiters : ((Ipaddr.t * int) * Lwt_unix.file_descr, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
@@ -25,7 +25,6 @@ module Transport : Dns_client.S
   }
   type context = {
     t : t ;
-    fd : Lwt_unix.file_descr option ;
     mutable timeout_ns : int64 ;
     mutable data : Cstruct.t ;
   }
@@ -42,7 +41,7 @@ module Transport : Dns_client.S
         Error (`Msg ("Error reading file: " ^ file))
     with _ -> Error (`Msg ("Error opening file " ^ file))
 
-  let now = Mtime_clock.elapsed_ns
+  let clock = Mtime_clock.elapsed_ns
 
   let he_timer_interval = Duration.of_ms 500
 
@@ -85,7 +84,7 @@ module Transport : Dns_client.S
       Lwt.return None) >>= function
      | None -> Lwt.return_unit
      | Some event ->
-       let he, actions = Happy_eyeballs.event t.he (now ()) event in
+       let he, actions = Happy_eyeballs.event t.he (clock ()) event in
        t.he <- he;
        Lwt_list.iter_p (handle_action t) actions
 
@@ -95,7 +94,7 @@ module Transport : Dns_client.S
   let rec he_timer t =
     let open Lwt.Infix in
     let rec loop () =
-      let he, actions = Happy_eyeballs.timer t.he (now ()) in
+      let he, actions = Happy_eyeballs.timer t.he (clock ()) in
       t.he <- he ;
       match actions with
       | `Suspend -> he_timer t
@@ -108,36 +107,45 @@ module Transport : Dns_client.S
     loop ()
 
   let create ?nameservers ~timeout () =
-    let protocol, nameservers =
-      Rresult.R.(get_ok (of_option ~none:(fun () ->
-          let ips =
-            match
-              read_file "/etc/resolv.conf" >>= fun data ->
-              Dns_resolvconf.parse data >>|
-              List.map (fun (`Nameserver ip) -> (ip, 53))
-            with
-            | Error _  | Ok [] -> Dns_client.default_resolvers
-            | Ok ips -> ips
-          in
-          Ok (`Tcp, ips))
-          nameservers))
+    let nameservers =
+      match nameservers with
+      | Some (`Udp, _) -> invalid_arg "UDP is not supported"
+      | Some (`Tcp, ns) -> ns
+      | None ->
+        let authenticator = match Ca_certs.authenticator () with
+          | Ok a -> a
+          | Error `Msg m -> invalid_arg ("failed to load trust anchors: " ^ m)
+        in
+        let open Rresult.R.Infix in
+        match
+          read_file "/etc/resolv.conf" >>= fun data ->
+          Dns_resolvconf.parse data >>|
+          List.concat_map (fun (`Nameserver ip) ->
+              let tls = Tls.Config.client ~authenticator ~ip () in
+              [ `Tls (tls, ip, 853) ; `Plaintext (ip, 53) ])
+        with
+        | Error _  | Ok [] ->
+          let peer_name = Dns_client.default_resolver_hostname in
+          let tls_config = Tls.Config.client ~authenticator ~peer_name () in
+          List.concat_map (fun ip -> [
+              `Tls (tls_config, ip, 853); `Plaintext (ip, 53)
+            ]) Dns_client.default_resolvers
+        | Ok ips -> ips
     in
     let t = {
-      protocol ;
       nameservers ;
       timeout_ns = timeout ;
       fd = None ;
       requests = IM.empty ;
-      he = Happy_eyeballs.create (now ()) ;
+      he = Happy_eyeballs.create (clock ()) ;
       waiters = Happy_eyeballs.Waiter_map.empty ;
       timer_condition = Lwt_condition.create () ;
     } in
     Lwt.async (fun () -> he_timer t);
     t
 
-  let nameservers { protocol; nameservers ; _ } = protocol, nameservers
+  let nameservers { nameservers ; _ } = `Tcp, nameservers
   let rng = Mirage_crypto_rng.generate ?g:None
-  let clock = Mtime_clock.elapsed_ns
 
   let with_timeout ctx f =
     let timeout =
@@ -150,68 +158,66 @@ module Transport : Dns_client.S
     ctx.timeout_ns <- Int64.sub ctx.timeout_ns (Int64.sub stop start);
     result
 
-  let close { fd ; _ } = match fd with
-    | None -> Lwt.return_unit
-    | Some fd -> close_socket fd
+  let close _ = Lwt.return_unit
+
+  let send_query fd tx =
+    Lwt.catch (fun () ->
+      match fd with
+      | `Plain fd ->
+        Lwt_unix.send fd (Cstruct.to_bytes tx) 0
+          (Cstruct.length tx) [] >>= fun res ->
+        if res <> Cstruct.length tx then
+          Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
+        else
+          Lwt_result.return ()
+      | `Tls fd ->
+        Lwt_result.ok (Tls_lwt.Unix.write fd tx))
+      (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
 
   let send ctx tx =
-    Lwt.catch (fun () ->
-      let fd = match ctx.t.protocol with `Udp -> ctx.fd | `Tcp -> ctx.t.fd in
-      match fd with
+    if Cstruct.length tx > 2 then
+      match ctx.t.fd with
       | None -> Lwt.return (Error (`Msg "no connection to the nameserver established"))
       | Some fd ->
         ctx.data <- tx;
-        with_timeout ctx
-          (Lwt_unix.send fd (Cstruct.to_bytes tx) 0
-            (Cstruct.length tx) [] >>= fun res ->
-           if res <> Cstruct.length tx then
-             Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
-           else
-             Lwt_result.return ()))
-     (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
+        with_timeout ctx (send_query fd tx)
+    else
+      Lwt.return (Error (`Msg "invalid DNS packet (data length <= 2)"))
 
   let recv ctx =
-    match ctx.t.protocol, ctx.fd with
-    | `Udp, None -> Lwt.return (Error (`Msg "invalid state of DNS client (no connection)"))
-    | `Udp, Some fd ->
-      let recv_buffer = Bytes.make 2048 '\000' in
-      Lwt.catch (fun () ->
-        with_timeout ctx
-          (Lwt_unix.recv fd recv_buffer 0 (Bytes.length recv_buffer) []
-          >>= fun read_len ->
-          if read_len > 0 then
-            Lwt_result.return (Cstruct.of_bytes ~len:read_len recv_buffer)
-          else
-            Lwt_result.fail (`Msg "Empty response")))
-      (fun e -> Lwt_result.fail (`Msg (Printexc.to_string e)))
-    | `Tcp, _ ->
-      if Cstruct.length ctx.data > 2 then
-        let cond = Lwt_condition.create () in
-        let id = Cstruct.BE.get_uint16 ctx.data 2 in
-        ctx.t.requests <- IM.add id (ctx.data, cond) ctx.t.requests;
-        with_timeout ctx (Lwt_condition.wait cond) >|= fun data ->
-        ctx.t.requests <- IM.remove id ctx.t.requests;
-        match data with
-        | Ok cs -> Ok cs
-        | Error `Msg m -> Error (`Msg m)
-      else
-        Lwt.return (Error (`Msg "invalid context (data length <= 2)"))
+    let cond = Lwt_condition.create () in
+    let id = Cstruct.BE.get_uint16 ctx.data 2 in
+    ctx.t.requests <- IM.add id (ctx.data, cond) ctx.t.requests;
+    with_timeout ctx (Lwt_condition.wait cond) >|= fun data ->
+    ctx.t.requests <- IM.remove id ctx.t.requests;
+    match data with
+    | Ok cs -> Ok cs
+    | Error `Msg m -> Error (`Msg m)
 
   let bind = Lwt.bind
   let lift = Lwt.return
 
   let rec read_loop ?(linger = Cstruct.empty) (t : t) fd =
-    let recv_buffer = Bytes.make 2048 '\000' in
     Lwt.catch (fun () ->
-      Lwt_unix.recv fd recv_buffer 0 (Bytes.length recv_buffer) [])
+      match fd with
+      | `Plain fd ->
+        let recv_buffer = Bytes.make 2048 '\000' in
+        Lwt_unix.recv fd recv_buffer 0 (Bytes.length recv_buffer) [] >|= fun r ->
+        (r, Cstruct.of_bytes recv_buffer)
+      | `Tls fd ->
+        let recv_buffer = Cstruct.create 2048 in
+        Tls_lwt.Unix.read fd recv_buffer >|= fun r ->
+        (r, recv_buffer))
      (fun e ->
       Log.err (fun m -> m "error %s reading from resolver" (Printexc.to_string e));
-      Lwt.return 0) >>= function
-     | 0 ->
-       close_socket fd >|= fun () ->
+      Lwt.return (0, Cstruct.empty)) >>= function
+     | (0, _) ->
+       (match fd with
+       | `Plain fd -> close_socket fd
+       | `Tls fd -> Tls_lwt.Unix.close fd) >|= fun () ->
        t.fd <- None;
        Log.info (fun m -> m "end of file reading from resolver")
-     | read_len ->
+     | (read_len, cs) ->
        let rec handle_data data =
          let cs_len = Cstruct.length data in
          if cs_len > 2 then
@@ -233,25 +239,23 @@ module Transport : Dns_client.S
          else
            read_loop ~linger:data t fd
        in
-       let cs = Cstruct.of_bytes ~len:read_len recv_buffer in
+       let cs = Cstruct.sub cs 0 read_len in
        handle_data (if Cstruct.length linger = 0 then cs else Cstruct.append linger cs)
-
-  let query_one fd data =
-    Lwt.catch (fun () ->
-      Lwt_unix.send fd (Cstruct.to_bytes data) 0
-        (Cstruct.length data) [] >>= fun res ->
-      if res <> Cstruct.length data then
-        Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
-      else
-        Lwt_result.return ())
-     (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
 
   let req_all fd t =
     IM.fold (fun _id (data, _) r ->
         r >>= function
         | Error _ as e -> Lwt.return e
-        | Ok () -> query_one fd data)
+        | Ok () -> send_query fd data)
       t.requests (Lwt.return (Ok ()))
+
+  let to_pairs =
+    List.map (function `Plaintext (ip, port) | `Tls (_, ip, port) -> ip, port)
+
+  let find_ns ns (addr, port) =
+    List.find (function `Plaintext (ip, p) | `Tls (_, ip, p) ->
+        Ipaddr.compare ip addr = 0 && p = port)
+      ns
 
   let rec connect_via_tcp_to_ns (t : t) =
     match t.fd with
@@ -260,7 +264,8 @@ module Transport : Dns_client.S
       let waiter, notify = Lwt.task () in
       let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
       t.waiters <- waiters;
-      let he, actions = Happy_eyeballs.connect_ip t.he (now ()) ~id t.nameservers in
+      let ns = to_pairs t.nameservers in
+      let he, actions = Happy_eyeballs.connect_ip t.he (clock ()) ~id ns in
       t.he <- he;
       Lwt_condition.signal t.timer_condition ();
       Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
@@ -269,8 +274,14 @@ module Transport : Dns_client.S
         Lwt.return
           (Rresult.R.error_msgf "error %s connecting to resolver %a"
             msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
-            t.nameservers)
-      | Ok ((_server, _port), socket) ->
+            (to_pairs t.nameservers))
+      | Ok (addr, socket) ->
+        let config = find_ns t.nameservers addr in
+        (match config with
+         | `Plaintext _ -> Lwt.return (`Plain socket)
+         | `Tls (tls_cfg, _, _) ->
+           Tls_lwt.Unix.client_of_fd tls_cfg socket >|= fun f ->
+           `Tls f) >>= fun socket ->
         t.fd <- Some socket;
         Lwt.async (fun () ->
             read_loop t socket >>= fun () ->
@@ -284,38 +295,10 @@ module Transport : Dns_client.S
         req_all socket t
 
   let connect t =
-    match t.nameservers with
-    | [] -> Lwt.return (Error (`Msg "No nameservers!"))
-    | (server, port) :: _ ->
-      let ctx = { t ; fd = None ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
-      match t.protocol with
-      | `Tcp ->
-        begin
-          connect_via_tcp_to_ns t >|= function
-          | Ok () -> Ok ctx
-          | Error `Msg msg -> Error (`Msg msg)
-        end
-      | `Udp ->
-        Lwt.catch (fun () ->
-          Lwt_unix.(getprotobyname "udp" >|= fun x -> x.p_proto) >>= fun proto_number ->
-          let fam =
-            Ipaddr.(Lwt_unix.(match server with V4 _ -> PF_INET | V6 _ -> PF_INET6))
-          in
-          let socket = Lwt_unix.socket fam Lwt_unix.SOCK_DGRAM proto_number in
-          let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
-          let ctx = { ctx with fd = Some socket } in
-          Lwt.catch (fun () ->
-              (* SO_RCVTIMEO does not work in Lwt: it results in an EAGAIN, which
-                 is handled by re-queuing the event *)
-              with_timeout ctx
-                (Lwt_unix.connect socket addr >|= fun () -> Ok ()) >>= function
-                | Ok () -> Lwt_result.return ctx
-                | Error e -> close ctx >|= fun () -> Error e)
-            (fun e ->
-               close ctx >|= fun () ->
-               Error (`Msg (Printexc.to_string e))))
-        (fun e ->
-           Lwt_result.fail (`Msg (Printexc.to_string e)))
+    let ctx = { t ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
+    connect_via_tcp_to_ns t >|= function
+    | Ok () -> Ok ctx
+    | Error `Msg msg -> Error (`Msg msg)
 end
 
 (* Now that we have our {!Transport} implementation we can include the logic

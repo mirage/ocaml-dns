@@ -43,7 +43,7 @@ module Transport : Dns_client.S
               Dns_resolvconf.parse data >>| fun nameservers ->
               List.map (function `Nameserver ip -> (ip, 53)) nameservers
             with
-            | Error _ | Ok [] -> Dns_client.default_resolvers
+            | Error _ | Ok [] -> List.map (fun ip -> ip, 53) Dns_client.default_resolvers
             | Ok ips -> ips
           in
           Ok (`Tcp, ips))
