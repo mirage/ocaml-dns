@@ -28,7 +28,7 @@
 * BREAKING dns-client, dns-stub: use Dns.proto instead of custom [`TCP|`UDP]
   (#266 @hannesm)
 * dns-client: use a `mutable timeout_ns : int64` instead of
-  `timeout_ns : int64 ref` (#259 @hannesm)
+  `timeout_ns : int64 ref` (#269 @hannesm)
 * BREAKING dns-client: remove `?nameserver` from
   getaddrinfo/gethostbyname/gehostbyname6/get_resource_record - if a custom
   nameserver should be queried, a distinct Dns_client.t can be constructed
@@ -48,7 +48,7 @@
   (#258 #261 @reynir @hannesm)
 
 * dns-stub: reconnect to resolver, resend all outstanding queries
-  (#259 @hannesm)
+  (#269 @hannesm)
 
 ### v5.0.1 (2021-04-22)
 
