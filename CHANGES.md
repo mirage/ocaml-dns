@@ -1,14 +1,54 @@
-### unreleased
+### v6.0.0 (2021-10-18)
 
+* use Cstruct.length instead of deprecated Cstruct.len
+* avoid deprecated fmt functions
+
+* BREAKING dns: Rr_map.get_ttl is now ttl, and takes 'a key -> 'a -> int32
+  (instead of b -> int32), Rr_map.with_ttl now is 'a key -> 'a -> int32 -> 'a
+  (instead of b -> int32 -> b) (#264 @hannesm)
+* BREAKING dns: Rr_map.A now uses Ipaddr.V4.Set.t, Aaaa uses Ipaddr.V6.Set.t
+  (requires ipaddr 5.2.0) (#268 @hannesm)
+
+* BREAKING dns.cache: type entry now is polymorphic ('a entry = `Entry of 'a ...)
+  (instead of `Entry of Rr_map.b) (#263 @reynir and @hannesm)
 * BREAKING dns.cache: use a LRU.F.t instead of LRU.M.t (#256 @hannesm)
 * dns.cache: provide get_or_cname and get_any function (#256 #257 @hannesm)
 * BUGFIX dns.cache: update if time to live of cached entry expired
   (reported in #259 by @dinosaure, fix by @reynir and @hannesm)
-* dns-resolver: use dns.cache instead of copy in Dns_resolver_cache (#256 @hannesm)
+
+* dns-client support DNS-over-TLS (RFC 7858): the type io_addr is now a variant
+  of `Plaintext (Ipaddr.t * int) or `Tls (Tls.Config.client * Ipaddr.t * int)
+  By default, ca-certs (ca-certs-nss for MirageOS) are used as trust anchors,
+  and the certificate is expected to contain the IP address of the resolver.
+  The default resolver (anycast.uncensoreddns.org) certificate is verified by
+  hostname, since the let's encrypt certificate does not include an IP address
+  in SubjectAlternativeNames (#270 @hannesm)
+* BREAKING dns-client.mirage.Make is extended by a Mirage_clock.PCLOCK
+  (#270 @hannesm)
+* BREAKING dns-client, dns-stub: use Dns.proto instead of custom [`TCP|`UDP]
+  (#266 @hannesm)
+* dns-client: use a `mutable timeout_ns : int64` instead of
+  `timeout_ns : int64 ref` (#259 @hannesm)
+* BREAKING dns-client: remove `?nameserver` from
+  getaddrinfo/gethostbyname/gehostbyname6/get_resource_record - if a custom
+  nameserver should be queried, a distinct Dns_client.t can be constructed
+  (#269 @reynir and @hannesm)
+* dns-client: multiplex over TCP connections (#269 @reynir and @hannesm)
+* dns-client: use happy-eyeballs to connect to all nameservers from
+  /etc/resolv.conf sequentially (lwt and mirage) (#269 @reynir and @hannesm)
+* BREAKING dns-client remove UDP support from lwt (#270 @reynir and @hannesm)
+
+* BREAKING dns-resolver remove "mode" from codebase, default to recursive
+  (a stub resolver is available as dns-stub) (#260 @hannesm)
+* dns-resolver: use dns.cache instead of copy in Dns_resolver_cache
+  (#256 @hannesm)
 * BUGFIX dns-resolver: fix responses to queries (reported in #255 by @dinosaure,
   fix in #258 by @reynir and @hannesm)
-* dns-resolver: refactor and cleanup code, remove statistics
-  (#258 @reynir @hannesm)
+* dns-resolver: refactor and cleanup code, remove statistics, remove dead code
+  (#258 #261 @reynir @hannesm)
+
+* dns-stub: reconnect to resolver, resend all outstanding queries
+  (#259 @hannesm)
 
 ### v5.0.1 (2021-04-22)
 
