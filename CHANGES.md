@@ -1,8 +1,10 @@
-### v6.0.0 (2021-10-18)
+### v6.0.0 (2021-10-19)
 
 * use Cstruct.length instead of deprecated Cstruct.len
 * avoid deprecated fmt functions
 
+* dns-client: send EDNS tcp keepalive with a timeout of 120 seconds if TCP
+  is used (@reynir @hannesm)
 * BREAKING dns: Rr_map.get_ttl is now ttl, and takes 'a key -> 'a -> int32
   (instead of b -> int32), Rr_map.with_ttl now is 'a key -> 'a -> int32 -> 'a
   (instead of b -> int32 -> b) (#264 @hannesm)

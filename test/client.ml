@@ -17,8 +17,9 @@ module Make_query_tests = struct
     let name:'a Domain_name.t = Domain_name.of_string_exn "example.com" in
     let actual, _state = Dns_client.Pure.make_query rng `Tcp name Dns.Rr_map.A in
     let expected = Cstruct.of_hex
-        "00 1d 00 00 01 00 00 01  00 00 00 00 00 00 07 65
-        78 61 6d 70 6c 65 03 63  6f 6d 00 00 01 00 01" in
+        "00 2e 00 00 01 00 00 01  00 00 00 00 00 01 07 65
+         78 61 6d 70 6c 65 03 63  6f 6d 00 00 01 00 01 00
+         00 29 02 00 00 00 00 00  00 06 00 0b 00 02 04 b0" in
     Alcotest.check p_cs "produces cool stuff" expected actual
 
   let tests = [
