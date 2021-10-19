@@ -2,4 +2,4 @@
  (name dns_resolver_mirage)
  (public_name dns-resolver.mirage)
  (wrapped false)
- (libraries dns dns-resolver dns-server dns-mirage lwt duration mirage-time mirage-clock mirage-stack mirage-random))
+ (libraries dns dns-resolver dns-server dns-mirage lwt duration mirage-time mirage-clock mirage-stack mirage-random tls tls-mirage))

@@ -40,6 +40,7 @@
   /etc/resolv.conf sequentially (lwt and mirage) (#269 @reynir and @hannesm)
 * BREAKING dns-client remove UDP support from lwt (#270 @reynir and @hannesm)
 
+* BREAKING dns-resolver.mirage add DNS-over-TLS support (@reynir @hannesm)
 * BREAKING dns-resolver remove "mode" from codebase, default to recursive
   (a stub resolver is available as dns-stub) (#260 @hannesm)
 * dns-resolver: use dns.cache instead of copy in Dns_resolver_cache
