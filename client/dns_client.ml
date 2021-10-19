@@ -20,6 +20,7 @@ module Pure = struct
     let question = Packet.Question.create hostname record_type in
     let header = Randomconv.int16 rng, Packet.Flags.singleton `Recursion_desired in
     let query = Packet.create ?edns header question `Query in
+    Logs.debug (fun m -> m "sending %a" Dns.Packet.pp query);
     let cs , _ = Packet.encode protocol query in
     begin match protocol with
       | `Udp -> cs
@@ -99,6 +100,7 @@ module Pure = struct
     | Error err ->
       Rresult.R.error_msgf "Error parsing response: %a" Packet.pp_err err
     | Ok t ->
+      Logs.debug (fun m -> m "received %a" Dns.Packet.pp t);
       to_msg t (Packet.reply_matches_request ~request:state.query t)
       >>= function
       | `Answer (answer, authority) when not (Domain_name.Map.is_empty answer) ->
