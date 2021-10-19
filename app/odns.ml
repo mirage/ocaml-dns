@@ -235,7 +235,7 @@ let nameserver =
                 | Some h -> h, String.concat "" rt
                 | None -> invalid_arg ("unknown hash: " ^ hash)
             in
-            let hex = Hex.to_cstruct (`Hex` fp) in
+            let hex = Hex.to_cstruct (`Hex fp) in
             hash, hex
           in
           match ca_file, ca_dir, cert_fp, key_fp with
