@@ -182,6 +182,8 @@ module Rcode = struct
   let pp ppf r = Fmt.string ppf (to_string r)
 end
 
+let (let*) = Result.bind
+
 module Name = struct
   module Int_map = Map.Make(struct
       type t = int
@@ -192,7 +194,6 @@ module Name = struct
   let ptr_tag = 0xC0 (* = 1100 0000 *)
 
   let decode names buf ~off =
-    let open Rresult.R.Infix in
     (* first collect all the labels (and their offsets) *)
     let rec aux offsets off =
       match Cstruct.get_uint8 buf off with
@@ -206,14 +207,16 @@ module Name = struct
         aux ((name, off) :: offsets) (succ off + i)
     in
     (* Cstruct.xxx can raise, and we'll have a partial parse then *)
-    (try aux [] off with _ -> Error `Partial) >>= fun (l, offs, foff) ->
+    let* l, offs, foff = (try aux [] off with _ -> Error `Partial) in
     (* treat last element special -- either Z or P *)
-    (match l with
-     | `Z, off -> Ok (off, Domain_name.root, 1)
-     | `P p, off -> match Int_map.find p names with
-       | exception Not_found ->
-         Error (`Malformed (off, "bad label offset: " ^ string_of_int p))
-       | (exp, size) -> Ok (off, exp, size)) >>= fun (off, name, size) ->
+    let* off, name, size =
+      match l with
+      | `Z, off -> Ok (off, Domain_name.root, 1)
+      | `P p, off -> match Int_map.find p names with
+        | exception Not_found ->
+          Error (`Malformed (off, "bad label offset: " ^ string_of_int p))
+        | (exp, size) -> Ok (off, exp, size)
+    in
     (* insert last label into names Map*)
     let names = Int_map.add off (name, size) names in
     (* fold over offs, insert into names Map, and reassemble the actual name *)
@@ -291,8 +294,8 @@ module Name = struct
     names, off
 
   let host off name =
-    Rresult.R.reword_error (function `Msg _ ->
-        `Malformed (off, Fmt.str "invalid hostname %a" Domain_name.pp name))
+    Result.map_error (function `Msg m ->
+        `Malformed (off, Fmt.str "invalid hostname %a: %s" Domain_name.pp name m))
       (Domain_name.host name)
 
   (*
@@ -497,9 +500,8 @@ module Soa = struct
   let newer ~old soa = Int32.sub soa.serial old.serial > 0l
 
   let decode names buf ~off ~len:_ =
-    let open Rresult.R.Infix in
-    Name.decode names buf ~off >>= fun (nameserver, names, off') ->
-    Name.decode names buf ~off:off' >>| fun (hostmaster, names, off) ->
+    let* nameserver, names, off = Name.decode names buf ~off in
+    let* hostmaster, names, off = Name.decode names buf ~off in
     let serial = Cstruct.BE.get_uint32 buf off in
     let refresh = Cstruct.BE.get_uint32 buf (off + 4) in
     let retry = Cstruct.BE.get_uint32 buf (off + 8) in
@@ -508,7 +510,7 @@ module Soa = struct
     let soa =
       { nameserver ; hostmaster ; serial ; refresh ; retry ; expiry ; minimum }
     in
-    (soa, names, off + 20)
+    Ok (soa, names, off + 20)
 
   let encode soa names buf off =
     let names, off = Name.encode soa.nameserver names buf off in
@@ -530,10 +532,9 @@ module Ns = struct
   let compare = Domain_name.compare
 
   let decode names buf ~off ~len:_ =
-    let open Rresult.R.Infix in
-    Name.decode names buf ~off >>= fun (name, names, off') ->
-    Name.host off name >>| fun host ->
-    (host, names, off')
+    let* name, names, off' = Name.decode names buf ~off in
+    let* host = Name.host off name in
+    Ok (host, names, off')
 
   let encode = Name.encode
 end
@@ -553,12 +554,11 @@ module Mx = struct
       (Domain_name.compare mx.mail_exchange mx'.mail_exchange)
 
   let decode names buf ~off ~len:_ =
-    let open Rresult.R.Infix in
     let preference = Cstruct.BE.get_uint16 buf off in
     let off = off + 2 in
-    Name.decode names buf ~off >>= fun (mx, names, off') ->
-    Name.host off mx >>| fun mail_exchange ->
-    { preference ; mail_exchange }, names, off'
+    let* mx, names, off' = Name.decode names buf ~off in
+    let* mail_exchange = Name.host off mx in
+    Ok ({ preference ; mail_exchange }, names, off')
 
   let encode { preference ; mail_exchange } names buf off =
     Cstruct.BE.set_uint16 buf off preference ;
@@ -626,10 +626,9 @@ module Ptr = struct
   let compare = Domain_name.compare
 
   let decode names buf ~off ~len:_ =
-    let open Rresult.R.Infix in
-    Name.decode names buf ~off >>= fun (rname, names, off') ->
-    Name.host off rname >>| fun ptr ->
-    (ptr, names, off')
+    let* rname, names, off' = Name.decode names buf ~off in
+    let* ptr = Name.host off rname in
+    Ok (ptr, names, off')
 
   let encode = Name.encode
 end
@@ -655,15 +654,14 @@ module Srv = struct
             (Domain_name.compare a.target b.target)))
 
   let decode names buf ~off ~len:_ =
-    let open Rresult.R.Infix in
     let priority = Cstruct.BE.get_uint16 buf off
     and weight = Cstruct.BE.get_uint16 buf (off + 2)
     and port = Cstruct.BE.get_uint16 buf (off + 4)
     in
     let off = off + 6 in
-    Name.decode names buf ~off >>= fun (target, names, off') ->
-    Name.host off target >>| fun target ->
-    { priority ; weight ; port ; target }, names, off'
+    let* target, names, off' = Name.decode names buf ~off in
+    let* target = Name.host off target in
+    Ok ({ priority ; weight ; port ; target }, names, off')
 
   let encode t names buf off =
     Cstruct.BE.set_uint16 buf off t.priority ;
@@ -736,16 +734,17 @@ module Dnskey = struct
       (Cstruct.compare a.key b.key)
 
   let decode names buf ~off ~len =
-    let open Rresult.R.Infix in
     let flags = Cstruct.BE.get_uint16 buf off
     and proto = Cstruct.get_uint8 buf (off + 2)
     and algo = Cstruct.get_uint8 buf (off + 3)
     in
-    guard (proto = 3)
-      (`Not_implemented (off + 2, Fmt.str "dnskey protocol 0x%x" proto)) >>| fun () ->
+    let* () =
+      guard (proto = 3)
+        (`Not_implemented (off + 2, Fmt.str "dnskey protocol 0x%x" proto))
+    in
     let algorithm = int_to_algorithm algo in
     let key = Cstruct.sub buf (off + 4) (len - 4) in
-    { flags ; algorithm ; key }, names, off + len
+    Ok ({ flags ; algorithm ; key }, names, off + len)
 
   let encode t names buf off =
     Cstruct.BE.set_uint16 buf off t.flags ;
@@ -756,28 +755,28 @@ module Dnskey = struct
     names, off + 4 + kl
 
   let of_string key =
-    let open Rresult.R.Infix in
     let parse flags algo key =
       let key = Cstruct.of_string key in
-      string_to_algorithm algo >>| fun algorithm ->
-      { flags ; algorithm ; key }
+      let* algorithm = string_to_algorithm algo in
+      Ok { flags ; algorithm ; key }
     in
     match Astring.String.cuts ~sep:":" key with
     | [ flags ; algo ; key ] ->
-      (try Ok (int_of_string flags) with Failure _ ->
-         Error (`Msg ("couldn't parse flags " ^ flags))) >>= fun flags ->
+      let* flags =
+        try Ok (int_of_string flags) with Failure _ ->
+          Error (`Msg ("couldn't parse flags " ^ flags))
+      in
       parse flags algo key
     | [ algo ; key ] -> parse 0 algo key
     | _ -> Error (`Msg ("invalid DNSKEY string " ^ key))
 
   let name_key_of_string str =
-    let open Rresult.R.Infix in
     match Astring.String.cut ~sep:":" str with
     | None -> Error (`Msg ("couldn't parse name:key in " ^ str))
     | Some (name, key) ->
-      Domain_name.of_string name >>= fun name ->
-      of_string key >>| fun dnskey ->
-      (name, dnskey)
+      let* name = Domain_name.of_string name in
+      let* dnskey = of_string key in
+      Ok (name, dnskey)
 
   let pp_name_key ppf (name, key) =
     Fmt.pf ppf "%a %a" Domain_name.pp name pp key
@@ -803,12 +802,13 @@ module Caa = struct
             0 a.value b.value))
 
   let decode names buf ~off ~len =
-    let open Rresult.R.Infix in
     let critical = Cstruct.get_uint8 buf off = 0x80
     and tl = Cstruct.get_uint8 buf (succ off)
     in
-    guard (tl > 0 && tl < 16)
-      (`Not_implemented (succ off, Fmt.str "caa tag 0x%x" tl)) >>= fun () ->
+    let* () =
+      guard (tl > 0 && tl < 16)
+        (`Not_implemented (succ off, Fmt.str "caa tag 0x%x" tl))
+    in
     let tag = Cstruct.sub buf (off + 2) tl in
     let tag = Cstruct.to_string tag in
     let vs = 2 + tl in
@@ -1247,44 +1247,49 @@ module Tsig = struct
 
   (* TODO maybe revise, esp. all the guards *)
   let decode names buf ~off =
-    let open Rresult.R.Infix in
-    guard (Cstruct.length buf - off >= 6) `Partial >>= fun () ->
+    let* () = guard (Cstruct.length buf - off >= 6) `Partial in
     let ttl = Cstruct.BE.get_uint32 buf off in
-    guard (ttl = 0l) (`Malformed (off, Fmt.str "tsig ttl is not zero %lu" ttl)) >>= fun () ->
+    let* () =
+      guard (ttl = 0l) (`Malformed (off, Fmt.str "tsig ttl is not zero %lu" ttl))
+    in
     let len = Cstruct.BE.get_uint16 buf (off + 4) in
     let rdata_start = off + 6 in
-    guard (Cstruct.length buf - rdata_start >= len) `Partial >>= fun () ->
-    Name.decode names buf ~off:rdata_start >>= fun (algorithm, names, off') ->
-    Name.host rdata_start algorithm >>= fun algorithm ->
-    guard (Cstruct.length buf - off' >= 10) `Partial >>= fun () ->
+    let* () = guard (Cstruct.length buf - rdata_start >= len) `Partial in
+    let* (algorithm, names, off') = Name.decode names buf ~off:rdata_start in
+    let* algorithm = Name.host rdata_start algorithm in
+    let* () = guard (Cstruct.length buf - off' >= 10) `Partial in
     let signed = decode_48bit_time buf off'
     and fudge = Cstruct.BE.get_uint16 buf (off' + 6)
     and mac_len = Cstruct.BE.get_uint16 buf (off' + 8)
     in
-    guard (Cstruct.length buf - off' >= 10 + mac_len + 6) `Partial >>= fun () ->
+    let* () = guard (Cstruct.length buf - off' >= 10 + mac_len + 6) `Partial in
     let mac = Cstruct.sub buf (off' + 10) mac_len
     and original_id = Cstruct.BE.get_uint16 buf (off' + 10 + mac_len)
     and error = Cstruct.BE.get_uint16 buf (off' + 12 + mac_len)
     and other_len = Cstruct.BE.get_uint16 buf (off' + 14 + mac_len)
     in
     let rdata_end = off' + 10 + mac_len + 6 + other_len in
-    guard (rdata_end - rdata_start = len) `Partial >>= fun () ->
-    guard (Cstruct.length buf >= rdata_end) `Partial >>= fun () ->
-    guard (other_len = 0 || other_len = 6)
-      (`Malformed (off' + 14 + mac_len, "other timestamp should be 0 or 6 bytes!")) >>= fun () ->
-    algorithm_of_name ~off:rdata_start algorithm >>= fun algorithm ->
-    ptime_of_int64 ~off:off' signed >>= fun signed ->
-    Rcode.of_int ~off:(off' + 12 + mac_len) error >>= fun error ->
-    (if other_len = 0 then
-       Ok None
-     else
-       let other = decode_48bit_time buf (off' + 16 + mac_len) in
-       ptime_of_int64 ~off:(off' + 14 + mac_len + 2) other >>| fun x ->
-       Some x) >>| fun other ->
+    let* () = guard (rdata_end - rdata_start = len) `Partial in
+    let* () = guard (Cstruct.length buf >= rdata_end) `Partial in
+    let* () =
+      guard (other_len = 0 || other_len = 6)
+        (`Malformed (off' + 14 + mac_len, "other timestamp should be 0 or 6 bytes!"))
+    in
+    let* algorithm = algorithm_of_name ~off:rdata_start algorithm in
+    let* signed = ptime_of_int64 ~off:off' signed in
+    let* error = Rcode.of_int ~off:(off' + 12 + mac_len) error in
+    let* other =
+      if other_len = 0 then
+        Ok None
+      else
+        let other = decode_48bit_time buf (off' + 16 + mac_len) in
+        let* x = ptime_of_int64 ~off:(off' + 14 + mac_len + 2) other in
+        Ok (Some x)
+    in
     let fudge = Ptime.Span.of_int_s fudge in
-    { algorithm ; signed ; fudge ; mac ; original_id ; error ; other },
-    names,
-    off' + 16 + mac_len + other_len
+    Ok ({ algorithm ; signed ; fudge ; mac ; original_id ; error ; other },
+        names,
+        off' + 16 + mac_len + other_len)
 
   let encode_48bit_time buf ?(off = 0) ts =
     match ptime_span_to_int64 (Ptime.to_span ts) with
@@ -1469,23 +1474,23 @@ module Edns = struct
     off + 4 + l
 
   let decode_extension buf ~off ~len =
-    let open Rresult.R.Infix in
     let code = Cstruct.BE.get_uint16 buf off
     and tl = Cstruct.BE.get_uint16 buf (off + 2)
     in
     let v = Cstruct.sub buf (off + 4) tl in
-    guard (len >= tl + 4) `Partial >>= fun () ->
+    let* () = guard (len >= tl + 4) `Partial in
     let len = tl + 4 in
     match int_to_extension code with
     | Some `nsid -> Ok (Nsid v, len)
     | Some `cookie -> Ok (Cookie v, len)
     | Some `tcp_keepalive ->
-      (begin match tl with
-         | 0 -> Ok None
-         | 2 -> Ok (Some (Cstruct.BE.get_uint16 v 0))
-         | _ -> Error (`Not_implemented (off, Fmt.str "edns keepalive 0x%x" tl))
-       end >>= fun i ->
-       Ok (Tcp_keepalive i, len))
+      let* i =
+        match tl with
+        | 0 -> Ok None
+        | 2 -> Ok (Some (Cstruct.BE.get_uint16 v 0))
+        | _ -> Error (`Not_implemented (off, Fmt.str "edns keepalive 0x%x" tl))
+      in
+      Ok (Tcp_keepalive i, len)
     | Some `padding -> Ok (Padding tl, len)
     | None -> Ok (Extension (code, v), len)
 
@@ -1536,22 +1541,20 @@ module Edns = struct
            (list ~sep:(any ", ") pp_extension) opt.extensions)
 
   let decode_extensions buf ~len =
-    let open Rresult.R.Infix in
     let rec one acc pos =
       if len = pos then
         Ok (List.rev acc)
       else
-        decode_extension buf ~off:pos ~len:(len - pos) >>= fun (opt, len) ->
+        let* opt, len = decode_extension buf ~off:pos ~len:(len - pos) in
         one (opt :: acc) (pos + len)
     in
     one [] 0
 
   let decode buf ~off =
-    let open Rresult.R.Infix in
     (* EDNS is special -- the incoming off points to before name type clas *)
     (* name must be the root, typ is OPT, class is used for length *)
-    guard (Cstruct.length buf - off >= 11) `Partial >>= fun () ->
-    guard (Cstruct.get_uint8 buf off = 0) (`Malformed (off, "bad edns (must be 0)")) >>= fun () ->
+    let* () = guard (Cstruct.length buf - off >= 11) `Partial in
+    let* () = guard (Cstruct.get_uint8 buf off = 0) (`Malformed (off, "bad edns (must be 0)")) in
     (* crazyness: payload_size is encoded in class *)
     let payload_size = Cstruct.BE.get_uint16 buf (off + 3)
     (* it continues: the ttl is split into: 8bit extended rcode, 8bit version, 1bit dnssec_ok, 7bit 0 *)
@@ -1562,7 +1565,7 @@ module Edns = struct
     in
     let off = off + 11 in
     let dnssec_ok = flags land 0x8000 = 0x8000 in
-    guard (version = 0) (`Bad_edns_version version) >>= fun () ->
+    let* () = guard (version = 0) (`Bad_edns_version version) in
     let payload_size =
       if payload_size < min_payload_size then begin
         Log.warn (fun m -> m "EDNS payload size is too small %d, using %d"
@@ -1572,7 +1575,9 @@ module Edns = struct
         payload_size
     in
     let exts_buf = Cstruct.sub buf off len in
-    (try decode_extensions exts_buf ~len with _ -> Error `Partial) >>= fun extensions ->
+    let* extensions =
+      try decode_extensions exts_buf ~len with _ -> Error `Partial
+    in
     let opt = { extended_rcode ; version ; dnssec_ok ; payload_size ; extensions } in
     Ok (opt, off + len)
 
@@ -1710,9 +1715,8 @@ module Rr_map = struct
     | 33 -> Ok (K Srv) | 44 -> Ok (K Sshfp) | 48 -> Ok (K Dnskey)
     | 52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
     | x ->
-      let open Rresult.R.Infix in
-      I.of_int ~off x >>| fun i ->
-      K (Unknown i)
+      let* i = I.of_int ~off x in
+      Ok (K (Unknown i))
 
   let ppk ppf (K k) = match k with
     | Cname -> Fmt.string ppf "CNAME"
@@ -2159,63 +2163,69 @@ module Rr_map = struct
     | _ -> Domain_name.Host_set.empty
 
   let decode names buf off (K typ) =
-    let open Rresult.R.Infix in
-    guard (Cstruct.length buf - off >= 6) `Partial >>= fun () ->
+    let* () = guard (Cstruct.length buf - off >= 6) `Partial in
     let ttl = Cstruct.BE.get_uint32 buf off
     and len = Cstruct.BE.get_uint16 buf (off + 4)
     and rdata_start = off + 6
     in
-    guard (Int32.logand ttl 0x8000_0000l = 0l)
-      (`Malformed (off, Fmt.str "bad TTL (high bit set) %lu" ttl)) >>= fun () ->
-    guard (Cstruct.length buf - rdata_start >= len) `Partial >>= fun () ->
-    guard (len <= max_rdata_length)
-      (`Malformed (off + 4, Fmt.str "length %d exceeds maximum rdata size" len)) >>= fun () ->
-    (match typ with
-     | Soa ->
-       Soa.decode names buf ~off:rdata_start ~len >>| fun (soa, names, off) ->
-       (B (Soa, soa), names, off)
-     | Ns ->
-       Ns.decode names buf ~off:rdata_start ~len >>| fun (ns, names, off) ->
-       (B (Ns, (ttl, Domain_name.Host_set.singleton ns)), names, off)
-     | Mx ->
-       Mx.decode names buf ~off:rdata_start ~len >>| fun (mx, names, off) ->
-       (B (Mx, (ttl, Mx_set.singleton mx)), names, off)
-     | Cname ->
-       Cname.decode names buf ~off:rdata_start ~len >>| fun (alias, names, off) ->
-       (B (Cname, (ttl, alias)), names, off)
-     | A ->
-       A.decode names buf ~off:rdata_start ~len >>| fun (address, names, off) ->
-       (B (A, (ttl, Ipaddr.V4.Set.singleton address)), names, off)
-     | Aaaa ->
-       Aaaa.decode names buf ~off:rdata_start ~len >>| fun (address, names, off) ->
-       (B (Aaaa, (ttl, Ipaddr.V6.Set.singleton address)), names, off)
-     | Ptr ->
-       Ptr.decode names buf ~off:rdata_start ~len >>| fun (rev, names, off) ->
-       (B (Ptr, (ttl, rev)), names, off)
-     | Srv ->
-       Srv.decode names buf ~off:rdata_start ~len >>| fun (srv, names, off) ->
-       (B (Srv, (ttl, Srv_set.singleton srv)), names, off)
-     | Dnskey ->
-       Dnskey.decode names buf ~off:rdata_start ~len >>| fun (dnskey, names, off) ->
-       (B (Dnskey, (ttl, Dnskey_set.singleton dnskey)), names, off)
-     | Caa ->
-       Caa.decode names buf ~off:rdata_start ~len >>| fun (caa, names, off) ->
-       (B (Caa, (ttl, Caa_set.singleton caa)), names, off)
-     | Tlsa ->
-       Tlsa.decode names buf ~off:rdata_start ~len >>| fun (tlsa, names, off) ->
-       (B (Tlsa, (ttl, Tlsa_set.singleton tlsa)), names, off)
-     | Sshfp ->
-       Sshfp.decode names buf ~off:rdata_start ~len >>| fun (sshfp, names, off) ->
-       (B (Sshfp, (ttl, Sshfp_set.singleton sshfp)), names, off)
-     | Txt ->
-       Txt.decode names buf ~off:rdata_start ~len >>| fun (txt, names, off) ->
-       (B (Txt, (ttl, Txt_set.singleton txt)), names, off)
-     | Unknown x ->
-       let data = Cstruct.sub buf rdata_start len in
-       Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)
-    ) >>= fun (b, names, rdata_end) ->
-    guard (len = rdata_end - rdata_start) (`Leftover (rdata_end, "rdata")) >>| fun () ->
-    (b, names, rdata_end)
+    let* () =
+      guard (Int32.logand ttl 0x8000_0000l = 0l)
+        (`Malformed (off, Fmt.str "bad TTL (high bit set) %lu" ttl))
+    in
+    let* () = guard (Cstruct.length buf - rdata_start >= len) `Partial in
+    let* () =
+      guard (len <= max_rdata_length)
+        (`Malformed (off + 4, Fmt.str "length %d exceeds maximum rdata size" len))
+    in
+    let* b, names, rdata_end =
+      match typ with
+      | Soa ->
+        let* soa, names, off = Soa.decode names buf ~off:rdata_start ~len in
+        Ok (B (Soa, soa), names, off)
+      | Ns ->
+        let* ns, names, off = Ns.decode names buf ~off:rdata_start ~len in
+        Ok (B (Ns, (ttl, Domain_name.Host_set.singleton ns)), names, off)
+      | Mx ->
+        let* mx, names, off = Mx.decode names buf ~off:rdata_start ~len in
+        Ok (B (Mx, (ttl, Mx_set.singleton mx)), names, off)
+      | Cname ->
+        let* alias, names, off = Cname.decode names buf ~off:rdata_start ~len in
+        Ok (B (Cname, (ttl, alias)), names, off)
+      | A ->
+        let* address, names, off = A.decode names buf ~off:rdata_start ~len in
+        Ok (B (A, (ttl, Ipaddr.V4.Set.singleton address)), names, off)
+      | Aaaa ->
+        let* address, names, off = Aaaa.decode names buf ~off:rdata_start ~len in
+        Ok (B (Aaaa, (ttl, Ipaddr.V6.Set.singleton address)), names, off)
+      | Ptr ->
+        let* rev, names, off = Ptr.decode names buf ~off:rdata_start ~len in
+        Ok (B (Ptr, (ttl, rev)), names, off)
+      | Srv ->
+        let* srv, names, off = Srv.decode names buf ~off:rdata_start ~len in
+        Ok (B (Srv, (ttl, Srv_set.singleton srv)), names, off)
+      | Dnskey ->
+        let* dnskey, names, off = Dnskey.decode names buf ~off:rdata_start ~len in
+        Ok (B (Dnskey, (ttl, Dnskey_set.singleton dnskey)), names, off)
+      | Caa ->
+        let* caa, names, off = Caa.decode names buf ~off:rdata_start ~len in
+        Ok (B (Caa, (ttl, Caa_set.singleton caa)), names, off)
+      | Tlsa ->
+        let* tlsa, names, off = Tlsa.decode names buf ~off:rdata_start ~len in
+        Ok (B (Tlsa, (ttl, Tlsa_set.singleton tlsa)), names, off)
+      | Sshfp ->
+        let* sshfp, names, off = Sshfp.decode names buf ~off:rdata_start ~len in
+        Ok (B (Sshfp, (ttl, Sshfp_set.singleton sshfp)), names, off)
+      | Txt ->
+        let* txt, names, off = Txt.decode names buf ~off:rdata_start ~len in
+        Ok (B (Txt, (ttl, Txt_set.singleton txt)), names, off)
+      | Unknown x ->
+        let data = Cstruct.sub buf rdata_start len in
+        Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)
+    in
+    let* () =
+      guard (len = rdata_end - rdata_start) (`Leftover (rdata_end, "rdata"))
+    in
+    Ok (b, names, rdata_end)
 
   let text_b ?origin ?default_ttl name (B (key, v)) =
     text ?origin ?default_ttl name key v
@@ -2367,15 +2377,14 @@ module Packet = struct
         Flags.empty Flag.all
 
     let decode buf =
-      let open Rresult.R.Infix in
       (* we only access the first 4 bytes, but anything <12 is a bad DNS frame *)
-      guard (Cstruct.length buf >= len) `Partial >>= fun () ->
+      let* () = guard (Cstruct.length buf >= len) `Partial in
       let hdr = Cstruct.BE.get_uint16 buf 2 in
       let op = (hdr land 0x7800) lsr 11
       and rc = hdr land 0x000F
       in
-      Opcode.of_int ~off:2 op >>= fun operation ->
-      Rcode.of_int ~off:3 rc >>= fun rcode ->
+      let* operation = Opcode.of_int ~off:2 op in
+      let* rcode = Rcode.of_int ~off:3 rc in
       let id = Cstruct.BE.get_uint16 buf 0
       and query = hdr lsr 15 = 0
       and flags = decode_flags hdr
@@ -2478,9 +2487,8 @@ module Packet = struct
   end
 
   let decode_ntc names buf off =
-    let open Rresult.R.Infix in
-    Name.decode names buf ~off >>= fun (name, names, off) ->
-    guard (Cstruct.length buf - off >= 4) `Partial >>= fun () ->
+    let* name, names, off = Name.decode names buf ~off in
+    let* () = guard (Cstruct.length buf - off >= 4) `Partial in
     let typ = Cstruct.BE.get_uint16 buf off
     and cls = Cstruct.BE.get_uint16 buf (off + 2)
     (* CLS is interpreted differently by OPT, thus no int_to_clas called here *)
@@ -2492,8 +2500,8 @@ module Packet = struct
     | x when x = Rr_map.axfr_rtyp -> Ok ((name, `Axfr, cls), names, off + 4)
     | x when x = Rr_map.any_rtyp -> Ok ((name, `Any, cls), names, off + 4)
     | x ->
-      Rr_map.of_int x >>| fun k ->
-      (name, `K k, cls), names, off + 4
+      let* k = Rr_map.of_int x in
+      Ok ((name, `K k, cls), names, off + 4)
 
   module Question = struct
     type qtype = [ `Any | `K of Rr_map.k ]
@@ -2532,9 +2540,8 @@ module Packet = struct
              | `Ixfr, `Ixfr -> 0 (* | `Ixfr, _ -> 1 | _, `Ixfr -> -1 *))
 
     let decode ?(names = Name.Int_map.empty) ?(off = Header.len) buf =
-      let open Rresult.R.Infix in
-      decode_ntc names buf off >>= fun ((name, typ, c), names, off) ->
-      Class.of_int ~off c >>= fun clas ->
+      let* (name, typ, c), names, off = decode_ntc names buf off in
+      let* clas = Class.of_int ~off c in
       match typ with
       | `Edns | `Tsig ->
         let msg = Fmt.str "bad RRTYp in question %a" Rr_map.pp_rr typ in
@@ -2559,14 +2566,15 @@ module Packet = struct
       map ((names, off), 0)
 
   let decode_rr names buf off =
-    let open Rresult.R.Infix in
-    decode_ntc names buf off >>= fun ((name, typ, clas), names, off) ->
-    guard (clas = Class.(to_int IN))
-      (`Not_implemented (off, Fmt.str "rr class not IN 0x%x" clas)) >>= fun () ->
+    let* (name, typ, clas), names, off = decode_ntc names buf off in
+    let* () =
+      guard (clas = Class.(to_int IN))
+        (`Not_implemented (off, Fmt.str "rr class not IN 0x%x" clas))
+    in
     match typ with
     | `K k ->
-      Rr_map.decode names buf off k >>| fun (b, names, off) ->
-      (name, b, names, off)
+      let* b, names, off = Rr_map.decode names buf off k in
+      Ok (name, b, names, off)
     | _ ->
       Error (`Not_implemented (off, Fmt.str "unexpected RR typ %a"
                                  Rr_map.pp_rr typ))
@@ -2594,23 +2602,26 @@ module Packet = struct
     | Error e -> Error e
 
   let decode_one_additional map edns ~tsig names buf off =
-    let open Rresult.R.Infix in
-    decode_ntc names buf off >>= fun ((name, typ, clas), names, off') ->
+    let* (name, typ, clas), names, off' = decode_ntc names buf off in
     match typ with
     | `Edns when edns = None ->
       (* OPT is special and needs class! (also, name is guarded to be .) *)
-      Edns.decode buf ~off >>| fun (edns, off') ->
-      (map, Some edns, None), names, off'
+      let* edns, off' = Edns.decode buf ~off in
+      Ok ((map, Some edns, None), names, off')
     | `Tsig when tsig ->
-      guard (clas = Class.(to_int ANY_CLASS))
-        (`Malformed (off, Fmt.str "tsig class must be ANY 0x%x" clas)) >>= fun () ->
-      Tsig.decode names buf ~off:off' >>| fun (tsig, names, off') ->
-      (map, edns, Some (name, tsig, off)), names, off'
+      let* () =
+        guard (clas = Class.(to_int ANY_CLASS))
+          (`Malformed (off, Fmt.str "tsig class must be ANY 0x%x" clas))
+      in
+      let* tsig, names, off' = Tsig.decode names buf ~off:off' in
+      Ok ((map, edns, Some (name, tsig, off)), names, off')
     | `K t ->
-      guard (clas = Class.(to_int IN))
-        (`Malformed (off, Fmt.str "additional class must be IN 0x%x" clas)) >>= fun () ->
-      Rr_map.decode names buf off' t >>| fun (B (k, v), names, off') ->
-      (Name_rr_map.add name k v map, edns, None), names, off'
+      let* () =
+        guard (clas = Class.(to_int IN))
+          (`Malformed (off, Fmt.str "additional class must be IN 0x%x" clas))
+      in
+      let* B (k, v), names, off' = Rr_map.decode names buf off' t in
+      Ok ((Name_rr_map.add name k v map, edns, None), names, off')
     | _ -> Error (`Malformed (off, Fmt.str "decode additional, unexpected rr %a"
                                 Rr_map.pp_rr typ))
 
@@ -2640,18 +2651,24 @@ module Packet = struct
         Name_rr_map.pp answer Name_rr_map.pp authority
 
     let decode (_, flags) buf names off =
-      let open Rresult.R.Infix in
       let truncated = Flags.mem `Truncation flags in
       let ancount = Cstruct.BE.get_uint16 buf 6
       and aucount = Cstruct.BE.get_uint16 buf 8
       in
       let empty = Domain_name.Map.empty in
-      decode_n_partial names buf off empty ancount >>= function
-      | `Partial answer -> guard truncated `Partial >>| fun () -> (answer, empty), names, off, false, truncated
+      let* r = decode_n_partial names buf off empty ancount in
+      match r with
+      | `Partial answer ->
+        let* () = guard truncated `Partial in
+        Ok ((answer, empty), names, off, false, truncated)
       | `Full (names, off, answer) ->
-        decode_n_partial names buf off empty aucount >>= function
-        | `Partial authority -> guard truncated `Partial >>| fun () -> (answer, authority), names, off, false, truncated
-        | `Full (names, off, authority) -> Ok ((answer, authority), names, off, true, truncated)
+        let* r = decode_n_partial names buf off empty aucount in
+        match r with
+        | `Partial authority ->
+          let* () = guard truncated `Partial in
+          Ok ((answer, authority), names, off, false, truncated)
+        | `Full (names, off, authority) ->
+          Ok ((answer, authority), names, off, true, truncated)
 
     let encode_answer (qname, qtyp) map names buf off =
       Log.debug (fun m -> m "trying to encode the answer, following question %a %a"
@@ -2696,8 +2713,7 @@ module Packet = struct
       Fmt.pf ppf "AXFR soa %a data %a" Soa.pp soa Name_rr_map.pp entries
 
     let decode (_, flags) buf names off ancount =
-      let open Rresult.R.Infix in
-      guard (not (Flags.mem `Truncation flags)) `Partial >>= fun () ->
+      let* () = guard (not (Flags.mem `Truncation flags)) `Partial in
       let empty = Domain_name.Map.empty in
       (* TODO handle partial AXFR better:
          - only first frame must have the question, subsequent frames may have
@@ -2712,9 +2728,11 @@ module Packet = struct
          packet, this cannot be decided without further context (it is
          characterized to be `First in here, but user code needs to handle this)
       *)
-      guard (ancount >= 1)
-        (`Malformed (6, Fmt.str "AXFR needs at least one RRs in answer %d" ancount)) >>= fun () ->
-      decode_rr names buf off >>= fun (name, B (k, v), names, off) ->
+      let* () =
+        guard (ancount >= 1)
+          (`Malformed (6, Fmt.str "AXFR needs at least one RRs in answer %d" ancount))
+      in
+      let* name, B (k, v), names, off = decode_rr names buf off in
       if ancount = 1 then
         match k, v with
         | Soa, soa -> Ok (`Axfr_partial_reply (`First (soa : Soa.t), Name_rr_map.empty), names, off)
@@ -2722,16 +2740,20 @@ module Packet = struct
       else (* ancount > 1 *)
         (* TODO: verify name == zname in question, also all RR sub of zname *)
         let add name (Rr_map.B (k, v)) map = Name_rr_map.add name k v map in
-        decode_n add decode_rr names buf off empty (ancount - 2) >>= fun (names, off, answer) ->
-        decode_rr names buf off >>= fun (name', B (k', v'), names, off) ->
+        let* names, off, answer = decode_n add decode_rr names buf off empty (ancount - 2) in
+        let* name', B (k', v'), names, off = decode_rr names buf off in
         (* TODO: verify that answer does not contain a SOA!? *)
         match k, v, k', v' with
         | Soa, soa, Soa, soa' ->
-          guard (Domain_name.equal name name')
-            (`Malformed (off, "AXFR SOA RRs do not use the same name")) >>= fun () ->
-          guard (Soa.compare soa soa' = 0)
-            (`Malformed (off, "AXFR SOA RRs are not equal")) >>| fun () ->
-          (`Axfr_reply ((soa, answer) : Soa.t * Name_rr_map.t)), names, off
+          let* () =
+            guard (Domain_name.equal name name')
+              (`Malformed (off, "AXFR SOA RRs do not use the same name"))
+          in
+          let* () =
+            guard (Soa.compare soa soa' = 0)
+              (`Malformed (off, "AXFR SOA RRs are not equal"))
+          in
+          Ok ((`Axfr_reply ((soa, answer) : Soa.t * Name_rr_map.t)), names, off)
         | Soa, soa, k', v' ->
           Ok (`Axfr_partial_reply (`First (soa : Soa.t), add name' (B (k', v')) answer), names, off)
         | k, v, Soa, soa ->
@@ -2845,18 +2867,18 @@ module Packet = struct
       | _ -> Error ()
 
     let soa_ok f off name soa name' soa' =
-      let open Rresult.R.Infix in
-      guard (Domain_name.equal name name')
-        (`Malformed (off, "IXFR SOA RRs do not use the same name")) >>= fun () ->
+      let* () =
+        guard (Domain_name.equal name name')
+          (`Malformed (off, "IXFR SOA RRs do not use the same name"))
+      in
       guard (f soa soa') (`Malformed (off, "IXFR SOA RRs are not equal"))
 
     (* parses up to count RRs until a SOA is found *)
     let rec rrs_and_soa buf names off count acc =
-      let open Rresult.R.Infix in
       match count with
       | 0 -> Ok (acc, None, 0, names, off)
       | n ->
-        decode_rr names buf off >>= fun (name, Rr_map.(B (k, v)), names, off) ->
+        let* name, Rr_map.B (k, v), names, off = decode_rr names buf off in
         match k, v with
         | Rr_map.Soa, soa ->
           Ok (acc, (Some (name, soa) : ([ `raw ] Domain_name.t * Soa.t) option), pred n, names, off)
@@ -2865,57 +2887,60 @@ module Packet = struct
           rrs_and_soa buf names off (pred n) acc
 
     let decode (_, flags) buf names off ancount =
-      let open Rresult.R.Infix in
-      guard (not (Flags.mem `Truncation flags)) `Partial >>= fun () ->
-      guard (ancount >= 1)
-        (`Malformed (6, Fmt.str "IXFR needs at least one RRs in answer %d" ancount)) >>= fun () ->
-      decode_rr names buf off >>= fun (name, b, names, off) ->
+      let* () = guard (not (Flags.mem `Truncation flags)) `Partial in
+      let* () =
+        guard (ancount >= 1)
+          (`Malformed (6, Fmt.str "IXFR needs at least one RRs in answer %d" ancount))
+      in
+      let* name, b, names, off = decode_rr names buf off in
       match ensure_soa b with
       | Error () -> Error (`Malformed (off, "IXFR first RR not a SOA"))
       | Ok soa ->
-        (if ancount = 1 then
-           Ok (`Empty, names, off)
-         else if ancount = 2 then
-           Ok (`Full Name_rr_map.empty, names, off)
-         else
-           decode_rr names buf off >>= fun (name', b, names, off) ->
-           match ensure_soa b with
-           | Error () ->
-             (* this is a full AXFR *)
-             let add name (Rr_map.B (k, v)) map = Name_rr_map.add name k v map in
-             let map = add name' b Name_rr_map.empty in
-             decode_n add decode_rr names buf off map (ancount - 3) >>| fun (names, off, answer) ->
-             `Full answer, names, off
-           | Ok oldsoa ->
-             let rec diff_list dele add names off count oldname oldsoa =
-               (* actual form is: curr_SOA [SOA0 .. DELE .. SOA1 .. ADD] curr_SOA'
-                  - we need to ensure: curr_SOA = curr_SOA' (below)
-                  - SOA0 < curr_SOA
-                  - SOA1 < SOA0 *)
-               soa_ok (fun old soa -> Soa.newer ~old soa) off oldname oldsoa name soa >>= fun () ->
-               rrs_and_soa buf names off count dele >>= fun (dele', soa', count', names, off) ->
-               match soa' with
-               | None -> (* this is the end *)
-                 guard (count' = 0) (`Malformed (off, "IXFR expected SOA, found end")) >>| fun () ->
-                 dele', add, names, off
-               | Some (name', soa') ->
-                 soa_ok (fun old soa -> Soa.newer ~old soa) off oldname oldsoa name' soa' >>= fun () ->
-                 rrs_and_soa buf names off count' add >>= fun (add', soa'', count'', names, off) ->
-                 match soa'' with
-                 | None -> (* this is the actual end! *)
-                   guard (count'' = 0) (`Malformed (off, "IXFR expected SOA after adds, found end")) >>| fun () ->
-                   dele', add', names, off
-                 | Some (name'', soa'') ->
-                   diff_list dele' add' names off count'' name'' soa''
-             in
-             diff_list Name_rr_map.empty Name_rr_map.empty names off (ancount - 3) name' oldsoa >>| fun (dele, add, names, off) ->
-             `Difference (oldsoa, dele, add), names, off) >>= fun (content, names, off) ->
+        let* content, names, off =
+          if ancount = 1 then
+            Ok (`Empty, names, off)
+          else if ancount = 2 then
+            Ok (`Full Name_rr_map.empty, names, off)
+          else
+            let* name', b, names, off = decode_rr names buf off in
+            match ensure_soa b with
+            | Error () ->
+              (* this is a full AXFR *)
+              let add name (Rr_map.B (k, v)) map = Name_rr_map.add name k v map in
+              let map = add name' b Name_rr_map.empty in
+              let* names, off, answer = decode_n add decode_rr names buf off map (ancount - 3) in
+              Ok (`Full answer, names, off)
+            | Ok oldsoa ->
+              let rec diff_list dele add names off count oldname oldsoa =
+                (* actual form is: curr_SOA [SOA0 .. DELE .. SOA1 .. ADD] curr_SOA'
+                   - we need to ensure: curr_SOA = curr_SOA' (below)
+                   - SOA0 < curr_SOA
+                   - SOA1 < SOA0 *)
+                let* () = soa_ok (fun old soa -> Soa.newer ~old soa) off oldname oldsoa name soa in
+                let* dele', soa', count', names, off = rrs_and_soa buf names off count dele in
+                match soa' with
+                | None -> (* this is the end *)
+                  let* () = guard (count' = 0) (`Malformed (off, "IXFR expected SOA, found end")) in
+                  Ok (dele', add, names, off)
+                | Some (name', soa') ->
+                  let* () = soa_ok (fun old soa -> Soa.newer ~old soa) off oldname oldsoa name' soa' in
+                  let* add', soa'', count'', names, off = rrs_and_soa buf names off count' add in
+                  match soa'' with
+                  | None -> (* this is the actual end! *)
+                    let* () = guard (count'' = 0) (`Malformed (off, "IXFR expected SOA after adds, found end")) in
+                    Ok (dele', add', names, off)
+                  | Some (name'', soa'') ->
+                    diff_list dele' add' names off count'' name'' soa''
+              in
+              let* dele, add, names, off = diff_list Name_rr_map.empty Name_rr_map.empty names off (ancount - 3) name' oldsoa in
+              Ok (`Difference (oldsoa, dele, add), names, off)
+        in
         if ancount > 1 then
-          decode_rr names buf off >>= fun (name', b, names, off) ->
+          let* name', b, names, off = decode_rr names buf off in
           match ensure_soa b with
           | Ok soa' ->
-            soa_ok (fun s s' -> Soa.compare s s' = 0) off name soa name' soa' >>| fun () ->
-            ((soa, content), names, off)
+            let* () = soa_ok (fun s s' -> Soa.compare s s' = 0) off name soa name' soa' in
+            Ok ((soa, content), names, off)
           | Error () ->
             Error (`Malformed (off, "IXFR last RR not a SOA"))
         else
@@ -2968,22 +2993,29 @@ module Packet = struct
       | Not_name_inuse -> Fmt.string ppf "name not inuse?"
 
     let decode_prereq names buf off =
-      let open Rresult.R.Infix in
-      decode_ntc names buf off >>= fun ((name, typ, cls), names, off) ->
+      let* (name, typ, cls), names, off = decode_ntc names buf off in
       let off' = off + 6 in
-      guard (Cstruct.length buf >= off') `Partial >>= fun () ->
+      let* () = guard (Cstruct.length buf >= off') `Partial in
       let ttl = Cstruct.BE.get_uint32 buf off in
-      guard (ttl = 0l) (`Malformed (off, Fmt.str "prereq TTL not zero %lu" ttl)) >>= fun () ->
+      let* () = guard (ttl = 0l) (`Malformed (off, Fmt.str "prereq TTL not zero %lu" ttl)) in
       let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
       let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.str "prereq rdlength must be zero %d" rlen)) in
-      Class.of_int cls >>= fun c ->
+      let* c = Class.of_int cls in
       match c, typ with
-      | ANY_CLASS, `Any -> r0 >>= fun () -> Ok (name, Name_inuse, names, off')
-      | NONE, `Any -> r0 >>= fun () -> Ok (name, Not_name_inuse, names, off')
-      | ANY_CLASS, `K k -> r0 >>= fun () -> Ok (name, Exists k, names, off')
-      | NONE, `K k -> r0 >>= fun () -> Ok (name, Not_exists k, names, off')
+      | ANY_CLASS, `Any ->
+        let* () = r0 in
+        Ok (name, Name_inuse, names, off')
+      | NONE, `Any ->
+        let* () = r0 in
+        Ok (name, Not_name_inuse, names, off')
+      | ANY_CLASS, `K k ->
+        let* () = r0 in
+        Ok (name, Exists k, names, off')
+      | NONE, `K k ->
+        let* () = r0 in
+        Ok (name, Not_exists k, names, off')
       | IN, `K k->
-        Rr_map.decode names buf off k >>= fun (rdata, names, off'') ->
+        let* rdata, names, off'' = Rr_map.decode names buf off k in
         Ok (name, Exists_data rdata, names, off'')
       | _ -> Error (`Malformed (off, Fmt.str "prereq bad class 0x%x or typ %a"
                                   cls Rr_map.pp_rr typ))
@@ -3037,30 +3069,29 @@ module Packet = struct
       | Add rr -> Fmt.pf ppf "add! %a" Rr_map.pp_b rr
 
     let decode_update names buf off =
-      let open Rresult.R.Infix in
-      decode_ntc names buf off >>= fun ((name, typ, cls), names, off) ->
+      let* (name, typ, cls), names, off = decode_ntc names buf off in
       let off' = off + 6 in
-      guard (Cstruct.length buf >= off') `Partial >>= fun () ->
+      let* () = guard (Cstruct.length buf >= off') `Partial in
       let ttl = Cstruct.BE.get_uint32 buf off in
       let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
       let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.str "update rdlength must be zero %d" rlen)) in
       let ttl0 = guard (ttl = 0l) (`Malformed (off, Fmt.str "update ttl must be zero %lu" ttl)) in
-      Class.of_int cls >>= fun c ->
+      let* c = Class.of_int cls in
       match c, typ with
       | ANY_CLASS, `Any ->
-        ttl0 >>= fun () ->
-        r0 >>= fun () ->
+        let* () = ttl0 in
+        let* () = r0 in
         Ok (name, Remove_all, names, off')
       | ANY_CLASS, `K k ->
-        ttl0 >>= fun () ->
-        r0 >>= fun () ->
+        let* () = ttl0 in
+        let* () = r0 in
         Ok (name, Remove k, names, off')
       | NONE, `K k ->
-        ttl0 >>= fun () ->
-        Rr_map.decode names buf off k >>= fun (rdata, names, off) ->
+        let* () = ttl0 in
+        let* rdata, names, off = Rr_map.decode names buf off k in
         Ok (name, Remove_single rdata, names, off)
       | IN, `K k ->
-        Rr_map.decode names buf off k >>= fun (rdata, names, off) ->
+        let* rdata, names, off = Rr_map.decode names buf off k in
         Ok (name, Add rdata, names, off)
       | _ -> Error (`Malformed (off, Fmt.str "bad update class 0x%x" cls))
 
@@ -3108,7 +3139,6 @@ module Packet = struct
         (Domain_name.Map.bindings update)
 
     let decode _header question buf names off =
-      let open Rresult.R.Infix in
       let prcount = Cstruct.BE.get_uint16 buf 6
       and upcount = Cstruct.BE.get_uint16 buf 8
       in
@@ -3116,10 +3146,16 @@ module Packet = struct
         let base = match Domain_name.Map.find name map with None -> [] | Some x -> x in
         Domain_name.Map.add name (base @ [a]) map
       in
-      guard (snd question = `K Rr_map.(K Soa))
-        (`Malformed (off, Fmt.str "update question not SOA %a" Rr_map.pp_rr (snd question))) >>= fun () ->
-      decode_n add_to_list decode_prereq names buf off Domain_name.Map.empty prcount >>= fun (names, off, prereq) ->
-      decode_n add_to_list decode_update names buf off Domain_name.Map.empty upcount >>= fun (names, off, update) ->
+      let* () =
+        guard (snd question = `K Rr_map.(K Soa))
+          (`Malformed (off, Fmt.str "update question not SOA %a" Rr_map.pp_rr (snd question)))
+      in
+      let* names, off, prereq =
+        decode_n add_to_list decode_prereq names buf off Domain_name.Map.empty prcount
+      in
+      let* names, off, update =
+        decode_n add_to_list decode_update names buf off Domain_name.Map.empty upcount
+      in
       Ok ((prereq, update), names, off)
 
     let encode_map map f names buf off =
@@ -3323,17 +3359,17 @@ module Packet = struct
     | `Update_ack_authority_count au -> Fmt.pf ppf "update ack authority count is %d" au
 
   let decode_additional names buf off allow_trunc adcount =
-    let open Rresult.R.Infix in
-    decode_n_additional names buf off Domain_name.Map.empty None None adcount >>= function
+    let* r = decode_n_additional names buf off Domain_name.Map.empty None None adcount in
+    match r with
     | `Partial (additional, edns, tsig) ->
       Log.warn (fun m -> m "truncated packet (allowed? %B)" allow_trunc) ;
-      guard allow_trunc `Partial >>= fun () ->
+      let* () = guard allow_trunc `Partial in
       Ok (additional, edns, tsig)
     | `Full (off, additional, edns, tsig) ->
       (if Cstruct.length buf > off then
          let n = Cstruct.length buf - off in
          Log.warn (fun m -> m "received %d extra bytes %a"
-                       n Cstruct.hexdump_pp (Cstruct.sub buf off n))) ;
+                      n Cstruct.hexdump_pp (Cstruct.sub buf off n))) ;
       Ok (additional, edns, tsig)
 
   let ext_rcode ?off rcode = function
@@ -3347,92 +3383,95 @@ module Packet = struct
     | _ -> Ok rcode
 
   let decode buf =
-    let open Rresult.R.Infix in
-    Header.decode buf >>= fun (header, query, operation, rcode) ->
+    let* header, query, operation, rcode = Header.decode buf in
     let q_count = Cstruct.BE.get_uint16 buf 4
     and an_count = Cstruct.BE.get_uint16 buf 6
     and au_count = Cstruct.BE.get_uint16 buf 8
     and ad_count = Cstruct.BE.get_uint16 buf 10
     in
-    guard (q_count = 1) (`Malformed (4, "question count not one")) >>= fun () ->
-    Question.decode buf >>= fun (question, names, off) ->
-    begin
+    let* () = guard (q_count = 1) (`Malformed (4, "question count not one")) in
+    let* question, names, off = Question.decode buf in
+    let* data, names, off, cont, allow_trunc =
       if query then begin
         (* guard noerror - what's the point in handling error requests *)
-        guard (rcode = Rcode.NoError) (`Request_rcode rcode) >>= fun () ->
+        let* () = guard (rcode = Rcode.NoError) (`Request_rcode rcode) in
         (* also guard for it not being truncated!? *)
-        guard (not (Flags.mem `Truncation (snd header)))
-          `Truncated_request >>= fun () ->
-        begin match operation with
+        let* () = guard (not (Flags.mem `Truncation (snd header))) `Truncated_request in
+        let* request, names, off =
+          match operation with
           | Opcode.Query ->
-            guard (an_count = 0) (`Query_answer_count an_count) >>= fun () ->
+            let* () = guard (an_count = 0) (`Query_answer_count an_count) in
             begin match snd question with
               | `Axfr ->
-                guard (au_count = 0) (`Query_authority_count au_count) >>| fun () ->
-                `Axfr_request, names, off
+                let* () = guard (au_count = 0) (`Query_authority_count au_count) in
+                Ok (`Axfr_request, names, off)
               | `Ixfr ->
-                guard (au_count = 1) (`Query_authority_count au_count) >>= fun () ->
-                Answer.decode header buf names off >>= fun ((_, au), names, off, _, _) ->
+                let* () = guard (au_count = 1) (`Query_authority_count au_count) in
+                let* (_, au), names, off, _, _ = Answer.decode header buf names off in
                 begin match Name_rr_map.find (fst question) Rr_map.Soa au with
                   | None -> Error (`Malformed (off, "ixfr request without soa"))
                   | Some soa -> Ok (`Ixfr_request soa, names, off)
                 end
               | _ ->
-                guard (au_count = 0) (`Query_authority_count au_count) >>| fun () ->
-                `Query, names, off
+                let* () = guard (au_count = 0) (`Query_authority_count au_count) in
+                Ok (`Query, names, off)
             end
           | Opcode.Notify ->
-            guard (an_count = 0 || an_count = 1) (`Notify_answer_count an_count) >>= fun () ->
-            guard (au_count = 0) (`Notify_authority_count au_count) >>= fun () ->
-            Answer.decode header buf names off >>| fun ((ans, _), names, off, _, _) ->
+            let* () = guard (an_count = 0 || an_count = 1) (`Notify_answer_count an_count) in
+            let* () = guard (au_count = 0) (`Notify_authority_count au_count) in
+            let* (ans, _), names, off, _, _ = Answer.decode header buf names off in
             let soa = Name_rr_map.find (fst question) Rr_map.Soa ans in
-            `Notify soa, names, off
+            Ok (`Notify soa, names, off)
           | Opcode.Update ->
-            Update.decode header question buf names off >>| fun (update, names, off) ->
-            `Update update, names, off
+            let* update, names, off = Update.decode header question buf names off in
+            Ok (`Update update, names, off)
           | x -> Error (`Not_implemented (2, Fmt.str "unsupported opcode %a" Opcode.pp x))
-        end >>| fun (request, names, off) ->
-        request, names, off, true, false
-      end else begin match rcode with
+        in
+        Ok (request, names, off, true, false)
+      end else
+        match rcode with
         | Rcode.NoError -> begin match operation with
             | Opcode.Query -> begin match snd question with
                 | `Axfr ->
-                  guard (au_count = 0) (`Malformed (8, Fmt.str "AXFR with aucount %d > 0" au_count)) >>= fun () ->
-                  Axfr.decode header buf names off an_count >>| fun (axfr, names, off) ->
-                  axfr, names, off, true, false
+                  let* () = guard (au_count = 0) (`Malformed (8, Fmt.str "AXFR with aucount %d > 0" au_count)) in
+                  let* axfr, names, off = Axfr.decode header buf names off an_count in
+                  Ok (axfr, names, off, true, false)
                 | `Ixfr ->
-                  guard (au_count = 0) (`Malformed (8, Fmt.str "IXFR with aucount %d > 0" au_count)) >>= fun () ->
-                  Ixfr.decode header buf names off an_count >>| fun (ixfr, names, off) ->
-                  `Ixfr_reply ixfr, names, off, true, false
+                  let* () = guard (au_count = 0) (`Malformed (8, Fmt.str "IXFR with aucount %d > 0" au_count)) in
+                  let* ixfr, names, off = Ixfr.decode header buf names off an_count in
+                  Ok (`Ixfr_reply ixfr, names, off, true, false)
                 | _ ->
-                  Answer.decode header buf names off >>| fun (answer, names, off, cont, allow_trunc) ->
-                  `Answer answer, names, off, cont, allow_trunc
+                  let* answer, names, off, cont, allow_trunc = Answer.decode header buf names off in
+                  Ok (`Answer answer, names, off, cont, allow_trunc)
               end
             | Opcode.Notify ->
-              guard (an_count = 0) (`Notify_ack_answer_count an_count) >>= fun () ->
-              guard (au_count = 0) (`Notify_ack_authority_count au_count) >>| fun () ->
-              `Notify_ack, names, off, true, false
+              let* () = guard (an_count = 0) (`Notify_ack_answer_count an_count) in
+              let* () = guard (au_count = 0) (`Notify_ack_authority_count au_count) in
+              Ok (`Notify_ack, names, off, true, false)
             | Opcode.Update ->
-              guard (an_count = 0) (`Update_ack_answer_count an_count) >>= fun () ->
-              guard (au_count = 0) (`Update_ack_authority_count au_count) >>| fun () ->
-              `Update_ack, names, off, true, false
+              let* () = guard (an_count = 0) (`Update_ack_answer_count an_count) in
+              let* () = guard (au_count = 0) (`Update_ack_authority_count au_count) in
+              Ok (`Update_ack, names, off, true, false)
             | x -> Error (`Not_implemented (2, Fmt.str "unsupported opcode %a"
                                               Opcode.pp x))
           end
         | x ->
-          Answer.decode header buf names off >>| fun (query, names, off, cont, allow_trunc) ->
+          let* query, names, off, cont, allow_trunc = Answer.decode header buf names off in
           let query = if Answer.is_empty query then None else Some query in
-          `Rcode_error (x, operation, query), names, off, cont, allow_trunc
-      end >>| fun (reply, names, off, cont, allow_trunc) ->
-        reply, names, off, cont, allow_trunc
-    end >>= fun (data, names, off, cont, allow_trunc) ->
-    (if cont then
-       decode_additional names buf off allow_trunc ad_count
-     else
-       Ok (Name_rr_map.empty, None, None)) >>= fun (additional, edns, tsig) ->
+          Ok (`Rcode_error (x, operation, query), names, off, cont, allow_trunc)
+    in
+    let* additional, edns, tsig =
+      if cont then
+        decode_additional names buf off allow_trunc ad_count
+      else
+        Ok (Name_rr_map.empty, None, None)
+    in
     (* now in case of error, we may switch the rcode *)
-    ext_rcode ~off:off rcode edns >>= with_rcode data >>| fun data ->
-    { header ; question ; data ; additional ; edns ; tsig }
+    let* data =
+      let* d = ext_rcode ~off:off rcode edns in
+      with_rcode data d
+    in
+    Ok { header ; question ; data ; additional ; edns ; tsig }
 
   let opcode_match request reply =
     let opa = opcode_data request

@@ -105,8 +105,6 @@ module Transport (*: Dns_client.S
   let bind a b = b a
   let lift v = v
 
-  open Rresult
-
   let close _ = ()
 
   let connect _ = Ok default_debug_info

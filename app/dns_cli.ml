@@ -61,7 +61,6 @@ let ip_c : Ipaddr.t Arg.converter =
 
 let namekey_c =
   let parse s =
-    let open Rresult.R.Infix in
     match Dns.Dnskey.name_key_of_string s with
     | Error (`Msg m) -> `Error ("failed to parse key: " ^ m)
     | Ok (name, key) ->
@@ -73,7 +72,9 @@ let namekey_c =
         | Some x -> succ x
       in
       match
-        Domain_name.drop_label ~amount name >>= Domain_name.host
+        Result.bind
+          (Domain_name.drop_label ~amount name)
+          Domain_name.host
       with
       | Error (`Msg m) -> `Error ("failed to parse zone (idx " ^ string_of_int amount ^ "): " ^ m)
       | Ok zone -> `Ok (name, zone, key)

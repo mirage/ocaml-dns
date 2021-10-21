@@ -1,21 +1,23 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
-open Rresult.R.Infix
+let (let*) = Result.bind
 
 let find_or_generate_key key_filename keytype keydata seed bits =
-  Bos.OS.File.exists key_filename >>= function
-  | true ->
-    Bos.OS.File.read key_filename >>= fun data ->
+  let* f_exists = Bos.OS.File.exists key_filename in
+  if f_exists then
+    let* data = Bos.OS.File.read key_filename in
     X509.Private_key.decode_pem (Cstruct.of_string data)
-  | false ->
-    (match keydata with
-     | None ->
-       let seed = match seed with None -> None | Some x -> Some (Cstruct.of_string x) in
-       Ok (X509.Private_key.generate ?seed ~bits keytype)
-     | Some s ->
-       Base64.decode s >>= fun s ->
-       X509.Private_key.of_cstruct (Cstruct.of_string s) keytype) >>= fun key ->
+  else
+    let* key =
+      match keydata with
+      | None ->
+        let seed = match seed with None -> None | Some x -> Some (Cstruct.of_string x) in
+        Ok (X509.Private_key.generate ?seed ~bits keytype)
+      | Some s ->
+        let* s = Base64.decode s in
+        X509.Private_key.of_cstruct (Cstruct.of_string s) keytype
+    in
     let pem = X509.Private_key.encode_pem key in
-    Bos.OS.File.write ~mode:0o600 key_filename (Cstruct.to_string pem) >>= fun () ->
+    let* () = Bos.OS.File.write ~mode:0o600 key_filename (Cstruct.to_string pem) in
     Ok key
 
 let query_certificate sock fqdn csr =
@@ -46,16 +48,18 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype ke
   and key_filename = fn "key" key
   and cert_filename = fn "pem" cert
   in
-  (Bos.OS.File.exists csr_filename >>= function
-    | true ->
-      Bos.OS.File.read csr_filename >>= fun data ->
+  let* csr =
+    let* f_exists = Bos.OS.File.exists csr_filename in
+    if f_exists then
+      let* data = Bos.OS.File.read csr_filename in
       X509.Signing_request.decode_pem (Cstruct.of_string data)
-    | false ->
-      find_or_generate_key key_filename keytype keydata seed bits >>= fun key ->
-      Dns_certify.signing_request hostname ~more_hostnames key >>= fun csr ->
+    else
+      let* key = find_or_generate_key key_filename keytype keydata seed bits in
+      let* csr = Dns_certify.signing_request hostname ~more_hostnames key in
       let pem = X509.Signing_request.encode_pem csr in
-      Bos.OS.File.write csr_filename (Cstruct.to_string pem) >>= fun () ->
-      Ok csr) >>= fun csr ->
+      let* () = Bos.OS.File.write csr_filename (Cstruct.to_string pem) in
+      Ok csr
+  in
   (* before doing anything, let's check whether cert_filename is present,
      the public key matches, and the certificate is still valid *)
   let now = Ptime_clock.now () in
@@ -63,70 +67,79 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype ke
     let (d, ps) = Ptime.Span.to_d_ps (Ptime.to_span now) in
     Ptime.v (succ d, ps)
   in
-  (Bos.OS.File.exists cert_filename >>= function
-    | true ->
-      Bos.OS.File.read cert_filename >>= fun data ->
-      X509.Certificate.decode_pem_multiple (Cstruct.of_string data) >>= fun certs ->
-      begin
-        match List.filter (fun c -> X509.Certificate.supports_hostname c hostname) certs with
-        | [] -> Ok None
-        | [ cert ] -> Ok (Some cert)
-        | _ -> Error (`Msg "multiple certificates that match the hostname")
-      end
-    | false -> Ok None) >>= (function
-      | Some cert ->
-        if not force && Dns_certify.cert_matches_csr ~until:tomorrow now csr cert then
-          Error (`Msg "valid certificate with matching key already present")
-        else
-          Ok ()
-      | None -> Ok ()) >>= fun () ->
+  let* cert =
+    let* f_exists = Bos.OS.File.exists cert_filename in
+    if f_exists then
+      let* data = Bos.OS.File.read cert_filename in
+      let* certs = X509.Certificate.decode_pem_multiple (Cstruct.of_string data) in
+      match List.filter (fun c -> X509.Certificate.supports_hostname c hostname) certs with
+      | [] -> Ok None
+      | [ cert ] -> Ok (Some cert)
+      | _ -> Error (`Msg "multiple certificates that match the hostname")
+    else
+      Ok None
+  in
+  let* () =
+    match cert with
+    | Some cert ->
+      if not force && Dns_certify.cert_matches_csr ~until:tomorrow now csr cert then
+        Error (`Msg "valid certificate with matching key already present")
+      else
+        Ok ()
+    | None -> Ok ()
+  in
   (* strategy: unless force is provided, we can request DNS, and if a
      certificate is present, compare its public key with csr public key *)
   let write_certificate certs =
     let data = X509.Certificate.encode_pem_multiple certs in
-    Bos.OS.File.delete cert_filename >>= fun () ->
+    let* () = Bos.OS.File.delete cert_filename in
     Bos.OS.File.write cert_filename (Cstruct.to_string data)
   in
   let sock = Dns_cli.connect_tcp server_ip port in
-  (if force then
-     Ok true
-   else match query_certificate sock hostname csr with
-     | Ok (server, chain) ->
-       Logs.app (fun m -> m "found cached certificate in DNS");
-       write_certificate (server :: chain) >>| fun () ->
-       false
-     | Error `No_tlsa ->
-       Logs.debug (fun m -> m "no TLSA found, sending update");
-       Ok true
-     | Error (`Msg m) -> Error (`Msg m)
-     | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
-       Error (`Msg (Fmt.str "error %a while parsing TLSA reply"
-                      Dns_certify.pp_q_err e)))
-  >>= (function
-  | false -> Ok ()
-  | true ->
-    match dns_key_opt with
-    | None -> Error (`Msg "no dnskey provided, but required for uploading CSR")
-    | Some (keyname, zone, dnskey) ->
-      nsupdate_csr sock hostname keyname zone dnskey csr >>= fun () ->
-      let rec request retries =
-        match query_certificate sock hostname csr with
-        | Error (`Msg msg) -> Error (`Msg msg)
-        | Error #Dns_certify.q_err when retries = 0 ->
-          Error (`Msg "failed to retrieve certificate (tried 10 times)")
-        | Error `No_tlsa ->
-          Logs.warn (fun m -> m "still no tlsa, sleeping two more seconds");
-          Unix.sleep 2;
-          request (pred retries)
-        | Error (#Dns_certify.q_err as e) ->
-          Logs.err (fun m -> m "error %a while handling TLSA reply (retrying)"
-                       Dns_certify.pp_q_err e);
-          request (pred retries)
-        | Ok (server, chain) -> write_certificate (server :: chain)
-      in
-      request 10) >>| fun () ->
-  Logs.app (fun m -> m "success! your certificate is stored in %a (private key %a, csr %a)"
-               Fpath.pp cert_filename Fpath.pp key_filename Fpath.pp csr_filename)
+  let* should_update =
+    if force then
+      Ok true
+    else match query_certificate sock hostname csr with
+      | Ok (server, chain) ->
+        Logs.app (fun m -> m "found cached certificate in DNS");
+        let* () = write_certificate (server :: chain) in
+        Ok false
+      | Error `No_tlsa ->
+        Logs.debug (fun m -> m "no TLSA found, sending update");
+        Ok true
+      | Error (`Msg m) -> Error (`Msg m)
+      | Error ((`Decode _ | `Bad_reply _ | `Unexpected_reply _) as e) ->
+        Error (`Msg (Fmt.str "error %a while parsing TLSA reply"
+                       Dns_certify.pp_q_err e))
+  in
+  if not should_update then
+    Ok ()
+  else
+    let* () =
+      match dns_key_opt with
+      | None -> Error (`Msg "no dnskey provided, but required for uploading CSR")
+      | Some (keyname, zone, dnskey) ->
+        let* () = nsupdate_csr sock hostname keyname zone dnskey csr in
+        let rec request retries =
+          match query_certificate sock hostname csr with
+          | Error (`Msg msg) -> Error (`Msg msg)
+          | Error #Dns_certify.q_err when retries = 0 ->
+            Error (`Msg "failed to retrieve certificate (tried 10 times)")
+          | Error `No_tlsa ->
+            Logs.warn (fun m -> m "still no tlsa, sleeping two more seconds");
+            Unix.sleep 2;
+            request (pred retries)
+          | Error (#Dns_certify.q_err as e) ->
+            Logs.err (fun m -> m "error %a while handling TLSA reply (retrying)"
+                         Dns_certify.pp_q_err e);
+            request (pred retries)
+          | Ok (server, chain) -> write_certificate (server :: chain)
+        in
+        request 10
+    in
+    Logs.app (fun m -> m "success! your certificate is stored in %a (private key %a, csr %a)"
+                 Fpath.pp cert_filename Fpath.pp key_filename Fpath.pp csr_filename);
+    Ok ()
 
 open Cmdliner
 

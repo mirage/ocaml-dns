@@ -116,13 +116,15 @@ module Transport : Dns_client.S
           | Ok a -> a
           | Error `Msg m -> invalid_arg ("failed to load trust anchors: " ^ m)
         in
-        let open Rresult.R.Infix in
         match
-          read_file "/etc/resolv.conf" >>= fun data ->
-          Dns_resolvconf.parse data >>|
-          List.concat_map (fun (`Nameserver ip) ->
-              let tls = Tls.Config.client ~authenticator ~ip () in
-              [ `Tls (tls, ip, 853) ; `Plaintext (ip, 53) ])
+          let (let*) = Result.bind in
+          let* data = read_file "/etc/resolv.conf" in
+          let* ns = Dns_resolvconf.parse data in
+          Ok (List.concat_map
+                (fun (`Nameserver ip) ->
+                   let tls = Tls.Config.client ~authenticator ~ip () in
+                   [ `Tls (tls, ip, 853) ; `Plaintext (ip, 53) ])
+                ns)
         with
         | Error _  | Ok [] ->
           let peer_name = Dns_client.default_resolver_hostname in
@@ -272,9 +274,9 @@ module Transport : Dns_client.S
       waiter >>= function
       | Error `Msg msg ->
         Lwt.return
-          (Rresult.R.error_msgf "error %s connecting to resolver %a"
-            msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
-            (to_pairs t.nameservers))
+          (Error (`Msg (Fmt.str "error %s connecting to resolver %a"
+                          msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
+                          (to_pairs t.nameservers))))
       | Ok (addr, socket) ->
         let config = find_ns t.nameservers addr in
         (match config with
