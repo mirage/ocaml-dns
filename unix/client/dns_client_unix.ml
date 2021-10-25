@@ -36,26 +36,25 @@ module Transport : Dns_client.S
 
   let create ?nameservers ~timeout () =
     let protocol, nameservers =
-      Rresult.R.(get_ok (of_option ~none:(fun () ->
-          let ips =
-            match
-              read_file "/etc/resolv.conf" >>= fun data ->
-              Dns_resolvconf.parse data >>| fun nameservers ->
-              List.map (function `Nameserver ip -> (ip, 53)) nameservers
-            with
-            | Error _ | Ok [] -> List.map (fun ip -> ip, 53) Dns_client.default_resolvers
-            | Ok ips -> ips
-          in
-          Ok (`Tcp, ips))
-          nameservers))
+      match nameservers with
+      | Some ns -> ns
+      | None ->
+        let ips =
+          match
+            Result.bind
+              (read_file "/etc/resolv.conf")
+              (fun data -> Dns_resolvconf.parse data)
+          with
+          | Error _ | Ok [] -> List.map (fun ip -> ip, 53) Dns_client.default_resolvers
+          | Ok ips -> List.map (function `Nameserver ip -> (ip, 53)) ips
+        in
+        `Tcp, ips
     in
     { protocol ; nameservers ; timeout_ns = timeout }
 
   let nameservers { protocol ; nameservers ; _ } = protocol, nameservers
   let clock = Mtime_clock.elapsed_ns
   let rng = Mirage_crypto_rng.generate ?g:None
-
-  open Rresult
 
   let bind a b = b a
   let lift v = v
@@ -79,21 +78,22 @@ module Transport : Dns_client.S
     | _, [] -> Error (`Msg "empty nameserver list")
     | proto, (server, port) :: _ ->
       try
-        begin match proto with
-          | `Udp -> Ok Unix.((getprotobyname "udp").p_proto, SOCK_DGRAM)
-          | `Tcp -> Ok Unix.((getprotobyname "tcp").p_proto, SOCK_STREAM)
-        end >>= fun (proto_number, sock_typ) ->
-        let fam = match server with Ipaddr.V4 _ -> Unix.PF_INET | Ipaddr.V6 _ -> Unix.PF_INET6 in
-        let socket = Unix.socket fam sock_typ proto_number in
-        let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
-        let ctx = { t ; fd = socket ; timeout_ns = t.timeout_ns } in
-        try
-          with_timeout ctx (fun fd ->
-            Unix.connect fd addr;
-            Ok ctx)
-        with e ->
-          close ctx;
-          Error (`Msg (Printexc.to_string e))
+        Result.bind
+          (match proto with
+           | `Udp -> Ok Unix.((getprotobyname "udp").p_proto, SOCK_DGRAM)
+           | `Tcp -> Ok Unix.((getprotobyname "tcp").p_proto, SOCK_STREAM))
+          (fun (proto_number, sock_typ) ->
+             let fam = match server with Ipaddr.V4 _ -> Unix.PF_INET | Ipaddr.V6 _ -> Unix.PF_INET6 in
+             let socket = Unix.socket fam sock_typ proto_number in
+             let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr server, port) in
+             let ctx = { t ; fd = socket ; timeout_ns = t.timeout_ns } in
+             try
+               with_timeout ctx (fun fd ->
+                   Unix.connect fd addr;
+                   Ok ctx)
+             with e ->
+               close ctx;
+               Error (`Msg (Printexc.to_string e)))
       with e ->
         Error (`Msg (Printexc.to_string e))
 

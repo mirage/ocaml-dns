@@ -1,7 +1,5 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Rresult
-open R.Infix
 open Dns
 
 let src = Logs.Src.create "dns_server" ~doc:"DNS server"
@@ -21,6 +19,8 @@ module IPM = struct
     in
     add k (v :: tl) m
 end
+
+let (let*) = Result.bind
 
 let guard p err = if p then Ok () else Error err
 
@@ -297,17 +297,21 @@ let lookup trie (name, typ) =
   | Error `NotAuthoritative -> Error (Rcode.NotAuth, None)
 
 let authorise_zone_transfer allow_unauthenticated proto key zone =
-  guardf (proto = `Tcp) (fun () ->
-      Log.err (fun m -> m "refusing zone transfer of %a via UDP"
-                  Domain_name.pp zone);
-      Rcode.Refused) >>= fun () ->
+  let* () =
+    guardf (proto = `Tcp) (fun () ->
+        Log.err (fun m -> m "refusing zone transfer of %a via UDP"
+                    Domain_name.pp zone);
+        Rcode.Refused)
+  in
   guardf (allow_unauthenticated || Authentication.access `Transfer ?key ~zone) (fun () ->
       Log.err (fun m -> m "refusing unauthorised zone transfer of %a"
                   Domain_name.pp zone);
       Rcode.NotAuth)
 
 let handle_axfr_request t proto key ((zone, _) as question) =
-  authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone >>= fun () ->
+  let* () =
+    authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone
+  in
   match Dns_trie.entries zone t.data with
   | Ok (soa, entries) ->
     Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
@@ -329,7 +333,9 @@ let find_trie m name serial =
   | Some m' -> IM.find_opt serial m'
 
 let handle_ixfr_request t m proto key ((zone, _) as question) soa =
-  authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone >>= fun () ->
+  let* () =
+    authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone
+  in
   Log.info (fun m -> m "transfer key %a authorised for IXFR %a"
                Fmt.(option ~none:(any "none") Domain_name.pp) key
                Packet.Question.pp question);
@@ -673,28 +679,34 @@ let in_zone zone name = Domain_name.is_subdomain ~subdomain:name ~domain:zone
 
 let update_data trie zone (prereq, update) =
   let in_zone = in_zone zone in
-  Domain_name.Map.fold (fun name prereqs acc ->
-      acc >>= fun () ->
-      guard (in_zone name) Rcode.NotZone >>= fun () ->
-      List.fold_left (fun acc prereq ->
-          acc >>= fun () ->
-          handle_rr_prereq name trie prereq)
-        (Ok ()) prereqs)
-    prereq (Ok ()) >>= fun () ->
-  Domain_name.Map.fold (fun name updates acc ->
-      acc >>= fun trie ->
-      guard (in_zone name) Rcode.NotZone >>| fun () ->
-      List.fold_left (handle_rr_update name) trie updates)
-    update (Ok trie) >>= fun trie' ->
-  (match Dns_trie.check trie' with
-   | Ok () -> Ok ()
-   | Error e ->
-     Log.err (fun m -> m "check after update returned %a"
-                 Dns_trie.pp_zone_check e);
-     Error Rcode.YXRRSet) >>| fun () ->
+  let* () =
+    Domain_name.Map.fold (fun name prereqs acc ->
+        let* () = acc in
+        let* () = guard (in_zone name) Rcode.NotZone in
+        List.fold_left (fun acc prereq ->
+            let* () = acc in
+            handle_rr_prereq name trie prereq)
+          (Ok ()) prereqs)
+      prereq (Ok ())
+  in
+  let* trie' =
+    Domain_name.Map.fold (fun name updates acc ->
+        let* trie = acc in
+        let* () = guard (in_zone name) Rcode.NotZone in
+        Ok (List.fold_left (handle_rr_update name) trie updates))
+      update (Ok trie)
+  in
+  let* () =
+    Result.map_error
+      (fun e ->
+         Log.err (fun m -> m "check after update returned %a"
+                     Dns_trie.pp_zone_check e);
+         Rcode.YXRRSet)
+      (Dns_trie.check trie')
+  in
   if Dns_trie.equal trie trie' then
     (* should this error out? - RFC 2136 3.4.2.7 says NoError at the end *)
-    trie, []
+    Ok (trie, [])
   else
     let zones =
       (* figure out the zones where changes happened *)
@@ -713,27 +725,28 @@ let update_data trie zone (prereq, update) =
     in
     (* now, for each modified zone, ensure the serial in the SOA increased, and
        output the zone name and its zone. *)
-    Domain_name.Set.fold (fun zone (trie', zones) ->
-        match Dns_trie.lookup zone Soa trie, Dns_trie.lookup zone Soa trie' with
-        | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa ->
-          (* serial is already increased in trie', nothing to do *)
-          trie', (zone, soa) :: zones
-        | _, Ok soa ->
-          (* serial was not increased, thus increase it now *)
-          let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
-          let trie'' = Dns_trie.insert zone Soa soa trie' in
-          trie'', (zone, soa) :: zones
-        | Ok oldsoa, Error _ ->
-          (* zone was removed, output a fake soa with an increased serial to
-             inform secondaries of this removal *)
-          let serial = Int32.succ oldsoa.Soa.serial in
-          trie', (zone, { oldsoa with Soa.serial }) :: zones
-        | Error o, Error n ->
-          (* the zone neither exists in the old trie nor in the new trie' *)
-          Log.warn (fun m -> m "shouldn't happen: %a no soa in old %a and new %a"
-                       Domain_name.pp zone Dns_trie.pp_e o Dns_trie.pp_e n);
-          trie', zones)
-      zones (trie', [])
+    Ok (Domain_name.Set.fold
+          (fun zone (trie', zones) ->
+             match Dns_trie.lookup zone Soa trie, Dns_trie.lookup zone Soa trie' with
+             | Ok oldsoa, Ok soa when Soa.newer ~old:oldsoa soa ->
+               (* serial is already increased in trie', nothing to do *)
+               trie', (zone, soa) :: zones
+             | _, Ok soa ->
+               (* serial was not increased, thus increase it now *)
+               let soa = { soa with Soa.serial = Int32.succ soa.Soa.serial } in
+               let trie'' = Dns_trie.insert zone Soa soa trie' in
+               trie'', (zone, soa) :: zones
+             | Ok oldsoa, Error _ ->
+               (* zone was removed, output a fake soa with an increased serial to
+                  inform secondaries of this removal *)
+               let serial = Int32.succ oldsoa.Soa.serial in
+               trie', (zone, { oldsoa with Soa.serial }) :: zones
+             | Error o, Error n ->
+               (* the zone neither exists in the old trie nor in the new trie' *)
+               Log.warn (fun m -> m "shouldn't happen: %a no soa in old %a and new %a"
+                            Domain_name.pp zone Dns_trie.pp_e o Dns_trie.pp_e n);
+               trie', zones)
+          zones (trie', []))
 
 let handle_update t _proto key (zone, _) u =
   if Authentication.access `Update ?key ~zone then begin
@@ -763,7 +776,7 @@ let handle_tsig ?mac t now p buf =
         | _ -> None
     in
     let signed = Cstruct.sub buf 0 off in
-    t.tsig_verify ?mac now p name ?key tsig signed >>= fun (tsig, mac, key) ->
+    let* tsig, mac, key = t.tsig_verify ?mac now p name ?key tsig signed in
     Ok (Some (name, tsig, mac, key))
 
 module Primary = struct
@@ -1041,10 +1054,10 @@ module Primary = struct
 
   let handle_buf t now ts proto ip port buf =
     match
-      safe_decode buf >>| fun res ->
+      let* res = safe_decode buf in
       Log.debug (fun m -> m "from %a received:@[%a@]" Ipaddr.pp ip
                    Packet.pp res);
-      res
+      Ok res
     with
     | Error rcode ->
       let answer = Packet.raw_error buf rcode in
@@ -1432,13 +1445,17 @@ module Secondary = struct
       Error Rcode.Refused
     | Some (st, ip, name) ->
       (* TODO use NotAuth instead of Refused here? *)
-      guard (match id st with None -> true | Some id' -> fst header = id')
-        Rcode.Refused >>= fun () ->
-      guard (Authentication.access `Transfer ?key:keyname ~zone)
-        Rcode.Refused >>| fun () ->
+      let* () =
+        guard (match id st with None -> true | Some id' -> fst header = id')
+          Rcode.Refused
+      in
+      let* () =
+        guard (Authentication.access `Transfer ?key:keyname ~zone)
+          Rcode.Refused
+      in
       Log.debug (fun m -> m "authorized access to zone %a (with key %a)"
                     Domain_name.pp zone Domain_name.pp name);
-      (st, ip, name)
+      Ok (st, ip, name)
 
   let rrs_in_zone zone rr_map =
     Domain_name.Map.filter
@@ -1446,26 +1463,28 @@ module Secondary = struct
       rr_map
 
   let handle_axfr t zones ts keyname header zone (fresh_soa, fresh_zone) =
-    authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
+    let* st, ip, name = authorise_zone zones keyname header zone in
     match st with
     | Requested_axfr (_, _, _) ->
       Log.info (fun m -> m "received authorised AXFR for %a: %a"
                    Domain_name.pp zone Packet.Axfr.pp (fresh_soa, fresh_zone));
       (* SOA should be higher than ours! *)
-      (match Dns_trie.lookup zone Soa t.data with
-       | Error _ ->
-         Log.info (fun m -> m "no soa for %a, maybe first axfr"
-                      Domain_name.pp zone);
-         Ok ()
-       | Ok soa ->
-         if Soa.newer ~old:soa fresh_soa then
-           Ok ()
-         else begin
-           Log.warn (fun m -> m "AXFR for %a (%a) is not newer than ours (%a)"
-                        Domain_name.pp zone Soa.pp fresh_soa Soa.pp soa);
-           (* TODO what is the right error here? *)
-           Error Rcode.ServFail
-         end) >>= fun () ->
+      let* () =
+        match Dns_trie.lookup zone Soa t.data with
+        | Error _ ->
+          Log.info (fun m -> m "no soa for %a, maybe first axfr"
+                       Domain_name.pp zone);
+          Ok ()
+        | Ok soa ->
+          if Soa.newer ~old:soa fresh_soa then
+            Ok ()
+          else begin
+            Log.warn (fun m -> m "AXFR for %a (%a) is not newer than ours (%a)"
+                         Domain_name.pp zone Soa.pp fresh_soa Soa.pp soa);
+            (* TODO what is the right error here? *)
+            Error Rcode.ServFail
+          end
+      in
       (* filter map to ensure that all entries are in the zone! *)
       let fresh_zone = rrs_in_zone zone fresh_zone in
       let trie' =
@@ -1492,7 +1511,7 @@ module Secondary = struct
       Error Rcode.Refused
 
   let handle_partial_axfr t zones ts keyname header zone y data =
-    authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
+    let* st, ip, name = authorise_zone zones keyname header zone in
     match y, st with
     | `First soa, Requested_axfr (_, id, mac) ->
       let st = Processing_axfr (ts, id, mac, soa, data) in
@@ -1501,7 +1520,7 @@ module Secondary = struct
       let st = Processing_axfr (ts, id, mac, soa, Name_rr_map.union acc data) in
       Ok (t, Domain_name.Host_map.add zone (st, ip, name) zones)
     | (`First soa' | `Last soa'), Processing_axfr (_, id, mac, soa, acc) ->
-      guard (Soa.compare soa soa' = 0) Rcode.Refused >>= fun () ->
+      let* () = guard (Soa.compare soa soa' = 0) Rcode.Refused in
       let data = Name_rr_map.union acc data in
       let st = Requested_axfr (ts, id, mac) in
       let zones = Domain_name.Host_map.add zone (st, ip, name) zones in
@@ -1511,7 +1530,7 @@ module Secondary = struct
       Ok (t, zones)
 
   let handle_ixfr t zones ts keyname header zone (fresh_soa, data) =
-    authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
+    let* st, ip, name = authorise_zone zones keyname header zone in
     match st with
     | Requested_ixfr (_, _, soa, _) ->
       if Soa.newer ~old:soa fresh_soa then
@@ -1550,7 +1569,7 @@ module Secondary = struct
       Error Rcode.Refused
 
   let handle_answer t zones now ts keyname header zone typ (answer, _) =
-    authorise_zone zones keyname header zone >>= fun (st, ip, name) ->
+    let* st, ip, name = authorise_zone zones keyname header zone in
     match st with
     | Requested_soa (_, _, retry, _) ->
       Log.debug (fun m -> m "received SOA after %d retries" retry);
@@ -1794,10 +1813,10 @@ module Secondary = struct
 
   let handle_buf t now ts proto ip buf =
     match
-      safe_decode buf >>| fun res ->
+      let* res = safe_decode buf in
       Log.debug (fun m -> m "received a packet from %a: %a" Ipaddr.pp ip
                     Packet.pp res);
-      res
+      Ok res
     with
     | Error rcode ->
       tx_metrics (`Rcode_error (rcode, Query, None));

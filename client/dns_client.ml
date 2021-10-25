@@ -40,7 +40,6 @@ module Pure = struct
      -> which is struggling for the cache (not entirely sure about this tbh)
      -> it is not clear whether it meets the DNS specifications nicely *)
   let rec follow_cname name ~iterations:iterations_left ~answer ~state =
-    let open Rresult in
     if iterations_left <= 0
     then Error (`Msg "CNAME recursion too deep")
     else
@@ -79,34 +78,36 @@ module Pure = struct
       authority None
 
   let consume_rest_of_buffer state buf =
-    let open Rresult in
+    let (let*) = Result.bind in
     let to_msg t = function
       | Ok a -> Ok a
       | Error e ->
-        R.error_msgf
-          "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a%a \
-           opt:%a tsig:%B@,failed: %a@,@]"
-          Packet.pp_header t
-          (fst t.header) (fst state.query.header)
-          (Packet.Question.compare t.question state.query.question = 0)
-          Packet.Question.pp t.question
-          Packet.pp_data t.data
-          (Fmt.option Dns.Edns.pp) t.edns
-          (match t.tsig with None -> false | Some _ -> true)
-          Packet.pp_mismatch e
+        Error (`Msg
+                 (Fmt.str
+                    "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a%a \
+                     opt:%a tsig:%B@,failed: %a@,@]"
+                    Packet.pp_header t
+                    (fst t.header) (fst state.query.header)
+                    (Packet.Question.compare t.question state.query.question = 0)
+                    Packet.Question.pp t.question
+                    Packet.pp_data t.data
+                    (Fmt.option Dns.Edns.pp) t.edns
+                    (match t.tsig with None -> false | Some _ -> true)
+                    Packet.pp_mismatch e))
     in
     match Packet.decode buf with
     | Error `Partial -> Ok `Partial
     | Error err ->
-      Rresult.R.error_msgf "Error parsing response: %a" Packet.pp_err err
+      Error (`Msg (Fmt.str "Error parsing response: %a" Packet.pp_err err))
     | Ok t ->
       Logs.debug (fun m -> m "received %a" Dns.Packet.pp t);
-      to_msg t (Packet.reply_matches_request ~request:state.query t)
-      >>= function
+      let* a = to_msg t (Packet.reply_matches_request ~request:state.query t) in
+      match a with
       | `Answer (answer, authority) when not (Domain_name.Map.is_empty answer) ->
         begin
           let q = fst state.query.question in
-          follow_cname q ~iterations:20 ~answer ~state >>= function
+          let* o = follow_cname q ~iterations:20 ~answer ~state in
+          match o with
           | `Data x -> Ok (`Data x)
           | `Need_soa _name ->
             (* should we retain CNAMEs (and send them to the client)? *)
@@ -286,7 +287,7 @@ struct
      | Ok a -> Ok a
      | Error `Msg msg -> Error (`Msg msg)
      | Error (#Dns_cache.entry as e) ->
-       Rresult.R.error_msgf "DNS cache error @[%a@]" (Dns_cache.pp_entry query_type) e)
+       Error (`Msg (Fmt.str "DNS cache error @[%a@]" (Dns_cache.pp_entry query_type) e)))
     |> Transport.lift
 
   let getaddrinfo (type requested) t (query_type:requested Dns.Rr_map.key) name

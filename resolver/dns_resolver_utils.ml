@@ -3,15 +3,14 @@
 open Dns
 open Dns_resolver_cache
 
-open Rresult.R.Infix
-
 type e = E : 'a Rr_map.key * 'a Dns_cache.entry -> e
 
 let invalid_soa name =
   let p pre =
-    match Domain_name.(prepend_label name "invalid" >>= fun n -> prepend_label n pre) with
-    | Ok name -> name
-    | Error _ -> name
+    Result.value ~default:name
+      (Result.bind
+         (Domain_name.prepend_label name "invalid")
+         (fun n -> Domain_name.prepend_label n pre))
   in
   {
     Soa.nameserver = p "ns" ; hostmaster = p "hostmaster" ;

@@ -4,22 +4,31 @@
    by an authoritative NS - i.e. there must be a SOA record, TTL are good)
    if a NS/MX name is within the zone, it needs an address record *)
 open Dns
-open Rresult.R.Infix
+
+let (let*) = Result.bind
 
 let load_zone zone =
-  Bos.OS.File.read Fpath.(v zone) >>= fun data ->
-  Dns_zone.parse data >>= fun rrs ->
+  let* data = Bos.OS.File.read Fpath.(v zone) in
+  let* rrs = Dns_zone.parse data in
   let domain = Domain_name.of_string_exn Fpath.(basename (v zone)) in
-  (if not (Domain_name.Map.for_all (fun name _ -> Domain_name.is_subdomain ~domain ~subdomain:name) rrs) then
-     Error (`Msg (Fmt.str "an entry of %a is not in its zone, won't handle this@.%a"
-                    Domain_name.pp domain Dns.Name_rr_map.pp rrs))
-   else
-     Ok ()) >>| fun () ->
-  Dns_trie.insert_map rrs Dns_trie.empty
+  let good =
+    Domain_name.Map.for_all
+      (fun name _ -> Domain_name.is_subdomain ~domain ~subdomain:name)
+      rrs
+  in
+  if not good then
+    Error (`Msg (Fmt.str "an entry of %a is not in its zone, won't handle this@.%a"
+                   Domain_name.pp domain Dns.Name_rr_map.pp rrs))
+  else
+    Ok (Dns_trie.insert_map rrs Dns_trie.empty)
 
 let jump _ zone old =
-  load_zone zone >>= fun trie ->
-  Rresult.R.error_to_msg ~pp_error:Dns_trie.pp_zone_check (Dns_trie.check trie) >>= fun () ->
+  let* trie = load_zone zone in
+  let* () =
+    Result.map_error
+      (fun e -> `Msg (Fmt.to_to_string Dns_trie.pp_zone_check e))
+      (Dns_trie.check trie)
+  in
   Logs.app (fun m -> m "successfully checked zone") ;
   let zones =
     Dns_trie.fold Soa trie
@@ -28,12 +37,12 @@ let jump _ zone old =
   in
   if Domain_name.Set.cardinal zones = 1 then
     let zone = Domain_name.Set.choose zones in
-    Dns_server.text zone trie >>= fun zone_data ->
+    let* zone_data = Dns_server.text zone trie in
     Logs.debug (fun m -> m "assembled zone data %s" zone_data) ;
     (match old with
      | None -> Ok ()
      | Some fn ->
-       load_zone fn >>= fun old ->
+       let* old = load_zone fn in
        match Dns_trie.lookup zone Soa trie, Dns_trie.lookup zone Soa old with
        | Ok fresh, Ok old when Soa.newer ~old fresh ->
          Logs.debug (fun m -> m "zone %a newer than old" Domain_name.pp zone) ;

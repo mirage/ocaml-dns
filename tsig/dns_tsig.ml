@@ -1,7 +1,5 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-open Rresult.R.Infix
-
 open Dns
 
 let src = Logs.Src.create "dns_tsig" ~doc:"DNS tsig"
@@ -20,6 +18,8 @@ let compute_tsig name tsig ~key buf =
   and data = Tsig.encode_raw raw_name tsig
   in
   Mirage_crypto.Hash.mac h ~key (Cstruct.append buf data)
+
+let (let*) = Result.bind
 
 let guard p err = if p then Ok () else Error err
 
@@ -82,26 +82,33 @@ let sign ?mac ?max_size name tsig ~key p buf =
 
 let verify_raw ?mac now name ~key tsig tbs =
   let name = Domain_name.raw name in
-  Rresult.R.reword_error (function _ -> `Bad_key (name, tsig))
-    (Base64.decode (Cstruct.to_string key.Dnskey.key)) >>= fun priv ->
+  let* priv =
+    Result.map_error
+      (fun _ -> `Bad_key (name, tsig))
+      (Base64.decode (Cstruct.to_string key.Dnskey.key))
+  in
   let ac = Cstruct.BE.get_uint16 tbs 10 in
   Cstruct.BE.set_uint16 tbs 10 (pred ac) ;
   let prep = mac_to_prep mac in
   let priv = Cstruct.of_string priv in
   let computed = compute_tsig name tsig ~key:priv (Cstruct.append prep tbs) in
   let mac = tsig.Tsig.mac in
-  guard (Cstruct.length mac = Cstruct.length computed) (`Bad_truncation (name, tsig)) >>= fun () ->
-  guard (Cstruct.equal computed mac) (`Invalid_mac (name, tsig)) >>= fun () ->
-  guard (Tsig.valid_time now tsig) (`Bad_timestamp (name, tsig, key)) >>= fun () ->
-  Rresult.R.of_option ~none:(fun () -> Error (`Bad_timestamp (name, tsig, key)))
-    (Tsig.with_signed tsig now) >>| fun tsig ->
-  tsig, mac
+  let* () = guard (Cstruct.length mac = Cstruct.length computed) (`Bad_truncation (name, tsig)) in
+  let* () = guard (Cstruct.equal computed mac) (`Invalid_mac (name, tsig)) in
+  let* () = guard (Tsig.valid_time now tsig) (`Bad_timestamp (name, tsig, key)) in
+  let* tsig =
+    Option.to_result ~none:(`Bad_timestamp (name, tsig, key))
+      (Tsig.with_signed tsig now)
+  in
+  Ok (tsig, mac)
 
 let verify ?mac now p name ?key tsig tbs =
   let raw_name = Domain_name.raw name in
   match
-    Rresult.R.of_option ~none:(fun () -> Error (`Bad_key (raw_name, tsig))) key >>= fun key ->
-    verify_raw ?mac now raw_name ~key tsig tbs >>= fun (tsig, mac) ->
+    let* key =
+      Option.to_result ~none:(`Bad_key (raw_name, tsig)) key
+    in
+    let* tsig, mac = verify_raw ?mac now raw_name ~key tsig tbs in
     Ok (tsig, mac, key)
   with
   | Ok x -> Ok x

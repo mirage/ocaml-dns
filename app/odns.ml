@@ -69,51 +69,47 @@ let for_all_domains nameservers ~domains typ f =
   let _, ns = Dns_client_lwt.nameservers t in
   Logs.info (fun m -> m "NS: %a" pp_nameserver (List.hd ns));
   let open Lwt in
-  match Lwt_main.run
-          (Lwt_list.iter_p
-             (fun domain ->
-                Dns_client_lwt.getaddrinfo t typ domain
-                >|= Rresult.R.reword_error
-                  (function `Msg msg as res ->
-                     Logs.err (fun m ->
-                         m "Failed to lookup %a for %a: %s\n%!"
-                           Dns.Rr_map.ppk (Dns.Rr_map.K typ)
-                           Domain_name.pp domain msg) ;
-                     res)
-                >|= f domain)
-             domains) with
+  match
+    Lwt_main.run
+      (Lwt_list.iter_p
+         (fun domain ->
+            Dns_client_lwt.getaddrinfo t typ domain >|= function
+            | Error `Msg msg ->
+              Logs.err (fun m ->
+                  m "Failed to lookup %a for %a: %s\n%!"
+                    Dns.Rr_map.ppk (Dns.Rr_map.K typ)
+                    Domain_name.pp domain msg) ;
+              ()
+            | Ok x -> f domain x)
+         domains)
+  with
   | () -> Ok () (* TODO catch failed jobs *)
 
-let pp_response typ domain = function
-  | Error _ -> ()
-  | Ok resp -> Logs.app (fun m -> m "%a" pp_zone (domain, typ, resp))
+let output_response typ domain resp =
+  Logs.app (fun m -> m "%a" pp_zone (domain, typ, resp))
 
 let do_aaaa nameserver domains () =
   for_all_domains nameserver ~domains Dns.Rr_map.Aaaa
-    (pp_response Dns.Rr_map.Aaaa)
+    (output_response Dns.Rr_map.Aaaa)
 
 let do_mx nameserver domains () =
   for_all_domains nameserver ~domains Dns.Rr_map.Mx
-    (pp_response Dns.Rr_map.Mx)
+    (output_response Dns.Rr_map.Mx)
 
 let do_tlsa nameserver domains () =
   for_all_domains nameserver ~domains Dns.Rr_map.Tlsa
-    (fun domain -> function
-       | Ok (ttl, tlsa_resp) ->
-         Dns.Rr_map.Tlsa_set.iter (fun tlsa ->
-             Logs.app (fun m -> m "%a" pp_zone_tlsa (domain,ttl,tlsa))
-           ) tlsa_resp
-       | Error _ -> () )
+    (fun domain (ttl, tlsa_resp) ->
+       Dns.Rr_map.Tlsa_set.iter (fun tlsa ->
+           Logs.app (fun m -> m "%a" pp_zone_tlsa (domain, ttl, tlsa))
+         ) tlsa_resp)
 
 
 let do_txt nameserver domains () =
   for_all_domains nameserver ~domains Dns.Rr_map.Txt
-    (fun _domain -> function
-       | Ok (ttl, txtset) ->
-         Dns.Rr_map.Txt_set.iter (fun txtrr ->
-             Logs.app (fun m -> m "%ld: @[<v>%s@]" ttl txtrr)
-           ) txtset
-       | Error _ -> () )
+    (fun _domain (ttl, txtset) ->
+       Dns.Rr_map.Txt_set.iter (fun txtrr ->
+           Logs.app (fun m -> m "%ld: @[<v>%s@]" ttl txtrr)
+         ) txtset)
 
 
 let do_any _nameserver _domains () =
@@ -127,12 +123,10 @@ let do_dkim nameserver (selector:string) domains () =
            (original_domain) "_domainkey") selector
     ) domains in
   for_all_domains nameserver ~domains Dns.Rr_map.Txt
-    (fun _domain -> function
-       | Ok (_ttl, txtset) ->
-         Dns.Rr_map.Txt_set.iter (fun txt ->
-             Logs.app (fun m -> m "%s" txt)
-           ) txtset
-       | Error _ -> () )
+    (fun _domain (_ttl, txtset) ->
+       Dns.Rr_map.Txt_set.iter (fun txt ->
+           Logs.app (fun m -> m "%s" txt)
+         ) txtset)
 
 
 open Cmdliner
@@ -163,14 +157,18 @@ let arg_port : 'a Term.t =
   let doc = "Port of nameserver" in
   Arg.(value & opt int 53 & info ~docv:"NS-PORT" ~doc ["ns-port"])
 
+let to_presult = function
+  | Ok a -> `Ok a
+  | Error s -> `Error s
+
 let hostname : [ `host ] Domain_name.t Arg.conv =
-  ( fun name ->
-      Result.map_error
-        (fun (`Msg m) -> Fmt.str "Invalid domain: %S: %s" name m)
-        (Result.bind
-           (Domain_name.of_string name)
-           Domain_name.host)
-      |> Rresult.R.to_presult) ,
+  (fun name ->
+     Result.map_error
+       (fun (`Msg m) -> Fmt.str "Invalid domain: %S: %s" name m)
+       (Result.bind
+          (Domain_name.of_string name)
+          Domain_name.host)
+      |> to_presult),
   Domain_name.pp
 
 let tls_hostname =
@@ -271,11 +269,11 @@ let nameserver =
   Term.(const ns $ no_tls $ tls_ca_file $ tls_ca_dir $ tls_cert_fp $ tls_key_fp $ tls_hostname $ arg_ns $ arg_port)
 
 let parse_domain : [ `raw ] Domain_name.t Arg.conv =
-  ( fun name ->
-      Domain_name.of_string name
-      |> Rresult.R.reword_error
-        (fun (`Msg m) -> Fmt.str "Invalid domain: %S: %s" name m)
-      |> Rresult.R.to_presult) ,
+  (fun name ->
+     Result.map_error
+       (function `Msg m -> Fmt.str "Invalid domain: %S: %s" name m)
+       (Domain_name.of_string name)
+     |> to_presult),
   Domain_name.pp
 
 let arg_domains : [ `raw ] Domain_name.t list Term.t =

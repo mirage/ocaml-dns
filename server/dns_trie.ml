@@ -48,7 +48,7 @@ let pp_e ppf = function
   | `NotFound (name, soa) -> Fmt.pf ppf "not found %a soa %a" Domain_name.pp name Soa.pp soa
 
 
-open Rresult.R.Infix
+let (let*) = Result.bind
 
 let guard p err = if p then Ok () else Error err
 
@@ -70,8 +70,8 @@ let check_zone = function
   | Some (`Soa (z, zmap)) -> Ok (z, zmap)
 
 let lookup_res zone ty m =
-  check_zone zone >>= fun (z, zmap) ->
-  guard (not (Rr_map.is_empty m)) (ent z zmap) >>= fun () ->
+  let* z, zmap = check_zone zone in
+  let* () = guard (not (Rr_map.is_empty m)) (ent z zmap) in
   match Rr_map.find ty m with
   | Some v -> Ok (Rr_map.B (ty, v), to_ns z zmap)
   | None -> match Rr_map.find Cname m with
@@ -118,7 +118,7 @@ let lookup_aux name t =
   go 0 None t
 
 let lookup_with_cname name ty t =
-  lookup_aux name t >>= fun (zone, _sub, map) ->
+  let* zone, _sub, map = lookup_aux name t in
   lookup_res zone ty map
 
 let lookup name key t =
@@ -135,7 +135,7 @@ let lookup_any name t =
   match lookup_aux name t with
   | Error e -> Error e
   | Ok (zone, _sub, m) ->
-    check_zone zone >>= fun (z, zmap) ->
+    let* z, zmap = check_zone zone in
     Ok (m, to_ns z zmap)
 
 let lookup_glue name t =
@@ -212,7 +212,7 @@ let collect_entries name sub map =
 
 let entries name t =
   let name = Domain_name.raw name in
-  lookup_aux name t >>= fun (zone, sub, map) ->
+  let* zone, sub, map = lookup_aux name t in
   match zone with
   | None -> Error `NotAuthoritative
   | Some (`Delegation (name, (ttl, ns))) ->
@@ -258,104 +258,108 @@ let check trie =
         end
       | Some _ -> `Soa name
     in
-    guard ((Rr_map.mem Cname map && Rr_map.cardinal map = 1) ||
-           not (Rr_map.mem Cname map)) (`Cname_other name) >>= fun () ->
-    Rr_map.fold (fun v r ->
-        r >>= fun () ->
-        match v with
-        | B (Dnskey, (ttl, keys)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Rr_map.Dnskey_set.is_empty keys then
-            Error (`Empty (name, Rr_map.K Dnskey))
-          else Ok ()
-        | B (Ns, (ttl, names)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Domain_name.Host_set.is_empty names then
-            Error (`Empty (name, K Ns))
-          else
-            let domain = match state' with `None -> name | `Soa zone -> zone in
-            Domain_name.Host_set.fold (fun name r ->
-                r >>= fun () ->
-                if Domain_name.is_subdomain ~subdomain:name ~domain then
-                  guard (has_address name) (`Missing_address name)
-                else
-                  Ok ()) names (Ok ())
-        | B (Cname, (ttl, _)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v)) else Ok ()
-        | B (Mx, (ttl, mxs)) ->
-          if ttl < 0l then
-            Error (`Bad_ttl (name, v))
-          else if Rr_map.Mx_set.is_empty mxs then
-            Error (`Empty (name, K Mx))
-          else
-            let domain = match state' with `None -> name | `Soa zone -> zone in
-            Rr_map.Mx_set.fold (fun { mail_exchange ; _ } r ->
-                r >>= fun () ->
-                if Domain_name.is_subdomain ~subdomain:mail_exchange ~domain then
-                  guard (has_address mail_exchange) (`Missing_address mail_exchange)
-                else
-                  Ok ())
-              mxs (Ok ())
-        | B (Ptr, (ttl, name)) ->
-          if ttl < 0l then Error (`Bad_ttl (Domain_name.raw name, v)) else Ok ()
-        | B (Soa, soa) ->
-          begin match Rr_map.find Ns map with
-            | Some (_, names) ->
-              begin match Domain_name.host soa.nameserver with
-                | Error (`Msg m) -> Error (`Soa_not_a_host (soa.nameserver, m))
-                | Ok host when Domain_name.Host_set.mem host names -> Ok ()
-                | Ok _ -> Error (`Soa_not_ns soa.nameserver)
-              end
-            | None -> Ok () (* we're happy to only have a soa, but nothing else -- useful for grounding zones! *)
-          end
-        | B (Txt, (ttl, txts)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Rr_map.Txt_set.is_empty txts then
-            Error (`Empty (name, K Txt))
-          else if
-            Rr_map.Txt_set.exists (fun s -> String.length s > 0) txts
-          then
-            Ok ()
-          else
-            Error (`Empty (name, K Txt))
-        | B (A, (ttl, a)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Ipaddr.V4.Set.is_empty a then
-            Error (`Empty (name, K A))
-          else Ok ()
-        | B (Aaaa, (ttl, aaaa)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Ipaddr.V6.Set.is_empty aaaa then
-            Error (`Empty (name, K Aaaa))
-          else Ok ()
-        | B (Srv, (ttl, srvs)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Rr_map.Srv_set.is_empty srvs then
-            Error (`Empty (name, K Srv))
-          else Ok ()
-        | B (Caa, (ttl, caas)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Rr_map.Caa_set.is_empty caas then
-            Error (`Empty (name, K Caa))
-          else Ok ()
-        | B (Tlsa, (ttl, tlsas)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Rr_map.Tlsa_set.is_empty tlsas then
-            Error (`Empty (name, K Tlsa))
-          else Ok ()
-        | B (Sshfp, (ttl, sshfps)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Rr_map.Sshfp_set.is_empty sshfps then
-            Error (`Empty (name, K Sshfp))
-          else Ok ()
-        | B (Unknown x, (ttl, datas)) ->
-          if ttl < 0l then Error (`Bad_ttl (name, v))
-          else if Rr_map.Txt_set.is_empty datas then
-            Error (`Empty (name, K (Unknown x)))
-          else Ok ())
-      map (Ok ()) >>= fun () ->
+    let* () =
+      guard ((Rr_map.mem Cname map && Rr_map.cardinal map = 1) ||
+             not (Rr_map.mem Cname map)) (`Cname_other name)
+    in
+    let* () =
+      Rr_map.fold (fun v r ->
+          let* () = r in
+          match v with
+          | B (Dnskey, (ttl, keys)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Dnskey_set.is_empty keys then
+              Error (`Empty (name, Rr_map.K Dnskey))
+            else Ok ()
+          | B (Ns, (ttl, names)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Domain_name.Host_set.is_empty names then
+              Error (`Empty (name, K Ns))
+            else
+              let domain = match state' with `None -> name | `Soa zone -> zone in
+              Domain_name.Host_set.fold (fun name r ->
+                  let* () = r in
+                  if Domain_name.is_subdomain ~subdomain:name ~domain then
+                    guard (has_address name) (`Missing_address name)
+                  else
+                    Ok ()) names (Ok ())
+          | B (Cname, (ttl, _)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v)) else Ok ()
+          | B (Mx, (ttl, mxs)) ->
+            if ttl < 0l then
+              Error (`Bad_ttl (name, v))
+            else if Rr_map.Mx_set.is_empty mxs then
+              Error (`Empty (name, K Mx))
+            else
+              let domain = match state' with `None -> name | `Soa zone -> zone in
+              Rr_map.Mx_set.fold (fun { mail_exchange ; _ } r ->
+                  let* () = r in
+                  if Domain_name.is_subdomain ~subdomain:mail_exchange ~domain then
+                    guard (has_address mail_exchange) (`Missing_address mail_exchange)
+                  else
+                    Ok ())
+                mxs (Ok ())
+          | B (Ptr, (ttl, name)) ->
+            if ttl < 0l then Error (`Bad_ttl (Domain_name.raw name, v)) else Ok ()
+          | B (Soa, soa) ->
+            begin match Rr_map.find Ns map with
+              | Some (_, names) ->
+                begin match Domain_name.host soa.nameserver with
+                  | Error (`Msg m) -> Error (`Soa_not_a_host (soa.nameserver, m))
+                  | Ok host when Domain_name.Host_set.mem host names -> Ok ()
+                  | Ok _ -> Error (`Soa_not_ns soa.nameserver)
+                end
+              | None -> Ok () (* we're happy to only have a soa, but nothing else -- useful for grounding zones! *)
+            end
+          | B (Txt, (ttl, txts)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Txt_set.is_empty txts then
+              Error (`Empty (name, K Txt))
+            else if
+              Rr_map.Txt_set.exists (fun s -> String.length s > 0) txts
+            then
+              Ok ()
+            else
+              Error (`Empty (name, K Txt))
+          | B (A, (ttl, a)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Ipaddr.V4.Set.is_empty a then
+              Error (`Empty (name, K A))
+            else Ok ()
+          | B (Aaaa, (ttl, aaaa)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Ipaddr.V6.Set.is_empty aaaa then
+              Error (`Empty (name, K Aaaa))
+            else Ok ()
+          | B (Srv, (ttl, srvs)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Srv_set.is_empty srvs then
+              Error (`Empty (name, K Srv))
+            else Ok ()
+          | B (Caa, (ttl, caas)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Caa_set.is_empty caas then
+              Error (`Empty (name, K Caa))
+            else Ok ()
+          | B (Tlsa, (ttl, tlsas)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Tlsa_set.is_empty tlsas then
+              Error (`Empty (name, K Tlsa))
+            else Ok ()
+          | B (Sshfp, (ttl, sshfps)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Sshfp_set.is_empty sshfps then
+              Error (`Empty (name, K Sshfp))
+            else Ok ()
+          | B (Unknown x, (ttl, datas)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Txt_set.is_empty datas then
+              Error (`Empty (name, K (Unknown x)))
+            else Ok ())
+        map (Ok ())
+    in
     M.fold (fun lbl (N (sub, map)) r ->
-        r >>= fun () ->
+        let* () = r in
         check_sub (lbl :: names) state' sub map) sub (Ok ())
   in
   let (N (sub, map)) = trie in
