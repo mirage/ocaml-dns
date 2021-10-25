@@ -1,3 +1,7 @@
+### v6.0.1 (2021-10-25)
+
+* remove rresult dependency (#273 @hannesm, review by @reynir)
+
 ### v6.0.0 (2021-10-19)
 
 * use Cstruct.length instead of deprecated Cstruct.len
