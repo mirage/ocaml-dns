@@ -182,7 +182,7 @@ module Rcode = struct
   let pp ppf r = Fmt.string ppf (to_string r)
 end
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 module Name = struct
   module Int_map = Map.Make(struct

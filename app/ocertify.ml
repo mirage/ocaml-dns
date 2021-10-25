@@ -1,5 +1,5 @@
 (* (c) 2018 Hannes Mehnert, all rights reserved *)
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 let find_or_generate_key key_filename keytype keydata seed bits =
   let* f_exists = Bos.OS.File.exists key_filename in

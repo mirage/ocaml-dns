@@ -48,7 +48,7 @@ let pp_e ppf = function
   | `NotFound (name, soa) -> Fmt.pf ppf "not found %a soa %a" Domain_name.pp name Soa.pp soa
 
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 let guard p err = if p then Ok () else Error err
 

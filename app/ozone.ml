@@ -5,7 +5,7 @@
    if a NS/MX name is within the zone, it needs an address record *)
 open Dns
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 let load_zone zone =
   let* data = Bos.OS.File.read Fpath.(v zone) in

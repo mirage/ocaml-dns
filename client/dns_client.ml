@@ -78,7 +78,7 @@ module Pure = struct
       authority None
 
   let consume_rest_of_buffer state buf =
-    let (let*) = Result.bind in
+    let ( let* ) = Result.bind in
     let to_msg t = function
       | Ok a -> Ok a
       | Error e ->

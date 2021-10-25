@@ -117,7 +117,7 @@ module Transport : Dns_client.S
           | Error `Msg m -> invalid_arg ("failed to load trust anchors: " ^ m)
         in
         match
-          let (let*) = Result.bind in
+          let ( let* ) = Result.bind in
           let* data = read_file "/etc/resolv.conf" in
           let* ns = Dns_resolvconf.parse data in
           Ok (List.concat_map

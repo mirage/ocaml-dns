@@ -201,7 +201,7 @@ let no_tls =
   Arg.(value & flag & info ~docv:"no-tls" ~doc ["no-tls"])
 
 let nameserver =
-  let (let*) = Result.bind in
+  let ( let* ) = Result.bind in
   let ns no_tls ca_file ca_dir cert_fp key_fp hostname ip port =
     if no_tls then
       Option.map (fun ip -> `Tcp, [ `Plaintext (ip, port)]) ip

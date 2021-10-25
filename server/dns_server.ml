@@ -20,7 +20,7 @@ module IPM = struct
     add k (v :: tl) m
 end
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 let guard p err = if p then Ok () else Error err
 

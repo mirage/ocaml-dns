@@ -19,7 +19,7 @@ let compute_tsig name tsig ~key buf =
   in
   Mirage_crypto.Hash.mac h ~key (Cstruct.append buf data)
 
-let (let*) = Result.bind
+let ( let* ) = Result.bind
 
 let guard p err = if p then Ok () else Error err
 
