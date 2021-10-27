@@ -94,12 +94,12 @@ module Transport : Dns_client.S
   let rec he_timer t =
     let open Lwt.Infix in
     let rec loop () =
-      let he, actions = Happy_eyeballs.timer t.he (clock ()) in
+      let he, cont, actions = Happy_eyeballs.timer t.he (clock ()) in
       t.he <- he ;
-      match actions with
+      handle_timer_actions t actions ;
+      match cont with
       | `Suspend -> he_timer t
-      | `Act actions ->
-        handle_timer_actions t actions ;
+      | `Act ->
         Lwt_unix.sleep (Duration.to_f he_timer_interval) >>= fun () ->
         loop ()
     in
