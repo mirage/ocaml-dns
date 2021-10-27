@@ -77,12 +77,12 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
     let rec he_timer t =
       let open Lwt.Infix in
       let rec loop () =
-        let he, actions = Happy_eyeballs.timer t.he (clock ()) in
+        let he, cont, actions = Happy_eyeballs.timer t.he (clock ()) in
         t.he <- he ;
-        match actions with
+        handle_timer_actions t actions ;
+        match cont with
         | `Suspend -> he_timer t
-        | `Act actions ->
-          handle_timer_actions t actions ;
+        | `Act ->
           T.sleep_ns he_timer_interval >>= fun () ->
           loop ()
       in
