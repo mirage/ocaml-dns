@@ -386,14 +386,13 @@ module Name = struct
     test "\00223\000" map' 4; (* content 23 in label *)
     [%expect {|23|}];
     (* longest allowed domain name *)
-    let open Astring in
     let max = "s23456789012345678901234567890123456789012345678901234567890123" in
-    let lst, _ = String.span ~max:61 max in
-    let full = n_of_s (String.concat ~sep:"." [ max ; max ; max ; lst ]) in
+    let lst = String.sub max 0 61 in
+    let full = n_of_s (String.concat "." [ max ; max ; max ; lst ]) in
     let map' =
       Int_map.add 0 (full, 255)
-        (Int_map.add 64 (n_of_s (String.concat ~sep:"." [ max ; max ; lst ]), 191)
-           (Int_map.add 128 (n_of_s (String.concat ~sep:"." [ max ; lst ]), 127)
+        (Int_map.add 64 (n_of_s (String.concat "." [ max ; max ; lst ]), 191)
+           (Int_map.add 128 (n_of_s (String.concat "." [ max ; lst ]), 127)
               (Int_map.add 192 (n_of_s lst, 63)
                  (Int_map.add 254 (Domain_name.root, 1) Int_map.empty))))
     in
@@ -760,7 +759,7 @@ module Dnskey = struct
       let* algorithm = string_to_algorithm algo in
       Ok { flags ; algorithm ; key }
     in
-    match Astring.String.cuts ~sep:":" key with
+    match String.split_on_char ':' key with
     | [ flags ; algo ; key ] ->
       let* flags =
         try Ok (int_of_string flags) with Failure _ ->
@@ -771,12 +770,12 @@ module Dnskey = struct
     | _ -> Error (`Msg ("invalid DNSKEY string " ^ key))
 
   let name_key_of_string str =
-    match Astring.String.cut ~sep:":" str with
-    | None -> Error (`Msg ("couldn't parse name:key in " ^ str))
-    | Some (name, key) ->
+    match String.split_on_char ':' str with
+    | name :: key ->
       let* name = Domain_name.of_string name in
-      let* dnskey = of_string key in
+      let* dnskey = of_string (String.concat ":" key) in
       Ok (name, dnskey)
+    | [] -> Error (`Msg ("couldn't parse name:key in " ^ str))
 
   let pp_name_key ppf (name, key) =
     Fmt.pf ppf "%a %a" Domain_name.pp name pp key
@@ -813,7 +812,7 @@ module Caa = struct
     let tag = Cstruct.to_string tag in
     let vs = 2 + tl in
     let value = Cstruct.sub buf (off + vs) (len - vs) in
-    let value = Astring.String.cuts ~sep:";" (Cstruct.to_string value) in
+    let value = String.split_on_char ';' (Cstruct.to_string value) in
     Ok ({ critical ; tag ; value }, names, off + len)
 
   let encode t names buf off =
@@ -821,7 +820,7 @@ module Caa = struct
     let tl = String.length t.tag in
     Cstruct.set_uint8 buf (succ off) tl ;
     Cstruct.blit_from_string t.tag 0 buf (off + 2) tl ;
-    let value = Astring.String.concat ~sep:";" t.value in
+    let value = String.concat ";" t.value in
     let vl = String.length value in
     Cstruct.blit_from_string value 0 buf (off + 2 + tl) vl ;
     names, off + tl + 2 + vl

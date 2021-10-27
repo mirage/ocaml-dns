@@ -309,7 +309,7 @@ c0 42 0a 68 6f 73 74 6d 61 73 74 65 72 06 66 61
     | Error `Msg actual ->
       let expected = "DNS cache error no data fastly.net" in
       let len = String.length expected in
-      Alcotest.(check string __LOC__ expected (Astring.String.with_range ~len actual))
+      Alcotest.(check string __LOC__ expected (String.sub actual 0 len))
     | Ok (_, _) -> Alcotest.fail "Should have returned nodata"
 
   let tests = [
