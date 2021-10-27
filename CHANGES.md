@@ -1,3 +1,8 @@
+### v6.0.2 (2021-10-27)
+
+* dns-client: adapt to happy-eyeballs 0.1.0 API (#274 @hannesm)
+* dns-client: avoid List.concat_map, make it available on OCaml 4.08 (@hannesm)
+
 ### v6.0.1 (2021-10-25)
 
 * remove rresult dependency (#273 @hannesm, review by @reynir)
