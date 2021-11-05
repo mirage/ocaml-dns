@@ -361,7 +361,8 @@ let safe_decode buf =
                 off msg Cstruct.hexdump_pp buf);
     Error Rcode.NotImp
   | Error e ->
-    Log.err (fun m -> m "error %a while decoding, giving up" Packet.pp_err e);
+    Log.err (fun m -> m "error %a while decoding, giving up@.%a"
+                Packet.pp_err e Cstruct.hexdump_pp buf);
     rx_metrics (`Rcode_error (Rcode.FormErr, Opcode.Query, None));
     Error Rcode.FormErr
   | Ok v ->
