@@ -8,14 +8,17 @@ module Pure = struct
       query : Packet.t ;
     } constraint 'key = 'a Rr_map.key
 
-  let make_query rng protocol hostname
+  let make_query rng protocol edns hostname
       : 'xy  ->
         Cstruct.t * 'xy query_state =
     (* SRV records: Service + Protocol are case-insensitive, see RFC2728 pg2. *)
     fun record_type ->
-    let edns = match protocol with
-      | `Udp -> None
-      | `Tcp -> Some (Edns.create ~extensions:[Edns.Tcp_keepalive (Some 1200)] ())
+    let edns = match edns with
+      | `None -> None
+      | `Manual e -> Some e
+      | `Auto -> match protocol with
+        | `Udp -> None
+        | `Tcp -> Some (Edns.create ~extensions:[Edns.Tcp_keepalive (Some 1200)] ())
     in
     let question = Packet.Question.create hostname record_type in
     let header = Randomconv.int16 rng, Packet.Flags.singleton `Recursion_desired in
@@ -195,11 +198,13 @@ struct
   type t = {
     mutable cache : Dns_cache.t ;
     transport : Transport.t ;
+    edns : [ `None | `Auto | `Manual of Dns.Edns.t ] ;
   }
 
-  let create ?(size = 32) ?nameservers ?(timeout = Duration.of_sec 5) stack =
+  let create ?(size = 32) ?(edns = `Auto) ?nameservers ?(timeout = Duration.of_sec 5) stack =
     { cache = Dns_cache.empty size ;
-      transport = Transport.create ?nameservers ~timeout stack
+      transport = Transport.create ?nameservers ~timeout stack ;
+      edns ;
     }
 
   let nameservers { transport; _ } = Transport.nameservers transport
@@ -246,7 +251,7 @@ struct
       | Error `Msg _ ->
         let proto, _ = Transport.nameservers t.transport in
         let tx, state =
-          Pure.make_query Transport.rng proto name query_type
+          Pure.make_query Transport.rng proto t.edns name query_type
         in
         Transport.connect t.transport >>| fun socket ->
         Logs.debug (fun m -> m "Connected to NS.");

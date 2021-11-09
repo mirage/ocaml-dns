@@ -29,10 +29,11 @@ module type S = sig
   type t
   (** The abstract state of a DNS client. *)
 
-  val create : ?nameservers:(Dns.proto * io_addr list) -> timeout:int64 -> stack -> t
-  (** [create ~nameservers ~timeout stack] creates the state record of the DNS
-      client. We use [timeout] (ns) as a cumulative time budget for connect
-      and request timeouts. *)
+  val create : ?nameservers:(Dns.proto * io_addr list) -> timeout:int64 ->
+    stack -> t
+  (** [create ~nameservers ~timeout stack] creates the state record of
+      the DNS client. We use [timeout] (ns) as a cumulative time budget for
+      connect and request timeouts. *)
 
   val nameservers : t -> Dns.proto * io_addr list
   (** The address of a nameservers that is supposed to work with
@@ -68,12 +69,17 @@ sig
 
   type t
 
-  val create : ?size:int -> ?nameservers:(Dns.proto * T.io_addr list) -> ?timeout:int64 ->
+  val create : ?size:int -> ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
+    ?nameservers:(Dns.proto * T.io_addr list) -> ?timeout:int64 ->
     T.stack -> t
-  (** [create ~size ~nameservers ~timeout stack] creates the state of the DNS
-      client. We use [timeout] (ns, default 5s) as a time budget for connect and
-      request timeouts. To specify a timeout, use
-      [create ~timeout:(Duration.of_sec 3)]. *)
+  (** [create ~size ~edns ~nameservers ~timeout stack] creates the state of the
+      DNS client. We use [timeout] (ns, default 5s) as a time budget for connect
+      and request timeouts. To specify a timeout, use
+      [create ~timeout:(Duration.of_sec 3)]. Whether or not to use
+      {{:https://tools.ietf.org/html/rfc6891}EDNS} in queries is controlled
+      by [~edns] (defaults to [`Auto]): if [None], no EDNS will be present,
+      [`Auto] adds TCP Keepalive if protocol is TCP, [`Manual edns] adds the
+      EDNS data specified. *)
 
   val nameservers : t -> Dns.proto * T.io_addr list
   (** [nameservers state] returns the list of nameservers to be used. *)
@@ -133,7 +139,9 @@ module Pure : sig
       application. *)
 
   val make_query :
-    (int -> Cstruct.t) -> Dns.proto -> 'a Domain_name.t ->
+    (int -> Cstruct.t) -> Dns.proto ->
+    [ `None | `Auto | `Manual of Dns.Edns.t ] ->
+    'a Domain_name.t ->
     'query_type Dns.Rr_map.key ->
     Cstruct.t * 'query_type Dns.Rr_map.key query_state
   (** [make_query rng protocol name query_type] is [query, query_state]
