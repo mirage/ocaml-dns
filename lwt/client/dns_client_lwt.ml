@@ -23,11 +23,7 @@ module Transport : Dns_client.S
     mutable waiters : ((Ipaddr.t * int) * Lwt_unix.file_descr, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
     timer_condition : unit Lwt_condition.t ;
   }
-  type context = {
-    t : t ;
-    mutable timeout_ns : int64 ;
-    mutable data : Cstruct.t ;
-  }
+  type context = t
 
   let read_file file =
     try
@@ -151,16 +147,12 @@ module Transport : Dns_client.S
   let nameservers { nameservers ; _ } = `Tcp, nameservers
   let rng = Mirage_crypto_rng.generate ?g:None
 
-  let with_timeout ctx f =
+  let with_timeout timeout f =
     let timeout =
-      Lwt_unix.sleep (Duration.to_f ctx.timeout_ns) >|= fun () ->
+      Lwt_unix.sleep (Duration.to_f timeout) >|= fun () ->
       Error (`Msg "DNS request timeout")
     in
-    let start = clock () in
-    Lwt.pick [ f ; timeout ] >|= fun result ->
-    let stop = clock () in
-    ctx.timeout_ns <- Int64.sub ctx.timeout_ns (Int64.sub stop start);
-    result
+    Lwt.pick [ f ; timeout ]
 
   let close _ = Lwt.return_unit
 
@@ -178,25 +170,24 @@ module Transport : Dns_client.S
         Lwt_result.ok (Tls_lwt.Unix.write fd tx))
       (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
 
-  let send ctx tx =
-    if Cstruct.length tx > 2 then
-      match ctx.t.fd with
+  let send_recv (t : context) tx =
+    if Cstruct.length tx > 4 then
+      match t.fd with
       | None -> Lwt.return (Error (`Msg "no connection to the nameserver established"))
       | Some fd ->
-        ctx.data <- tx;
-        with_timeout ctx (send_query fd tx)
+        let id = Cstruct.BE.get_uint16 tx 2 in
+        with_timeout t.timeout_ns
+          (let open Lwt_result.Infix in
+           send_query fd tx >>= fun () ->
+           let cond = Lwt_condition.create () in
+           t.requests <- IM.add id (tx, cond) t.requests;
+           let open Lwt.Infix in
+           Lwt_condition.wait cond >|= fun data ->
+           match data with Ok _ | Error `Msg _ as r -> r) >|= fun r ->
+        t.requests <- IM.remove id t.requests;
+        r
     else
-      Lwt.return (Error (`Msg "invalid DNS packet (data length <= 2)"))
-
-  let recv ctx =
-    let cond = Lwt_condition.create () in
-    let id = Cstruct.BE.get_uint16 ctx.data 2 in
-    ctx.t.requests <- IM.add id (ctx.data, cond) ctx.t.requests;
-    with_timeout ctx (Lwt_condition.wait cond) >|= fun data ->
-    ctx.t.requests <- IM.remove id ctx.t.requests;
-    match data with
-    | Ok cs -> Ok cs
-    | Error `Msg m -> Error (`Msg m)
+      Lwt.return (Error (`Msg "invalid DNS packet (data length <= 4)"))
 
   let bind = Lwt.bind
   let lift = Lwt.return
@@ -317,9 +308,8 @@ module Transport : Dns_client.S
                  connect_via_tcp_to_ns t ns')
 
   let connect t =
-    let ctx = { t ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
     connect_via_tcp_to_ns t t.nameservers >|= function
-    | Ok () -> Ok ctx
+    | Ok () -> Ok t
     | Error `Msg msg -> Error (`Msg msg)
 end
 
