@@ -3,12 +3,17 @@
         and [connect] and so on. leaving this stuff here for now until a
         better solution presents itself. *)
 
-val default_resolver_hostname : [`host] Domain_name.t
-
 val default_resolvers : Ipaddr.t list
 (** [default_resolver] is a list of IPv6 and IPv4 address of the default
     resolver. Currently it is the IP address of the UncensoredDNS.org
     anycast service. *)
+
+val known_name : Ipaddr.t -> Ipaddr.t option * [`host] Domain_name.t option
+(** [known_name ip] returns either [Some ip, None] if the IP is not known,
+    or [Some name, None] if the IP address is known as a public resolver. The
+    lookup is done by a map from ipfire.org. This allows DNS-over-TLS clients
+    where the server has a certificate with only a domain name, not an IP
+    address. *)
 
 module type S = sig
   type context

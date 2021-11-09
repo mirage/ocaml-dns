@@ -32,6 +32,7 @@ depends: [
   "lwt" {>= "4.0.0"}
   "randomconv"
   "alcotest" {with-test}
+  "lambdasoup"
 ]
 
 build: [

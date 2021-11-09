@@ -146,11 +146,65 @@ module Pure = struct
 end
 
 (* Anycast address of uncensoreddns.org *)
-let default_resolver_hostname = Domain_name.(host_exn (of_string_exn "anycast.uncensoreddns.org"))
 let default_resolvers = [
   Ipaddr.of_string_exn "2001:67c:28a4::" ;
   Ipaddr.of_string_exn "91.239.100.100" ;
 ]
+
+(* generated on November 9th 2021 by app/extract_from_ipfire *)
+(* adjusted the IPv6 anycast from uncensoreddns.org *)
+let ip_domain =
+Ipaddr.Map.add (Ipaddr.of_string_exn "91.239.100.100") Domain_name.(host_exn (of_string_exn "anycast.uncensoreddns.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2001:67c:28a4::") Domain_name.(host_exn (of_string_exn "anycast.uncensoreddns.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "1.1.1.1") Domain_name.(host_exn (of_string_exn "cloudflare-dns.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "1.0.0.1") Domain_name.(host_exn (of_string_exn "cloudflare-dns.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2606:4700:4700::1111") Domain_name.(host_exn (of_string_exn "cloudflare-dns.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2606:4700:4700::1001") Domain_name.(host_exn (of_string_exn "cloudflare-dns.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "5.1.66.255") Domain_name.(host_exn (of_string_exn "anycast01.ffmuc.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2001:678:e68:f000::") Domain_name.(host_exn (of_string_exn "anycast01.ffmuc.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "5.1.66.255") Domain_name.(host_exn (of_string_exn "dot.ffmuc.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2001:678:e68:f000::") Domain_name.(host_exn (of_string_exn "dot.ffmuc.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "185.222.222.222") Domain_name.(host_exn (of_string_exn "dns.sb"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "185.184.222.222") Domain_name.(host_exn (of_string_exn "dns.sb"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2a09::") Domain_name.(host_exn (of_string_exn "dns.sb"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2a09::1") Domain_name.(host_exn (of_string_exn "dns.sb"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "8.8.8.8") Domain_name.(host_exn (of_string_exn "dns.google"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "8.8.4.4") Domain_name.(host_exn (of_string_exn "dns.google"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "146.255.56.98") Domain_name.(host_exn (of_string_exn "dot1.applied-privacy.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2a01:4f8:c0c:83ed::1") Domain_name.(host_exn (of_string_exn "dot1.applied-privacy.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "199.58.81.218") Domain_name.(host_exn (of_string_exn "dns.cmrg.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2001:470:1c:76d::53") Domain_name.(host_exn (of_string_exn "dns.cmrg.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "185.95.218.42") Domain_name.(host_exn (of_string_exn "dns.digitale-gesellschaft.ch"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "185.95.218.43") Domain_name.(host_exn (of_string_exn "dns.digitale-gesellschaft.ch"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2a05:fc84::42") Domain_name.(host_exn (of_string_exn "dns.digitale-gesellschaft.ch"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2a05:fc84::43") Domain_name.(host_exn (of_string_exn "dns.digitale-gesellschaft.ch"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "140.238.215.192") Domain_name.(host_exn (of_string_exn "dot.post-factum.tk"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "5.9.164.112") Domain_name.(host_exn (of_string_exn "dns3.digitalcourage.de"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "81.3.27.54") Domain_name.(host_exn (of_string_exn "recursor01.dns.ipfire.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2001:678:b28::54") Domain_name.(host_exn (of_string_exn "recursor01.dns.ipfire.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "81.3.27.54") Domain_name.(host_exn (of_string_exn "recursor01.dns.lightningwirelabs.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2001:678:b28::54") Domain_name.(host_exn (of_string_exn "recursor01.dns.lightningwirelabs.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "89.233.43.71") Domain_name.(host_exn (of_string_exn "unicast.uncensoreddns.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2a01:3a0:53:53::") Domain_name.(host_exn (of_string_exn "unicast.uncensoreddns.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "95.216.24.230") Domain_name.(host_exn (of_string_exn "fi.dot.dns.snopyta.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2a01:4f9:2a:1919::9301") Domain_name.(host_exn (of_string_exn "fi.dot.dns.snopyta.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "89.234.186.112") Domain_name.(host_exn (of_string_exn "dns.neutopia.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2a00:5884:8209::2") Domain_name.(host_exn (of_string_exn "dns.neutopia.org"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "158.64.1.29") Domain_name.(host_exn (of_string_exn "kaitain.restena.lu"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2001:a18:1::29") Domain_name.(host_exn (of_string_exn "kaitain.restena.lu"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "185.49.141.37") Domain_name.(host_exn (of_string_exn "getdnsapi.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2a04:b900:0:100::37") Domain_name.(host_exn (of_string_exn "getdnsapi.net"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "145.100.185.17") Domain_name.(host_exn (of_string_exn "dnsovertls2.sinodun.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "145.100.185.18") Domain_name.(host_exn (of_string_exn "dnsovertls3.sinodun.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2001:610:1:40ba:145:100:185:17") Domain_name.(host_exn (of_string_exn "dnsovertls3.sinodun.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "2001:610:1:40ba:145:100:185:18") Domain_name.(host_exn (of_string_exn "dnsovertls3.sinodun.com"))
+(Ipaddr.Map.add (Ipaddr.of_string_exn "96.113.151.145") Domain_name.(host_exn (of_string_exn "dot.xfinity.com"))
+(Ipaddr.Map.empty)))))))))))))))))))))))))))))))))))))))))))))
+
+let known_name ip =
+  match Ipaddr.Map.find_opt ip ip_domain with
+  | None -> Some ip, None
+  | Some name -> None, Some name
 
 module type S = sig
   type context

@@ -40,3 +40,10 @@
   (package      dns-cli)
   (libraries    dns dns-client.lwt dns-cli cmdliner mtime.clock.os
                 lwt.unix hex bos))
+
+(executable
+  (name extract_from_ipfire)
+  (public_name extract-from-ipfire)
+  (modules extract_from_ipfire)
+  (package dns-cli)
+  (libraries lambdasoup domain-name ipaddr dns-cli))

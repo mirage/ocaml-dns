@@ -116,24 +116,20 @@ module Transport : Dns_client.S
           | Ok a -> a
           | Error `Msg m -> invalid_arg ("failed to load trust anchors: " ^ m)
         in
+        let tls_and_plain ip =
+          let auth_ip, peer_name = Dns_client.known_name ip in
+          let tls = Tls.Config.client ~authenticator ?ip:auth_ip ?peer_name () in
+          [ `Tls (tls, ip, 853) ; `Plaintext (ip, 53) ]
+        in
         match
           let ( let* ) = Result.bind in
           let* data = read_file "/etc/resolv.conf" in
           let* ns = Dns_resolvconf.parse data in
           Ok (List.flatten
-                (List.map
-                   (fun (`Nameserver ip) ->
-                      let tls = Tls.Config.client ~authenticator ~ip () in
-                      [ `Tls (tls, ip, 853) ; `Plaintext (ip, 53) ])
-                   ns))
+                (List.map (fun (`Nameserver ip) -> tls_and_plain ip) ns))
         with
         | Error _  | Ok [] ->
-          let peer_name = Dns_client.default_resolver_hostname in
-          let tls_config = Tls.Config.client ~authenticator ~peer_name () in
-          List.flatten
-            (List.map (fun ip -> [
-                   `Tls (tls_config, ip, 853); `Plaintext (ip, 53)
-                 ]) Dns_client.default_resolvers)
+          List.flatten (List.map tls_and_plain Dns_client.default_resolvers)
         | Ok ips -> ips
     in
     let t = {
