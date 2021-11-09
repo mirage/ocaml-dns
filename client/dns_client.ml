@@ -220,8 +220,7 @@ module type S = sig
   val clock : unit -> int64
 
   val connect : t -> (context, [> `Msg of string ]) result io
-  val send : context -> Cstruct.t -> (unit, [> `Msg of string ]) result io
-  val recv : context -> (Cstruct.t, [> `Msg of string ]) result io
+  val send_recv : context -> Cstruct.t -> (Cstruct.t, [> `Msg of string ]) result io
   val close : context -> unit io
 
   val bind : 'a io -> ('a -> 'b io) -> 'b io
@@ -309,8 +308,9 @@ struct
         in
         Transport.connect t.transport >>| fun socket ->
         Logs.debug (fun m -> m "Connected to NS.");
-        (Transport.send socket tx >>| fun () ->
-         Logs.debug (fun m -> m "Receiving from NS");
+        (Transport.send_recv socket tx >>| fun recv_buffer ->
+         Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
+                        (Cstruct.length recv_buffer)) ;
          let update_cache entry =
            let rank = Dns_cache.NonAuthoritativeAnswer in
            let cache =
@@ -318,26 +318,16 @@ struct
            in
            t.cache <- cache
          in
-         let rec recv_loop acc =
-           Transport.recv socket >>| fun recv_buffer ->
-           Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
-                          (Cstruct.length recv_buffer)) ;
-           let buf =
-             if Cstruct.(equal empty acc)
-             then recv_buffer
-             else Cstruct.append acc recv_buffer
-           in
-           match Pure.parse_response state buf with
-           | Ok `Data x ->
-             update_cache (`Entry x);
-             Ok x |> Transport.lift
-           | Ok ((`No_data _ | `No_domain _) as nodom) ->
-             update_cache nodom;
-             Error nodom |> Transport.lift
-           | Error `Msg xxx -> Error (`Msg xxx) |> Transport.lift
-           | Ok `Partial when proto = `Tcp -> recv_loop buf
-           | Ok `Partial -> Error (`Msg "Truncated UDP response") |> Transport.lift
-         in recv_loop Cstruct.empty) >>= fun r ->
+         Transport.lift
+           (match Pure.parse_response state recv_buffer with
+            | Ok `Data x ->
+              update_cache (`Entry x);
+              Ok x
+            | Ok ((`No_data _ | `No_domain _) as nodom) ->
+              update_cache nodom;
+              Error nodom
+            | Error `Msg xxx -> Error (`Msg xxx)
+            | Ok `Partial -> Error (`Msg "Truncated UDP response"))) >>= fun r ->
         Transport.close socket >>= fun () ->
         Transport.lift r
 

@@ -54,11 +54,9 @@ module type S = sig
   val connect : t -> (context, [> `Msg of string ]) result io
   (** [connect addr] is a new connection ([context]) to [addr], or an error. *)
 
-  val send : context -> Cstruct.t -> (unit, [> `Msg of string ]) result io
-  (** [send context buffer] sends [buffer] to the [context] upstream.*)
-
-  val recv : context -> (Cstruct.t, [> `Msg of string ]) result io
-  (** [recv context] tries to read a [buffer] from the [context] downstream.*)
+  val send_recv : context -> Cstruct.t -> (Cstruct.t, [> `Msg of string ]) result io
+  (** [send_recv context buffer] sends [buffer] to the [context] upstream, and
+      then reads a buffer. *)
 
   val close : context -> unit io
   (** [close context] closes the [context], freeing up resources. *)

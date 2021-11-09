@@ -109,12 +109,10 @@ module Transport (*: Dns_client.S
 
   let connect _ = Ok default_debug_info
 
-  let send _ _ = Ok ()
-
-  let recv (mock_responses : context) =
+  let send_recv (mock_responses : context) _ =
     match !mock_responses with
-      | [] -> failwith("nothing to recv from the wire")
-      | hd::tail -> mock_responses := tail; Ok hd
+    | [] -> failwith("nothing to recv from the wire")
+    | hd::tail -> mock_responses := tail; Ok hd
 end
 
 (* Now that we have our {!Transport} implementation we can include the logic

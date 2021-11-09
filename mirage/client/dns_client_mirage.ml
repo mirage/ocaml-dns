@@ -27,11 +27,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
       mutable waiters : ((Ipaddr.t * int) * S.TCP.flow, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
       timer_condition : unit Lwt_condition.t ;
     }
-    type context = {
-      t : t ;
-      mutable timeout_ns : int64 ;
-      mutable data : Cstruct.t ;
-    }
+    type context = t
 
     let clock = M.elapsed_ns
     let he_timer_interval = Duration.of_ms 500
@@ -128,10 +124,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         T.sleep_ns time_left >|= fun () ->
         Error (`Msg "DNS request timeout")
       in
-      let start = clock () in
-      Lwt.pick [ f ; timeout ] >|= fun result ->
-      let stop = clock () in
-      result, Int64.sub time_left (Int64.sub stop start)
+      Lwt.pick [ f ; timeout ]
 
     let bind = Lwt.bind
     let lift = Lwt.return
@@ -271,39 +264,37 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
               connect_ns t ns'
 
     let connect t =
-      let ctx = { t ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
       match t.flow with
-      | Some _ -> Lwt.return (Ok ctx)
+      | Some _ -> Lwt.return (Ok t)
       | None ->
         connect_ns t t.nameservers >|= function
-        | Ok () -> Ok ctx
+        | Ok () -> Ok t
         | Error `Msg msg -> Error (`Msg msg)
 
     let close _f =
       (* ignoring this here *)
       Lwt.return_unit
 
-    let recv { t ; timeout_ns ; data } =
-      if Cstruct.length data > 2 then
-        let cond = Lwt_condition.create () in
-        let id = Cstruct.BE.get_uint16 data 2 in
-        t.requests <- IM.add id (data, cond) t.requests;
-        with_timeout timeout_ns (Lwt_condition.wait cond) >|= fun (data, _) ->
-        t.requests <- IM.remove id t.requests;
-        match data with
-        | Ok cs -> Ok cs
-        | Error `Msg m -> Error (`Msg m)
+    let send_recv t tx =
+      if Cstruct.length tx > 4 then
+        match t.flow with
+        | None -> Lwt.return (Error (`Msg "no connection to resolver"))
+        | Some flow ->
+          with_timeout t.timeout_ns
+            (let open Lwt_result.Infix in
+             query_one flow tx >>= fun () ->
+             let cond = Lwt_condition.create () in
+             let id = Cstruct.BE.get_uint16 tx 2 in
+             t.requests <- IM.add id (tx, cond) t.requests;
+             let open Lwt.Infix in
+             Lwt_condition.wait cond >|= fun data ->
+             t.requests <- IM.remove id t.requests;
+             match data with
+             | Ok cs -> Ok cs
+             | Error `Msg m -> Error (`Msg m))
       else
-        Lwt.return (Error (`Msg "invalid context (data length <= 2)"))
+        Lwt.return (Error (`Msg "invalid context (data length <= 4)"))
 
-    let send ({ t ; timeout_ns ; _ } as ctx) s =
-      match t.flow with
-      | None -> Lwt.return (Error (`Msg "no connection to resolver"))
-      | Some flow ->
-        ctx.data <- s;
-        with_timeout timeout_ns (query_one flow s) >|= function
-        | Ok (), timeout_ns -> ctx.timeout_ns <- timeout_ns; Ok ()
-        | Error _ as e, _ -> e
   end
 
   include Dns_client.Make(Transport)

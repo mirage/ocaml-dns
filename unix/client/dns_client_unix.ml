@@ -97,29 +97,29 @@ module Transport : Dns_client.S
       with e ->
         Error (`Msg (Printexc.to_string e))
 
-  let send ctx (tx : Cstruct.t) =
+  let send_recv ctx (tx : Cstruct.t) =
     let str = Cstruct.to_string tx in
     try
-      with_timeout ctx (fun fd ->
-        Unix.setsockopt_float fd Unix.SO_SNDTIMEO (Duration.to_f ctx.timeout_ns);
-        let res = Unix.send_substring fd str 0 (String.length str) [] in
-        if res <> String.length str
-        then
-          Error (`Msg ("Broken write to upstream NS" ^ (string_of_int res)))
-        else Ok ())
-   with e ->
-     Error (`Msg (Printexc.to_string e))
-
-  let recv ctx =
-    let buffer = Bytes.make 2048 '\000' in
-    try
-      with_timeout ctx (fun fd ->
-        Unix.setsockopt_float fd Unix.SO_RCVTIMEO (Duration.to_f ctx.timeout_ns);
-        let x = Unix.recv fd buffer 0 (Bytes.length buffer) [] in
-        if x > 0 && x <= Bytes.length buffer then
-          Ok (Cstruct.of_bytes buffer ~len:x)
-        else
-          Error (`Msg "Reading from NS socket failed"))
+      begin match
+          with_timeout ctx (fun fd ->
+              Unix.setsockopt_float fd Unix.SO_SNDTIMEO (Duration.to_f ctx.timeout_ns);
+              let res = Unix.send_substring fd str 0 (String.length str) [] in
+              if res <> String.length str then
+                Error (`Msg ("Broken write to upstream NS" ^ (string_of_int res)))
+              else
+                Ok ())
+        with
+        | Error _ as e -> e
+        | Ok () ->
+          let buffer = Bytes.make 2048 '\000' in
+          with_timeout ctx (fun fd ->
+              Unix.setsockopt_float fd Unix.SO_RCVTIMEO (Duration.to_f ctx.timeout_ns);
+              let x = Unix.recv fd buffer 0 (Bytes.length buffer) [] in
+              if x > 0 && x <= Bytes.length buffer then
+                Ok (Cstruct.of_bytes buffer ~len:x)
+              else
+                Error (`Msg "Reading from NS socket failed"))
+      end
     with e ->
       Error (`Msg (Printexc.to_string e))
 end
