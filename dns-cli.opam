@@ -33,6 +33,7 @@ depends: [
   "randomconv"
   "alcotest" {with-test}
   "lambdasoup"
+  "domain-name"
 ]
 
 build: [
