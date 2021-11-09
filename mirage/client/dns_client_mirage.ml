@@ -222,11 +222,11 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
           Ipaddr.compare ip addr = 0 && p = port)
         ns
 
-    let rec connect_ns t =
+    let rec connect_ns t nameservers =
       let waiter, notify = Lwt.task () in
       let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
       t.waiters <- waiters;
-      let ns = to_pairs t.nameservers in
+      let ns = to_pairs nameservers in
       let he, actions = Happy_eyeballs.connect_ip t.he (clock ()) ~id ns in
       t.he <- he;
       Lwt_condition.signal t.timer_condition ();
@@ -236,34 +236,46 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         Log.err (fun m -> m "error connecting to resolver %s" msg);
         Lwt.return (Error (`Msg "connect failure"))
       | Ok (addr, flow) ->
+        let continue flow =
+          t.flow <- Some flow;
+          Lwt.async (fun () ->
+              read_loop t flow >>= fun () ->
+              if not (IM.is_empty t.requests) then
+                connect_ns t t.nameservers >|= function
+                | Error `Msg msg ->
+                  Log.err (fun m -> m "error while connecting to resolver: %s" msg)
+                | Ok () -> ()
+              else
+                Lwt.return_unit);
+          req_all flow t
+        in
         let config = find_ns t.nameservers addr in
-        (match config with
-         | `Plaintext _ -> Lwt.return (`Plain flow)
-         | `Tls (tls_cfg, _ip, _port) ->
-           TLS.client_of_flow tls_cfg flow >>= function
-           | Error e ->
-             Log.err (fun m -> m "error %a establishing TLS connection to %a:%d"
-                         TLS.pp_write_error e Ipaddr.pp (fst addr) (snd addr));
-             Lwt.fail_with "TLS handshake error"
-           | Ok tls -> Lwt.return (`Tls tls)) >>= fun flow ->
-        t.flow <- Some flow;
-        Lwt.async (fun () ->
-           read_loop t flow >>= fun () ->
-           if not (IM.is_empty t.requests) then
-             connect_ns t >|= function
-             | Error `Msg msg ->
-               Log.err (fun m -> m "error while connecting to resolver: %s" msg)
-             | Ok () -> ()
-           else
-             Lwt.return_unit);
-        req_all flow t
+        match config with
+        | `Plaintext _ -> continue (`Plain flow)
+        | `Tls (tls_cfg, _ip, _port) ->
+          TLS.client_of_flow tls_cfg flow >>= function
+          | Ok tls -> continue (`Tls tls)
+          | Error e ->
+            Log.warn (fun m -> m "error establishing TLS connection to %a:%d: %a"
+                         Ipaddr.pp (fst addr) (snd addr) TLS.pp_write_error e);
+            let ns' =
+              List.filter (function
+                  | `Tls (_, ip, port) ->
+                    not (Ipaddr.compare ip (fst addr) = 0 && port = snd addr)
+                  | _ -> true)
+                nameservers
+            in
+            if ns' = [] then
+              Lwt.return (Error (`Msg "no further nameservers configured"))
+            else
+              connect_ns t ns'
 
     let connect t =
       let ctx = { t ; timeout_ns = t.timeout_ns ; data = Cstruct.empty } in
       match t.flow with
       | Some _ -> Lwt.return (Ok ctx)
       | None ->
-        connect_ns t >|= function
+        connect_ns t t.nameservers >|= function
         | Ok () -> Ok ctx
         | Error `Msg msg -> Error (`Msg msg)
 
