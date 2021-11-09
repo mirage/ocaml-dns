@@ -15,7 +15,7 @@ module Make_query_tests = struct
   let produces_same_output () =
     let rng = Cstruct.create in
     let name:'a Domain_name.t = Domain_name.of_string_exn "example.com" in
-    let actual, _state = Dns_client.Pure.make_query rng `Tcp name Dns.Rr_map.A in
+    let actual, _state = Dns_client.Pure.make_query rng `Tcp `Auto name Dns.Rr_map.A in
     let expected = Cstruct.of_hex
         "00 2e 00 00 01 00 00 01  00 00 00 00 00 01 07 65
          78 61 6d 70 6c 65 03 63  6f 6d 00 00 01 00 01 00
@@ -44,7 +44,7 @@ module Parse_response_tests = struct
     (* This `rng` generates zeros, used for the query ID above *)
     let rng = Cstruct.create in
     let name:'a Domain_name.t = Domain_name.of_string_exn "foo.com" in
-    let _actual, state = Dns_client.Pure.make_query rng `Tcp name Dns.Rr_map.A in
+    let _actual, state = Dns_client.Pure.make_query rng `Tcp `Auto name Dns.Rr_map.A in
     match Dns_client.Pure.parse_response state ipv4_buf with
     | Ok `Data _ -> () (* TODO: Alcotest TESTABLE for this return value *)
     | _ -> ignore(failwith "error")
@@ -66,7 +66,7 @@ module Parse_response_tests = struct
     (* This `rng` generates zeros, used for the query ID above *)
     let rng = Cstruct.create in
     let name:'a Domain_name.t = Domain_name.of_string_exn "foo.com" in
-    let _actual, state = Dns_client.Pure.make_query rng `Tcp name Dns.Rr_map.A in
+    let _actual, state = Dns_client.Pure.make_query rng `Tcp `Auto name Dns.Rr_map.A in
     match Dns_client.Pure.parse_response state ipv4_buf with
     | Error `Msg _ -> ()
     | __ -> failwith "should have rejected mismatched input"
