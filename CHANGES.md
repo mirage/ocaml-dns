@@ -1,3 +1,9 @@
+### v6.1.0 (2021-11-10)
+
+* BUGFIX dns-client: avoid exception on TLS handshake failure (reported by @reynir)
+* FEATURE dns-client: optionally send a edns in the query (reported by @orbitz #276)
+* dns-client: combine send and recv, avoid resource leaks on timeout
+
 ### v6.0.2 (2021-10-27)
 
 * dns: remove astring dependency (@hannesm)
