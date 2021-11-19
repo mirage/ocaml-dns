@@ -80,7 +80,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
           client_out dst port >>= function
           | Error () ->
             let sport = sport () in
-            S.listen_udp stack ~port:sport (udp_cb false) ;
+            S.UDP.listen (S.udp stack) ~port:sport (udp_cb false) ;
             Dns.send_udp stack sport dst port data
           | Ok () -> client_tcp dst port data
         end
@@ -97,7 +97,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
       | Ok () -> Lwt.return_unit
       | Error () ->
         let sport = sport () in
-        S.listen_udp stack ~port:sport (udp_cb false) ;
+        S.UDP.listen (S.udp stack) ~port:sport (udp_cb false) ;
         Dns.send_udp stack sport dst port data
     and handle_query (proto, dst, data) = match proto with
       | `Udp -> maybe_tcp dst port data
@@ -124,12 +124,13 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
       let new_state, answers, queries =
         Dns_resolver.handle_buf !state now ts req `Udp src src_port buf
       in
+      if not req then S.UDP.unlisten (S.udp stack) ~port:src_port;
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
       Lwt_list.iter_p handle_query queries
     in
     if udp then begin
-      S.listen_udp stack ~port (udp_cb true);
+      S.UDP.listen (S.udp stack) ~port (udp_cb true);
       Log.app (fun f -> f "DNS resolver listening on UDP port %d" port);
     end;
 
@@ -157,7 +158,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
       loop ()
     in
     if tcp then begin
-      S.listen_tcp stack ~port (tcp_cb true);
+      S.TCP.listen (S.tcp stack) ~port (tcp_cb true);
       Log.info (fun m -> m "DNS resolver listening on TCP port %d" port);
     end;
 
@@ -214,7 +215,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
     (match tls with
      | None -> ()
      | Some cfg ->
-       S.listen_tcp stack ~port:tls_port (tls_cb cfg);
+       S.TCP.listen (S.tcp stack) ~port:tls_port (tls_cb cfg);
        Log.info (fun m -> m "DNS resolver listening on TLS port %d" tls_port));
 
     let rec time () =

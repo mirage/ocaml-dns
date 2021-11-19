@@ -15,6 +15,7 @@ depends: [
   "ipaddr" {>= "5.2.0"}
   "lwt" {>= "4.2.1"}
   "mirage-stack" {>= "2.2.0"}
+  "mirage-protocols" {>= "6.0.0"}
 ]
 
 build: [

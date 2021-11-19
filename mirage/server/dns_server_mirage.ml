@@ -129,7 +129,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
       let dst_ip, dst_port = T.dst flow in
       recv_task dst_ip dst_port flow ()
     in
-    S.listen_tcp stack ~port tcp_cb ;
+    S.TCP.listen (S.tcp stack) ~port tcp_cb ;
     Log.info (fun m -> m "DNS server listening on TCP port %d" port) ;
 
     let udp_cb ~src ~dst:_ ~src_port buf =
@@ -150,7 +150,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
       (Lwt_list.iter_s (Dns.send_udp stack port src src_port) answers) >>= fun () ->
       Lwt_list.iter_p (send_notify recv_task) notify
     in
-    S.listen_udp stack ~port udp_cb ;
+    S.UDP.listen (S.udp stack) ~port udp_cb ;
     Log.info (fun m -> m "DNS server listening on UDP port %d" port) ;
     let rec time () =
       let now = Ptime.v (P.now_d_ps ()) in
@@ -265,7 +265,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
       | None -> Lwt.return_unit
       | Some out -> inc `Udp_answer; Dns.send_udp stack port src src_port out
     in
-    S.listen_udp stack ~port udp_cb ;
+    S.UDP.listen (S.udp stack) ~port udp_cb ;
     Log.info (fun m -> m "secondary DNS listening on UDP port %d" port) ;
 
     let tcp_cb flow =
@@ -300,7 +300,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
       in
       loop ()
     in
-    S.listen_tcp stack ~port tcp_cb ;
+    S.TCP.listen (S.tcp stack) ~port tcp_cb ;
     Log.info (fun m -> m "secondary DNS listening on TCP port %d" port) ;
 
     let rec time () =
