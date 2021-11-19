@@ -1,3 +1,12 @@
+### v6.1.1 (2021-11-19)
+
+* dns-client: by default, do not send EDNS (#280 @reynir @hannesm)
+* BREAKING dns-certify.mirage: treat key_data as base64 encoded data
+  (#280 @reynir @hannesm)
+* mirage: update to mirage-protocols 6.0.0 API (use TCP.listen / UDP.listen)
+  resolver: unlisten on UDP port after response has been received (#280 @reynir
+  @hannesm)
+
 ### v6.1.0 (2021-11-10)
 
 * BUGFIX dns-client: avoid exception on TLS handshake failure (reported by @reynir)
