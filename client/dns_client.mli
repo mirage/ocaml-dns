@@ -75,7 +75,7 @@ sig
       and request timeouts. To specify a timeout, use
       [create ~timeout:(Duration.of_sec 3)]. Whether or not to use
       {{:https://tools.ietf.org/html/rfc6891}EDNS} in queries is controlled
-      by [~edns] (defaults to [`Auto]): if [None], no EDNS will be present,
+      by [~edns] (defaults to [`None]): if [None], no EDNS will be present,
       [`Auto] adds TCP Keepalive if protocol is TCP, [`Manual edns] adds the
       EDNS data specified. *)
 
