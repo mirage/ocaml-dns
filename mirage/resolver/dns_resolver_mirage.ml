@@ -215,7 +215,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
      | None -> ()
      | Some cfg ->
        S.listen_tcp stack ~port:tls_port (tls_cb cfg);
-       Log.info (fun m -> m "DNS resolver listening on TLS port %d" port));
+       Log.info (fun m -> m "DNS resolver listening on TLS port %d" tls_port));
 
     let rec time () =
       let new_state, answers, queries =
