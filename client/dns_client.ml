@@ -200,7 +200,8 @@ struct
     edns : [ `None | `Auto | `Manual of Dns.Edns.t ] ;
   }
 
-  let create ?(size = 32) ?(edns = `Auto) ?nameservers ?(timeout = Duration.of_sec 5) stack =
+  (* TODO eventually use Auto, and retry without on FormErr *)
+  let create ?(size = 32) ?(edns = `None) ?nameservers ?(timeout = Duration.of_sec 5) stack =
     { cache = Dns_cache.empty size ;
       transport = Transport.create ?nameservers ~timeout stack ;
       edns ;

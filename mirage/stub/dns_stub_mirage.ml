@@ -251,7 +251,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
                                   S.UDP.pp_error e Ipaddr.pp src src_port)
         | Ok () -> ()
     in
-    S.listen_udp stack ~port:53 udp_cb ;
+    S.UDP.listen (S.udp stack) ~port:53 udp_cb ;
     let tcp_cb flow =
       metrics `Tcp_connections;
       let dst_ip, dst_port = S.TCP.dst flow in
@@ -273,6 +273,6 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
       in
       loop ()
     in
-    S.listen_tcp stack ~port:53 tcp_cb;
+    S.TCP.listen (S.tcp stack) ~port:53 tcp_cb;
     t
 end
