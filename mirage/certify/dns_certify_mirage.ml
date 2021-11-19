@@ -91,9 +91,12 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
           let seed = match key_seed with None -> None | Some x -> Some (Cstruct.of_string x) in
           X509.Private_key.generate ?seed ?bits key_type
         | Some x ->
-          match X509.Private_key.of_cstruct (Cstruct.of_string x) key_type with
-          | Error (`Msg m) -> invalid_arg ("decoding of key failed: " ^ m)
-          | Ok key -> key
+          match Base64.decode x with
+          | Error `Msg m -> invalid_arg ("base64 decoding failed: " ^ m)
+          | Ok data ->
+            match X509.Private_key.of_cstruct (Cstruct.of_string data) key_type with
+            | Error `Msg m -> invalid_arg ("decoding of key failed: " ^ m)
+            | Ok key -> key
       in
       match
         let more_hostnames = additional_hostnames in
