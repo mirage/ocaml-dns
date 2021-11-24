@@ -78,9 +78,9 @@ let jump () hostname =
       Logs.info (fun m -> m "found %d key-rrsig pairs" (List.length keys_rrsigs));
       List.fold_left (fun r (key, rrsig) ->
           let* () = r in
-          let* key = Dnssec.dnskey_to_pk key in
-          Logs.info (fun m -> m "checking sig with key_tag %d" rrsig.Rrsig.key_tag);
-          Dnssec.verify (Ptime_clock.now ()) key requested_domain rrsig t v)
+          let* pkey = Dnssec.dnskey_to_pk key in
+          Logs.info (fun m -> m "checking sig with key_tag %d and key %a" rrsig.Rrsig.key_tag Dnskey.pp key);
+          Dnssec.verify (Ptime_clock.now ()) pkey requested_domain rrsig t v)
         (Ok ()) keys_rrsigs
     in
     let retrieve_dnskey ds_set requested_domain =

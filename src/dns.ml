@@ -874,10 +874,11 @@ module Dnskey = struct
     go 0 0
 
   let pp ppf t =
-    Fmt.pf ppf "DNSKEY flags %a algo %a key_tag %d"
+    Fmt.pf ppf "DNSKEY flags %a algo %a key_tag %d key %a"
       Fmt.(list ~sep:(any ", ") pp_flag) (F.elements t.flags)
       pp_algorithm t.algorithm
       (key_tag t)
+      Cstruct.hexdump_pp t.key
 
   let digest_prep owner t =
     let kl = Cstruct.length t.key in

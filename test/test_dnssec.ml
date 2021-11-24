@@ -142,6 +142,35 @@ let test_root () =
     | _ ->
       Alcotest.fail "expected an answer"
 
+let verify_dnssec ts algorithm zsk buf =
+  let key = Dnskey.{ algorithm ; key = Cstruct.of_string (Base64.decode_exn zsk) ; flags = F.singleton `Zone } in
+  match Dnssec.dnskey_to_pk key with
+  | Error _ -> Alcotest.fail "key decoding failed"
+  | Ok key ->
+    match Packet.decode buf with
+    | Error _ -> Alcotest.fail "packet decoding failed"
+    | Ok pkt ->
+      match pkt.Packet.data with
+      | `Answer (answer, _) ->
+        begin
+          if Domain_name.Map.cardinal answer <> 1 then Alcotest.fail "expected one element name_rr_map";
+          let name, rrmap = Domain_name.Map.choose answer in
+          let _, rrsigs = Rr_map.get Rrsig rrmap in
+          if Rr_map.Rrsig_set.cardinal rrsigs <> 1 then Alcotest.fail "expected single rrsig" ;
+          let rrsig = Rr_map.Rrsig_set.choose rrsigs in
+          let left = Rr_map.remove Rrsig rrmap in
+          if Rr_map.cardinal left <> 1 then Alcotest.fail "expected single element in rr_map";
+          match Rr_map.min_binding left with
+          | None -> assert false
+          | Some (B (k, v)) ->
+            match Dnssec.verify ts key name rrsig k v with
+            | Ok () -> ()
+            | Error _ -> Alcotest.fail "verification failed"
+        end
+      | _ -> Alcotest.fail "expected an answer"
+
+
+
 let test_ns_ripe () =
   let ts = Option.get (Ptime.of_date_time ((2021, 11, 24), ((17, 26, 00), 0)))
   and zsk = "1Ykt1gvvZyfCR3IculzIepOsrPDpL63hNCNEo+wEuBd93pV8gAwLjCZ/ZtgccdbnhhVN6OBD70pUbml9Y2zOSQ=="
@@ -166,35 +195,52 @@ c9 91 77 1f 9b 6c c7 dc  64 76 ad 00 71 15 3c 84
 dc 02 7d 0a 00 00 29 02  00 00 00 80 00 00 00
 |}
   in
-  let key = Dnskey.{ algorithm ; key = Cstruct.of_string (Base64.decode_exn zsk) ; flags = F.singleton `Zone } in
-  match Dnssec.dnskey_to_pk key with
-  | Error _ -> Alcotest.fail "key decoding failed"
-  | Ok key ->
-    match Packet.decode buf with
-    | Error _ -> Alcotest.fail "packet decoding failed"
-    | Ok pkt ->
-      match pkt.Packet.data with
-      | `Answer (answer, _) ->
-        begin
-        if Domain_name.Map.cardinal answer <> 1 then Alcotest.fail "expected one element name_rr_map";
-        let name, rrmap = Domain_name.Map.choose answer in
-        let _, rrsigs = Rr_map.get Rrsig rrmap in
-        if Rr_map.Rrsig_set.cardinal rrsigs <> 1 then Alcotest.fail "expected single rrsig" ;
-        let rrsig = Rr_map.Rrsig_set.choose rrsigs in
-        let left = Rr_map.remove Rrsig rrmap in
-        if Rr_map.cardinal left <> 1 then Alcotest.fail "expected single element in rr_map";
-        match Rr_map.min_binding left with
-        | None -> assert false
-        | Some (B (k, v)) ->
-          match Dnssec.verify ts key name rrsig k v with
-          | Ok () -> ()
-          | Error _ -> Alcotest.fail "verification failed"
-      end
-      | _ -> Alcotest.fail "expected an answer"
+  verify_dnssec ts algorithm zsk buf
+
+let test_ds_afnoc_af_mil () =
+  let ts = Option.get (Ptime.of_date_time ((2021, 11, 24), ((17, 26, 00), 0)))
+  and zsk = {|AwEAAckGwhxTnqLiHTZ+/UuMnkeZqU44ORmLQHfhr1egTcMRetYHcsd9fnmlzgpoIgz19aJvSyjTT1Bp4ofOwMzeusK6knYKjbP3R5Uz8Y5hhnb3VTTm2Js6IoK3g2yxggkZWfewy7J+ZuMxwRLOKnS6O7cDBx4jM3/d61/8i1Ium1ZXbKgIjfLyphD0mZaaQ1nBigK+ej6lMaR4ddHEd4VKCl9s3s6EanfE8zR/oU9igxNzhYTpqT348aFHy6ebZAt5kfvTWyEtXsxXAZt5jQk0tBmT8nf2n6+Z9Z+M8ZWQphNzZ2m3rTafRc04EpnIDD1ROawPa6beIBvTAMsMgrS4Cus=|}
+  and algorithm = Dnskey.RSA_SHA256
+  and buf = Cstruct.of_hex {|
+8c ae 81 a0 00 01  00 05 00 00 00 01 05 61
+66 6e 6f 63 02 61 66 03  6d 69 6c 00 00 2b 00 01
+c0 0c 00 2b 00 01 00 00  01 cf 00 24 d1 a7 08 02
+73 08 1a b8 e5 26 0a 0c  c2 78 fd 06 21 8d 9e ad
+da b7 95 52 00 cb ec 3f  88 3d a0 27 d2 06 6f 08
+c0 0c 00 2b 00 01 00 00  01 cf 00 24 72 ac 08 02
+c7 d2 59 06 9b 2d 96 32  db 7a 55 c4 b2 c2 83 6f
+06 45 4f a5 07 1d 72 f8  ad 68 2b 6a 68 07 97 10
+c0 0c 00 2b 00 01 00 00  01 cf 00 18 72 ac 08 01
+76 ed e5 b6 7b 43 67 a7  08 3e 6f e3 e1 a4 dd e6
+9a ed 3a 91 c0 0c 00 2b  00 01 00 00 01 cf 00 18
+d1 a7 08 01 98 c0 2c 3c  76 8e 2b a8 ad 66 cb f2
+39 6b ed aa 70 d6 17 6e  c0 0c 00 2e 00 01 00 00
+01 cf 01 1a 00 2b 08 03  00 00 0e 10 61 a2 b0 64
+61 9d 61 26 f4 a1 02 61  66 03 6d 69 6c 00 51 c8
+5a 7d 11 9f 81 cb 5e 9f  5b 36 cb 91 fd a3 c7 a6
+2e 57 ff b9 ac b9 83 ff  f1 b9 18 0e 28 9e f6 2b
+59 70 81 d3 7c bd b1 b6  2d 09 34 5f 4a 42 13 4e
+d8 e1 d8 ce 32 9f 42 3b  30 df f0 9c ec 4a 63 23
+54 ea 7d 68 c8 18 b3 ef  59 9e 9c 42 83 3d 2c 02
+15 01 21 8b 86 7c 97 9f  79 c9 5e f9 cb 11 ca d9
+57 f0 21 94 27 ea f5 9e  90 1f 07 c7 13 c1 ef f4
+d8 ff 00 5d 5e 1b 98 b0  b9 17 96 29 07 bc 1e f7
+36 54 7e 2d 9e 54 76 44  2b c3 60 f3 0c e8 a9 40
+1e 68 ec 22 ae 45 8d dd  a6 59 00 ac f3 07 0e 5a
+37 37 7b 48 86 42 7b 86  5e d7 97 45 06 a2 00 70
+00 a3 69 fe 5a 82 de 67  bf 33 33 fb b0 34 50 1d
+6e 52 3e b9 99 17 34 c6  91 54 d4 cc d1 a4 a5 5f
+c0 e1 b1 dd 27 5b df cb  27 f3 87 8c a9 a1 dc 15
+a3 7b 0f c9 43 0f a6 0d  80 53 0a b9 be 1e 24 05
+d6 6e 57 bb b9 b4 3e 61  d2 6d b0 ad ca f4 00 00
+29 02 00 00 00 80 00 00  00|}
+  in
+  verify_dnssec ts algorithm zsk buf
 
 let tests = [
   "root", `Quick, test_root ;
   "ns for ripe.net", `Quick, test_ns_ripe ;
+  "ds for afnoc.af.mil", `Quick, test_ds_afnoc_af_mil ;
 ]
 
 let () =
