@@ -2116,7 +2116,7 @@ module Rr_map = struct
           rr names (encode data) off ttl, succ count)
         datas ((names, off), 0)
 
-  let encode_dnssec : type a. ttl:int32 -> ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Cstruct.t list = fun ~ttl ?(clas = Class.IN) name k v ->
+  let encode_dnssec : type a. ttl:int32 -> ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> (int * Cstruct.t) list = fun ~ttl ?(clas = Class.IN) name k v ->
     let clas = Class.to_int clas in
     let compress = false in
     let names = Domain_name.Map.empty in
@@ -2129,7 +2129,7 @@ module Rr_map = struct
       let rdata_len = rdata_end - rdata_start in
       Cstruct.BE.set_uint32 buf off' ttl ;
       Cstruct.BE.set_uint16 buf (off' + 4) rdata_len ;
-      Cstruct.sub buf 0 rdata_end
+      rdata_start, Cstruct.sub buf 0 rdata_end
     in
     match k, v with
     | Soa, soa -> [ rr (Soa.encode ~compress soa) ]
@@ -2226,7 +2226,10 @@ module Rr_map = struct
     (* RFC 4034 section 6.2 point 5 *)
     let ttl = rrsig.Rrsig.original_ttl in
     let cs = encode_dnssec ~ttl name typ value in
-    let compare_cstruct cs cs' =
+    let compare_cstruct (off, cs) (off', cs') =
+      let cs = Cstruct.shift cs off
+      and cs' = Cstruct.shift cs' off'
+      in
       let rec c idx =
         if Cstruct.length cs < idx then 1
         else if Cstruct.length cs' < idx then -1
@@ -2238,7 +2241,8 @@ module Rr_map = struct
       c 0
     in
     (* String.compare (Cstruct.to_string cs) (Cstruct.to_string cs') in *)
-    let sorted_cs = List.sort compare_cstruct cs in
+    let sorted_cs = List.map snd (List.sort compare_cstruct cs) in
+    Logs.info (fun m -> m "sorted:@.%a" Fmt.(list ~sep:(any "@.") Cstruct.hexdump_pp) sorted_cs);
     Ok (Cstruct.concat (rrsig_cs :: sorted_cs))
 
   let union_rr : type a. a key -> a -> a -> a = fun k l r ->
