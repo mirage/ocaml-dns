@@ -50,10 +50,14 @@ let validate_ds zone dnskeys ds =
   end else
     Error (`Msg "key signing key couldn't be validated")
 
-let jump () hostname =
+let jump () hostname ns =
   Lwt_main.run (
     let edns = Edns.create ~dnssec_ok:true () in
-    let t = Dns_client_lwt.create ~edns:(`Manual edns) () in
+    let nameservers = match ns with
+      | None -> None
+      | Some ip -> Some (`Tcp, [ `Plaintext (ip, 53) ])
+    in
+    let t = Dns_client_lwt.create ?nameservers ~edns:(`Manual edns) () in
     let (_, ns) = Dns_client_lwt.nameservers t in
     Logs.info (fun m -> m "querying NS %a for A records of %a"
                   pp_nameserver (List.hd ns) Domain_name.pp hostname);
@@ -168,8 +172,16 @@ let arg_domain : [ `raw ] Domain_name.t Term.t =
   Arg.(value & opt parse_domain (Domain_name.of_string_exn "cloudflare.com")
        & info [ "host" ] ~docv:"HOST" ~doc)
 
+let parse_ip =
+  (fun ip -> Result.map_error (function `Msg m -> m) (Ipaddr.of_string ip) |> to_presult),
+  Ipaddr.pp
+
+let nameserver : Ipaddr.t option Term.t =
+  let doc = "Nameserver to use" in
+  Arg.(value & opt (some parse_ip) None & info [ "nameserver" ] ~docv:"NAMESERVER" ~doc)
+
 let cmd =
-  Term.(term_result (const jump $ Dns_cli.setup_log $ arg_domain)),
+  Term.(term_result (const jump $ Dns_cli.setup_log $ arg_domain $ nameserver)),
   Term.info "odnssec" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
