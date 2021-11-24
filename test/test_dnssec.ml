@@ -104,13 +104,12 @@ let test_root () =
           Alcotest.(check int (__LOC__ ^ " two rrsets in rrs") 2
                       (Rr_map.cardinal rrs));
           match Rr_map.find Rr_map.Dnskey rrs, Rr_map.find Rr_map.Rrsig rrs with
-          | Some (_, dnskeys), Some (_, rrsigs) ->
+          | Some ((_, dnskeys) as dnskey_rrs), Some (_, rrsigs) ->
             Alcotest.(check int (__LOC__ ^ " two dnskeys") 2
                         (Rr_map.Dnskey_set.cardinal dnskeys));
             Alcotest.(check int (__LOC__ ^ " one rrsig") 1
                         (Rr_map.Rrsig_set.cardinal rrsigs));
             let rrsig = Rr_map.Rrsig_set.choose rrsigs in
-            let no_rrsig_rrmap = Rr_map.remove Rr_map.Rrsig rrs in
             let used_dnskey =
               Rr_map.Dnskey_set.(choose (filter (fun dnsk ->
                   Dnskey.F.mem `Secure_entry_point dnsk.Dnskey.flags) dnskeys))
@@ -131,7 +130,7 @@ let test_root () =
               | _ -> Alcotest.fail "bad dnssec key"
             end;
             begin
-              match Dnssec.verify ts_of_req (`RSA key) Domain_name.root rrsig no_rrsig_rrmap with
+              match Dnssec.verify ts_of_req (`RSA key) Domain_name.root rrsig Dnskey dnskey_rrs with
               | Ok () -> ()
               | Error (`Msg m) ->
                 Alcotest.failf "%s signature verification failed %s" __LOC__ m

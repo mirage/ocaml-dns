@@ -47,8 +47,11 @@ let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
   | MD5 | SHA1 | SHA224 | SHA256 | SHA384 | SHA512 | Unknown _ ->
     Error (`Msg (Fmt.str "unsupported key algorithm %a" Dnskey.pp_algorithm algorithm))
 
-let verify now key name rrsig rrmap =
+let verify : type a . Ptime.t -> X509.Public_key.t -> [`raw] Domain_name.t -> Rrsig.t ->
+  a Rr_map.key -> a -> (unit, [> `Msg of string ]) result = fun now key name rrsig t v ->
   (* from RFC 4034 section 3.1.8.1 *)
+  Logs.info (fun m -> m "verifying for %a (with %a)" Domain_name.pp name 
+    X509.Key_type.pp (X509.Public_key.key_type key));
   let* algorithm =
     match rrsig.Rrsig.algorithm with
     | Dnskey.RSA_SHA1 -> Ok `SHA1
@@ -68,9 +71,17 @@ let verify now key name rrsig rrmap =
     guard (Ptime.is_later ~than:rrsig.Rrsig.signature_inception now)
       (`Msg "signature not yet incepted")
   in
-  let* data = Rr_map.prep_for_sig name rrsig rrmap in
-  let scheme = match key with
-    `RSA _ -> `RSA_PKCS1 | `ED25519 _ -> `ED25519 | `P256 _ | `P384 _ -> `ECDSA
-  in
-  X509.Public_key.verify algorithm ~scheme
-    ~signature:rrsig.Rrsig.signature (key :> X509.Public_key.t) (`Message data)
+  let* data = Rr_map.prep_for_sig name rrsig t v in
+  let hashed () = Mirage_crypto.Hash.digest algorithm data in
+  let ok_if_true p = if p then Ok () else Error (`Msg "signature verification failed") in
+  match key with
+  | `P256 key ->
+    ok_if_true (Mirage_crypto_ec.P256.Dsa.verify ~key (Cstruct.split rrsig.Rrsig.signature 32) (hashed ()))
+  | `P384 key ->
+    ok_if_true (Mirage_crypto_ec.P384.Dsa.verify ~key (Cstruct.split rrsig.Rrsig.signature 48) (hashed ()))
+  | `ED25519 key ->
+    ok_if_true (Mirage_crypto_ec.Ed25519.verify ~key rrsig.Rrsig.signature ~msg:data)
+  | `RSA key ->
+    let hashp = ( = ) algorithm in
+    ok_if_true (Mirage_crypto_pk.Rsa.PKCS1.verify ~hashp ~key ~signature:rrsig.Rrsig.signature (`Message data))
+  | _ -> Error (`Msg "unsupported key")

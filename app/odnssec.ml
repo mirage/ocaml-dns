@@ -57,20 +57,30 @@ let jump () hostname =
     let (_, ns) = Dns_client_lwt.nameservers t in
     Logs.info (fun m -> m "querying NS %a for A records of %a"
                   pp_nameserver (List.hd ns) Domain_name.pp hostname);
-    let validate_rrsig_keys dnskeys rrsigs requested_domain rr_map =
+    let validate_rrsig_keys dnskeys rrsigs requested_domain t v =
       let keys_rrsigs =
         Rr_map.Dnskey_set.fold (fun key acc ->
             let key_tag = Dnskey.key_tag key in
-            match Rr_map.Rrsig_set.find_first_opt (fun rrsig -> rrsig.Rrsig.key_tag = key_tag) rrsigs with
+            match
+              Rr_map.Rrsig_set.fold (fun rrsig -> function
+                | None when rrsig.Rrsig.key_tag = key_tag -> Some rrsig
+                | Some _ when rrsig.Rrsig.key_tag = key_tag ->
+                  Logs.warn (fun m -> m "multiple rrsig for key %d" key_tag);
+                  assert false
+                | _ as s -> s)
+                rrsigs None
+            with
             | Some rrsig -> (key, rrsig) :: acc
             | None -> acc)
          dnskeys []
       in
       let* () = if keys_rrsigs = [] then Error (`Msg "no matching key and rrsig found") else Ok () in
+      Logs.info (fun m -> m "found %d key-rrsig pairs" (List.length keys_rrsigs));
       List.fold_left (fun r (key, rrsig) ->
           let* () = r in
           let* key = Dnssec.dnskey_to_pk key in
-          Dnssec.verify (Ptime_clock.now ()) key requested_domain rrsig rr_map)
+          Logs.info (fun m -> m "checking sig with key_tag %d" rrsig.Rrsig.key_tag);
+          Dnssec.verify (Ptime_clock.now ()) key requested_domain rrsig t v)
         (Ok ()) keys_rrsigs
     in
     let retrieve_dnskey ds_set requested_domain =
@@ -81,13 +91,13 @@ let jump () hostname =
               match validate_ds requested_domain keys ds with
               | Ok key -> Rr_map.Dnskey_set.add key acc
               | Error `Msg msg ->
-                Logs.err (fun m -> m "couldn't validate DS (for %a): %s"
-                            Domain_name.pp requested_domain msg);
+                Logs.warn (fun m -> m "couldn't validate DS (for %a): %s"
+                             Domain_name.pp requested_domain msg);
                 acc)
             ds_set Rr_map.Dnskey_set.empty
           in
-          let rr_map = Rr_map.singleton Dnskey rrs in
-          let* () = validate_rrsig_keys keys_ds rrsigs requested_domain rr_map in
+          Logs.info (fun m -> m "found %d DNSKEYS with matching DS" (Rr_map.Dnskey_set.cardinal keys_ds));
+          let* () = validate_rrsig_keys keys_ds rrsigs requested_domain Dnskey rrs in
           Logs.info (fun m -> m "verified RRSIG");
           let keys = Rr_map.Dnskey_set.filter (fun k -> Dnskey.F.mem `Zone k.Dnskey.flags) keys in
           Ok keys
@@ -101,8 +111,7 @@ let jump () hostname =
     let retrieve_ds dnskeys requested_domain =
       Dns_client_lwt.(get_rr_with_rrsig t Ds requested_domain) >|= function
         | Ok ((_ttl, ds) as rrs, Some (_ttl', rrsigs)) ->
-          let rr_map = Rr_map.singleton Ds rrs in
-          let* () = validate_rrsig_keys dnskeys rrsigs requested_domain rr_map in
+          let* () = validate_rrsig_keys dnskeys rrsigs requested_domain Ds rrs in
           Ok ds
         | Ok (_, None) ->
           Logs.err (fun m -> m "rrsig missing");
@@ -124,22 +133,20 @@ let jump () hostname =
         Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
         retrieve_dnskey ds hostname
     in
-    retrieve_validated_dnskeys hostname >|= fun _dnskeys ->
-    Ok ()
-
-(*
-    Dns_client_lwt.(getaddrinfo t A host) >|= function
-    | Ok (_ttl, addrs) when Ipaddr.V4.Set.is_empty addrs ->
-      (* handle empty response? *)
-      Logs.app (fun m -> m ";%a. IN %a"
-                  Domain_name.pp host
-                   Dns.Rr_map.ppk (Dns.Rr_map.K A))
-    | Ok resp ->
-      Logs.app (fun m -> m "%a" pp_zone (host, A, resp))
-    | Error (`Msg msg) ->
-      Logs.err (fun m -> m "Failed to lookup %a: %s\n"
-                   Domain_name.pp host msg)
-  *)
+    retrieve_validated_dnskeys hostname >>= function
+      | Error _ as e -> Lwt.return e
+      | Ok dnskeys ->
+        Dns_client_lwt.(get_rr_with_rrsig t Ns hostname) >|= function
+        | Ok (rrs, Some (_ttl', rrsigs)) ->
+          let* () = validate_rrsig_keys dnskeys rrsigs hostname Ns rrs in
+          Logs.app (fun m -> m "%a" pp_zone (hostname, Ns, rrs));
+          Ok ()
+        | Ok (_, None) ->
+          Logs.err (fun m -> m "rrsig missing");
+          Error (`Msg "...")
+        | Error _ ->
+          Logs.err (fun m -> m "error from resolver");
+          Error (`Msg "bad request")
   )
 
 open Cmdliner

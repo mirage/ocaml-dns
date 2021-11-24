@@ -831,12 +831,6 @@ module Dnskey = struct
     key : Cstruct.t ;
   }
 
-  let pp ppf t =
-    Fmt.pf ppf "DNSKEY flags %a algo %a key %a"
-      Fmt.(list ~sep:(any ", ") pp_flag) (F.elements t.flags)
-      pp_algorithm t.algorithm
-      Cstruct.hexdump_pp t.key
-
   let compare a b =
     andThen (F.compare b.flags a.flags)
       (andThen (compare b.algorithm a.algorithm)
@@ -878,6 +872,12 @@ module Dnskey = struct
         go (succ idx) ac
     in
     go 0 0
+
+  let pp ppf t =
+    Fmt.pf ppf "DNSKEY flags %a algo %a key_tag %d"
+      Fmt.(list ~sep:(any ", ") pp_flag) (F.elements t.flags)
+      pp_algorithm t.algorithm
+      (key_tag t)
 
   let digest_prep owner t =
     let kl = Cstruct.length t.key in
@@ -997,6 +997,7 @@ module Rrsig = struct
     names, off + slen
 
   (* RFC 4035 section 5.3.2 *)
+  (* RFC 4034 section 6.2 point 4 *)
   let used_name rrsig name =
     let rrsig_labels = rrsig.label_count
     and fqdn_labels = Domain_name.count_labels name
@@ -2113,6 +2114,83 @@ module Rr_map = struct
           rr names (encode data) off ttl, succ count)
         datas ((names, off), 0)
 
+  let encode_dnssec : type a. ttl:int32 -> ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Cstruct.t list = fun ~ttl ?(clas = Class.IN) name k v ->
+    let clas = Class.to_int clas in
+    let compress = false in
+    let names = Domain_name.Map.empty in
+    let rr f =
+      let buf = Cstruct.create 4096 in
+      let _names, off' = encode_ntc ~compress names buf 0 (name, `K (K k), clas) in
+      (* leave 6 bytes space for TTL and length *)
+      let rdata_start = off' + 6 in
+      let _names, rdata_end = f names buf rdata_start in
+      let rdata_len = rdata_end - rdata_start in
+      Cstruct.BE.set_uint32 buf off' ttl ;
+      Cstruct.BE.set_uint16 buf (off' + 4) rdata_len ;
+      Cstruct.sub buf 0 rdata_end
+    in
+    match k, v with
+    | Soa, soa -> [ rr (Soa.encode ~compress soa) ]
+    | Ns, (_ttl, ns) ->
+      Domain_name.Host_set.fold (fun name acc ->
+          rr (Ns.encode ~compress name) :: acc)
+        ns []
+    | Mx, (_ttl, mx) ->
+      Mx_set.fold (fun mx acc ->
+          rr (Mx.encode ~compress mx) :: acc)
+        mx []
+    | Cname, (_ttl, alias) -> [ rr (Cname.encode ~compress alias) ]
+    | A, (_ttl, addresses) ->
+      Ipaddr.V4.Set.fold (fun address acc -> rr (A.encode address) :: acc)
+        addresses []
+    | Aaaa, (_ttl, aaaas) ->
+      Ipaddr.V6.Set.fold (fun address acc ->
+          rr (Aaaa.encode address) :: acc)
+        aaaas []
+    | Ptr, (_ttl, rev) -> [ rr (Ptr.encode ~compress rev) ]
+    | Srv, (_ttl, srvs) ->
+      Srv_set.fold (fun srv acc ->
+          rr (Srv.encode srv) :: acc)
+        srvs []
+    | Dnskey, (_ttl, dnskeys) ->
+      Dnskey_set.fold (fun dnskey acc ->
+          rr (Dnskey.encode dnskey) :: acc)
+        dnskeys []
+    | Caa, (_ttl, caas) ->
+      Caa_set.fold (fun caa acc ->
+          rr (Caa.encode caa) :: acc)
+        caas []
+    | Tlsa, (_ttl, tlsas) ->
+      Tlsa_set.fold (fun tlsa acc ->
+          rr (Tlsa.encode tlsa) :: acc)
+        tlsas []
+    | Sshfp, (_ttl, sshfps) ->
+      Sshfp_set.fold (fun sshfp acc ->
+          rr (Sshfp.encode sshfp) :: acc)
+        sshfps []
+    | Txt, (_ttl, txts) ->
+      Txt_set.fold (fun txt acc ->
+          rr (Txt.encode txt) :: acc)
+        txts []
+    | Ds, (_ttl, ds) ->
+      Ds_set.fold (fun ds acc ->
+          rr (Ds.encode ds) :: acc)
+        ds []
+    | Rrsig, (_ttl, rrs) ->
+      Rrsig_set.fold (fun rrsig acc ->
+          rr (Rrsig.encode rrsig) :: acc)
+        rrs []
+    | Unknown _, (_ttl, datas) ->
+      let encode data names buf off =
+        let l = String.length data in
+        Cstruct.blit_from_string data 0 buf off l;
+        names, off + l
+      in
+      Txt_set.fold (fun data acc ->
+          rr (encode data) :: acc)
+        datas []
+
+  (* RFC 4034, Section 6.2 point 3 *)
   let canonical : type a. a key -> a -> a = fun k v ->
     match k, v with
     | Soa, s -> Soa.canonical s
@@ -2125,28 +2203,39 @@ module Rr_map = struct
     | _, v -> v
 
   (* RFC 4034, section 3.1.8.1 *)
-  let prep_for_sig name rrsig rrmap =
+  let prep_for_sig : type a . [`raw] Domain_name.t -> Rrsig.t -> a key -> a ->
+    (Cstruct.t, [> `Msg of string ]) result =
+      fun name rrsig typ value ->
     let buf, off = Rrsig.prep_rrsig rrsig in
+    let rrsig_cs = Cstruct.sub buf 0 off in
     let* name =
       let* used_name = Rrsig.used_name rrsig name in
       Ok (Domain_name.canonical used_name)
     in
-    let* (K typ) =
+    let* (K covered_typ) =
       Result.map_error
         (function `Malformed (_, txt) -> `Msg txt)
         (of_int rrsig.Rrsig.type_covered)
     in
-    let* () = guard (K typ <> K Rrsig) (`Msg "RRSIG records are never signed") in
-    let* () = guard (cardinal rrmap = 1) (`Msg "multiple entries in rrmap") in
-    let v = get typ rrmap in
-    (* TODO: canonical rr ordering (smallest first - maybe adapt compare in all RRs) *)
-    (* TODO buf may be too small *)
-    let v = canonical typ v in
+    let* () = guard (K covered_typ <> K Rrsig) (`Msg "RRSIG records are never signed") in
+    let* () = guard (K covered_typ = K typ) (`Msg "RRSIG type_covered does not match typ") in
+    let value = canonical typ value in
+    (* RFC 4034 section 6.2 point 5 *)
     let ttl = rrsig.Rrsig.original_ttl in
-    let (_, off), _ =
-      encode ~compress:false ~ttl name typ v Domain_name.Map.empty buf off
+    let cs = encode_dnssec ~ttl name typ value in
+    let compare_cstruct cs cs' =
+      let rec c idx =
+        if Cstruct.length cs < idx then 1
+        else if Cstruct.length cs' < idx then -1
+        else
+          match compare (Cstruct.get_uint8 cs idx) (Cstruct.get_uint8 cs' idx) with
+          | 0 -> c (succ idx)
+          | x -> x
+      in
+      c 0
     in
-    Ok (Cstruct.sub buf 0 off)
+     (* String.compare (Cstruct.to_string cs) (Cstruct.to_string cs') in *)
+    Ok (Cstruct.concat (rrsig_cs :: List.sort compare_cstruct cs))
 
   let union_rr : type a. a key -> a -> a -> a = fun k l r ->
     match k, l, r with
