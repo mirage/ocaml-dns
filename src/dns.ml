@@ -2040,12 +2040,11 @@ module Rr_map = struct
     Cstruct.BE.set_uint16 buf (off + 2) c ;
     names, off + 4
 
-  let encode : type a. ?compress:bool -> ?ttl:int32 -> ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Name.name_offset_map -> Cstruct.t -> int ->
-    (Name.name_offset_map * int) * int = fun ?compress ?ttl ?(clas = Class.IN) name k v names buf off ->
+  let encode : type a. ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Name.name_offset_map -> Cstruct.t -> int ->
+    (Name.name_offset_map * int) * int = fun ?(clas = Class.IN) name k v names buf off ->
     let clas = Class.to_int clas in
-    let rr names f off rr_ttl =
-      let ttl = match ttl with None -> rr_ttl | Some x -> x in
-      let names, off' = encode_ntc ?compress names buf off (name, `K (K k), clas) in
+    let rr names f off ttl =
+      let names, off' = encode_ntc names buf off (name, `K (K k), clas) in
       (* leave 6 bytes space for TTL and length *)
       let rdata_start = off' + 6 in
       let names, rdata_end = f names buf rdata_start in
@@ -2055,16 +2054,16 @@ module Rr_map = struct
       names, rdata_end
     in
     match k, v with
-    | Soa, soa -> rr names (Soa.encode ?compress soa) off soa.minimum, 1
+    | Soa, soa -> rr names (Soa.encode soa) off soa.minimum, 1
     | Ns, (ttl, ns) ->
       Domain_name.Host_set.fold (fun name ((names, off), count) ->
-          rr names (Ns.encode ?compress name) off ttl, succ count)
+          rr names (Ns.encode name) off ttl, succ count)
         ns ((names, off), 0)
     | Mx, (ttl, mx) ->
       Mx_set.fold (fun mx ((names, off), count) ->
-          rr names (Mx.encode ?compress mx) off ttl, succ count)
+          rr names (Mx.encode mx) off ttl, succ count)
         mx ((names, off), 0)
-    | Cname, (ttl, alias) -> rr names (Cname.encode ?compress alias) off ttl, 1
+    | Cname, (ttl, alias) -> rr names (Cname.encode alias) off ttl, 1
     | A, (ttl, addresses) ->
       Ipaddr.V4.Set.fold (fun address ((names, off), count) ->
         rr names (A.encode address) off ttl, succ count)
@@ -2073,7 +2072,7 @@ module Rr_map = struct
       Ipaddr.V6.Set.fold (fun address ((names, off), count) ->
           rr names (Aaaa.encode address) off ttl, succ count)
         aaaas ((names, off), 0)
-    | Ptr, (ttl, rev) -> rr names (Ptr.encode ?compress rev) off ttl, 1
+    | Ptr, (ttl, rev) -> rr names (Ptr.encode rev) off ttl, 1
     | Srv, (ttl, srvs) ->
       Srv_set.fold (fun srv ((names, off), count) ->
           rr names (Srv.encode srv) off ttl, succ count)
@@ -2116,7 +2115,8 @@ module Rr_map = struct
           rr names (encode data) off ttl, succ count)
         datas ((names, off), 0)
 
-  let encode_dnssec : type a. ttl:int32 -> ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> (int * Cstruct.t) list = fun ~ttl ?(clas = Class.IN) name k v ->
+  let encode_dnssec : type a. ttl:int32 -> ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a ->
+    (int * Cstruct.t) list = fun ~ttl ?(clas = Class.IN) name k v ->
     let clas = Class.to_int clas in
     let compress = false in
     let names = Domain_name.Map.empty in
