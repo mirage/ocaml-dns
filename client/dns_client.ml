@@ -257,6 +257,7 @@ struct
     (Transport.send_recv socket tx >>| fun recv_buffer ->
      Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
                     (Cstruct.length recv_buffer)) ;
+     Logs.info (fun m -> m "received: %a" Cstruct.hexdump_pp recv_buffer);
      Transport.lift
        (match Pure.parse_response state recv_buffer with
         | Ok (`Data x, rrsig) -> Ok (x, rrsig)

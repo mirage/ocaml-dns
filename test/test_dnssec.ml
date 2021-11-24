@@ -142,8 +142,59 @@ let test_root () =
     | _ ->
       Alcotest.fail "expected an answer"
 
+let test_ns_ripe () =
+  let ts = Option.get (Ptime.of_date_time ((2021, 11, 24), ((17, 26, 00), 0)))
+  and zsk = "1Ykt1gvvZyfCR3IculzIepOsrPDpL63hNCNEo+wEuBd93pV8gAwLjCZ/ZtgccdbnhhVN6OBD70pUbml9Y2zOSQ=="
+  and algorithm = Dnskey.P256_SHA256
+  and buf = Cstruct.of_hex {|
+6a 1c 81 a0 00 01  00 06 00 00 00 01 04 72
+69 70 65 03 6e 65 74 00  00 02 00 01 c0 0c 00 02
+00 01 00 00 4f 33 00 0c  03 6e 73 34 05 61 70 6e
+69 63 c0 11 c0 0c 00 02  00 01 00 00 4f 33 00 0d
+03 6e 73 33 06 6c 61 63  6e 69 63 c0 11 c0 0c 00
+02 00 01 00 00 4f 33 00  0d 05 72 69 72 6e 73 04
+61 72 69 6e c0 11 c0 0c  00 02 00 01 00 00 4f 33
+00 0e 03 6e 73 33 07 61  66 72 69 6e 69 63 c0 11
+c0 0c 00 02 00 01 00 00  4f 33 00 10 05 6d 61 6e
+75 73 07 61 75 74 68 64  6e 73 c0 0c c0 0c 00 2e
+00 01 00 00 4f 33 00 5c  00 02 0d 02 00 01 51 80
+61 af 37 b3 61 9c ad 9b  d9 23 04 72 69 70 65 03
+6e 65 74 00 c3 76 38 b7  04 a5 a4 45 9d 51 cc c2
+ca b7 3b eb 19 2d e1 be  39 8a 64 27 e9 50 90 fd
+4f 17 96 78 46 da 46 63  39 ca db c7 e0 37 e5 d4
+c9 91 77 1f 9b 6c c7 dc  64 76 ad 00 71 15 3c 84
+dc 02 7d 0a 00 00 29 02  00 00 00 80 00 00 00
+|}
+  in
+  let key = Dnskey.{ algorithm ; key = Cstruct.of_string (Base64.decode_exn zsk) ; flags = F.singleton `Zone } in
+  match Dnssec.dnskey_to_pk key with
+  | Error _ -> Alcotest.fail "key decoding failed"
+  | Ok key ->
+    match Packet.decode buf with
+    | Error _ -> Alcotest.fail "packet decoding failed"
+    | Ok pkt ->
+      match pkt.Packet.data with
+      | `Answer (answer, _) ->
+        begin
+        if Domain_name.Map.cardinal answer <> 1 then Alcotest.fail "expected one element name_rr_map";
+        let name, rrmap = Domain_name.Map.choose answer in
+        let _, rrsigs = Rr_map.get Rrsig rrmap in
+        if Rr_map.Rrsig_set.cardinal rrsigs <> 1 then Alcotest.fail "expected single rrsig" ;
+        let rrsig = Rr_map.Rrsig_set.choose rrsigs in
+        let left = Rr_map.remove Rrsig rrmap in
+        if Rr_map.cardinal left <> 1 then Alcotest.fail "expected single element in rr_map";
+        match Rr_map.min_binding left with
+        | None -> assert false
+        | Some (B (k, v)) ->
+          match Dnssec.verify ts key name rrsig k v with
+          | Ok () -> ()
+          | Error _ -> Alcotest.fail "verification failed"
+      end
+      | _ -> Alcotest.fail "expected an answer"
+
 let tests = [
   "root", `Quick, test_root ;
+  "ns for ripe.net", `Quick, test_ns_ripe ;
 ]
 
 let () =

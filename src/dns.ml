@@ -949,6 +949,7 @@ module Rrsig = struct
                            (Cstruct.compare a.signature b.signature))))))))
 
   let decode names buf ~off ~len =
+    Logs.info (fun m -> m "decoding rrsig: %a" Cstruct.hexdump_pp (Cstruct.sub buf off len));
     let type_covered = Cstruct.BE.get_uint16 buf off
     and algo = Cstruct.get_uint8 buf (off + 2)
     and label_count = Cstruct.get_uint8 buf (off + 3)
@@ -2208,6 +2209,7 @@ module Rr_map = struct
       fun name rrsig typ value ->
     let buf, off = Rrsig.prep_rrsig rrsig in
     let rrsig_cs = Cstruct.sub buf 0 off in
+    Logs.info (fun m -> m "using rrsig %a" Cstruct.hexdump_pp rrsig_cs);
     let* name =
       let* used_name = Rrsig.used_name rrsig name in
       Ok (Domain_name.canonical used_name)
@@ -2234,8 +2236,9 @@ module Rr_map = struct
       in
       c 0
     in
-     (* String.compare (Cstruct.to_string cs) (Cstruct.to_string cs') in *)
-    Ok (Cstruct.concat (rrsig_cs :: List.sort compare_cstruct cs))
+    (* String.compare (Cstruct.to_string cs) (Cstruct.to_string cs') in *)
+    let sorted_cs = List.sort compare_cstruct cs in
+    Ok (Cstruct.concat (rrsig_cs :: sorted_cs))
 
   let union_rr : type a. a key -> a -> a -> a = fun k l r ->
     match k, l, r with

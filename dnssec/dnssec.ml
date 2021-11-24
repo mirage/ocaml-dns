@@ -50,8 +50,9 @@ let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
 let verify : type a . Ptime.t -> X509.Public_key.t -> [`raw] Domain_name.t -> Rrsig.t ->
   a Rr_map.key -> a -> (unit, [> `Msg of string ]) result = fun now key name rrsig t v ->
   (* from RFC 4034 section 3.1.8.1 *)
-  Logs.info (fun m -> m "verifying for %a (with %a)" Domain_name.pp name 
-    X509.Key_type.pp (X509.Public_key.key_type key));
+  Logs.info (fun m -> m "verifying for %a (with %a / %a)" Domain_name.pp name 
+    X509.Key_type.pp (X509.Public_key.key_type key)
+    Dnskey.pp_algorithm rrsig.Rrsig.algorithm);
   let* algorithm =
     match rrsig.Rrsig.algorithm with
     | Dnskey.RSA_SHA1 -> Ok `SHA1
@@ -83,5 +84,10 @@ let verify : type a . Ptime.t -> X509.Public_key.t -> [`raw] Domain_name.t -> Rr
     ok_if_true (Mirage_crypto_ec.Ed25519.verify ~key rrsig.Rrsig.signature ~msg:data)
   | `RSA key ->
     let hashp = ( = ) algorithm in
+    (match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key rrsig.Rrsig.signature with
+    | None -> Logs.warn (fun m -> m "none in sig_decode")
+    | Some cs -> Logs.info (fun m -> m "decoded sig %a" Cstruct.hexdump_pp cs));
+    Logs.info (fun m -> m "digest %a" Cstruct.hexdump_pp (Mirage_crypto.Hash.digest algorithm data));
+
     ok_if_true (Mirage_crypto_pk.Rsa.PKCS1.verify ~hashp ~key ~signature:rrsig.Rrsig.signature (`Message data))
   | _ -> Error (`Msg "unsupported key")
