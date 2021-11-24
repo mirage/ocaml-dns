@@ -16,7 +16,6 @@ depends: [
   "mirage-crypto"
   "mirage-crypto-pk"
   "mirage-crypto-ec"
-  "x509"
   "base64" {with-test & >= "3.0.0"}
 ]
 build: [
