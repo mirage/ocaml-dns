@@ -727,6 +727,9 @@ module Rr_map : sig
   val ppk : k Fmt.t
   (** [ppk ppf k] pretty-prints [k]. *)
 
+  val of_int : ?off:int -> int -> (k, [> `Malformed of int * string ]) result
+  (** [of_int ~off i] constructs a [k] of the  provided integer. *)
+
   val names : 'a key -> 'a -> Domain_name.Host_set.t
   (** [names k v] are the referenced domain names in the given binding. *)
 

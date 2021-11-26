@@ -128,6 +128,13 @@ let do_dkim nameserver (selector:string) domains () =
            Logs.app (fun m -> m "%s" txt)
          ) txtset)
 
+let do_type nameserver typ domains () =
+  match Dns.Rr_map.of_int typ with
+  | Ok K k ->
+    for_all_domains nameserver ~domains k
+      (fun domain resp ->
+         Logs.app (fun m -> m "%a" pp_zone (domain, k, resp)))
+  | _ -> Error (`Msg "bad argument")
 
 open Cmdliner
 
@@ -372,6 +379,16 @@ let cmd_dkim : unit Term.t * Term.info =
                      $ arg_domains $ setup_log)),
   Term.info "dkim" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
+let arg_typ : int Term.t =
+  let doc = "Type to query" in
+  Arg.(required & opt (some int) None
+       & info ["type"] ~docv:"TYPE" ~doc)
+
+let cmd_type : unit Term.t * Term.info =
+  let doc = "Query a NS for a type, providing its integer number" in
+  Term.(term_result (const do_type $ nameserver $ arg_typ
+                     $ arg_domains $ setup_log)),
+  Term.info "type" ~version:(Manpage.escape "%%VERSION%%") ~doc ~sdocs
 
 let cmd_help : 'a Term.t * Term.info =
   let doc = "OCaml uDns alternative to `dig`" in
@@ -385,7 +402,7 @@ run them while passing the help flag: $(tname) $(i,SUBCOMMAND) $(b,--help)
   Term.info "odns" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
 
 let cmds =
-  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ; cmd_aaaa ; cmd_mx ]
+  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ; cmd_aaaa ; cmd_mx ; cmd_type ]
 
 let () =
   Term.(exit @@ eval_choice cmd_help cmds)
