@@ -207,7 +207,7 @@ module Name = struct
         aux ((name, off) :: offsets) (succ off + i)
     in
     (* Cstruct.xxx can raise, and we'll have a partial parse then *)
-    let* l, offs, foff = (try aux [] off with _ -> Error `Partial) in
+    let* l, offs, foff = (try aux [] off with Invalid_argument _ -> Error `Partial) in
     (* treat last element special -- either Z or P *)
     let* off, name, size =
       match l with
@@ -498,7 +498,7 @@ module Soa = struct
 
   let newer ~old soa = Int32.sub soa.serial old.serial > 0l
 
-  let decode names buf ~off ~len:_ =
+  let decode_exn names buf ~off ~len:_ =
     let* nameserver, names, off = Name.decode names buf ~off in
     let* hostmaster, names, off = Name.decode names buf ~off in
     let serial = Cstruct.BE.get_uint32 buf off in
@@ -552,7 +552,7 @@ module Mx = struct
     andThen (int_compare mx.preference mx'.preference)
       (Domain_name.compare mx.mail_exchange mx'.mail_exchange)
 
-  let decode names buf ~off ~len:_ =
+  let decode_exn names buf ~off ~len:_ =
     let preference = Cstruct.BE.get_uint16 buf off in
     let off = off + 2 in
     let* mx, names, off' = Name.decode names buf ~off in
@@ -585,7 +585,7 @@ module A = struct
 
   let compare = Ipaddr.V4.compare
 
-  let decode names buf ~off ~len:_ =
+  let decode_exn names buf ~off ~len:_ =
     let ip = Cstruct.BE.get_uint32 buf off in
     Ok (Ipaddr.V4.of_int32 ip, names, off + 4)
 
@@ -603,7 +603,7 @@ module Aaaa = struct
 
   let compare = Ipaddr.V6.compare
 
-  let decode names buf ~off ~len:_ =
+  let decode_exn names buf ~off ~len:_ =
     let iph = Cstruct.BE.get_uint64 buf off
     and ipl = Cstruct.BE.get_uint64 buf (off + 8)
     in
@@ -652,7 +652,7 @@ module Srv = struct
          (andThen (int_compare a.port b.port)
             (Domain_name.compare a.target b.target)))
 
-  let decode names buf ~off ~len:_ =
+  let decode_exn names buf ~off ~len:_ =
     let priority = Cstruct.BE.get_uint16 buf off
     and weight = Cstruct.BE.get_uint16 buf (off + 2)
     and port = Cstruct.BE.get_uint16 buf (off + 4)
@@ -732,7 +732,7 @@ module Dnskey = struct
     andThen (compare a.algorithm b.algorithm)
       (Cstruct.compare a.key b.key)
 
-  let decode names buf ~off ~len =
+  let decode_exn names buf ~off ~len =
     let flags = Cstruct.BE.get_uint16 buf off
     and proto = Cstruct.get_uint8 buf (off + 2)
     and algo = Cstruct.get_uint8 buf (off + 3)
@@ -800,7 +800,7 @@ module Caa = struct
             (fun r a b -> match r with 0 -> String.compare a b | x -> x)
             0 a.value b.value))
 
-  let decode names buf ~off ~len =
+  let decode_exn names buf ~off ~len =
     let critical = Cstruct.get_uint8 buf off = 0x80
     and tl = Cstruct.get_uint8 buf (succ off)
     in
@@ -940,7 +940,7 @@ module Tlsa = struct
          (andThen (compare t1.matching_type t2.matching_type)
             (Cstruct.compare t1.data t2.data)))
 
-  let decode names buf ~off ~len =
+  let decode_exn names buf ~off ~len =
     let usage, selector, matching_type =
       Cstruct.get_uint8 buf off,
       Cstruct.get_uint8 buf (off + 1),
@@ -1044,7 +1044,7 @@ module Sshfp = struct
       (andThen (compare s1.typ s2.typ)
          (Cstruct.compare s1.fingerprint s2.fingerprint))
 
-  let decode names buf ~off ~len =
+  let decode_exn names buf ~off ~len =
     let algo, typ = Cstruct.get_uint8 buf off, Cstruct.get_uint8 buf (succ off) in
     let fingerprint = Cstruct.sub buf (off + 2) (len - 2) in
     let algorithm = int_to_algorithm algo in
@@ -1068,7 +1068,7 @@ module Txt = struct
 
   let compare = String.compare
 
-  let decode names buf ~off ~len =
+  let decode_exn names buf ~off ~len =
     let decode_character_str buf off =
       let len = Cstruct.get_uint8 buf off in
       let data = Cstruct.to_string (Cstruct.sub buf (succ off) len) in
@@ -1244,31 +1244,29 @@ module Tsig = struct
              (add (shift_left (of_int a) 32) (shift_left (of_int b) 16))
              (of_int c))
 
-  (* TODO maybe revise, esp. all the guards *)
-  let decode names buf ~off =
-    let* () = guard (Cstruct.length buf - off >= 6) `Partial in
+  let decode_exn names buf ~off =
     let ttl = Cstruct.BE.get_uint32 buf off in
     let* () =
       guard (ttl = 0l) (`Malformed (off, Fmt.str "tsig ttl is not zero %lu" ttl))
     in
     let len = Cstruct.BE.get_uint16 buf (off + 4) in
     let rdata_start = off + 6 in
-    let* () = guard (Cstruct.length buf - rdata_start >= len) `Partial in
     let* (algorithm, names, off') = Name.decode names buf ~off:rdata_start in
     let* algorithm = Name.host rdata_start algorithm in
-    let* () = guard (Cstruct.length buf - off' >= 10) `Partial in
     let signed = decode_48bit_time buf off'
     and fudge = Cstruct.BE.get_uint16 buf (off' + 6)
     and mac_len = Cstruct.BE.get_uint16 buf (off' + 8)
     in
-    let* () = guard (Cstruct.length buf - off' >= 10 + mac_len + 6) `Partial in
     let mac = Cstruct.sub buf (off' + 10) mac_len
     and original_id = Cstruct.BE.get_uint16 buf (off' + 10 + mac_len)
     and error = Cstruct.BE.get_uint16 buf (off' + 12 + mac_len)
     and other_len = Cstruct.BE.get_uint16 buf (off' + 14 + mac_len)
     in
     let rdata_end = off' + 10 + mac_len + 6 + other_len in
-    let* () = guard (rdata_end - rdata_start = len) `Partial in
+    let* () =
+      guard (rdata_end - rdata_start = len) 
+        (`Leftover (rdata_end, "more bytes in tsig"))
+    in
     let* () = guard (Cstruct.length buf >= rdata_end) `Partial in
     let* () =
       guard (other_len = 0 || other_len = 6)
@@ -1472,12 +1470,11 @@ module Edns = struct
     Cstruct.blit v 0 buf (off + 4) l ;
     off + 4 + l
 
-  let decode_extension buf ~off ~len =
+  let decode_extension buf ~off =
     let code = Cstruct.BE.get_uint16 buf off
     and tl = Cstruct.BE.get_uint16 buf (off + 2)
     in
     let v = Cstruct.sub buf (off + 4) tl in
-    let* () = guard (len >= tl + 4) `Partial in
     let len = tl + 4 in
     match int_to_extension code with
     | Some `nsid -> Ok (Nsid v, len)
@@ -1544,15 +1541,14 @@ module Edns = struct
       if len = pos then
         Ok (List.rev acc)
       else
-        let* opt, len = decode_extension buf ~off:pos ~len:(len - pos) in
+        let* opt, len = decode_extension buf ~off:pos in
         one (opt :: acc) (pos + len)
     in
     one [] 0
 
-  let decode buf ~off =
+  let decode_exn buf ~off =
     (* EDNS is special -- the incoming off points to before name type clas *)
     (* name must be the root, typ is OPT, class is used for length *)
-    let* () = guard (Cstruct.length buf - off >= 11) `Partial in
     let* () = guard (Cstruct.get_uint8 buf off = 0) (`Malformed (off, "bad edns (must be 0)")) in
     (* crazyness: payload_size is encoded in class *)
     let payload_size = Cstruct.BE.get_uint16 buf (off + 3)
@@ -1574,9 +1570,7 @@ module Edns = struct
         payload_size
     in
     let exts_buf = Cstruct.sub buf off len in
-    let* extensions =
-      try decode_extensions exts_buf ~len with _ -> Error `Partial
-    in
+    let* extensions = decode_extensions exts_buf ~len in
     let opt = { extended_rcode ; version ; dnssec_ok ; payload_size ; extensions } in
     Ok (opt, off + len)
 
@@ -2177,49 +2171,55 @@ module Rr_map = struct
         (`Malformed (off + 4, Fmt.str "length %d exceeds maximum rdata size" len))
     in
     let* b, names, rdata_end =
-      match typ with
-      | Soa ->
-        let* soa, names, off = Soa.decode names buf ~off:rdata_start ~len in
-        Ok (B (Soa, soa), names, off)
-      | Ns ->
-        let* ns, names, off = Ns.decode names buf ~off:rdata_start ~len in
-        Ok (B (Ns, (ttl, Domain_name.Host_set.singleton ns)), names, off)
-      | Mx ->
-        let* mx, names, off = Mx.decode names buf ~off:rdata_start ~len in
-        Ok (B (Mx, (ttl, Mx_set.singleton mx)), names, off)
-      | Cname ->
-        let* alias, names, off = Cname.decode names buf ~off:rdata_start ~len in
-        Ok (B (Cname, (ttl, alias)), names, off)
-      | A ->
-        let* address, names, off = A.decode names buf ~off:rdata_start ~len in
-        Ok (B (A, (ttl, Ipaddr.V4.Set.singleton address)), names, off)
-      | Aaaa ->
-        let* address, names, off = Aaaa.decode names buf ~off:rdata_start ~len in
-        Ok (B (Aaaa, (ttl, Ipaddr.V6.Set.singleton address)), names, off)
-      | Ptr ->
-        let* rev, names, off = Ptr.decode names buf ~off:rdata_start ~len in
-        Ok (B (Ptr, (ttl, rev)), names, off)
-      | Srv ->
-        let* srv, names, off = Srv.decode names buf ~off:rdata_start ~len in
-        Ok (B (Srv, (ttl, Srv_set.singleton srv)), names, off)
-      | Dnskey ->
-        let* dnskey, names, off = Dnskey.decode names buf ~off:rdata_start ~len in
-        Ok (B (Dnskey, (ttl, Dnskey_set.singleton dnskey)), names, off)
-      | Caa ->
-        let* caa, names, off = Caa.decode names buf ~off:rdata_start ~len in
-        Ok (B (Caa, (ttl, Caa_set.singleton caa)), names, off)
-      | Tlsa ->
-        let* tlsa, names, off = Tlsa.decode names buf ~off:rdata_start ~len in
-        Ok (B (Tlsa, (ttl, Tlsa_set.singleton tlsa)), names, off)
-      | Sshfp ->
-        let* sshfp, names, off = Sshfp.decode names buf ~off:rdata_start ~len in
-        Ok (B (Sshfp, (ttl, Sshfp_set.singleton sshfp)), names, off)
-      | Txt ->
-        let* txt, names, off = Txt.decode names buf ~off:rdata_start ~len in
-        Ok (B (Txt, (ttl, Txt_set.singleton txt)), names, off)
-      | Unknown x ->
-        let data = Cstruct.sub buf rdata_start len in
-        Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)
+      try
+        let buf = Cstruct.sub buf 0 (rdata_start + len)
+        and off = rdata_start
+        in
+        begin match typ with
+          | Soa ->
+            let* soa, names, off = Soa.decode_exn names buf ~off ~len in
+            Ok (B (Soa, soa), names, off)
+          | Ns ->
+            let* ns, names, off = Ns.decode names buf ~off ~len in
+            Ok (B (Ns, (ttl, Domain_name.Host_set.singleton ns)), names, off)
+          | Mx ->
+            let* mx, names, off = Mx.decode_exn names buf ~off ~len in
+            Ok (B (Mx, (ttl, Mx_set.singleton mx)), names, off)
+          | Cname ->
+            let* alias, names, off = Cname.decode names buf ~off ~len in
+            Ok (B (Cname, (ttl, alias)), names, off)
+          | A ->
+            let* address, names, off = A.decode_exn names buf ~off ~len in
+            Ok (B (A, (ttl, Ipaddr.V4.Set.singleton address)), names, off)
+          | Aaaa ->
+            let* address, names, off = Aaaa.decode_exn names buf ~off ~len in
+            Ok (B (Aaaa, (ttl, Ipaddr.V6.Set.singleton address)), names, off)
+          | Ptr ->
+            let* rev, names, off = Ptr.decode names buf ~off ~len in
+            Ok (B (Ptr, (ttl, rev)), names, off)
+          | Srv ->
+            let* srv, names, off = Srv.decode_exn names buf ~off ~len in
+            Ok (B (Srv, (ttl, Srv_set.singleton srv)), names, off)
+          | Dnskey ->
+            let* dnskey, names, off = Dnskey.decode_exn names buf ~off ~len in
+            Ok (B (Dnskey, (ttl, Dnskey_set.singleton dnskey)), names, off)
+          | Caa ->
+            let* caa, names, off = Caa.decode_exn names buf ~off ~len in
+            Ok (B (Caa, (ttl, Caa_set.singleton caa)), names, off)
+          | Tlsa ->
+            let* tlsa, names, off = Tlsa.decode_exn names buf ~off ~len in
+            Ok (B (Tlsa, (ttl, Tlsa_set.singleton tlsa)), names, off)
+          | Sshfp ->
+            let* sshfp, names, off = Sshfp.decode_exn names buf ~off ~len in
+            Ok (B (Sshfp, (ttl, Sshfp_set.singleton sshfp)), names, off)
+          | Txt ->
+            let* txt, names, off = Txt.decode_exn names buf ~off ~len in
+            Ok (B (Txt, (ttl, Txt_set.singleton txt)), names, off)
+          | Unknown x ->
+            let data = Cstruct.sub buf off len in
+            Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)
+        end with
+        | Invalid_argument _ -> Error `Partial
     in
     let* () =
       guard (len = rdata_end - rdata_start) (`Leftover (rdata_end, "rdata"))
@@ -2605,15 +2605,21 @@ module Packet = struct
     match typ with
     | `Edns when edns = None ->
       (* OPT is special and needs class! (also, name is guarded to be .) *)
-      let* edns, off' = Edns.decode buf ~off in
-      Ok ((map, Some edns, None), names, off')
+      begin try
+        let* edns, off' = Edns.decode_exn buf ~off in
+        Ok ((map, Some edns, None), names, off')
+      with Invalid_argument _ -> Error `Partial
+      end
     | `Tsig when tsig ->
       let* () =
         guard (clas = Class.(to_int ANY_CLASS))
           (`Malformed (off, Fmt.str "tsig class must be ANY 0x%x" clas))
       in
-      let* tsig, names, off' = Tsig.decode names buf ~off:off' in
-      Ok ((map, edns, Some (name, tsig, off)), names, off')
+      begin try
+        let* tsig, names, off' = Tsig.decode_exn names buf ~off:off' in
+        Ok ((map, edns, Some (name, tsig, off)), names, off')
+      with Invalid_argument _ -> Error `Partial
+      end
     | `K t ->
       let* () =
         guard (clas = Class.(to_int IN))
