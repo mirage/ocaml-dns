@@ -949,8 +949,7 @@ module Rrsig = struct
                         (andThen (Domain_name.compare a.signer_name b.signer_name)
                            (Cstruct.compare a.signature b.signature))))))))
 
-  let decode names buf ~off ~len =
-    Logs.info (fun m -> m "decoding rrsig: %a" Cstruct.hexdump_pp (Cstruct.sub buf off len));
+  let decode_exn names buf ~off ~len =
     let type_covered = Cstruct.BE.get_uint16 buf off
     and algo = Cstruct.get_uint8 buf (off + 2)
     and label_count = Cstruct.get_uint8 buf (off + 3)
@@ -1070,7 +1069,7 @@ module Ds = struct
          (andThen (compare a.digest_type b.digest_type)
             (Cstruct.compare a.digest b.digest)))
 
-  let decode names buf ~off ~len =
+  let decode_exn names buf ~off ~len =
     let key_tag = Cstruct.BE.get_uint16 buf off
     and algo = Cstruct.get_uint8 buf (off + 2)
     and dt = Cstruct.get_uint8 buf (off + 3)
@@ -2702,10 +2701,10 @@ module Rr_map = struct
             let* txt, names, off = Txt.decode_exn names buf ~off ~len in
             Ok (B (Txt, (ttl, Txt_set.singleton txt)), names, off)
           | Ds ->
-            let* ds, names, off = Ds.decode names buf ~off ~len in
+            let* ds, names, off = Ds.decode_exn names buf ~off ~len in
             Ok (B (Ds, (ttl, Ds_set.singleton ds)), names, off)
           | Rrsig ->
-            let* rrs, names, off = Rrsig.decode names buf ~off ~len in
+            let* rrs, names, off = Rrsig.decode_exn names buf ~off ~len in
             Ok (B (Rrsig, (ttl, Rrsig_set.singleton rrs)), names, off)
           | Unknown x ->
             let data = Cstruct.sub buf off len in
