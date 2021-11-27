@@ -1,3 +1,7 @@
+### v6.1.2 (2021-11-27)
+
+* dns: avoid exceptions when decoding resource records (#282 @reynir @hannesm)
+
 ### v6.1.1 (2021-11-19)
 
 * dns-client: by default, do not send EDNS (#280 @reynir @hannesm)
