@@ -423,6 +423,23 @@ module Ds : sig
   (** [compare a b] compares the DS [a] with [b]. *)
 end
 
+(** Nsec *)
+module Nsec : sig
+  module I : Set.S with type elt = int
+
+  type t = {
+    next_domain : [`raw] Domain_name.t;
+    types : I.t;
+  }
+  (** The type of Nsec. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the Nsec. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the Nsec [a] with [b]. *)
+end
+
 (** Certificate authority authorization
 
     A certificate authority authorization (CAA) record can restrict usage of
@@ -768,6 +785,7 @@ module Rr_map : sig
     | Txt : Txt_set.t with_ttl rr
     | Ds : Ds_set.t with_ttl rr
     | Rrsig : Rrsig_set.t with_ttl rr
+    | Nsec : Nsec.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
   (** The type of resource record sets, as GADT: the value depends on the
      specific constructor. There may only be a single SOA and Cname and Ptr

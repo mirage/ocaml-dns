@@ -1088,6 +1088,138 @@ module Ds = struct
     names, off + Cstruct.length t.digest + 4
 end
 
+module Nsec = struct
+
+  module I = Set.Make(struct type t = int let compare (a : int) (b : int) = compare a b end)
+
+  type t = {
+    next_domain : [`raw] Domain_name.t;
+    types : I.t;
+  }
+
+  (* (block # | length (of data) | N octets of data )*
+   *  ^ 0-255    ^ 1-32              ^ N octets
+   *  0: 0-255 RRTYPE
+   *  1: 256-511 RRTYPE
+   *
+   *  A record has RRTYPE=1
+   *  MX record has RRTYPE=15
+   *  bit 15 is set and bit 1 is set
+   *  0b1000 0000 0000 0001 -> 0x10 0x01
+   *  0x00 0x02 0x10 0x01 *)
+
+  let pp ppf { next_domain ; types } =
+    Fmt.pf ppf "NSEC %a: %a" Domain_name.pp next_domain
+      Fmt.(list ~sep:(any " ") int) (I.elements types)
+
+  let compare a b =
+    andThen (Domain_name.compare a.next_domain b.next_domain)
+      (I.compare a.types b.types)
+
+  let byte_to_bits byte =
+    let rec more v =
+      if v = 0 then
+        []
+      else if v >= 0x80 then
+        0 :: more (v - 0x80)
+      else if v >= 0x40 then
+        1 :: more (v - 0x40)
+      else if v >= 0x20 then
+        2 :: more (v - 0x20)
+      else if v >= 0x10 then
+        3 :: more (v - 0x10)
+      else if v >= 0x08 then
+        4 :: more (v - 0x08)
+      else if v >= 0x04 then
+        5 :: more (v - 0x04)
+      else if v >= 0x02 then
+        6 :: more (v - 0x02)
+      else (* if v >= 0x01 then *)
+        7 :: more (v - 0x01)
+    in
+    List.sort Int.compare (more byte)
+
+  let decode_bit_map buf off len =
+    let rec decode_bit_map_field last_block idx acc =
+      if idx - off = len then
+        Ok acc
+      else
+        let block = Cstruct.get_uint8 buf idx in
+        if block <= last_block then
+          Error (`Malformed (off + idx, "block number not increasing"))
+        else
+          let length = Cstruct.get_uint8 buf (idx + 1) in
+          let s = idx + 2 in
+          let rec octet idx =
+            let b = Cstruct.get_uint8 buf (s + idx) in
+            let bits = byte_to_bits b in
+            let more = if idx = 0 then I.empty else octet (idx - 1) in
+            List.fold_left (fun acc b' -> I.add (idx * 8 + b') acc) more bits
+          in
+          let bits = octet (length - 1) in
+          decode_bit_map_field block (s + length)
+            (I.union (I.map (fun b -> b + block * 256) bits) acc)
+    in
+    decode_bit_map_field (-1) off I.empty
+
+  let decode_exn names buf ~off ~len =
+    let* next_domain, names, off' = Name.decode names buf ~off in
+    let len' = len - (off' - off) in
+    let* types = decode_bit_map buf off' len' in
+    Ok ({ next_domain ; types }, names, off + len)
+
+  let bits_to_byte data =
+    let rec more b = function
+      | [] -> b
+      | 0 :: rt -> more (0x80 + b) rt
+      | 1 :: rt -> more (0x40 + b) rt
+      | 2 :: rt -> more (0x20 + b) rt
+      | 3 :: rt -> more (0x10 + b) rt
+      | 4 :: rt -> more (0x08 + b) rt
+      | 5 :: rt -> more (0x04 + b) rt
+      | 6 :: rt -> more (0x02 + b) rt
+      | 7 :: rt -> more (0x01 + b) rt
+      | _ -> assert false
+    in
+    more 0 data
+
+  let encode_bit_map buf off data =
+    let encode_block off block data =
+      Cstruct.set_uint8 buf off block;
+      let bytes = (I.max_elt data + 7) / 8 in
+      Cstruct.set_uint8 buf (off + 1) bytes;
+      let rec enc_octet idx data =
+        if I.is_empty data then
+          ()
+        else
+          let data, rest = I.partition (fun i -> i < (idx + 1) * 8) data in
+          let d = I.map (fun i -> i mod 8) data in
+          let byte = bits_to_byte (I.elements d) in
+          Cstruct.set_uint8 buf (idx + off + 2) byte;
+          enc_octet (idx + 1) rest
+      in
+      enc_octet 0 data;
+      off + 2 + bytes
+    in
+    let rec encode_types off i =
+      if I.is_empty i then
+        off
+      else
+        let next = I.min_elt i in
+        let block = next / 256 in
+        let block_end = block * 256 + 255 in
+        let this, rest = I.partition (fun i -> i < block_end) i in
+        let to_enc = I.map (fun i -> i mod 256) this in
+        let off = encode_block off block to_enc in
+        encode_types off rest
+    in
+    encode_types off data
+
+  let encode t names buf off =
+    let names, off = Name.encode ~compress:false t.next_domain names buf off in
+    names, encode_bit_map buf off t.types
+end
+
 (* certificate authority authorization *)
 module Caa = struct
   type t = {
@@ -1896,7 +2028,7 @@ module Rr_map = struct
   end = struct
     type t = int
     let of_int ?(off = 0) i = match i with
-      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 46 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
+      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 46 | 47 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
         Error (`Malformed (off, "reserved and supported RTYPE not Unknown"))
       | x -> if x < 1 lsl 15 then Ok x else Error (`Malformed (off, "RTYPE exceeds 16 bit"))
     let to_int t = t
@@ -1921,6 +2053,7 @@ module Rr_map = struct
     | Txt : Txt_set.t with_ttl rr
     | Ds : Ds_set.t with_ttl rr
     | Rrsig : Rrsig_set.t with_ttl rr
+    | Nsec : Nsec.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
 
   module K = struct
@@ -1944,6 +2077,7 @@ module Rr_map = struct
       | Txt, Txt -> Eq | Txt, _ -> Lt | _, Txt -> Gt
       | Ds, Ds -> Eq | Ds, _ -> Lt | _, Ds -> Gt
       | Rrsig, Rrsig -> Eq | Rrsig, _ -> Lt | _, Rrsig -> Gt
+      | Nsec, Nsec -> Eq | Nsec, _ -> Lt | _, Nsec -> Gt
       | Unknown a, Unknown b ->
         let r = I.compare a b in
         if r = 0 then Eq else if r < 0 then Lt else Gt
@@ -1973,6 +2107,7 @@ module Rr_map = struct
     | Sshfp, (_, sshfps), (_, sshfps') -> Sshfp_set.equal sshfps sshfps'
     | Ds, (_, ds), (_, ds') -> Ds_set.equal ds ds'
     | Rrsig, (_, rrs), (_, rrs') -> Rrsig_set.equal rrs rrs'
+    | Nsec, (_, ns), (_, ns') -> Nsec.compare ns ns' = 0
     | Unknown _, (_, data), (_, data') -> Txt_set.equal data data'
 
   let equalb (B (k, v)) (B (k', v')) = match K.compare k k' with
@@ -1982,7 +2117,7 @@ module Rr_map = struct
   let to_int : type a. a key -> int = function
     | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Ptr -> 12 | Mx -> 15
     | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Ds -> 43 | Sshfp -> 44
-    | Rrsig -> 46 | Dnskey -> 48 | Tlsa -> 52 | Caa -> 257
+    | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Tlsa -> 52 | Caa -> 257
     | Unknown x -> I.to_int x
 
   let any_rtyp = 255 and axfr_rtyp = 252 and ixfr_rtyp = 251
@@ -1991,7 +2126,7 @@ module Rr_map = struct
     | 1 -> Ok (K A) | 2 -> Ok (K Ns) | 5 -> Ok (K Cname) | 6 -> Ok (K Soa)
     | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
     | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
-    | 46 -> Ok (K Rrsig) | 48 -> Ok (K Dnskey) | 52 -> Ok (K Tlsa)
+    | 46 -> Ok (K Rrsig) | 47 -> Ok (K Nsec) | 48 -> Ok (K Dnskey) | 52 -> Ok (K Tlsa)
     | 257 -> Ok (K Caa)
     | x ->
       let* i = I.of_int ~off x in
@@ -2013,6 +2148,7 @@ module Rr_map = struct
     | Sshfp -> Fmt.string ppf "SSHFP"
     | Ds -> Fmt.string ppf "DS"
     | Rrsig -> Fmt.string ppf "RRSIG"
+    | Nsec -> Fmt.string ppf "NSEC"
     | Unknown x -> Fmt.pf ppf "TYPE%d" (I.to_int x)
 
   type rrtyp = [ `Any | `Tsig | `Edns | `Ixfr | `Axfr | `K of k ]
@@ -2104,6 +2240,8 @@ module Rr_map = struct
       Rrsig_set.fold (fun rrsig ((names, off), count) ->
           rr names (Rrsig.encode rrsig) off ttl, succ count)
         rrs ((names, off), 0)
+    | Nsec, (ttl, nsec) ->
+      rr names (Nsec.encode nsec) off ttl, 1
     | Unknown _, (ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -2181,6 +2319,8 @@ module Rr_map = struct
       Rrsig_set.fold (fun rrsig acc ->
           rr (Rrsig.encode rrsig) :: acc)
         rrs []
+    | Nsec, (_ttl, ns) ->
+      [ rr (Nsec.encode ns) ]
     | Unknown _, (_ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -2261,6 +2401,7 @@ module Rr_map = struct
     | Sshfp, (_, sshfps), (ttl, sshfps') -> (ttl, Sshfp_set.union sshfps sshfps')
     | Ds, (_, ds), (ttl, ds') -> (ttl, Ds_set.union ds ds')
     | Rrsig, (_, rrs), (ttl, rrs') -> (ttl, Rrsig_set.union rrs rrs')
+    | Nsec, _, nsec -> nsec
     | Unknown _, (_, data), (ttl, data') -> (ttl, Txt_set.union data data')
 
   let unionee : type a. a key -> a -> a -> a option =
@@ -2312,6 +2453,7 @@ module Rr_map = struct
     | Rrsig, (ttl, rrs), (_, rm) ->
       let s = Rrsig_set.diff rrs rm in
       if Rrsig_set.is_empty s then None else Some (ttl, s)
+    | Nsec, _, _ -> None
     | Unknown _, (ttl, datas), (_, rm) ->
       let data = Txt_set.diff datas rm in
       if Txt_set.is_empty data then None else Some (ttl, data)
@@ -2477,6 +2619,16 @@ module Rr_map = struct
               rrsig.key_tag (name rrsig.signer_name)
               (b64 rrsig.signature) :: acc)
           rrs []
+      | Nsec, (ttl, ns) ->
+        let types =
+          Nsec.I.fold (fun i acc ->
+              match of_int i with
+              | Ok k -> k :: acc
+              | Error _ -> assert false)
+            ns.Nsec.types [] |> List.rev
+        in
+        [ Fmt.str "%s\t%aNSEC\t%s\t(%a)" str_name ttl_fmt (ttl_opt ttl)
+            (name ns.Nsec.next_domain) Fmt.(list ~sep:(any " ") ppk) types ]
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
             Fmt.str "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
@@ -2502,6 +2654,7 @@ module Rr_map = struct
     | Sshfp, (ttl, _) -> ttl
     | Ds, (ttl, _) -> ttl
     | Rrsig, (ttl, _) -> ttl
+    | Nsec, (ttl, _) -> ttl
     | Unknown _, (ttl, _) -> ttl
 
   let with_ttl : type a. a key -> a -> int32 -> a = fun k v ttl ->
@@ -2521,6 +2674,7 @@ module Rr_map = struct
     | Sshfp, (_, sshfps) -> ttl, sshfps
     | Ds, (_, ds) -> ttl, ds
     | Rrsig, (_, rrs) -> ttl, rrs
+    | Nsec, (_, ns) -> ttl, ns
     | Unknown _, (_, datas) -> ttl, datas
 
   let split : type a. a key -> a -> a * a option = fun k v ->
@@ -2613,6 +2767,7 @@ module Rr_map = struct
         if Rrsig_set.is_empty rest then None else Some (ttl, rest)
       in
       (ttl, Rrsig_set.singleton one), rest'
+    | Nsec, (ttl, rr) -> (ttl, rr), None
     | Unknown _, (ttl, datas) ->
       let one = Txt_set.choose datas in
       let rest = Txt_set.remove one datas in
@@ -2706,6 +2861,9 @@ module Rr_map = struct
           | Rrsig ->
             let* rrs, names, off = Rrsig.decode_exn names buf ~off ~len in
             Ok (B (Rrsig, (ttl, Rrsig_set.singleton rrs)), names, off)
+          | Nsec ->
+            let* rr, names, off = Nsec.decode_exn names buf ~off ~len in
+            Ok (B (Nsec, (ttl, rr)), names, off)
           | Unknown x ->
             let data = Cstruct.sub buf off len in
             Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)
