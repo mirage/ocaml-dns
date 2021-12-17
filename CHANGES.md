@@ -1,3 +1,8 @@
+### v6.1.3 (2021-12-17)
+
+* dns-mirage: use tcpip >= 7.0.0 instead of deprecated mirage-stack and
+  mirage-protocols (#283 @dinosaure)
+
 ### v6.1.2 (2021-11-27)
 
 * dns: avoid exceptions when decoding resource records (#282 @reynir @hannesm)
