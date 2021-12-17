@@ -5,7 +5,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module IM = Map.Make(Int)
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Mirage_stack.V4V6) = struct
+module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) = struct
 
   module TLS = Tls_mirage.Make(S.TCP)
   module CA = Ca_certs_nss.Make(P)

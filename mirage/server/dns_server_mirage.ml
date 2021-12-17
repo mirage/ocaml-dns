@@ -5,7 +5,7 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_server_mirage" ~doc:"effectful DNS server"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_time.S) (S : Mirage_stack.V4V6) = struct
+module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_time.S) (S : Tcpip.Stack.V4V6) = struct
 
   let inc =
     let f = function
