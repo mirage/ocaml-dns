@@ -5,7 +5,7 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_mirage" ~doc:"effectful DNS layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (S : Mirage_stack.V4V6) = struct
+module Make (S : Tcpip.Stack.V4V6) = struct
 
   module IPM = struct
     include Map.Make(struct

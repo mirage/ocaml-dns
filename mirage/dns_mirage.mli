@@ -1,6 +1,6 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-module Make (S : Mirage_stack.V4V6) : sig
+module Make (S : Tcpip.Stack.V4V6) : sig
 
   module IPM : sig
     include Map.S with type key = Ipaddr.t * int
