@@ -423,13 +423,13 @@ module Ds : sig
   (** [compare a b] compares the DS [a] with [b]. *)
 end
 
+module Bit_map : Set.S with type elt = int
+
 (** Nsec *)
 module Nsec : sig
-  module I : Set.S with type elt = int
-
   type t = {
     next_domain : [`raw] Domain_name.t;
-    types : I.t;
+    types : Bit_map.t;
   }
   (** The type of Nsec. *)
 

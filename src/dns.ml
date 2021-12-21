@@ -1088,33 +1088,9 @@ module Ds = struct
     names, off + Cstruct.length t.digest + 4
 end
 
-module Nsec = struct
-
-  module I = Set.Make(struct type t = int let compare (a : int) (b : int) = compare a b end)
-
-  type t = {
-    next_domain : [`raw] Domain_name.t;
-    types : I.t;
-  }
-
-  (* (block # | length (of data) | N octets of data )*
-   *  ^ 0-255    ^ 1-32              ^ N octets
-   *  0: 0-255 RRTYPE
-   *  1: 256-511 RRTYPE
-   *
-   *  A record has RRTYPE=1
-   *  MX record has RRTYPE=15
-   *  bit 15 is set and bit 1 is set
-   *  0b1000 0000 0000 0001 -> 0x10 0x01
-   *  0x00 0x02 0x10 0x01 *)
-
-  let pp ppf { next_domain ; types } =
-    Fmt.pf ppf "NSEC %a: %a" Domain_name.pp next_domain
-      Fmt.(list ~sep:(any " ") int) (I.elements types)
-
-  let compare a b =
-    andThen (Domain_name.compare a.next_domain b.next_domain)
-      (I.compare a.types b.types)
+module Bit_map = struct
+  include Set.Make
+        (struct type t = int let compare (a : int) (b : int) = compare a b end)
 
   let byte_to_bits byte =
     let rec more v =
@@ -1139,7 +1115,7 @@ module Nsec = struct
     in
     List.sort Int.compare (more byte)
 
-  let decode_bit_map buf off len =
+  let decode_exn buf off len =
     let rec decode_bit_map_field last_block idx acc =
       if idx - off = len then
         Ok acc
@@ -1153,20 +1129,14 @@ module Nsec = struct
           let rec octet idx =
             let b = Cstruct.get_uint8 buf (s + idx) in
             let bits = byte_to_bits b in
-            let more = if idx = 0 then I.empty else octet (idx - 1) in
-            List.fold_left (fun acc b' -> I.add (idx * 8 + b') acc) more bits
+            let more = if idx = 0 then empty else octet (idx - 1) in
+            List.fold_left (fun acc b' -> add (idx * 8 + b') acc) more bits
           in
           let bits = octet (length - 1) in
           decode_bit_map_field block (s + length)
-            (I.union (I.map (fun b -> b + block * 256) bits) acc)
+            (union (map (fun b -> b + block * 256) bits) acc)
     in
-    decode_bit_map_field (-1) off I.empty
-
-  let decode_exn names buf ~off ~len =
-    let* next_domain, names, off' = Name.decode names buf ~off in
-    let len' = len - (off' - off) in
-    let* types = decode_bit_map buf off' len' in
-    Ok ({ next_domain ; types }, names, off + len)
+    decode_bit_map_field (-1) off empty
 
   let bits_to_byte data =
     let rec more b = function
@@ -1183,18 +1153,18 @@ module Nsec = struct
     in
     more 0 data
 
-  let encode_bit_map buf off data =
+  let encode buf off data =
     let encode_block off block data =
       Cstruct.set_uint8 buf off block;
-      let bytes = (I.max_elt data + 7) / 8 in
+      let bytes = (max_elt data + 7) / 8 in
       Cstruct.set_uint8 buf (off + 1) bytes;
       let rec enc_octet idx data =
-        if I.is_empty data then
+        if is_empty data then
           ()
         else
-          let data, rest = I.partition (fun i -> i < (idx + 1) * 8) data in
-          let d = I.map (fun i -> i mod 8) data in
-          let byte = bits_to_byte (I.elements d) in
+          let data, rest = partition (fun i -> i < (idx + 1) * 8) data in
+          let d = map (fun i -> i mod 8) data in
+          let byte = bits_to_byte (elements d) in
           Cstruct.set_uint8 buf (idx + off + 2) byte;
           enc_octet (idx + 1) rest
       in
@@ -1202,22 +1172,43 @@ module Nsec = struct
       off + 2 + bytes
     in
     let rec encode_types off i =
-      if I.is_empty i then
+      if is_empty i then
         off
       else
-        let next = I.min_elt i in
+        let next = min_elt i in
         let block = next / 256 in
         let block_end = block * 256 + 255 in
-        let this, rest = I.partition (fun i -> i < block_end) i in
-        let to_enc = I.map (fun i -> i mod 256) this in
+        let this, rest = partition (fun i -> i < block_end) i in
+        let to_enc = map (fun i -> i mod 256) this in
         let off = encode_block off block to_enc in
         encode_types off rest
     in
     encode_types off data
+end
+
+module Nsec = struct
+  type t = {
+    next_domain : [`raw] Domain_name.t;
+    types : Bit_map.t;
+  }
+
+  let pp ppf { next_domain ; types } =
+    Fmt.pf ppf "NSEC %a: %a" Domain_name.pp next_domain
+      Fmt.(list ~sep:(any " ") int) (Bit_map.elements types)
+
+  let compare a b =
+    andThen (Domain_name.compare a.next_domain b.next_domain)
+      (Bit_map.compare a.types b.types)
+
+  let decode_exn names buf ~off ~len =
+    let* next_domain, names, off' = Name.decode names buf ~off in
+    let len' = len - (off' - off) in
+    let* types = Bit_map.decode_exn buf off' len' in
+    Ok ({ next_domain ; types }, names, off + len)
 
   let encode t names buf off =
     let names, off = Name.encode ~compress:false t.next_domain names buf off in
-    names, encode_bit_map buf off t.types
+    names, Bit_map.encode buf off t.types
 end
 
 (* certificate authority authorization *)
@@ -2621,7 +2612,7 @@ module Rr_map = struct
           rrs []
       | Nsec, (ttl, ns) ->
         let types =
-          Nsec.I.fold (fun i acc ->
+          Bit_map.fold (fun i acc ->
               match of_int i with
               | Ok k -> k :: acc
               | Error _ -> assert false)
