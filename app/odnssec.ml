@@ -87,6 +87,17 @@ let jump () hostname ns =
           Dnssec.verify (Ptime_clock.now ()) pkey requested_domain rrsig t v)
         (Ok ()) keys_rrsigs
     in
+    let log_err = function
+      | `Msg msg ->
+        Logs.err (fun m -> m "error from resolver %s" msg);
+        Error (`Msg "bad request")
+      | `No_data _ ->
+        Logs.err (fun m -> m "no data from resolver");
+        Error (`Msg "no data")
+      | `No_domain _ ->
+        Logs.err (fun m -> m "no domain from resolver");
+        Error (`Msg "no domain")
+    in
     let retrieve_dnskey ds_set requested_domain =
       Dns_client_lwt.(get_rr_with_rrsig t Dnskey requested_domain) >|= function
         | Ok ((_ttl, keys) as rrs, Some (_ttl', rrsigs)) ->
@@ -108,9 +119,7 @@ let jump () hostname ns =
         | Ok (_, None) ->
           Logs.err (fun m -> m "rrsig missing");
           Error (`Msg "...")
-        | Error _ ->
-          Logs.err (fun m -> m "error from resolver");
-          Error (`Msg "bad request")
+        | Error e -> log_err e
     in
     let retrieve_ds dnskeys requested_domain =
       Dns_client_lwt.(get_rr_with_rrsig t Ds requested_domain) >|= function
@@ -120,9 +129,7 @@ let jump () hostname ns =
         | Ok (_, None) ->
           Logs.err (fun m -> m "rrsig missing");
           Error (`Msg "...")
-        | Error _ ->
-          Logs.err (fun m -> m "error from resolver");
-          Error (`Msg "bad request")
+        | Error e -> log_err e
     in
     let rec retrieve_validated_dnskeys hostname =
       Logs.info (fun m -> m "validating and retrieving DNSKEYS for %a" Domain_name.pp hostname);
@@ -140,17 +147,15 @@ let jump () hostname ns =
     retrieve_validated_dnskeys hostname >>= function
       | Error _ as e -> Lwt.return e
       | Ok dnskeys ->
-        Dns_client_lwt.(get_rr_with_rrsig t Ns hostname) >|= function
+        Dns_client_lwt.(get_rr_with_rrsig t A hostname) >|= function
         | Ok (rrs, Some (_ttl', rrsigs)) ->
-          let* () = validate_rrsig_keys dnskeys rrsigs hostname Ns rrs in
-          Logs.app (fun m -> m "%a" pp_zone (hostname, Ns, rrs));
+          let* () = validate_rrsig_keys dnskeys rrsigs hostname A rrs in
+          Logs.app (fun m -> m "%a" pp_zone (hostname, A, rrs));
           Ok ()
         | Ok (_, None) ->
           Logs.err (fun m -> m "rrsig missing");
           Error (`Msg "...")
-        | Error _ ->
-          Logs.err (fun m -> m "error from resolver");
-          Error (`Msg "bad request")
+        | Error e -> log_err e
   )
 
 open Cmdliner
