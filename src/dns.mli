@@ -440,6 +440,26 @@ module Nsec : sig
   (** [compare a b] compares the Nsec [a] with [b]. *)
 end
 
+(** Nsec3 *)
+module Nsec3 : sig
+  type f = [ `Opt_out ]
+
+  type t = {
+    flags : f option ;
+    iterations : int ;
+    salt : Cstruct.t ;
+    next_owner_hashed : Cstruct.t ;
+    types : Bit_map.t ;
+  }
+  (** The type of Nsec3. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the Nsec3. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the Nsec3 [a] with [b]. *)
+end
+
 (** Certificate authority authorization
 
     A certificate authority authorization (CAA) record can restrict usage of
@@ -786,6 +806,7 @@ module Rr_map : sig
     | Ds : Ds_set.t with_ttl rr
     | Rrsig : Rrsig_set.t with_ttl rr
     | Nsec : Nsec.t with_ttl rr
+    | Nsec3 : Nsec3.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
   (** The type of resource record sets, as GADT: the value depends on the
      specific constructor. There may only be a single SOA and Cname and Ptr

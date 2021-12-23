@@ -1115,7 +1115,7 @@ module Bit_map = struct
     in
     List.sort Int.compare (more byte)
 
-  let decode_exn buf off len =
+  let decode_exn buf ~off ~len =
     let rec decode_bit_map_field last_block idx acc =
       if idx - off = len then
         Ok acc
@@ -1203,12 +1203,84 @@ module Nsec = struct
   let decode_exn names buf ~off ~len =
     let* next_domain, names, off' = Name.decode names buf ~off in
     let len' = len - (off' - off) in
-    let* types = Bit_map.decode_exn buf off' len' in
+    let* types = Bit_map.decode_exn buf ~off:off' ~len:len' in
     Ok ({ next_domain ; types }, names, off + len)
 
   let encode t names buf off =
     let names, off = Name.encode ~compress:false t.next_domain names buf off in
     names, Bit_map.encode buf off t.types
+end
+
+module Nsec3 = struct
+  type f = [ `Opt_out ]
+
+  let compare_flags a b = match a, b with
+    | None, None | Some `Opt_out, Some `Opt_out -> 0
+    | None, Some `Opt_out -> -1 | Some `Opt_out, None -> 1
+
+  let flags_of_int b =
+    if b land 0x01 = 0x01 then Some `Opt_out else None
+
+  let flags_to_int = function
+    | Some `Opt_out -> 0x01
+    | None -> 0x00
+
+  type t = {
+    (* hash - but only SHA1 is supported *)
+    flags : f option ;
+    iterations : int ;
+    salt : Cstruct.t ;
+    next_owner_hashed : Cstruct.t ;
+    types : Bit_map.t ;
+  }
+
+  let hash = 1
+
+  let pp ppf { flags ; iterations ; salt ; next_owner_hashed ; types } =
+    Fmt.pf ppf "NSEC3 %s%d iterations, salt: %a, next owner %a types %a"
+      (match flags with None -> "" | Some `Opt_out -> "opt-out ")
+      iterations Cstruct.hexdump_pp salt
+      Cstruct.hexdump_pp next_owner_hashed
+      Fmt.(list ~sep:(any " ") int) (Bit_map.elements types)
+
+  let compare a b =
+    andThen (compare_flags a.flags b.flags)
+      (andThen (int_compare a.iterations b.iterations)
+         (andThen (Cstruct.compare a.salt b.salt)
+            (andThen (Cstruct.compare a.next_owner_hashed b.next_owner_hashed)
+               (Bit_map.compare a.types b.types))))
+
+  let decode_exn names buf ~off ~len =
+    let hash_algo = Cstruct.get_uint8 buf off in
+    let* () =
+      guard (hash_algo = hash)
+        (`Not_implemented (off, "NSEC3 hash only SHA-1 supported"))
+    in
+    let flags = flags_of_int (Cstruct.get_uint8 buf (off + 1)) in
+    let iterations = Cstruct.BE.get_uint16 buf (off + 2) in
+    let slen = Cstruct.get_uint8 buf (off + 4) in
+    let salt = Cstruct.sub buf (off + 5) slen in
+    let hlen = Cstruct.get_uint8 buf (off + 5 + slen) in
+    let next_owner_hashed = Cstruct.sub buf (off + 6 + slen) hlen in
+    let off' = off + 6 + slen + hlen in
+    let len' = len - (off' - off) in
+    let* types = Bit_map.decode_exn buf ~off:off' ~len:len' in
+    Ok ({ flags ; iterations ; salt ; next_owner_hashed ; types }, names, off + len)
+
+  let encode t names buf off =
+    Cstruct.set_uint8 buf off hash;
+    Cstruct.set_uint8 buf (off + 1) (flags_to_int t.flags);
+    Cstruct.BE.set_uint16 buf (off + 2) t.iterations;
+    let slen = Cstruct.length t.salt in
+    Cstruct.set_uint8 buf (off + 4) slen;
+    Cstruct.blit t.salt 0 buf (off + 5) slen;
+    let off' = off + 5 + slen in
+    let hlen = Cstruct.length t.next_owner_hashed in
+    Cstruct.set_uint8 buf off' hlen;
+    Cstruct.blit t.next_owner_hashed 0 buf (off' + 1) hlen;
+    let off' = off' + 1 + hlen in
+    let off = Bit_map.encode buf off' t.types in
+    names, off
 end
 
 (* certificate authority authorization *)
@@ -2019,7 +2091,7 @@ module Rr_map = struct
   end = struct
     type t = int
     let of_int ?(off = 0) i = match i with
-      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 46 | 47 | 48 | 52 | 250 | 251 | 252 | 255 | 257 ->
+      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 46 | 47 | 48 | 50 | 52 | 250 | 251 | 252 | 255 | 257 ->
         Error (`Malformed (off, "reserved and supported RTYPE not Unknown"))
       | x -> if x < 1 lsl 15 then Ok x else Error (`Malformed (off, "RTYPE exceeds 16 bit"))
     let to_int t = t
@@ -2045,6 +2117,7 @@ module Rr_map = struct
     | Ds : Ds_set.t with_ttl rr
     | Rrsig : Rrsig_set.t with_ttl rr
     | Nsec : Nsec.t with_ttl rr
+    | Nsec3 : Nsec3.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
 
   module K = struct
@@ -2069,6 +2142,7 @@ module Rr_map = struct
       | Ds, Ds -> Eq | Ds, _ -> Lt | _, Ds -> Gt
       | Rrsig, Rrsig -> Eq | Rrsig, _ -> Lt | _, Rrsig -> Gt
       | Nsec, Nsec -> Eq | Nsec, _ -> Lt | _, Nsec -> Gt
+      | Nsec3, Nsec3 -> Eq | Nsec3, _ -> Lt | _, Nsec3 -> Gt
       | Unknown a, Unknown b ->
         let r = I.compare a b in
         if r = 0 then Eq else if r < 0 then Lt else Gt
@@ -2099,6 +2173,7 @@ module Rr_map = struct
     | Ds, (_, ds), (_, ds') -> Ds_set.equal ds ds'
     | Rrsig, (_, rrs), (_, rrs') -> Rrsig_set.equal rrs rrs'
     | Nsec, (_, ns), (_, ns') -> Nsec.compare ns ns' = 0
+    | Nsec3, (_, ns), (_, ns') -> Nsec3.compare ns ns' = 0
     | Unknown _, (_, data), (_, data') -> Txt_set.equal data data'
 
   let equalb (B (k, v)) (B (k', v')) = match K.compare k k' with
@@ -2108,7 +2183,8 @@ module Rr_map = struct
   let to_int : type a. a key -> int = function
     | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Ptr -> 12 | Mx -> 15
     | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Ds -> 43 | Sshfp -> 44
-    | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Tlsa -> 52 | Caa -> 257
+    | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Nsec3 -> 50
+    | Tlsa -> 52 | Caa -> 257
     | Unknown x -> I.to_int x
 
   let any_rtyp = 255 and axfr_rtyp = 252 and ixfr_rtyp = 251
@@ -2117,8 +2193,8 @@ module Rr_map = struct
     | 1 -> Ok (K A) | 2 -> Ok (K Ns) | 5 -> Ok (K Cname) | 6 -> Ok (K Soa)
     | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
     | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
-    | 46 -> Ok (K Rrsig) | 47 -> Ok (K Nsec) | 48 -> Ok (K Dnskey) | 52 -> Ok (K Tlsa)
-    | 257 -> Ok (K Caa)
+    | 46 -> Ok (K Rrsig) | 47 -> Ok (K Nsec) | 48 -> Ok (K Dnskey)
+    | 50 -> Ok (K Nsec3) |  52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
     | x ->
       let* i = I.of_int ~off x in
       Ok (K (Unknown i))
@@ -2140,6 +2216,7 @@ module Rr_map = struct
     | Ds -> Fmt.string ppf "DS"
     | Rrsig -> Fmt.string ppf "RRSIG"
     | Nsec -> Fmt.string ppf "NSEC"
+    | Nsec3 -> Fmt.string ppf "NSEC3"
     | Unknown x -> Fmt.pf ppf "TYPE%d" (I.to_int x)
 
   type rrtyp = [ `Any | `Tsig | `Edns | `Ixfr | `Axfr | `K of k ]
@@ -2233,6 +2310,8 @@ module Rr_map = struct
         rrs ((names, off), 0)
     | Nsec, (ttl, nsec) ->
       rr names (Nsec.encode nsec) off ttl, 1
+    | Nsec3, (ttl, nsec) ->
+      rr names (Nsec3.encode nsec) off ttl, 1
     | Unknown _, (ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -2312,6 +2391,8 @@ module Rr_map = struct
         rrs []
     | Nsec, (_ttl, ns) ->
       [ rr (Nsec.encode ns) ]
+    | Nsec3, (_ttl, ns) ->
+      [ rr (Nsec3.encode ns) ]
     | Unknown _, (_ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -2393,6 +2474,7 @@ module Rr_map = struct
     | Ds, (_, ds), (ttl, ds') -> (ttl, Ds_set.union ds ds')
     | Rrsig, (_, rrs), (ttl, rrs') -> (ttl, Rrsig_set.union rrs rrs')
     | Nsec, _, nsec -> nsec
+    | Nsec3, _, nsec -> nsec
     | Unknown _, (_, data), (ttl, data') -> (ttl, Txt_set.union data data')
 
   let unionee : type a. a key -> a -> a -> a option =
@@ -2445,6 +2527,7 @@ module Rr_map = struct
       let s = Rrsig_set.diff rrs rm in
       if Rrsig_set.is_empty s then None else Some (ttl, s)
     | Nsec, _, _ -> None
+    | Nsec3, _, _ -> None
     | Unknown _, (ttl, datas), (_, rm) ->
       let data = Txt_set.diff datas rm in
       if Txt_set.is_empty data then None else Some (ttl, data)
@@ -2620,6 +2703,20 @@ module Rr_map = struct
         in
         [ Fmt.str "%s\t%aNSEC\t%s\t(%a)" str_name ttl_fmt (ttl_opt ttl)
             (name ns.Nsec.next_domain) Fmt.(list ~sep:(any " ") ppk) types ]
+      | Nsec3, (ttl, ns) ->
+        let types =
+          Bit_map.fold (fun i acc ->
+              match of_int i with
+              | Ok k -> k :: acc
+              | Error _ -> assert false)
+            ns.Nsec3.types [] |> List.rev
+        in
+        [ Fmt.str "%s\t%aNSEC3\t%d\t%d\t%d\t%s\t%s\t%a" str_name
+            ttl_fmt (ttl_opt ttl) Nsec3.hash (Nsec3.flags_to_int ns.Nsec3.flags)
+            ns.Nsec3.iterations
+            (if Cstruct.length ns.Nsec3.salt = 0 then "-" else hex ns.Nsec3.salt)
+            (hex (* TODO base32 *) ns.Nsec3.next_owner_hashed)
+            Fmt.(list ~sep:(any " ") ppk) types ]
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
             Fmt.str "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
@@ -2646,6 +2743,7 @@ module Rr_map = struct
     | Ds, (ttl, _) -> ttl
     | Rrsig, (ttl, _) -> ttl
     | Nsec, (ttl, _) -> ttl
+    | Nsec3, (ttl, _) -> ttl
     | Unknown _, (ttl, _) -> ttl
 
   let with_ttl : type a. a key -> a -> int32 -> a = fun k v ttl ->
@@ -2666,6 +2764,7 @@ module Rr_map = struct
     | Ds, (_, ds) -> ttl, ds
     | Rrsig, (_, rrs) -> ttl, rrs
     | Nsec, (_, ns) -> ttl, ns
+    | Nsec3, (_, ns) -> ttl, ns
     | Unknown _, (_, datas) -> ttl, datas
 
   let split : type a. a key -> a -> a * a option = fun k v ->
@@ -2759,6 +2858,7 @@ module Rr_map = struct
       in
       (ttl, Rrsig_set.singleton one), rest'
     | Nsec, (ttl, rr) -> (ttl, rr), None
+    | Nsec3, (ttl, rr) -> (ttl, rr), None
     | Unknown _, (ttl, datas) ->
       let one = Txt_set.choose datas in
       let rest = Txt_set.remove one datas in
@@ -2855,6 +2955,9 @@ module Rr_map = struct
           | Nsec ->
             let* rr, names, off = Nsec.decode_exn names buf ~off ~len in
             Ok (B (Nsec, (ttl, rr)), names, off)
+          | Nsec3 ->
+            let* rr, names, off = Nsec3.decode_exn names buf ~off ~len in
+            Ok (B (Nsec3, (ttl, rr)), names, off)
           | Unknown x ->
             let data = Cstruct.sub buf off len in
             Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)
