@@ -22,6 +22,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
       timeout_ns : int64 ;
       stack : stack ;
       mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
+      mutable connected_condition : unit Lwt_condition.t option ;
       mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
       mutable he : Happy_eyeballs.t ;
       mutable waiters : ((Ipaddr.t * int) * S.TCP.flow, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
@@ -108,6 +109,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         timeout_ns = timeout ;
         stack ;
         flow = None ;
+        connected_condition = None ;
         requests = IM.empty ;
         he = Happy_eyeballs.create (clock ()) ;
         waiters = Happy_eyeballs.Waiter_map.empty ;
@@ -216,6 +218,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         ns
 
     let rec connect_ns t nameservers =
+      let connected_condition = Lwt_condition.create () in
+      t.connected_condition <- Some connected_condition ;
       let waiter, notify = Lwt.task () in
       let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
       t.waiters <- waiters;
@@ -226,6 +230,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
       Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
       waiter >>= function
       | Error `Msg msg ->
+        Lwt_condition.broadcast connected_condition ();
+        t.connected_condition <- None;
         Log.err (fun m -> m "error connecting to resolver %s" msg);
         Lwt.return (Error (`Msg "connect failure"))
       | Ok (addr, flow) ->
@@ -240,6 +246,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
                 | Ok () -> ()
               else
                 Lwt.return_unit);
+          Lwt_condition.broadcast connected_condition ();
+          t.connected_condition <- None;
           req_all flow t
         in
         let config = find_ns t.nameservers addr in
@@ -251,6 +259,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
           | Error e ->
             Log.warn (fun m -> m "error establishing TLS connection to %a:%d: %a"
                          Ipaddr.pp (fst addr) (snd addr) TLS.pp_write_error e);
+            Lwt_condition.broadcast connected_condition ();
+            t.connected_condition <- None;
             let ns' =
               List.filter (function
                   | `Tls (_, ip, port) ->
@@ -263,10 +273,13 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
             else
               connect_ns t ns'
 
-    let connect t =
-      match t.flow with
-      | Some _ -> Lwt.return (Ok t)
-      | None ->
+    let rec connect t =
+      match t.flow, t.connected_condition with
+      | Some _, _ -> Lwt.return (Ok t)
+      | None, Some w ->
+        Lwt_condition.wait w >>= fun () ->
+        connect t
+      | None, None ->
         connect_ns t t.nameservers >|= function
         | Ok () -> Ok t
         | Error `Msg msg -> Error (`Msg msg)
