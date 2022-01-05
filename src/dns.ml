@@ -2219,6 +2219,35 @@ module Rr_map = struct
     | Nsec3 -> Fmt.string ppf "NSEC3"
     | Unknown x -> Fmt.pf ppf "TYPE%d" (I.to_int x)
 
+  let of_string = function
+    | "CNAME" -> Ok (K Cname)
+    | "MX" -> Ok (K Mx)
+    | "NS" -> Ok (K Ns)
+    | "PTR" -> Ok (K Ptr)
+    | "SOA" -> Ok (K Soa)
+    | "TXT" -> Ok (K Txt)
+    | "A" -> Ok (K A)
+    | "AAAA" -> Ok (K Aaaa)
+    | "SRV" -> Ok (K Srv)
+    | "DNSKEY" -> Ok (K Dnskey)
+    | "CAA" -> Ok (K Caa)
+    | "TLSA" -> Ok (K Tlsa)
+    | "SSHFP" -> Ok (K Sshfp)
+    | "DS" -> Ok (K Ds)
+    | "RRSIG" -> Ok (K Rrsig)
+    | "NSEC" -> Ok (K Nsec)
+    | "NSEC3" -> Ok (K Nsec3)
+    | x when String.length x > 4 && String.(equal "TYPE" (sub x 0 4)) ->
+      Result.map_error
+        (function `Malformed (_, m) -> `Msg m | `Msg m -> `Msg m)
+        (try
+           let i = int_of_string String.(sub x 4 (String.length x - 4)) in
+           of_int i
+         with
+         | Failure _ ->
+           Error (`Msg ("Bad RR type " ^ x ^ ": couldn't decode number")))
+    | x -> Error (`Msg ("Bad RR type: couldn't decode " ^ x))
+
   type rrtyp = [ `Any | `Tsig | `Edns | `Ixfr | `Axfr | `K of k ]
 
   let pp_rr ppf = function
