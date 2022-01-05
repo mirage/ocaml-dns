@@ -1156,7 +1156,7 @@ module Bit_map = struct
   let encode buf off data =
     let encode_block off block data =
       Cstruct.set_uint8 buf off block;
-      let bytes = (max_elt data + 7) / 8 in
+      let bytes = (max_elt data + 1 + 7) / 8 in
       Cstruct.set_uint8 buf (off + 1) bytes;
       let rec enc_octet idx data =
         if is_empty data then
@@ -1178,7 +1178,7 @@ module Bit_map = struct
         let next = min_elt i in
         let block = next / 256 in
         let block_end = block * 256 + 255 in
-        let this, rest = partition (fun i -> i < block_end) i in
+        let this, rest = partition (fun i -> i <= block_end) i in
         let to_enc = map (fun i -> i mod 256) this in
         let off = encode_block off block to_enc in
         encode_types off rest
@@ -1209,6 +1209,9 @@ module Nsec = struct
   let encode t names buf off =
     let names, off = Name.encode ~compress:false t.next_domain names buf off in
     names, Bit_map.encode buf off t.types
+
+  let canonical t =
+    { t with next_domain = Domain_name.canonical t.next_domain }
 end
 
 module Nsec3 = struct
@@ -2442,6 +2445,7 @@ module Rr_map = struct
     | Ptr, (ttl, ptr) -> ttl, Ptr.canonical ptr
     | Srv, (ttl, srv) -> ttl, Srv_set.map Srv.canonical srv
     | Rrsig, (ttl, rrsig) -> ttl, Rrsig_set.map Rrsig.canonical rrsig
+    | Nsec, (ttl, nsec) -> ttl, Nsec.canonical nsec
     | _, v -> v
 
   (* RFC 4034, section 3.1.8.1 *)
@@ -2450,7 +2454,7 @@ module Rr_map = struct
       fun name rrsig typ value ->
     let buf, off = Rrsig.prep_rrsig rrsig in
     let rrsig_cs = Cstruct.sub buf 0 off in
-    Logs.info (fun m -> m "using rrsig %a" Cstruct.hexdump_pp rrsig_cs);
+    Logs.debug (fun m -> m "using rrsig %a" Cstruct.hexdump_pp rrsig_cs);
     let* name =
       let* used_name = Rrsig.used_name rrsig name in
       Ok (Domain_name.canonical used_name)
@@ -2471,8 +2475,8 @@ module Rr_map = struct
       and cs' = Cstruct.shift cs' off'
       in
       let rec c idx =
-        if Cstruct.length cs < idx then 1
-        else if Cstruct.length cs' < idx then -1
+        if Cstruct.length cs <= idx then 1
+        else if Cstruct.length cs' <= idx then -1
         else
           match compare (Cstruct.get_uint8 cs idx) (Cstruct.get_uint8 cs' idx) with
           | 0 -> c (succ idx)
@@ -2482,7 +2486,7 @@ module Rr_map = struct
     in
     (* String.compare (Cstruct.to_string cs) (Cstruct.to_string cs') in *)
     let sorted_cs = List.map snd (List.sort compare_cstruct cs) in
-    Logs.info (fun m -> m "sorted:@.%a" Fmt.(list ~sep:(any "@.") Cstruct.hexdump_pp) sorted_cs);
+    Logs.debug (fun m -> m "sorted:@.%a" Fmt.(list ~sep:(any "@.") Cstruct.hexdump_pp) sorted_cs);
     Ok (Cstruct.concat (rrsig_cs :: sorted_cs))
 
   let union_rr : type a. a key -> a -> a -> a = fun k l r ->

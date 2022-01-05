@@ -99,7 +99,7 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
     let hashp = ( = ) algorithm in
     (match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key rrsig.Rrsig.signature with
     | None -> Logs.warn (fun m -> m "none in sig_decode")
-    | Some cs -> Logs.info (fun m -> m "decoded sig %a" Cstruct.hexdump_pp cs));
-    Logs.info (fun m -> m "digest %a" Cstruct.hexdump_pp (Mirage_crypto.Hash.digest algorithm data));
+    | Some cs -> Logs.debug (fun m -> m "decoded sig %a" Cstruct.hexdump_pp cs));
+    Logs.debug (fun m -> m "digest %a" Cstruct.hexdump_pp (Mirage_crypto.Hash.digest algorithm data));
 
     ok_if_true (Mirage_crypto_pk.Rsa.PKCS1.verify ~hashp ~key ~signature:rrsig.Rrsig.signature (`Message data))

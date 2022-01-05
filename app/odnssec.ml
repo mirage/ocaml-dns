@@ -50,9 +50,187 @@ let validate_ds zone dnskeys ds =
   end else
     Error (`Msg "key signing key couldn't be validated")
 
+let validate_rrsig_keys dnskeys rrsigs requested_domain t v =
+  let keys_rrsigs =
+    Rr_map.Dnskey_set.fold (fun key acc ->
+        let key_tag = Dnskey.key_tag key in
+        match
+          Rr_map.Rrsig_set.fold (fun rrsig -> function
+              | None when rrsig.Rrsig.key_tag = key_tag -> Some rrsig
+              | Some _ when rrsig.Rrsig.key_tag = key_tag ->
+                Logs.warn (fun m -> m "multiple rrsig for key %d" key_tag);
+                assert false
+              | _ as s -> s)
+            rrsigs None
+        with
+        | Some rrsig -> (key, rrsig) :: acc
+        | None -> acc)
+      dnskeys []
+  in
+  let* () = if keys_rrsigs = [] then Error (`Msg "no matching key and rrsig found") else Ok () in
+  Logs.info (fun m -> m "found %d key-rrsig pairs" (List.length keys_rrsigs));
+  List.fold_left (fun r (key, rrsig) ->
+      let* () = r in
+      let* pkey = Dnssec.dnskey_to_pk key in
+      Logs.debug (fun m -> m "checking sig with key_tag %d and key %a" rrsig.Rrsig.key_tag Dnskey.pp key);
+      Dnssec.verify (Ptime_clock.now ()) pkey requested_domain rrsig t v)
+    (Ok ()) keys_rrsigs
+
+let validate_nsec_no_domain name dnskeys auth =
+  (* no domain:
+     - a SOA from parent (zone), plus RRSIG
+     - a NSEC for zone, plus rrsig
+     - a NSEC <prev domain> .. <next-domain>, plus rrsig
+     -> ensure requested_domain is between these domains *)
+  let parent =
+    Domain_name.(Result.value ~default:root (drop_label name))
+  in
+  let _, rrsigs =
+    Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
+      (Name_rr_map.find parent Rr_map.Rrsig auth)
+  in
+  let* (soa, rrsigs_soa) =
+    let soa_int = Rr_map.to_int Soa in
+    match
+      Name_rr_map.find parent Rr_map.Soa auth,
+      Rr_map.Rrsig_set.filter
+        (fun rrsig -> rrsig.Rrsig.type_covered = soa_int)
+        rrsigs
+    with
+    | Some soa, rrsigs when Rr_map.Rrsig_set.cardinal rrsigs > 0 -> Ok (soa, rrsigs)
+    | None, _ -> Error (`Msg "couldn't find SOA")
+    | _, _ -> Error (`Msg "couldn't find RRSIG for SOA")
+  in
+  let* () = validate_rrsig_keys dnskeys rrsigs_soa parent Soa soa in
+  Logs.warn (fun m -> m "verified SOA");
+  let* (nsec, rrsigs_nsec) =
+    let nsec_int = Rr_map.to_int Nsec in
+    match
+      Name_rr_map.find parent Rr_map.Nsec auth,
+      Rr_map.Rrsig_set.filter
+        (fun rrsig -> rrsig.Rrsig.type_covered = nsec_int)
+        rrsigs
+    with
+    | Some nsec, rrsigs when Rr_map.Rrsig_set.cardinal rrsigs > 0 -> Ok (nsec, rrsigs)
+    | None, _ -> Error (`Msg "couldn't find NSEC")
+    | _, _ -> Error (`Msg "couldn't find RRSIG for NSEC")
+  in
+  let* () = validate_rrsig_keys dnskeys rrsigs_nsec parent Nsec nsec in
+  Logs.warn (fun m -> m "verified NSEC for parent");
+  let* (prev, nsec, rrsigs_nsec) =
+    let leftover = Domain_name.Map.remove parent auth in
+    if Domain_name.Map.cardinal leftover = 1 then
+      let name, rrmap = Domain_name.Map.choose leftover in
+      let _, rrsigs =
+        Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
+          (Rr_map.find Rr_map.Rrsig rrmap)
+      in
+      let nsec_int = Rr_map.to_int Nsec in
+      match
+        Rr_map.find Rr_map.Nsec rrmap,
+        Rr_map.Rrsig_set.filter
+          (fun rrsig -> rrsig.Rrsig.type_covered = nsec_int)
+          rrsigs
+      with
+      | Some nsec, rrsigs when Rr_map.Rrsig_set.cardinal rrsigs > 0 ->
+        Ok (name, nsec, rrsigs)
+      | None, _ -> Error (`Msg "couldn't find nsec")
+      | _, _ -> Error (`Msg "couldn't find rrsig for nsec")
+    else
+      Error (`Msg "too many records in authority")
+  in
+  let* () =
+    let cmp a b =
+      let cs = Cstruct.of_string Domain_name.(to_string (canonical a))
+      and cs' = Cstruct.of_string Domain_name.(to_string (canonical b))
+      in
+      let rec c idx =
+        if Cstruct.length cs <= idx then 1
+        else if Cstruct.length cs' <= idx then -1
+        else
+          match compare (Cstruct.get_uint8 cs idx) (Cstruct.get_uint8 cs' idx) with
+          | 0 -> c (succ idx)
+          | x -> x
+      in
+      c 0
+    in
+    if
+      cmp prev name < 0 && cmp name (snd nsec).Nsec.next_domain > 0
+    then begin
+      Logs.warn (fun m -> m "name is between nsec and next_domain");
+      Ok ()
+    end else
+      Error (`Msg "bad nsec")
+  in
+  let* () = validate_rrsig_keys dnskeys rrsigs_nsec prev Nsec nsec in
+  Logs.warn (fun m -> m "verified NSEC");
+  Ok ()
+
+let validate_nsec_no_data name dnskeys k auth =
+  (* no data:
+     - SOA + RRSIG
+     - NSEC (mentioning next domain, and _not_ this type) + RRSIG *)
+  let _, rrsigs =
+    Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
+      (Name_rr_map.find name Rr_map.Rrsig auth)
+  in
+  let* (soa, rrsigs_soa) =
+    let soa_int = Rr_map.to_int Soa in
+    match
+      Name_rr_map.find name Rr_map.Soa auth,
+      Rr_map.Rrsig_set.filter
+        (fun rrsig -> rrsig.Rrsig.type_covered = soa_int)
+        rrsigs
+    with
+    | Some soa, rrsigs when Rr_map.Rrsig_set.cardinal rrsigs > 0 -> Ok (soa, rrsigs)
+    | None, _ -> Error (`Msg "couldn't find SOA")
+    | _, _ -> Error (`Msg "couldn't find RRSIG for SOA")
+  in
+  let* () = validate_rrsig_keys dnskeys rrsigs_soa name Soa soa in
+  Logs.warn (fun m -> m "verified SOA");
+  let* (nsec, rrsigs_nsec) =
+    let nsec_int = Rr_map.to_int Nsec in
+    match
+      Name_rr_map.find name Rr_map.Nsec auth,
+      Rr_map.Rrsig_set.filter
+        (fun rrsig -> rrsig.Rrsig.type_covered = nsec_int)
+        rrsigs
+    with
+    | Some nsec, rrsigs when Rr_map.Rrsig_set.cardinal rrsigs > 0 -> Ok (nsec, rrsigs)
+    | None, _ -> Error (`Msg "couldn't find NSEC")
+    | _, _ -> Error (`Msg "couldn't find RRSIG for NSEC")
+  in
+  let* () = validate_rrsig_keys dnskeys rrsigs_nsec name Nsec nsec in
+  Logs.warn (fun m -> m "verified NSEC");
+  let* () =
+    let cmp a b =
+      let cs = Cstruct.of_string Domain_name.(to_string (canonical a))
+      and cs' = Cstruct.of_string Domain_name.(to_string (canonical b))
+      in
+      let rec c idx =
+        if Cstruct.length cs <= idx then 1
+        else if Cstruct.length cs' <= idx then -1
+        else
+          match compare (Cstruct.get_uint8 cs idx) (Cstruct.get_uint8 cs' idx) with
+          | 0 -> c (succ idx)
+          | x -> x
+      in
+      c 0
+    in
+    if cmp name (snd nsec).Nsec.next_domain > 0 then begin
+      Logs.warn (fun m -> m "next_domain is after name");
+      Ok ()
+    end else
+      Error (`Msg "bad nsec")
+  in
+  if Bit_map.mem (Rr_map.to_int k) (snd nsec).Nsec.types then
+    Error (`Msg "nsec claims this type to be present")
+  else
+    Ok ()
+
 let jump () hostname ns =
   Lwt_main.run (
-    let edns = Edns.create ~dnssec_ok:true () in
+    let edns = Edns.create ~dnssec_ok:true ~payload_size:4096 () in
     let nameservers = match ns with
       | None -> None
       | Some ip -> Some (`Tcp, [ `Plaintext (ip, 53) ])
@@ -61,32 +239,6 @@ let jump () hostname ns =
     let (_, ns) = Dns_client_lwt.nameservers t in
     Logs.info (fun m -> m "querying NS %a for A records of %a"
                   pp_nameserver (List.hd ns) Domain_name.pp hostname);
-    let validate_rrsig_keys dnskeys rrsigs requested_domain t v =
-      let keys_rrsigs =
-        Rr_map.Dnskey_set.fold (fun key acc ->
-            let key_tag = Dnskey.key_tag key in
-            match
-              Rr_map.Rrsig_set.fold (fun rrsig -> function
-                | None when rrsig.Rrsig.key_tag = key_tag -> Some rrsig
-                | Some _ when rrsig.Rrsig.key_tag = key_tag ->
-                  Logs.warn (fun m -> m "multiple rrsig for key %d" key_tag);
-                  assert false
-                | _ as s -> s)
-                rrsigs None
-            with
-            | Some rrsig -> (key, rrsig) :: acc
-            | None -> acc)
-         dnskeys []
-      in
-      let* () = if keys_rrsigs = [] then Error (`Msg "no matching key and rrsig found") else Ok () in
-      Logs.info (fun m -> m "found %d key-rrsig pairs" (List.length keys_rrsigs));
-      List.fold_left (fun r (key, rrsig) ->
-          let* () = r in
-          let* pkey = Dnssec.dnskey_to_pk key in
-          Logs.info (fun m -> m "checking sig with key_tag %d and key %a" rrsig.Rrsig.key_tag Dnskey.pp key);
-          Dnssec.verify (Ptime_clock.now ()) pkey requested_domain rrsig t v)
-        (Ok ()) keys_rrsigs
-    in
     let log_err = function
       | `Msg msg ->
         Logs.err (fun m -> m "error from resolver %s" msg);
@@ -118,18 +270,25 @@ let jump () hostname ns =
           Ok keys
         | Ok (_, None) ->
           Logs.err (fun m -> m "rrsig missing");
-          Error (`Msg "...")
+          Error (`Msg "rrsig missing for dnskeys")
         | Error e -> log_err e
     in
-    let retrieve_ds dnskeys requested_domain =
-      Dns_client_lwt.(get_rr_with_rrsig t Ds requested_domain) >|= function
+    let retrieve_ds dnskeys name =
+      Dns_client_lwt.(get_rr_with_rrsig t Ds name) >|= function
         | Ok ((_ttl, ds) as rrs, Some (_ttl', rrsigs)) ->
-          let* () = validate_rrsig_keys dnskeys rrsigs requested_domain Ds rrs in
-          Ok ds
+          let* () = validate_rrsig_keys dnskeys rrsigs name Ds rrs in
+          Ok (Some ds)
         | Ok (_, None) ->
           Logs.err (fun m -> m "rrsig missing");
-          Error (`Msg "...")
-        | Error e -> log_err e
+          Error (`Msg "rrsig missing for ds")
+        | Error `No_domain (_, _, auth) ->
+          Result.map (fun () -> None)
+            (validate_nsec_no_domain name dnskeys auth)
+        | Error `No_data (_, _, auth) ->
+          Result.map (fun () -> None)
+            (validate_nsec_no_data name dnskeys Rr_map.Ds auth)
+        | Error e ->
+          log_err e
     in
     let rec retrieve_validated_dnskeys hostname =
       Logs.info (fun m -> m "validating and retrieving DNSKEYS for %a" Domain_name.pp hostname);
@@ -140,9 +299,13 @@ let jump () hostname ns =
         let open Lwt_result.Infix in
         retrieve_validated_dnskeys Domain_name.(drop_label_exn hostname) >>= fun parent_dnskeys ->
         Logs.info (fun m -> m "retrieving DS for %a" Domain_name.pp hostname);
-        retrieve_ds parent_dnskeys hostname >>= fun ds ->
-        Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
-        retrieve_dnskey ds hostname
+        retrieve_ds parent_dnskeys hostname >>= function
+        | Some ds ->
+          Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
+          retrieve_dnskey ds hostname
+        | None ->
+          Logs.info (fun m -> m "no DS for %a, continuing with old keys" Domain_name.pp hostname);
+          Lwt.return (Ok parent_dnskeys)
     in
     retrieve_validated_dnskeys hostname >>= function
       | Error _ as e -> Lwt.return e
@@ -154,7 +317,15 @@ let jump () hostname ns =
           Ok ()
         | Ok (_, None) ->
           Logs.err (fun m -> m "rrsig missing");
-          Error (`Msg "...")
+          Error (`Msg "rrsig is missing")
+        | Error `No_domain (_, _, auth) ->
+          let* () = validate_nsec_no_domain hostname dnskeys auth in
+          Logs.warn (fun m -> m "verified nxdomain");
+          Ok ()
+        | Error `No_data (_, _, auth) ->
+          let* () = validate_nsec_no_data hostname dnskeys Rr_map.A auth in
+          Logs.warn (fun m -> m "verified no data");
+          Ok ()
         | Error e -> log_err e
   )
 

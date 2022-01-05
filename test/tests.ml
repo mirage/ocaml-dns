@@ -1873,7 +1873,32 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let q = Question.create host Nsec in
     let res = create header q (`Answer (content, Name_rr_map.empty)) in
     Alcotest.(check (result t_ok p_err) "nsec decodes"
-                (Ok res) (decode data))
+                (Ok res) (decode data));
+    let encoded, _ = Packet.encode `Udp res in
+    Alcotest.(check bool "nsec encodes" true (Cstruct.equal data encoded))
+
+  let nsec_success2 () =
+    let data = Cstruct.of_hex {|38 51 81 80 00 01  00 01 00 00 00 00 06 66
+                          6f 6f 6f 6f 6f 0a 63 6c  6f 75 64 66 6c 61 72 65
+                          03 63 6f 6d 00 00 2f 00  01 c0 0c 00 2f 00 01 00
+                          00 01 2c 00 22 01 00 06  66 6f 6f 6f 6f 6f 0a 63
+                          6c 6f 75 64 66 6c 61 72  65 03 63 6f 6d 00 00 07
+                          22 00 00 00 00 03 80|}
+    in
+    let host = n_of_s "fooooo.cloudflare.com" in
+    let header = 0x3851, Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and content =
+      let types = Bit_map.of_list [ 2 ; 6 ; 46; 47; 48 ] in
+      let nsec = Nsec.{ next_domain = n_of_s "\000.fooooo.cloudflare.com" ; types } in
+      Name_rr_map.singleton host Nsec
+        (300l, nsec)
+    in
+    let q = Question.create host Nsec in
+    let res = create header q (`Answer (content, Name_rr_map.empty)) in
+    Alcotest.(check (result t_ok p_err) "nsec decodes"
+                (Ok res) (decode data));
+    let encoded, _ = Packet.encode `Udp res in
+    Alcotest.(check bool "nsec encodes" true (Cstruct.equal data encoded))
 
   let nsec3_success () =
     let data = Cstruct.of_hex {|8f ab 81 83 00 01  00 00 00 06 00 01 03 61
@@ -2069,6 +2094,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "ds success", `Quick, ds_success ;
     "rrsig success", `Quick, rrsig_success ;
     "nsec success", `Quick, nsec_success ;
+    "nsec success 2", `Quick, nsec_success2 ;
     "nsec3 success", `Quick, nsec3_success ;
   ]
 end

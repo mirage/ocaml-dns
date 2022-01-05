@@ -46,7 +46,7 @@ module Parse_response_tests = struct
     let name:'a Domain_name.t = Domain_name.of_string_exn "foo.com" in
     let _actual, state = Dns_client.Pure.make_query rng `Tcp `Auto name Dns.Rr_map.A in
     match Dns_client.Pure.parse_response state ipv4_buf with
-    | Ok (`Data _, _) -> () (* TODO: Alcotest TESTABLE for this return value *)
+    | Ok (`Data _) -> () (* TODO: Alcotest TESTABLE for this return value *)
     | _ -> ignore(failwith "error")
 
   let fails_to_unpack_mismatched () =
