@@ -89,7 +89,7 @@ let jump () hostname ns =
             (Dnssec.validate_nsec_no_domain now name dnskeys auth)
         | Error `No_data (_, _, auth) ->
           Result.map (fun () -> None)
-            (Dnssec.validate_nsec_no_data now name dnskeys Rr_map.Ds auth)
+            (Dnssec.validate_no_data now name dnskeys Rr_map.Ds auth)
         | Error e ->
           log_err e
     in
@@ -126,7 +126,7 @@ let jump () hostname ns =
           Logs.info (fun m -> m "verified nxdomain");
           Ok ()
         | Error `No_data (_, _, auth) ->
-          let* () = Dnssec.validate_nsec_no_data now hostname dnskeys Rr_map.A auth in
+          let* () = Dnssec.validate_no_data now hostname dnskeys Rr_map.A auth in
           Logs.info (fun m -> m "verified no data");
           Ok ()
         | Error e -> log_err e

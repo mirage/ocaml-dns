@@ -150,26 +150,34 @@ let validate_rrsig_keys now dnskeys rrsigs requested_domain t v =
       verify now pkey requested_domain rrsig t v)
     (Ok ()) keys_rrsigs
 
-let validate_soa now name dnskeys auth =
-  let _, rrsigs =
-    Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
-      (Name_rr_map.find name Rr_map.Rrsig auth)
-  in
-  let* (soa, rrsigs_soa) =
-    let soa_int = Rr_map.to_int Soa in
-    match
-      Name_rr_map.find name Rr_map.Soa auth,
-      Rr_map.Rrsig_set.filter
-        (fun rrsig -> rrsig.Rrsig.type_covered = soa_int)
-        rrsigs
-    with
-    | Some soa, rrsigs when Rr_map.Rrsig_set.cardinal rrsigs > 0 -> Ok (soa, rrsigs)
-    | None, _ ->
-      Error (`Msg (Fmt.str "couldn't find SOA for %a" Domain_name.pp name))
-    | _, _ ->
-      Error (`Msg (Fmt.str "couldn't find RRSIG for SOA %a" Domain_name.pp name))
-  in
-  validate_rrsig_keys now dnskeys rrsigs_soa name Soa soa
+let validate_soa now dnskeys auth =
+  match
+    Domain_name.Map.fold (fun k rr_map acc ->
+        match Rr_map.(find Soa rr_map) with
+        | Some soa -> Some (Domain_name.raw k, soa)
+        | None -> acc)
+      auth None
+  with
+  | None -> Error (`Msg "no SOA in authority")
+  | Some (name, soa) ->
+    let _, rrsigs =
+      Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
+        (Name_rr_map.find name Rr_map.Rrsig auth)
+    in
+    let* rrsigs_soa =
+      let soa_int = Rr_map.to_int Soa in
+      let rrsigs =
+        Rr_map.Rrsig_set.filter
+          (fun rrsig -> rrsig.Rrsig.type_covered = soa_int)
+          rrsigs
+      in
+      if Rr_map.Rrsig_set.is_empty rrsigs then
+        Error (`Msg (Fmt.str "couldn't find RRSIG for SOA %a" Domain_name.pp name))
+      else
+        Ok rrsigs
+    in
+    let* () = validate_rrsig_keys now dnskeys rrsigs_soa name Soa soa in
+    Ok name
 
 let validate_nsec now name dnskeys auth =
   let _, rrsigs =
@@ -195,17 +203,26 @@ let validate_nsec now name dnskeys auth =
 
 let validate_nsec_no_domain now name dnskeys auth =
   (* no domain:
-     - a SOA from parent (zone), plus RRSIG
-     - a NSEC for zone, plus rrsig
+     - a SOA from a parent (zone), plus RRSIG
+     - a NSEC for zone, plus rrsig (for wildcard)
      - a NSEC <prev domain> .. <next-domain>, plus rrsig
      -> ensure requested_domain is between these domains *)
-  let parent =
-    Domain_name.(Result.value ~default:root (drop_label name))
+  let* soa_name = validate_soa now dnskeys auth in
+  let* () =
+    if Domain_name.is_subdomain ~subdomain:name ~domain:soa_name then
+      Ok ()
+    else
+      Error (`Msg (Fmt.str "question %a is not subdomain of SOA %a"
+                     Domain_name.pp name Domain_name.pp soa_name))
   in
-  let* () = validate_soa now parent dnskeys auth in
-  let* _nsec = validate_nsec now parent dnskeys auth in
+  let* _nsec = validate_nsec now soa_name dnskeys auth in
   let* (prev, nsec) =
-    let leftover = Domain_name.Map.remove parent auth in
+    let leftover =
+      if Domain_name.Map.cardinal auth = 1 then
+        auth
+      else
+        Domain_name.Map.remove soa_name auth
+    in
     if Domain_name.Map.cardinal leftover = 1 then
       let name, _ = Domain_name.Map.choose leftover in
       let* nsec = validate_nsec now name dnskeys leftover in
@@ -214,42 +231,83 @@ let validate_nsec_no_domain now name dnskeys auth =
       Error (`Msg "too many records in authority")
   in
   let* () =
-    let cmp a b =
-      let cs = Cstruct.of_string Domain_name.(to_string (canonical a))
-      and cs' = Cstruct.of_string Domain_name.(to_string (canonical b))
-      in
-      Rr_map.canonical_order cs cs'
-    in
     if
-      cmp prev name < 0 && cmp name (snd nsec).Nsec.next_domain > 0
+      Domain_name.(compare prev name < 0 &&
+                   (compare name (snd nsec).Nsec.next_domain < 0 ||
+                    compare soa_name (snd nsec).Nsec.next_domain = 0))
     then begin
       Logs.debug (fun m -> m "name is between nsec and next_domain");
       Ok ()
     end else
-      Error (`Msg "bad nsec")
+      Error (`Msg (Fmt.str "bad nsec: %a not between %a (%d) and %a (%d soa_name %d)"
+                     Domain_name.pp name
+                     Domain_name.pp prev
+                     (Domain_name.compare prev name)
+                     Domain_name.pp (snd nsec).Nsec.next_domain
+                     (Domain_name.compare name (snd nsec).Nsec.next_domain)
+                     (Domain_name.compare soa_name (snd nsec).Nsec.next_domain)))
   in
   Ok ()
 
-let validate_nsec_no_data now name dnskeys k auth =
+let validate_no_data now name dnskeys k auth =
   (* no data:
      - SOA + RRSIG
-     - NSEC (mentioning next domain, and _not_ this type) + RRSIG *)
-  let* () = validate_soa now name dnskeys auth in
-  let* nsec = validate_nsec now name dnskeys auth in
+     - NSEC (mentioning next domain, and _not_ this type) + RRSIG
+     - or NSEC3(s)
+  *)
+  let* soa_name = validate_soa now dnskeys auth in
   let* () =
-    let cmp a b =
-      let cs = Cstruct.of_string Domain_name.(to_string (canonical a))
-      and cs' = Cstruct.of_string Domain_name.(to_string (canonical b))
-      in
-      Rr_map.canonical_order cs cs'
-    in
-    if cmp name (snd nsec).Nsec.next_domain > 0 then begin
-      Logs.debug (fun m -> m "next_domain is after name");
+    if Domain_name.is_subdomain ~subdomain:name ~domain:soa_name then
       Ok ()
-    end else
-      Error (`Msg "bad nsec")
+    else
+      Error (`Msg (Fmt.str "name %a is not a subdomain of soa %a"
+                     Domain_name.pp name Domain_name.pp soa_name))
   in
-  if Bit_map.mem (Rr_map.to_int k) (snd nsec).Nsec.types then
-    Error (`Msg "nsec claims this type to be present")
-  else
-    Ok ()
+  let* nsecs =
+    Domain_name.Map.fold (fun k rr_map acc ->
+        let* acc = acc in
+        match Rr_map.(find Nsec rr_map), Rr_map.(find Nsec3 rr_map), acc with
+        | Some _nsec, Some _nsec3, _ ->
+          Logs.warn (fun m -> m "both nsec and nsec3 found for %a" Domain_name.pp k);
+          Error (`Msg "both nsec and nsec present")
+        | Some _nsec, None, `Nsec3 _ ->
+          Logs.warn (fun m -> m "both nsec and nsec3 found for %a" Domain_name.pp k);
+          Error (`Msg "both nsec and nsec3 present")
+        | Some nsec, None, `None -> Ok (`Nsec [ k, nsec ])
+        | Some nsec, None, `Nsec ns -> Ok (`Nsec ((k, nsec) :: ns))
+        | None, Some nsec3, `None -> Ok (`Nsec3 [ k, nsec3 ])
+        | None, Some nsec3, `Nsec3 ns -> Ok (`Nsec3 ((k, nsec3) :: ns))
+        | None, Some _nsec3, `Nsec _ ->
+          Logs.warn (fun m -> m "both nsec and nsec3 found for %a" Domain_name.pp k);
+          Error (`Msg "both nsec and nsec3 present")
+        | None, None, _ -> Ok acc)
+      auth (Ok `None)
+  in
+  match nsecs with
+  | `None ->
+    Logs.err (fun m -> m "neither nsec nor nsec3 found");
+    Error (`Msg "no NSEC/NSEC3")
+  | `Nsec ((nsec_name, _nsec) :: []) ->
+    let* () =
+      if Domain_name.equal name nsec_name then
+        Ok ()
+      else
+        Error (`Msg (Fmt.str "NSEC name %a is different from name %a"
+                       Domain_name.pp nsec_name Domain_name.pp name))
+    in
+    let* nsec = validate_nsec now name dnskeys auth in
+    let* () =
+      if Domain_name.compare name (snd nsec).Nsec.next_domain < 0 then begin
+        Logs.debug (fun m -> m "next_domain is after name");
+        Ok ()
+      end else
+        Error (`Msg (Fmt.str "bad nsec: %a not after %a"
+                       Domain_name.pp (snd nsec).Nsec.next_domain
+                       Domain_name.pp name))
+    in
+    if Bit_map.mem (Rr_map.to_int k) (snd nsec).Nsec.types then
+      Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
+    else
+      Ok ()
+  | `Nsec _ -> assert false
+  | `Nsec3 _nsecs -> assert false

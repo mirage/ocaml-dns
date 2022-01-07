@@ -884,8 +884,6 @@ module Rr_map : sig
   val with_ttl : 'a key -> 'a -> int32 -> 'a
   (** [with_ttl k v ttl] updates [ttl] in [v]. *)
 
-  val canonical_order : Cstruct.t -> Cstruct.t -> int
-
   val prep_for_sig : [`raw] Domain_name.t -> Rrsig.t -> 'a key -> 'a -> (Cstruct.t, [ `Msg of string ]) result
 
 end

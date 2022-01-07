@@ -178,7 +178,7 @@ let verify_dnssec ts algorithm zsk buf =
         begin
           match snd pkt.Packet.question with
           | `K K k ->
-            begin match Dnssec.validate_nsec_no_data ts name dnskeys k auth with
+            begin match Dnssec.validate_no_data ts name dnskeys k auth with
               | Ok () -> ()
               | Error `Msg m ->
                 Alcotest.fail ("dnssec no data " ^ m)
@@ -332,6 +332,131 @@ let test_or_nsec_nxdomain () =
   in
   verify_dnssec time algorithm zsk data
 
+let test_zz_nsec_nodomain () =
+  let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
+  let zsk = "AwEAAZym4HCWiTAAl2Mv1izgTyn9sKwgi5eBxpG29bVlefq/r+TGCtmUElvFyBWHRjvf9mBglIlTBRse22dvzNOI+cYrkjD6LOHuxMoc/d4WtXWKdviNmrtWF2GpjmDOI98gLd4BZ0U/lY847mJP9LypFABZcEn3zM3vce4Ee1A3upSlFQ2TFyJSD9HvMnP4XneFexBxV96RpLcy2O+u2W6ChIiDCjlrowPCcU3zXfXxyWy/VKM6TOa8gNf+aKaVkcv/eIh5er8rrsqAi9KT8O5hmhzYLkUOQEXVSRORV0RMt9l3JSwWxT1MebEDvtfBag3uo+mZwWSFlpc9kuzyWBd72Ec=" in
+  let algorithm = Dnskey.RSA_SHA256 in
+  let data = Cstruct.of_hex {|
+ 95 20 81 83 00 01  00 00 00 06 00 01 02 7a
+                               7a 00 00 01 00 01 00 00  06 00 01 00 00 af 98 00
+                               40 01 61 0c 72 6f 6f 74  2d 73 65 72 76 65 72 73
+                               03 6e 65 74 00 05 6e 73  74 6c 64 0c 76 65 72 69
+                               73 69 67 6e 2d 67 72 73  03 63 6f 6d 00 78 85 6f
+                               4c 00 00 07 08 00 00 03  84 00 09 3a 80 00 01 51
+                               80 00 00 2e 00 01 00 00  af 98 01 13 00 06 08 00
+                               00 01 51 80 61 e8 ec 50  61 d7 ba c0 26 47 00 96
+                               55 e3 9d cf f8 d6 34 4a  7e 3a 4c fb 42 fa 98 c9
+                               74 c8 e3 17 b3 07 0d c1  fc 4b f9 0e 83 60 36 60
+                               41 23 a6 da 04 25 50 2c  e7 e4 0c 5c 54 d3 e0 8d
+                               07 d3 bd 25 d7 65 83 2e  ce 01 ae 61 52 b5 5f 2e
+                               0e 4e 0a 8f 5c d0 63 99  02 c9 16 01 8a 93 96 57
+                               14 93 ac 5e ce 03 3d 7e  1b 21 da 1e 5b 62 e1 92
+                               57 95 56 33 fa d1 41 65  bf df ba 1a b2 a5 65 86
+                               eb f3 72 f4 94 81 08 7e  0e b1 df 43 30 85 49 82
+                               98 dd b2 c4 c0 f6 8e 9a  ba d4 6e a7 93 b8 c1 d3
+                               64 79 36 c2 ba 56 2b 2f  fd eb f7 c6 94 a9 be b5
+                               04 20 8e a7 17 1e 73 a8  8d 12 8e 67 cb 54 a4 d6
+                               e8 75 b1 ec c7 f6 c0 3a  64 07 df fa a2 1e 78 05
+                               d7 25 4a 87 9c 23 9d ed  9b ba 74 56 ab 95 73 89
+                               a0 6d 96 1a bb cf 54 cf  a5 82 d3 0f c6 28 11 df
+                               39 70 67 61 9f c1 46 63  08 6f f7 f3 d1 69 cc 91
+                               08 ef 9d d3 09 59 db de  fe 52 93 dd c2 55 03 00
+                               00 2f 00 01 00 00 af 98  00 0e 03 61 61 61 00 00
+                               07 22 00 00 00 00 03 80  00 00 2e 00 01 00 00 af
+                               98 01 13 00 2f 08 00 00  01 51 80 61 e8 ec 50 61
+                               d7 ba c0 26 47 00 7b f0  d6 1d 8d 74 74 b3 e2 a5
+                               46 02 56 30 ac 89 4b da  1b 64 24 ea 14 72 98 c5
+                               d7 4a 35 33 05 cd fc b8  bb 5b b5 94 0b ed 67 79
+                               b9 be e2 69 ae 13 b9 96  fd 18 a3 39 fc 81 2a c8
+                               cc 27 2c 29 29 ad a9 93  8a 56 f4 5a 82 c1 c7 c2
+                               6d b7 9e a4 ca 65 93 a8  89 d5 a5 76 46 be ad 7e
+                               d5 e7 64 73 d4 b1 84 d1  e4 9f ea 5b 6a 41 5e bc
+                               2c b7 26 0e 77 e2 00 5e  11 42 19 9a e8 04 55 55
+                               12 61 50 ca 9e ac 93 b9  32 af 41 cf 34 e7 27 f1
+                               48 7a 1b ae fc 62 18 0d  6b f3 ec d4 8d 76 fc 34
+                               37 12 83 20 da f7 ad 4f  32 65 e3 ca f4 a9 93 a0
+                               9f 6e 38 4a 88 92 4e d0  6a 1c b9 98 bc af 97 55
+                               21 29 f8 3a 02 3d a0 90  95 4d 39 4f 0d 62 d1 1a
+                               2b f8 29 b0 b7 d8 14 43  d7 7f 8f 5a 3c 42 a0 d5
+                               2d 8a 1e d0 97 0f f9 d4  70 87 43 20 5d fa eb 9f
+                               96 d1 75 1a de f9 e7 72  c7 df 3d 3b b9 25 f9 d6
+                               8a 62 29 c1 0a 75 02 7a  77 00 00 2f 00 01 00 00
+                               af 96 00 09 00 00 06 20  00 00 00 00 03 c2 b4 00
+                               2e 00 01 00 00 af 96 01  13 00 2f 08 01 00 01 51
+                               80 61 e8 ec 50 61 d7 ba  c0 26 47 00 24 7b 16 4c
+                               ea 88 a7 c5 15 c5 74 5f  d3 b2 67 19 c2 9a e6 bf
+                               04 26 84 a5 c8 31 b0 bb  9f 5b fc b2 7e 74 c0 ee
+                               64 49 f6 0c 1f b5 3f bf  c3 9b b0 dd ee 5d 7f 3f
+                               02 0c e2 37 34 15 34 6a  30 8e 4a ba b3 00 cb 4b
+                               12 04 c6 0b d1 3b 2a da  62 c1 68 4a ac 7b 6e 86
+                               19 32 70 b7 53 92 2d 28  9e 63 97 e6 de 95 69 47
+                               86 f4 e6 58 00 b0 71 42  41 64 38 bd 10 1c 23 19
+                               a2 9f 2a 6b 00 e2 06 f1  e9 23 7a 41 fe d8 fd a9
+                               1d 3b 48 8d 23 bf c7 bf  6d 12 41 d6 1d 1a f1 0a
+                               31 9b 6e 09 90 77 86 e8  ac ed 3a 6d 3b a6 bb b0
+                               a1 77 4c 7d ab 0c 65 43  4d d2 35 df 96 82 42 d3
+                               31 c2 33 9a 85 9d fe 8e  29 7d 3f 6b 81 cb 75 04
+                               7b a7 af 3a 2f 3e 30 d5  77 9b 84 b7 fa 4d 04 d8
+                               09 fc cf b4 19 5d 92 6c  3b 5d 55 37 7e f9 bb 91
+                               93 2b 15 02 42 1a 1a f4  06 00 d5 34 98 0d ef c1
+                               f3 21 99 18 b3 5f 5d 1b  d8 4f f8 ca 00 00 29 20
+                               00 00 00 80 00 00 00|}
+  in
+  verify_dnssec time algorithm zsk data
+
+let test_aa_nsec_nodomain () =
+  let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
+  let zsk = "AwEAAZym4HCWiTAAl2Mv1izgTyn9sKwgi5eBxpG29bVlefq/r+TGCtmUElvFyBWHRjvf9mBglIlTBRse22dvzNOI+cYrkjD6LOHuxMoc/d4WtXWKdviNmrtWF2GpjmDOI98gLd4BZ0U/lY847mJP9LypFABZcEn3zM3vce4Ee1A3upSlFQ2TFyJSD9HvMnP4XneFexBxV96RpLcy2O+u2W6ChIiDCjlrowPCcU3zXfXxyWy/VKM6TOa8gNf+aKaVkcv/eIh5er8rrsqAi9KT8O5hmhzYLkUOQEXVSRORV0RMt9l3JSwWxT1MebEDvtfBag3uo+mZwWSFlpc9kuzyWBd72Ec=" in
+  let algorithm = Dnskey.RSA_SHA256 in
+  let data = Cstruct.of_hex {|
+ eb a7 81 83 00 01  00 00 00 04 00 01 02 61
+                               61 00 00 01 00 01 00 00  2f 00 01 00 00 af 06 00
+                               0e 03 61 61 61 00 00 07  22 00 00 00 00 03 80 00
+                               00 2e 00 01 00 00 af 06  01 13 00 2f 08 00 00 01
+                               51 80 61 e8 ec 50 61 d7  ba c0 26 47 00 7b f0 d6
+                               1d 8d 74 74 b3 e2 a5 46  02 56 30 ac 89 4b da 1b
+                               64 24 ea 14 72 98 c5 d7  4a 35 33 05 cd fc b8 bb
+                               5b b5 94 0b ed 67 79 b9  be e2 69 ae 13 b9 96 fd
+                               18 a3 39 fc 81 2a c8 cc  27 2c 29 29 ad a9 93 8a
+                               56 f4 5a 82 c1 c7 c2 6d  b7 9e a4 ca 65 93 a8 89
+                               d5 a5 76 46 be ad 7e d5  e7 64 73 d4 b1 84 d1 e4
+                               9f ea 5b 6a 41 5e bc 2c  b7 26 0e 77 e2 00 5e 11
+                               42 19 9a e8 04 55 55 12  61 50 ca 9e ac 93 b9 32
+                               af 41 cf 34 e7 27 f1 48  7a 1b ae fc 62 18 0d 6b
+                               f3 ec d4 8d 76 fc 34 37  12 83 20 da f7 ad 4f 32
+                               65 e3 ca f4 a9 93 a0 9f  6e 38 4a 88 92 4e d0 6a
+                               1c b9 98 bc af 97 55 21  29 f8 3a 02 3d a0 90 95
+                               4d 39 4f 0d 62 d1 1a 2b  f8 29 b0 b7 d8 14 43 d7
+                               7f 8f 5a 3c 42 a0 d5 2d  8a 1e d0 97 0f f9 d4 70
+                               87 43 20 5d fa eb 9f 96  d1 75 1a de f9 e7 72 c7
+                               df 3d 3b b9 25 f9 d6 8a  62 29 c1 0a 75 00 00 06
+                               00 01 00 00 af 06 00 40  01 61 0c 72 6f 6f 74 2d
+                               73 65 72 76 65 72 73 03  6e 65 74 00 05 6e 73 74
+                               6c 64 0c 76 65 72 69 73  69 67 6e 2d 67 72 73 03
+                               63 6f 6d 00 78 85 6f 4c  00 00 07 08 00 00 03 84
+                               00 09 3a 80 00 01 51 80  00 00 2e 00 01 00 00 af
+                               06 01 13 00 06 08 00 00  01 51 80 61 e8 ec 50 61
+                               d7 ba c0 26 47 00 96 55  e3 9d cf f8 d6 34 4a 7e
+                               3a 4c fb 42 fa 98 c9 74  c8 e3 17 b3 07 0d c1 fc
+                               4b f9 0e 83 60 36 60 41  23 a6 da 04 25 50 2c e7
+                               e4 0c 5c 54 d3 e0 8d 07  d3 bd 25 d7 65 83 2e ce
+                               01 ae 61 52 b5 5f 2e 0e  4e 0a 8f 5c d0 63 99 02
+                               c9 16 01 8a 93 96 57 14  93 ac 5e ce 03 3d 7e 1b
+                               21 da 1e 5b 62 e1 92 57  95 56 33 fa d1 41 65 bf
+                               df ba 1a b2 a5 65 86 eb  f3 72 f4 94 81 08 7e 0e
+                               b1 df 43 30 85 49 82 98  dd b2 c4 c0 f6 8e 9a ba
+                               d4 6e a7 93 b8 c1 d3 64  79 36 c2 ba 56 2b 2f fd
+                               eb f7 c6 94 a9 be b5 04  20 8e a7 17 1e 73 a8 8d
+                               12 8e 67 cb 54 a4 d6 e8  75 b1 ec c7 f6 c0 3a 64
+                               07 df fa a2 1e 78 05 d7  25 4a 87 9c 23 9d ed 9b
+                               ba 74 56 ab 95 73 89 a0  6d 96 1a bb cf 54 cf a5
+                               82 d3 0f c6 28 11 df 39  70 67 61 9f c1 46 63 08
+                               6f f7 f3 d1 69 cc 91 08  ef 9d d3 09 59 db de fe
+                               52 93 dd c2 55 03 00 00  29 20 00 00 00 80 00 00
+                               00|}
+  in
+  verify_dnssec time algorithm zsk data
+
 let test_a_se_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 05), ((18, 00, 00), 00))) in
   let zsk = "AwEAAd7Bd3v5oA7hpv1gdqBDDKVUIpu0cat4ps5IuuuDF48qo/hot3kz1TBfwFnyoQpzaaR+T5m5/42rhf9PWQ0y879yoAMur9afjPXPliMv6ZJ8QyXgS+Aj59kqRXHQJVX1JXyhpOz+jG3aVdcdMFC3HB9uQ9ivvsJQ1bJlS8t5Zw1rfhvCZ4T2FeLdfDUIthsXa5aBvkN98nDr5aD3iLUk5x2ZvELuTJAZFHNzemyviWUp9EWnXtJwvl2YrX53bGzHVA7kyRpeYf4N1OMFIEi0QDlyGUS540i3OSCLWFCu5c9YvMIfOouqUV//yyy0mjVb2BWZQDtrZ+BuMmWfOEYlAb8=" in
@@ -386,12 +511,71 @@ let test_a_se_nsec_nodata () =
   in
   verify_dnssec time algorithm zsk data
 
+let test_a_de_nsec3 () =
+  let time = Option.get (Ptime.of_date_time ((2022, 01, 06), ((18, 00, 00), 00))) in
+  let zsk = "AwEAAb5nVvUWjtX2ViEJxEovyniL+kTxSatSTxdSVwpZq2f1ryPPl0Yo4my/aQCdkuNPJmVeCOzL4Ebokp/5MfCfYLcHp7xl8saHALSvSMemsDkLUSgGWkefRNOv3It8nrbSibDthexuwtMkdN39z+LIcS4fNob/K+KUvZA6+Z+UfK65" in
+  let algorithm = Dnskey.RSA_SHA256 in
+  let data = Cstruct.of_hex {|
+a7 27 81 80 00 01  00 00 00 06 00 01 01 61
+                               02 64 65 00 00 2b 00 01  c0 0e 00 06 00 01 00 00
+                               0d f1 00 28 01 66 03 6e  69 63 c0 0e 03 69 74 73
+                               05 64 65 6e 69 63 c0 0e  61 d7 25 d0 00 00 1c 20
+                               00 00 1c 20 00 36 ee 80  00 00 1c 20 c0 0e 00 2e
+                               00 01 00 00 0d f1 00 96  00 06 08 01 00 01 51 80
+                               61 e9 9a bd 61 d7 10 a5  e0 dc 02 64 65 00 04 f7
+                               0b a6 78 bb 22 5a b4 a0  40 a0 43 52 a1 85 8b 92
+                               f2 ef b5 ae 1a 99 2a a8  3b 6e 8b e6 b7 94 98 07
+                               b3 b0 c3 55 4b e5 52 3f  5b 70 0f 83 8a 32 3f f7
+                               90 80 a2 c7 bd 28 db 73  6c 2f 9e 36 ea c7 87 e3
+                               5e b2 32 b9 56 1c 05 80  bf 87 63 6f 3b 54 bb 7c
+                               c0 59 7f dc 2e c1 ac a0  e4 81 ed aa b9 68 73 7c
+                               7b 3a a8 f6 47 f5 53 a4  e3 99 67 5a eb c8 81 cc
+                               ac ac 73 f3 c8 11 f4 f9  cb 1e 94 6e f0 4b 20 6c
+                               65 6e 69 35 35 62 62 65  70 74 73 64 6e 31 34 32
+                               6f 71 6c 64 70 37 38 69  37 6b 6d 34 6d 71 33 c0
+                               68 00 2e 00 01 00 00 0d  f1 00 96 00 32 08 02 00
+                               00 1c 20 61 e8 3e 9f 61  d5 b4 87 e0 dc 02 64 65
+                               00 71 22 04 1f e8 b4 a8  8e 4f f4 24 6c a6 66 98
+                               26 96 7f 5e e4 ba af 7e  0d b7 0f f8 0b 67 c6 6c
+                               f9 c3 64 bd 73 8a e5 9a  10 d0 1e 19 83 d0 a2 9c
+                               0e b5 7d 68 33 65 4e 74  6a 2d 01 a4 b5 2b 07 87
+                               8a 96 9a 25 74 64 35 6c  69 5b ad ae e2 f8 ae 57
+                               45 3e 12 f9 c0 f5 83 58  9d b1 d4 5d 99 4c a3 4d
+                               03 3e 99 6c 7a e8 37 0a  59 6c f3 c9 fd a2 01 d8
+                               dd 3e 75 11 c6 41 b5 52  3c 6a 1f 72 b7 3e 96 46
+                               de c0 ec 00 32 00 01 00  00 0d f1 00 2a 01 01 00
+                               0f 08 ca 12 b7 4a db 90  59 1a 14 ab af 3e fe 9a
+                               af 77 23 12 d5 4e e2 76  6d bf a1 2f 89 fd e7 00
+                               06 40 00 00 00 00 02 20  74 6a 6c 62 37 71 62 6f
+                               6a 76 6d 6c 66 31 73 36  67 64 72 69 72 75 37 76
+                               73 6d 73 31 6c 67 31 36  c1 2b 00 2e 00 01 00 00
+                               0d f1 00 96 00 32 08 02  00 00 1c 20 61 e3 84 74
+                               61 d0 fa 5c e0 dc 02 64  65 00 67 4b e6 fd 1a 52
+                               a9 61 55 08 a7 f3 40 ad  82 ca ef c5 fb 51 ac 6d
+                               4e 1e 97 89 71 cc a3 93  88 88 e3 5c cc 8b a5 e4
+                               47 39 dc ac ee ee 59 a3  d6 d1 a9 df f1 47 56 b9
+                               59 69 28 77 65 46 6b 23  eb 55 9b ef 0d f1 c6 55
+                               7c e8 d7 1d 26 78 98 d3  12 a4 a9 57 0a ee 13 10
+                               0b e6 20 fb 06 06 72 0d  b8 d3 b0 5b e1 dc 5f 4f
+                               0f 75 34 04 24 a8 4e b3  d8 2c f4 43 9e f2 11 ee
+                               8f 29 a6 6a 15 f9 e0 95  5e 2f c1 e5 00 32 00 01
+                               00 00 0d f1 00 2b 01 01  00 0f 08 ca 12 b7 4a db
+                               90 59 1a 14 ec ea f9 e7  7f 65 b9 d8 88 83 cd a4
+                               94 7f 5d 9a 73 09 1f dc  00 07 22 00 00 00 00 02
+                               90 00 00 29 10 00 00 00  80 00 00 00
+|}
+  in
+  verify_dnssec time algorithm zsk data
+
 let tests = [
   "root", `Quick, test_root ;
   "ns for ripe.net", `Quick, test_ns_ripe ;
   "ds for afnoc.af.mil", `Quick, test_ds_afnoc_af_mil ;
   "nxdomain for or (nsec)", `Quick, test_or_nsec_nxdomain ;
+  "nxdomain for zz (nsec)", `Quick, test_zz_nsec_nodomain ;
+  "nxdomain for aa (nsec)", `Quick, test_aa_nsec_nodomain ;
   "nodata for a se (nsec)", `Quick, test_a_se_nsec_nodata ;
+  "nodata for a.de (nsec3)", `Quick, test_a_de_nsec3 ;
 ]
 
 let () =
