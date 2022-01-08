@@ -67,7 +67,7 @@ let jump () hostname ns =
             ds_set Rr_map.Dnskey_set.empty
           in
           Logs.debug (fun m -> m "found %d DNSKEYS with matching DS" (Rr_map.Dnskey_set.cardinal keys_ds));
-          let* () = Dnssec.validate_rrsig_keys now keys_ds rrsigs requested_domain Dnskey rrs in
+          let* _used_name = Dnssec.validate_rrsig_keys now keys_ds rrsigs requested_domain Dnskey rrs in
           Logs.info (fun m -> m "verified RRSIG");
           let keys = Rr_map.Dnskey_set.filter (fun k -> Dnskey.F.mem `Zone k.Dnskey.flags) keys in
           Ok keys
@@ -79,7 +79,7 @@ let jump () hostname ns =
     let retrieve_ds dnskeys name =
       Dns_client_lwt.(get_rr_with_rrsig t Ds name) >|= function
         | Ok ((_ttl, ds) as rrs, Some (_ttl', rrsigs)) ->
-          let* () = Dnssec.validate_rrsig_keys now dnskeys rrsigs name Ds rrs in
+          let* _used_name = Dnssec.validate_rrsig_keys now dnskeys rrsigs name Ds rrs in
           Ok (Some ds)
         | Ok (_, None) ->
           Logs.err (fun m -> m "rrsig missing");
@@ -115,7 +115,7 @@ let jump () hostname ns =
       | Ok dnskeys ->
         Dns_client_lwt.(get_rr_with_rrsig t A hostname) >|= function
         | Ok (rrs, Some (_ttl', rrsigs)) ->
-          let* () = Dnssec.validate_rrsig_keys now dnskeys rrsigs hostname A rrs in
+          let* _used_name = Dnssec.validate_rrsig_keys now dnskeys rrsigs hostname A rrs in
           Logs.app (fun m -> m "%a" pp_zone (hostname, A, rrs));
           Ok ()
         | Ok (_, None) ->

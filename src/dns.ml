@@ -2448,11 +2448,13 @@ module Rr_map = struct
     | Nsec, (ttl, nsec) -> ttl, Nsec.canonical nsec
     | _, v -> v
 
-  (* ordering, according to RFC 4034, section 6 *)
+  (* ordering, according to RFC 4034, section 6.3 *)
   let canonical_order cs cs' =
+    let cs_l = Cstruct.length cs and cs'_l = Cstruct.length cs' in
     let rec c idx =
-      if Cstruct.length cs <= idx then 1
-      else if Cstruct.length cs' <= idx then -1
+      if cs_l = cs'_l && cs_l = idx then 0
+      else if cs_l = idx then 1
+      else if cs'_l = idx then -1
       else
         match compare (Cstruct.get_uint8 cs idx) (Cstruct.get_uint8 cs' idx) with
         | 0 -> c (succ idx)
@@ -2462,7 +2464,7 @@ module Rr_map = struct
 
   (* RFC 4034, section 3.1.8.1 *)
   let prep_for_sig : type a . [`raw] Domain_name.t -> Rrsig.t -> a key -> a ->
-    (Cstruct.t, [> `Msg of string ]) result =
+    ([`raw] Domain_name.t * Cstruct.t, [> `Msg of string ]) result =
       fun name rrsig typ value ->
     let buf, off = Rrsig.prep_rrsig rrsig in
     let rrsig_cs = Cstruct.sub buf 0 off in
@@ -2489,7 +2491,7 @@ module Rr_map = struct
       canonical_order cs cs'
     in
     let sorted_cs = List.map snd (List.sort order cs) in
-    Ok (Cstruct.concat (rrsig_cs :: sorted_cs))
+    Ok (name, Cstruct.concat (rrsig_cs :: sorted_cs))
 
   let union_rr : type a. a key -> a -> a -> a = fun k l r ->
     match k, l, r with

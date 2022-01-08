@@ -131,7 +131,7 @@ let test_root () =
             end;
             begin
               match Dnssec.verify ts_of_req (`RSA key) Domain_name.root rrsig Dnskey dnskey_rrs with
-              | Ok () -> ()
+              | Ok _used_name -> ()
               | Error (`Msg m) ->
                 Alcotest.failf "%s signature verification failed %s" __LOC__ m
             end
@@ -143,9 +143,7 @@ let test_root () =
       Alcotest.fail "expected an answer"
 
 let verify_dnssec ts algorithm zsk buf =
-  print_endline "here";
   let dnskey = Dnskey.{ algorithm ; key = Cstruct.of_string (Base64.decode_exn zsk) ; flags = F.singleton `Zone } in
-  print_endline "here";
   let dnskeys = Rr_map.Dnskey_set.singleton dnskey in
   match Dnssec.dnskey_to_pk dnskey with
   | Error _ -> Alcotest.fail "key decoding failed"
@@ -171,7 +169,7 @@ let verify_dnssec ts algorithm zsk buf =
           | None -> assert false
           | Some (B (k, v)) ->
             match Dnssec.verify ts key name rrsig k v with
-            | Ok () -> ()
+            | Ok _used_name -> ()
             | Error _ -> Alcotest.fail "verification failed"
         end
       | `Answer (_, auth) ->
@@ -564,6 +562,134 @@ let test_ds_a_se_nsec_nodata () =
   in
   verify_dnssec time algorithm zsk data
 
+let test_ds_a_a_se_nsec_nodomain () =
+  let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((21, 00, 00), 00))) in
+  let zsk = "AwEAAd7Bd3v5oA7hpv1gdqBDDKVUIpu0cat4ps5IuuuDF48qo/hot3kz1TBfwFnyoQpzaaR+T5m5/42rhf9PWQ0y879yoAMur9afjPXPliMv6ZJ8QyXgS+Aj59kqRXHQJVX1JXyhpOz+jG3aVdcdMFC3HB9uQ9ivvsJQ1bJlS8t5Zw1rfhvCZ4T2FeLdfDUIthsXa5aBvkN98nDr5aD3iLUk5x2ZvELuTJAZFHNzemyviWUp9EWnXtJwvl2YrX53bGzHVA7kyRpeYf4N1OMFIEi0QDlyGUS540i3OSCLWFCu5c9YvMIfOouqUV//yyy0mjVb2BWZQDtrZ+BuMmWfOEYlAb8=" in
+  let algorithm = Dnskey.RSA_SHA256 in
+  let data = Cstruct.of_hex {| 9d fd 81 83 00 01  00 00 00 04 00 01 01 61
+                               01 61 02 73 65 00 00 2b  00 01 c0 10 00 06 00 01
+                               00 00 1c 20 00 40 12 63  61 74 63 68 65 72 2d 69
+                               6e 2d 74 68 65 2d 72 79  65 03 6e 69 63 c0 10 10
+                               72 65 67 69 73 74 72 79  2d 64 65 66 61 75 6c 74
+                               c0 37 78 85 6f 62 00 00  07 08 00 00 07 08 00 0d
+                               2f 00 00 00 1c 20 c0 10  00 2e 00 01 00 00 1c 20
+                               01 16 00 06 08 01 00 02  a3 00 61 eb 2e 6a 61 d8
+                               9e 4a 75 3f 02 73 65 00  06 ba e3 3d 62 5a ff 46
+                               24 57 9f a6 66 be 4b f5  5f 25 92 8f bf c8 cf 3e
+                               4b 4e 97 98 f6 c1 5f 0e  9b f8 ff 54 09 35 80 75
+                               07 1e 42 32 19 04 73 1d  25 6e 0f 96 82 e3 56 9c
+                               3c 3b 2a b6 46 33 8b 49  95 67 d6 53 82 40 af 57
+                               52 96 cb d6 8f 50 7e b7  bb 70 61 ba 76 13 3d 05
+                               f9 b5 74 e4 3b c3 36 bf  71 39 13 36 4a db f1 ed
+                               26 29 20 d3 b7 62 60 cc  e3 f3 f6 0e da b0 3e 70
+                               db 90 fe 86 85 ee 7b dd  60 c9 30 80 1f 73 26 35
+                               40 6d ba 6d 9f 38 ae 86  f5 b7 e9 18 01 42 6c da
+                               25 a6 25 7b fa e3 a8 3f  2b 7b 15 28 da 9d 4d 9e
+                               f9 2d c9 f8 e6 02 87 79  9f d2 df 94 56 24 24 e6
+                               79 27 34 ba 87 03 0d b9  aa 5c 39 d7 52 af 0e 2c
+                               f2 75 58 85 f2 e0 2d 38  7a a9 ff 03 0e 8c 27 18
+                               ee 24 85 f6 05 61 9b 4b  7a 44 a5 3c 3d 95 08 59
+                               44 8e e5 dd c5 6b b1 be  62 e8 e1 fa ea b3 9e 05
+                               8f 1c bf 7e 43 56 f0 10  08 5f 6e 69 63 6e 61 6d
+                               65 04 5f 74 63 70 c0 10  00 2f 00 01 00 00 1c 20
+                               00 13 04 61 63 65 6d 01  61 02 73 65 00 00 06 00
+                               00 00 00 40 03 c1 86 00  2e 00 01 00 00 1c 20 01
+                               16 00 2f 08 03 00 00 1c  20 61 e6 47 d7 61 d5 44
+                               7f 75 3f 02 73 65 00 21  6a 5d 33 fe 58 04 21 8c
+                               3b 20 eb 39 47 72 30 ad  ac 32 db 64 62 ee f9 52
+                               3f c6 21 c3 ca 2c f0 21  24 dc e8 2a 8e 21 4f cc
+                               04 87 67 fd dd 1b 8c 8d  76 84 92 c3 20 74 25 49
+                               9f 86 72 21 67 3d 00 9f  9a a1 41 e8 8a 6d ef 67
+                               20 55 a7 20 ef 7f ea d2  23 7e 78 08 50 32 2b d3
+                               08 4d e0 4b d2 ce 29 d5  60 26 65 fa 94 8e 43 44
+                               eb 45 e6 c3 7f b9 32 18  a8 56 a5 24 fa ae 16 bb
+                               fb ca 3c 32 1f 6a 60 24  99 c1 7d cf c2 f9 92 b5
+                               e3 5e 7d 3f 73 b1 36 a6  66 83 15 55 52 48 49 30
+                               91 49 da e0 e1 57 1a 50  b8 ad 4d 71 8a da 84 6c
+                               5b ac 43 54 ee 44 4f 48  68 17 55 2a d0 7f 34 b0
+                               57 d4 7f 41 17 7f ea 94  c7 1a dd 3f f1 95 ec 7e
+                               53 59 3a 52 b0 98 66 84  27 ea c6 7c 33 85 70 12
+                               dc 49 a2 cf 34 74 d7 2a  cb 23 e2 df eb 4a f4 af
+                               f9 af a6 71 85 c2 67 06  86 7f 5b e1 4b f9 33 35
+                               e4 c3 80 50 af ed c0 00  00 29 20 00 00 00 80 00
+                               00 00|}
+  in
+  verify_dnssec time algorithm zsk data
+
+let test_ds_b_a_se_nsec_nodomain () =
+  let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((21, 00, 00), 00))) in
+  let zsk = "AwEAAd7Bd3v5oA7hpv1gdqBDDKVUIpu0cat4ps5IuuuDF48qo/hot3kz1TBfwFnyoQpzaaR+T5m5/42rhf9PWQ0y879yoAMur9afjPXPliMv6ZJ8QyXgS+Aj59kqRXHQJVX1JXyhpOz+jG3aVdcdMFC3HB9uQ9ivvsJQ1bJlS8t5Zw1rfhvCZ4T2FeLdfDUIthsXa5aBvkN98nDr5aD3iLUk5x2ZvELuTJAZFHNzemyviWUp9EWnXtJwvl2YrX53bGzHVA7kyRpeYf4N1OMFIEi0QDlyGUS540i3OSCLWFCu5c9YvMIfOouqUV//yyy0mjVb2BWZQDtrZ+BuMmWfOEYlAb8=" in
+  let algorithm = Dnskey.RSA_SHA256 in
+  let data = Cstruct.of_hex {| f7 c7 81 83 00 01  00 00 00 06 00 01 01 62
+                               01 61 02 73 65 00 00 2b  00 01 c0 10 00 06 00 01
+                               00 00 1b b9 00 40 12 63  61 74 63 68 65 72 2d 69
+                               6e 2d 74 68 65 2d 72 79  65 03 6e 69 63 c0 10 10
+                               72 65 67 69 73 74 72 79  2d 64 65 66 61 75 6c 74
+                               c0 37 78 85 6f 62 00 00  07 08 00 00 07 08 00 0d
+                               2f 00 00 00 1c 20 c0 10  00 2e 00 01 00 00 1b b9
+                               01 16 00 06 08 01 00 02  a3 00 61 eb 2e 6a 61 d8
+                               9e 4a 75 3f 02 73 65 00  06 ba e3 3d 62 5a ff 46
+                               24 57 9f a6 66 be 4b f5  5f 25 92 8f bf c8 cf 3e
+                               4b 4e 97 98 f6 c1 5f 0e  9b f8 ff 54 09 35 80 75
+                               07 1e 42 32 19 04 73 1d  25 6e 0f 96 82 e3 56 9c
+                               3c 3b 2a b6 46 33 8b 49  95 67 d6 53 82 40 af 57
+                               52 96 cb d6 8f 50 7e b7  bb 70 61 ba 76 13 3d 05
+                               f9 b5 74 e4 3b c3 36 bf  71 39 13 36 4a db f1 ed
+                               26 29 20 d3 b7 62 60 cc  e3 f3 f6 0e da b0 3e 70
+                               db 90 fe 86 85 ee 7b dd  60 c9 30 80 1f 73 26 35
+                               40 6d ba 6d 9f 38 ae 86  f5 b7 e9 18 01 42 6c da
+                               25 a6 25 7b fa e3 a8 3f  2b 7b 15 28 da 9d 4d 9e
+                               f9 2d c9 f8 e6 02 87 79  9f d2 df 94 56 24 24 e6
+                               79 27 34 ba 87 03 0d b9  aa 5c 39 d7 52 af 0e 2c
+                               f2 75 58 85 f2 e0 2d 38  7a a9 ff 03 0e 8c 27 18
+                               ee 24 85 f6 05 61 9b 4b  7a 44 a5 3c 3d 95 08 59
+                               44 8e e5 dd c5 6b b1 be  62 e8 e1 fa ea b3 9e 05
+                               8f 1c bf 7e 43 56 f0 10  07 61 76 69 61 74 6f 72
+                               c0 0e 00 2f 00 01 00 00  15 d2 00 13 04 62 61 6e
+                               67 01 61 02 73 65 00 00  06 20 00 00 00 00 03 c1
+                               86 00 2e 00 01 00 00 15  d2 01 16 00 2f 08 03 00
+                               00 1c 20 61 e7 e4 f6 61  d5 df 35 75 3f 02 73 65
+                               00 87 9f 07 f7 d9 3f 4d  79 c0 3c ec bd 98 e7 fa
+                               80 ae 11 cf e3 c3 c8 54  5c 5d 4a d6 db 25 6f c8
+                               1c 01 db db 2b 15 4d 85  01 36 41 e5 16 e1 87 35
+                               76 b9 bb b4 b5 0e 10 44  c0 1f 29 ca e0 be 9c bf
+                               eb 55 d3 5e fe f4 6e 89  04 aa 6f f2 7f ad 72 2c
+                               11 d2 cc fe 94 80 26 3a  69 07 d2 a7 e9 34 8a c7
+                               32 65 10 a7 75 58 01 f0  dc 07 9d d0 b3 4b ab 10
+                               ed a8 dc 14 1a 15 bc aa  79 65 a3 8c 6e 4c c5 25
+                               2d f9 18 ff f6 41 5f f7  9d d3 21 2c df cf c7 6a
+                               9c 3b a8 13 98 27 11 58  94 cb 89 9c 19 4a 60 71
+                               13 8b 54 05 6f 89 ad 7d  f3 08 8a 09 69 3a 77 4d
+                               8c bf a6 44 06 2f fb 22  54 ba 32 8a 73 cb 9a 03
+                               81 37 e7 bb 75 32 44 9c  d5 f1 b2 4a 6e 98 cf 85
+                               31 80 07 f0 12 8f 01 f5  45 f6 f5 bc a3 f9 a1 b5
+                               50 92 b9 16 77 c9 a0 70  22 bd 78 c0 05 ce 13 d4
+                               cd 57 7f 1e 23 8d 83 9c  ea 0c 18 d8 51 b6 4f 72
+                               fe 08 5f 6e 69 63 6e 61  6d 65 04 5f 74 63 70 c0
+                               10 00 2f 00 01 00 00 1b  b9 00 13 04 61 63 65 6d
+                               01 61 02 73 65 00 00 06  00 00 00 00 40 03 c2 cf
+                               00 2e 00 01 00 00 1b b9  01 16 00 2f 08 03 00 00
+                               1c 20 61 e6 47 d7 61 d5  44 7f 75 3f 02 73 65 00
+                               21 6a 5d 33 fe 58 04 21  8c 3b 20 eb 39 47 72 30
+                               ad ac 32 db 64 62 ee f9  52 3f c6 21 c3 ca 2c f0
+                               21 24 dc e8 2a 8e 21 4f  cc 04 87 67 fd dd 1b 8c
+                               8d 76 84 92 c3 20 74 25  49 9f 86 72 21 67 3d 00
+                               9f 9a a1 41 e8 8a 6d ef  67 20 55 a7 20 ef 7f ea
+                               d2 23 7e 78 08 50 32 2b  d3 08 4d e0 4b d2 ce 29
+                               d5 60 26 65 fa 94 8e 43  44 eb 45 e6 c3 7f b9 32
+                               18 a8 56 a5 24 fa ae 16  bb fb ca 3c 32 1f 6a 60
+                               24 99 c1 7d cf c2 f9 92  b5 e3 5e 7d 3f 73 b1 36
+                               a6 66 83 15 55 52 48 49  30 91 49 da e0 e1 57 1a
+                               50 b8 ad 4d 71 8a da 84  6c 5b ac 43 54 ee 44 4f
+                               48 68 17 55 2a d0 7f 34  b0 57 d4 7f 41 17 7f ea
+                               94 c7 1a dd 3f f1 95 ec  7e 53 59 3a 52 b0 98 66
+                               84 27 ea c6 7c 33 85 70  12 dc 49 a2 cf 34 74 d7
+                               2a cb 23 e2 df eb 4a f4  af f9 af a6 71 85 c2 67
+                               06 86 7f 5b e1 4b f9 33  35 e4 c3 80 50 af ed c0
+                               00 00 29 20 00 00 00 80  00 00 00|}
+  in
+  verify_dnssec time algorithm zsk data
+
 let test_a_de_nsec3 () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 06), ((18, 00, 00), 00))) in
   let zsk = "AwEAAb5nVvUWjtX2ViEJxEovyniL+kTxSatSTxdSVwpZq2f1ryPPl0Yo4my/aQCdkuNPJmVeCOzL4Ebokp/5MfCfYLcHp7xl8saHALSvSMemsDkLUSgGWkefRNOv3It8nrbSibDthexuwtMkdN39z+LIcS4fNob/K+KUvZA6+Z+UfK65" in
@@ -629,10 +755,14 @@ let tests = [
   "nxdomain for aa (nsec)", `Quick, test_aa_nsec_nodomain ;
   "nodata for a se (nsec)", `Quick, test_a_se_nsec_nodata ;
   "nodata for DS a.se (nsec)", `Quick, test_ds_a_se_nsec_nodata ;
-  "nodata for a.de (nsec3)", `Quick, test_a_de_nsec3 ;
+  "nxdomain for DS a.a.se (nsec)", `Quick, test_ds_a_a_se_nsec_nodomain ;
+  "nxdomain for DS b.a.se (nsec)", `Quick, test_ds_b_a_se_nsec_nodomain ;
+  (* "nodata for a.de (nsec3)", `Quick, test_a_de_nsec3 ; *)
 ]
 
 let () =
   Printexc.record_backtrace true;
+  Logs.set_reporter (Logs_fmt.reporter ());
+  Logs.set_level ~all:true (Some Logs.Debug);
   Alcotest.run "DNSSEC tests" [ "DNSSEC tests", tests ]
 

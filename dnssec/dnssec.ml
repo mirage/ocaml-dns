@@ -61,7 +61,8 @@ let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
     Error (`Msg (Fmt.str "unsupported key algorithm %a" Dnskey.pp_algorithm algorithm))
 
 let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
-  a Rr_map.key -> a -> (unit, [> `Msg of string ]) result = fun now key name rrsig t v ->
+  a Rr_map.key -> a -> ([`raw] Domain_name.t, [> `Msg of string ]) result =
+  fun now key name rrsig t v ->
   (* from RFC 4034 section 3.1.8.1 *)
   Logs.debug (fun m -> m "verifying for %a (with %a / %a)" Domain_name.pp name
     pp_pub key
@@ -85,24 +86,27 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
     guard (Ptime.is_later ~than:rrsig.Rrsig.signature_inception now)
       (`Msg "signature not yet incepted")
   in
-  let* data = Rr_map.prep_for_sig name rrsig t v in
+  let* (used_name, data) = Rr_map.prep_for_sig name rrsig t v in
   let hashed () = Mirage_crypto.Hash.digest algorithm data in
-  let ok_if_true p = if p then Ok () else Error (`Msg "signature verification failed") in
+  let ok_if_true p =
+    if p then Ok used_name else Error (`Msg "signature verification failed")
+  in
   match key with
   | `P256 key ->
-    ok_if_true (Mirage_crypto_ec.P256.Dsa.verify ~key (Cstruct.split rrsig.Rrsig.signature 32) (hashed ()))
+    let signature = Cstruct.split rrsig.Rrsig.signature 32 in
+    ok_if_true (Mirage_crypto_ec.P256.Dsa.verify ~key signature (hashed ()))
   | `P384 key ->
-    ok_if_true (Mirage_crypto_ec.P384.Dsa.verify ~key (Cstruct.split rrsig.Rrsig.signature 48) (hashed ()))
+    let signature = Cstruct.split rrsig.Rrsig.signature 48 in
+    ok_if_true (Mirage_crypto_ec.P384.Dsa.verify ~key signature (hashed ()))
   | `ED25519 key ->
-    ok_if_true (Mirage_crypto_ec.Ed25519.verify ~key rrsig.Rrsig.signature ~msg:data)
+    let msg = data in
+    ok_if_true (Mirage_crypto_ec.Ed25519.verify ~key rrsig.Rrsig.signature ~msg)
   | `RSA key ->
-    let hashp = ( = ) algorithm in
-    (match Mirage_crypto_pk.Rsa.PKCS1.sig_decode ~key rrsig.Rrsig.signature with
-    | None -> Logs.warn (fun m -> m "none in sig_decode")
-    | Some cs -> Logs.debug (fun m -> m "decoded sig %a" Cstruct.hexdump_pp cs));
-    Logs.debug (fun m -> m "digest %a" Cstruct.hexdump_pp (Mirage_crypto.Hash.digest algorithm data));
-
-    ok_if_true (Mirage_crypto_pk.Rsa.PKCS1.verify ~hashp ~key ~signature:rrsig.Rrsig.signature (`Message data))
+    let hashp = ( = ) algorithm
+    and msg = `Message data
+    and signature = rrsig.Rrsig.signature
+    in
+    ok_if_true (Mirage_crypto_pk.Rsa.PKCS1.verify ~hashp ~key ~signature msg)
 
 let validate_ds zone dnskeys ds =
   let* used_dnskey =
@@ -144,39 +148,46 @@ let validate_rrsig_keys now dnskeys rrsigs requested_domain t v =
   let* () = if keys_rrsigs = [] then Error (`Msg "no matching key and rrsig found") else Ok () in
   Logs.debug (fun m -> m "found %d key-rrsig pairs" (List.length keys_rrsigs));
   List.fold_left (fun r (key, rrsig) ->
-      let* () = r in
+      let* _name = r in
       let* pkey = dnskey_to_pk key in
-      Logs.debug (fun m -> m "checking sig with key_tag %d and key %a" rrsig.Rrsig.key_tag Dnskey.pp key);
+      Logs.debug (fun m -> m "checking sig with key_tag %d and key %a"
+                     rrsig.Rrsig.key_tag Dnskey.pp key);
       verify now pkey requested_domain rrsig t v)
-    (Ok ()) keys_rrsigs
+    (Ok Domain_name.root) keys_rrsigs
+
+let find_matching_rrsig typ rr_map =
+  let _, rrsigs =
+    Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
+      (Rr_map.find Rrsig rr_map)
+  in
+  let int = Rr_map.to_int typ in
+  let rrsigs =
+    Rr_map.Rrsig_set.filter
+      (fun rrsig -> rrsig.Rrsig.type_covered = int)
+      rrsigs
+  in
+  if Rr_map.Rrsig_set.is_empty rrsigs then
+    Error (`Msg (Fmt.str "couldn't find RRSIG for %a" Rr_map.ppk (K typ)))
+  else
+    Ok rrsigs
 
 let validate_soa now dnskeys auth =
   match
     Domain_name.Map.fold (fun k rr_map acc ->
         match Rr_map.(find Soa rr_map) with
-        | Some soa -> Some (Domain_name.raw k, soa)
+        | Some soa -> Some (Domain_name.raw k, soa, rr_map)
         | None -> acc)
       auth None
   with
   | None -> Error (`Msg "no SOA in authority")
-  | Some (name, soa) ->
-    let _, rrsigs =
-      Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
-        (Name_rr_map.find name Rr_map.Rrsig auth)
+  | Some (name, soa, rr_map) ->
+    let* rrsigs_soa = find_matching_rrsig Soa rr_map in
+    let* used_name = validate_rrsig_keys now dnskeys rrsigs_soa name Soa soa in
+    let* () =
+      if Domain_name.equal name used_name then Ok () else
+        Error (`Msg (Fmt.str "SOA owner %a differs from used name %a"
+                       Domain_name.pp name Domain_name.pp used_name))
     in
-    let* rrsigs_soa =
-      let soa_int = Rr_map.to_int Soa in
-      let rrsigs =
-        Rr_map.Rrsig_set.filter
-          (fun rrsig -> rrsig.Rrsig.type_covered = soa_int)
-          rrsigs
-      in
-      if Rr_map.Rrsig_set.is_empty rrsigs then
-        Error (`Msg (Fmt.str "couldn't find RRSIG for SOA %a" Domain_name.pp name))
-      else
-        Ok rrsigs
-    in
-    let* () = validate_rrsig_keys now dnskeys rrsigs_soa name Soa soa in
     Ok name
 
 let validate_nsec now name dnskeys auth =
@@ -198,13 +209,31 @@ let validate_nsec now name dnskeys auth =
     | _, _ ->
       Error (`Msg (Fmt.str "couldn't find RRSIG for NSEC %a" Domain_name.pp name))
   in
-  let* () = validate_rrsig_keys now dnskeys rrsigs_nsec name Nsec nsec in
+  let* _ = validate_rrsig_keys now dnskeys rrsigs_nsec name Nsec nsec in
   Ok nsec
+
+let is_name_in_chain ~name ~owner nsec =
+  (* for the last NSEC entry, next_domain is zone itself (thus = soa_name) *)
+  let next_owner = (snd nsec).Nsec.next_domain
+  and apex = Result.value ~default:name  (Domain_name.drop_label name)
+  in
+  Domain_name.(compare owner name < 0 &&
+                  (compare name next_owner < 0 ||
+                   compare apex next_owner = 0))
+
+let name_in_chain ~name ~owner nsec =
+  if is_name_in_chain ~name ~owner nsec then
+    Ok ()
+  else
+    Error (`Msg (Fmt.str "name not in chain: owner %a, name %a, next owner %a"
+                   Domain_name.pp owner
+                   Domain_name.pp name
+                   Domain_name.pp (snd nsec).Nsec.next_domain))
 
 let validate_nsec_no_domain now name dnskeys auth =
   (* no domain:
      - a SOA from a parent (zone), plus RRSIG
-     - a NSEC for zone, plus rrsig (for wildcard)
+     - an NSEC for non-existing wildcard, plus rrsig
      - a NSEC <prev domain> .. <next-domain>, plus rrsig
      -> ensure requested_domain is between these domains *)
   let* soa_name = validate_soa now dnskeys auth in
@@ -215,39 +244,64 @@ let validate_nsec_no_domain now name dnskeys auth =
       Error (`Msg (Fmt.str "question %a is not subdomain of SOA %a"
                      Domain_name.pp name Domain_name.pp soa_name))
   in
-  let* _nsec = validate_nsec now soa_name dnskeys auth in
-  let* (prev, nsec) =
-    let leftover =
-      if Domain_name.Map.cardinal auth = 1 then
-        auth
+  let* (wc_owner, rr_map) =
+    (* for non-existing wildcard NSEC: its owner must be between
+       <name> and <soa_name> *)
+    (* TODO deal with nsec without rrsig etc. *)
+    let rec find_it name =
+      let name = Domain_name.(prepend_label_exn (drop_label_exn name) "*") in
+      let matches =
+        Domain_name.Map.filter (fun owner rr_map ->
+            match Rr_map.find Nsec rr_map with
+            | Some nsec -> is_name_in_chain ~name ~owner nsec
+            | None -> false)
+          auth
+      in
+      if Domain_name.Map.cardinal matches = 1 then
+        Ok (Domain_name.Map.choose matches)
       else
-        Domain_name.Map.remove soa_name auth
+        let* name = Domain_name.drop_label name in
+        find_it name
     in
-    if Domain_name.Map.cardinal leftover = 1 then
-      let name, _ = Domain_name.Map.choose leftover in
-      let* nsec = validate_nsec now name dnskeys leftover in
-      Ok (name, nsec)
-    else
-      Error (`Msg "too many records in authority")
+    find_it name
+  in
+  let wc_nsec = Rr_map.get Nsec rr_map in
+  let* wc_rrsigs = find_matching_rrsig Nsec rr_map in
+  let* wc_used_name =
+    validate_rrsig_keys now dnskeys wc_rrsigs wc_owner Nsec wc_nsec
   in
   let* () =
-    if
-      Domain_name.(compare prev name < 0 &&
-                   (compare name (snd nsec).Nsec.next_domain < 0 ||
-                    compare soa_name (snd nsec).Nsec.next_domain = 0))
-    then begin
-      Logs.debug (fun m -> m "name is between nsec and next_domain");
-      Ok ()
-    end else
-      Error (`Msg (Fmt.str "bad nsec: %a not between %a (%d) and %a (%d soa_name %d)"
-                     Domain_name.pp name
-                     Domain_name.pp prev
-                     (Domain_name.compare prev name)
-                     Domain_name.pp (snd nsec).Nsec.next_domain
-                     (Domain_name.compare name (snd nsec).Nsec.next_domain)
-                     (Domain_name.compare soa_name (snd nsec).Nsec.next_domain)))
+    if Domain_name.equal wc_used_name wc_owner then Ok () else
+      Error (`Msg (Fmt.str "wildcard owner %a and wildcard used name %a differ"
+                     Domain_name.pp wc_owner Domain_name.pp wc_used_name))
   in
-  Ok ()
+  let* () =
+    let wc = Domain_name.prepend_label_exn wc_owner "*" in
+    name_in_chain ~name:wc ~owner:wc_owner wc_nsec
+  in
+  let* (owner, rr_map) =
+    let matches =
+      Domain_name.Map.filter (fun owner rr_map ->
+          match Rr_map.find Nsec rr_map with
+          | Some nsec -> is_name_in_chain ~name ~owner nsec
+          | None -> false)
+        auth
+    in
+    if Domain_name.Map.cardinal matches = 1 then
+      Ok (Domain_name.Map.choose matches)
+    else
+      Error (`Msg (Fmt.str "couldn't find nsec chain record covering %a in %a"
+                     Domain_name.pp name Name_rr_map.pp auth))
+  in
+  let nsec = Rr_map.get Nsec rr_map in
+  let* rrsigs = find_matching_rrsig Nsec rr_map in
+  let* used_name =
+    validate_rrsig_keys now dnskeys rrsigs owner Nsec nsec
+  in
+  if Domain_name.equal used_name owner then
+    Ok ()
+  else
+    name_in_chain ~name ~owner nsec
 
 let validate_no_data now name dnskeys k auth =
   (* no data:
@@ -288,24 +342,21 @@ let validate_no_data now name dnskeys k auth =
     Logs.err (fun m -> m "neither nsec nor nsec3 found");
     Error (`Msg "no NSEC/NSEC3")
   | `Nsec ((nsec_name, _nsec) :: []) ->
+    let* nsec = validate_nsec now nsec_name dnskeys auth in
     let* () =
-      if Domain_name.equal name nsec_name then
-        Ok ()
-      else
-        Error (`Msg (Fmt.str "NSEC name %a is different from name %a"
-                       Domain_name.pp nsec_name Domain_name.pp name))
-    in
-    let* nsec = validate_nsec now name dnskeys auth in
-    let* () =
-      if Domain_name.compare name (snd nsec).Nsec.next_domain < 0 then begin
-        Logs.debug (fun m -> m "next_domain is after name");
+      if Domain_name.(compare name (snd nsec).Nsec.next_domain < 0 &&
+                      compare nsec_name name <= 0)
+      then begin
+        Logs.debug (fun m -> m "NSEC .. name .. next_domain");
         Ok ()
       end else
         Error (`Msg (Fmt.str "bad nsec: %a not after %a"
                        Domain_name.pp (snd nsec).Nsec.next_domain
                        Domain_name.pp name))
     in
-    if Bit_map.mem (Rr_map.to_int k) (snd nsec).Nsec.types then
+    if Domain_name.compare nsec_name name = 0 &&
+       Bit_map.mem (Rr_map.to_int k) (snd nsec).Nsec.types
+    then
       Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
     else
       Ok ()
