@@ -16,7 +16,9 @@ depends: [
   "mirage-crypto"
   "mirage-crypto-pk"
   "mirage-crypto-ec"
+  "domain-name" {>= "0.4.0"}
   "base64" {with-test & >= "3.0.0"}
+  "logs" {with-test & >= "0.7.0"}
 ]
 build: [
   ["dune" "subst"] {dev}
