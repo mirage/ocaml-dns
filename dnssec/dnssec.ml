@@ -132,8 +132,11 @@ let validate_rrsig_keys now dnskeys rrsigs requested_domain t v =
   let keys_rrsigs =
     Rr_map.Dnskey_set.fold (fun key acc ->
         let key_tag = Dnskey.key_tag key in
+        Logs.debug (fun m -> m "key tag (of dnskey) is %d" key_tag);
         match
-          Rr_map.Rrsig_set.fold (fun rrsig -> function
+          Rr_map.Rrsig_set.fold (fun rrsig ->
+              Logs.debug (fun m -> m "key tag (of rrsig) is %d" rrsig.Rrsig.key_tag);
+              function
               | None when rrsig.Rrsig.key_tag = key_tag -> Some rrsig
               | Some a when rrsig.Rrsig.key_tag = key_tag ->
                 Logs.warn (fun m -> m "multiple rrsig for key %d" key_tag);

@@ -30,41 +30,43 @@ let root_ds =
     digest = Cstruct.of_hex "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D" ;
   }
 
-let jump () hostname ns =
-  Lwt_main.run (
-    let edns = Edns.create ~dnssec_ok:true ~payload_size:4096 () in
-    let nameservers = match ns with
-      | None -> None
-      | Some ip -> Some (`Tcp, [ `Plaintext (ip, 53) ])
-    in
-    let t = Dns_client_lwt.create ?nameservers ~edns:(`Manual edns) () in
-    let (_, ns) = Dns_client_lwt.nameservers t in
-    Logs.info (fun m -> m "querying NS %a for A records of %a"
-                  pp_nameserver (List.hd ns) Domain_name.pp hostname);
-    let log_err = function
-      | `Msg msg ->
-        Logs.err (fun m -> m "error from resolver %s" msg);
-        Error (`Msg "bad request")
-      | `No_data _ ->
-        Logs.err (fun m -> m "no data from resolver");
-        Error (`Msg "no data")
-      | `No_domain _ ->
-        Logs.err (fun m -> m "no domain from resolver");
-        Error (`Msg "no domain")
-    in
-    let now = Ptime_clock.now () in
-    let retrieve_dnskey ds_set requested_domain =
-      Dns_client_lwt.(get_rr_with_rrsig t Dnskey requested_domain) >|= function
+let jump () hostname typ ns =
+  match Dns.Rr_map.of_string typ with
+  | Ok K k ->
+    Lwt_main.run (
+      let edns = Edns.create ~dnssec_ok:true ~payload_size:4096 () in
+      let nameservers = match ns with
+        | None -> None
+        | Some ip -> Some (`Tcp, [ `Plaintext (ip, 53) ])
+      in
+      let t = Dns_client_lwt.create ?nameservers ~edns:(`Manual edns) () in
+      let (_, ns) = Dns_client_lwt.nameservers t in
+      Logs.info (fun m -> m "querying NS %a for A records of %a"
+                    pp_nameserver (List.hd ns) Domain_name.pp hostname);
+      let log_err = function
+        | `Msg msg ->
+          Logs.err (fun m -> m "error from resolver %s" msg);
+          Error (`Msg "bad request")
+        | `No_data _ ->
+          Logs.err (fun m -> m "no data from resolver");
+          Error (`Msg "no data")
+        | `No_domain _ ->
+          Logs.err (fun m -> m "no domain from resolver");
+          Error (`Msg "no domain")
+      in
+      let now = Ptime_clock.now () in
+      let retrieve_dnskey ds_set requested_domain =
+        Dns_client_lwt.(get_rr_with_rrsig t Dnskey requested_domain) >|= function
         | Ok ((_ttl, keys) as rrs, Some (_ttl', rrsigs)) ->
           let keys_ds =
             Rr_map.Ds_set.fold (fun ds acc ->
-              match Dnssec.validate_ds requested_domain keys ds with
-              | Ok key -> Rr_map.Dnskey_set.add key acc
-              | Error `Msg msg ->
-                Logs.warn (fun m -> m "couldn't validate DS (for %a): %s"
-                             Domain_name.pp requested_domain msg);
-                acc)
-            ds_set Rr_map.Dnskey_set.empty
+                match Dnssec.validate_ds requested_domain keys ds with
+                | Ok key -> Rr_map.Dnskey_set.add key acc
+                | Error `Msg msg ->
+                  Logs.warn (fun m -> m "couldn't validate DS (for %a): %s"
+                                Domain_name.pp requested_domain msg);
+                  acc)
+              ds_set Rr_map.Dnskey_set.empty
           in
           Logs.debug (fun m -> m "found %d DNSKEYS with matching DS" (Rr_map.Dnskey_set.cardinal keys_ds));
           let* _used_name = Dnssec.validate_rrsig_keys now keys_ds rrsigs requested_domain Dnskey rrs in
@@ -75,9 +77,9 @@ let jump () hostname ns =
           Logs.err (fun m -> m "rrsig missing");
           Error (`Msg "rrsig missing for dnskeys")
         | Error e -> log_err e
-    in
-    let retrieve_ds dnskeys name =
-      Dns_client_lwt.(get_rr_with_rrsig t Ds name) >|= function
+      in
+      let retrieve_ds dnskeys name =
+        Dns_client_lwt.(get_rr_with_rrsig t Ds name) >|= function
         | Ok ((_ttl, ds) as rrs, Some (_ttl', rrsigs)) ->
           let* _used_name = Dnssec.validate_rrsig_keys now dnskeys rrsigs name Ds rrs in
           Ok (Some ds)
@@ -92,31 +94,31 @@ let jump () hostname ns =
             (Dnssec.validate_no_data now name dnskeys Rr_map.Ds auth)
         | Error e ->
           log_err e
-    in
-    let rec retrieve_validated_dnskeys hostname =
-      Logs.info (fun m -> m "validating and retrieving DNSKEYS for %a" Domain_name.pp hostname);
-      if Domain_name.equal hostname Domain_name.root then begin
-        Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
-        retrieve_dnskey (Rr_map.Ds_set.singleton root_ds) hostname
-      end else
-        let open Lwt_result.Infix in
-        retrieve_validated_dnskeys Domain_name.(drop_label_exn hostname) >>= fun parent_dnskeys ->
-        Logs.info (fun m -> m "retrieving DS for %a" Domain_name.pp hostname);
-        retrieve_ds parent_dnskeys hostname >>= function
-        | Some ds ->
+      in
+      let rec retrieve_validated_dnskeys hostname =
+        Logs.info (fun m -> m "validating and retrieving DNSKEYS for %a" Domain_name.pp hostname);
+        if Domain_name.equal hostname Domain_name.root then begin
           Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
-          retrieve_dnskey ds hostname
-        | None ->
-          Logs.info (fun m -> m "no DS for %a, continuing with old keys" Domain_name.pp hostname);
-          Lwt.return (Ok parent_dnskeys)
-    in
-    retrieve_validated_dnskeys hostname >>= function
+          retrieve_dnskey (Rr_map.Ds_set.singleton root_ds) hostname
+        end else
+          let open Lwt_result.Infix in
+          retrieve_validated_dnskeys Domain_name.(drop_label_exn hostname) >>= fun parent_dnskeys ->
+          Logs.info (fun m -> m "retrieving DS for %a" Domain_name.pp hostname);
+          retrieve_ds parent_dnskeys hostname >>= function
+          | Some ds ->
+            Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
+            retrieve_dnskey ds hostname
+          | None ->
+            Logs.info (fun m -> m "no DS for %a, continuing with old keys" Domain_name.pp hostname);
+            Lwt.return (Ok parent_dnskeys)
+      in
+      retrieve_validated_dnskeys hostname >>= function
       | Error _ as e -> Lwt.return e
       | Ok dnskeys ->
-        Dns_client_lwt.(get_rr_with_rrsig t A hostname) >|= function
+        Dns_client_lwt.(get_rr_with_rrsig t k hostname) >|= function
         | Ok (rrs, Some (_ttl', rrsigs)) ->
-          let* _used_name = Dnssec.validate_rrsig_keys now dnskeys rrsigs hostname A rrs in
-          Logs.app (fun m -> m "%a" pp_zone (hostname, A, rrs));
+          let* _used_name = Dnssec.validate_rrsig_keys now dnskeys rrsigs hostname k rrs in
+          Logs.app (fun m -> m "%a" pp_zone (hostname, k, rrs));
           Ok ()
         | Ok (_, None) ->
           Logs.err (fun m -> m "rrsig missing");
@@ -126,11 +128,12 @@ let jump () hostname ns =
           Logs.info (fun m -> m "verified nxdomain");
           Ok ()
         | Error `No_data (_, _, auth) ->
-          let* () = Dnssec.validate_no_data now hostname dnskeys Rr_map.A auth in
+          let* () = Dnssec.validate_no_data now hostname dnskeys k auth in
           Logs.info (fun m -> m "verified no data");
           Ok ()
         | Error e -> log_err e
-  )
+    )
+  | _ -> Error (`Msg "couldn't decode type")
 
 open Cmdliner
 
@@ -159,8 +162,12 @@ let nameserver : Ipaddr.t option Term.t =
   let doc = "Nameserver to use" in
   Arg.(value & opt (some parse_ip) None & info [ "nameserver" ] ~docv:"NAMESERVER" ~doc)
 
+let arg_typ : string Term.t =
+  let doc = "Type to query" in
+  Arg.(value & opt string "A" & info ["type"] ~docv:"TYPE" ~doc)
+
 let cmd =
-  Term.(term_result (const jump $ Dns_cli.setup_log $ arg_domain $ nameserver)),
+  Term.(term_result (const jump $ Dns_cli.setup_log $ arg_domain $ arg_typ $ nameserver)),
   Term.info "odnssec" ~version:"%%VERSION_NUM%%"
 
 let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
