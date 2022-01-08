@@ -327,3 +327,37 @@ let validate_no_data now name dnskeys k auth =
     Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
   else
     Ok ()
+
+let rec validate_answer :
+  type a. ?fuel:int -> ?follow_cname:bool -> Ptime.t -> [`raw] Domain_name.t ->
+  Rr_map.Dnskey_set.t ->
+  a Rr_map.rr -> Name_rr_map.t -> Name_rr_map.t ->
+  (a, [> `Msg of string ]) result =
+  fun ?(fuel = 20) ?(follow_cname = true) now name dnskeys k answer auth ->
+  if fuel = 0 then
+    Error (`Msg "too many redirections")
+  else
+    match Domain_name.Map.find name answer with
+    | None ->
+      Error (`Msg (Fmt.str "couldn't find rrs for %a (%a) in %a"
+                     Domain_name.pp name Rr_map.ppk (K k)
+                     Name_rr_map.pp answer))
+    | Some rr_map ->
+      match Rr_map.find k rr_map with
+      | Some rrs ->
+        let* rrsigs = find_matching_rrsig k rr_map in
+        let* _used_name = validate_rrsig_keys now dnskeys rrsigs name k rrs in
+        Ok rrs
+      | None ->
+        if follow_cname then
+          match Rr_map.find Cname rr_map with
+          | None ->
+            Error (`Msg (Fmt.str "couldn't find rrs for %a" Rr_map.ppk (K k)))
+          | Some rr ->
+            let* rrsigs = find_matching_rrsig Cname rr_map in
+            let* _used_name = validate_rrsig_keys now dnskeys rrsigs name Cname rr in
+            Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
+            let fuel = fuel - 1 in
+            validate_answer ~fuel ~follow_cname now (snd rr) dnskeys k answer auth
+        else (* TODO verify cname RR *)
+          Error (`Msg "no rr and follow_cname is false")

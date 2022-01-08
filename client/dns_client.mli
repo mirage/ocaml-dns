@@ -120,10 +120,10 @@ sig
         these error conditions explicitly. *)
 
   val get_rr_with_rrsig : t -> 'response Dns.Rr_map.key -> 'a Domain_name.t ->
-    ('response * Dns.Rr_map.Rrsig_set.t Dns.Rr_map.with_ttl option,
+    ('response * Dns.Name_rr_map.t * Dns.Name_rr_map.t,
      [> `Msg of string
-     | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t * Dns.Name_rr_map.t
-     | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t * Dns.Name_rr_map.t ]) result T.io
+     | `No_data of Dns.Name_rr_map.t option * Dns.Name_rr_map.t
+     | `No_domain of Dns.Name_rr_map.t ]) result T.io
 
 end
 
@@ -153,9 +153,9 @@ module Pure : sig
       and [query_state] is the information required to validate the response. *)
 
   val parse_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
-    ( [ `Data of 'query_type * Dns.Rr_map.Rrsig_set.t Dns.Rr_map.with_ttl option
+    ( [ `Data of 'query_type * Dns.Name_rr_map.t * Dns.Name_rr_map.t
       | `Partial
-      | `No_data of [`raw] Domain_name.t * Dns.Soa.t * Dns.Name_rr_map.t
+      | `No_data of [`raw] Domain_name.t * Dns.Soa.t * Dns.Name_rr_map.t option * Dns.Name_rr_map.t
       | `No_domain of [`raw] Domain_name.t * Dns.Soa.t * Dns.Name_rr_map.t ],
       [`Msg of string]) result
   (** [parse_response query_state response] is the information contained in

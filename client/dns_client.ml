@@ -86,11 +86,6 @@ module Pure = struct
         | None -> acc)
       authority None
 
-  let find_rrsig name answer =
-    match Domain_name.Map.find_opt name answer with
-    | None -> None
-    | Some relevant_map -> Rr_map.find Rrsig relevant_map
-
   let consume_rest_of_buffer state buf =
     let ( let* ) = Result.bind in
     let to_msg t = function
@@ -122,19 +117,17 @@ module Pure = struct
           let q = fst state.query.question in
           let* o = follow_cname q ~iterations:20 ~answer ~state in
           match o with
-          | `Data x ->
-            let rrsig = find_rrsig q answer in
-            Ok (`Data (x, rrsig))
+          | `Data x -> Ok (`Data (x, answer, authority))
           | `Need_soa _name ->
             (* should we retain CNAMEs (and send them to the client)? *)
             (* should we 'adjust' the SOA name to be _name? *)
             match find_soa authority with
-            | Some (n, soa) -> Ok (`No_data (n, soa, authority))
+            | Some (n, soa) -> Ok (`No_data (n, soa, Some answer, authority))
             | None -> Error (`Msg "invalid reply, couldn't find SOA")
         end
       | `Answer (_, authority) ->
         begin match find_soa authority with
-          | Some (n, soa) -> Ok (`No_data (n, soa, authority))
+          | Some (n, soa) -> Ok (`No_data (n, soa, None, authority))
           | None -> Error (`Msg "invalid reply, no SOA in no data")
         end
       | `Rcode_error (NXDomain, Query, Some (_answer, authority)) ->
@@ -147,9 +140,9 @@ module Pure = struct
 
   let parse_response (type requested)
     : requested Rr_map.key query_state -> Cstruct.t ->
-      ( [ `Data of requested * Rr_map.Rrsig_set.t Rr_map.with_ttl option
+      ( [ `Data of requested * Name_rr_map.t * Name_rr_map.t
         | `Partial
-        | `No_data of [`raw] Domain_name.t * Soa.t * Name_rr_map.t
+        | `No_data of [`raw] Domain_name.t * Soa.t * Name_rr_map.t option * Name_rr_map.t
         | `No_domain of [`raw] Domain_name.t * Soa.t * Name_rr_map.t ],
         [`Msg of string]) result =
     fun state buf ->
@@ -247,10 +240,10 @@ struct
       | Error _ -> Error (`Msg "")
 
   let get_rr_with_rrsig (type requested) t (query_type:requested Dns.Rr_map.key) name
-    : (requested * Rr_map.Rrsig_set.t Rr_map.with_ttl option,
+    : (requested * Name_rr_map.t * Name_rr_map.t,
        [> `Msg of string
-       | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t * Name_rr_map.t
-       | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t * Name_rr_map.t ]) result Transport.io =
+       | `No_data of Name_rr_map.t option * Name_rr_map.t
+       | `No_domain of Name_rr_map.t ]) result Transport.io =
     let proto, _ = Transport.nameservers t.transport in
     let tx, state =
       Pure.make_query Transport.rng proto ~dnssec:true t.edns name query_type
@@ -263,8 +256,9 @@ struct
      Logs.debug (fun m -> m "received: %a" Cstruct.hexdump_pp recv_buffer);
      Transport.lift
        (match Pure.parse_response state recv_buffer with
-        | Ok `Data (x, rrsig) -> Ok (x, rrsig)
-        | Ok ((`No_data _ | `No_domain _) as nodom) -> Error nodom
+        | Ok `Data (x, answer, authority) -> Ok (x, answer, authority)
+        | Ok `No_data (_, _, ans, auth) -> Error (`No_data (ans, auth))
+        | Ok `No_domain (_, _, auth) -> Error (`No_domain auth)
         | Error `Msg xxx -> Error (`Msg xxx)
         | Ok `Partial -> Error (`Msg "Truncated UDP response"))) >>= fun r ->
     Transport.close socket >>= fun () ->
@@ -305,10 +299,10 @@ struct
          in
          Transport.lift
            (match Pure.parse_response state recv_buffer with
-            | Ok `Data (x, _) ->
+            | Ok `Data (x, _, _) ->
               update_cache (`Entry x);
               Ok x
-            | Ok `No_data (n, soa, _) ->
+            | Ok `No_data (n, soa, _, _) ->
               let nodom = `No_data (n, soa) in
               update_cache nodom;
               Error nodom

@@ -142,54 +142,47 @@ let test_root () =
     | _ ->
       Alcotest.fail "expected an answer"
 
-let verify_dnssec ts algorithm zsk buf =
-  let dnskey = Dnskey.{ algorithm ; key = Cstruct.of_string (Base64.decode_exn zsk) ; flags = F.singleton `Zone } in
-  let dnskeys = Rr_map.Dnskey_set.singleton dnskey in
-  match Dnssec.dnskey_to_pk dnskey with
-  | Error _ -> Alcotest.fail "key decoding failed"
-  | Ok key ->
-    match Packet.decode buf with
-    | Error _ -> Alcotest.fail "packet decoding failed"
-    | Ok pkt ->
-      let name = fst pkt.Packet.question in
-      match pkt.Packet.data with
-      | `Answer (answer, _) when not (Domain_name.Map.is_empty answer) ->
-        begin
-          if Domain_name.Map.cardinal answer <> 1 then
-            Alcotest.fail "expected one element name_rr_map";
-          let name, rrmap = Domain_name.Map.choose answer in
-          let _, rrsigs = Rr_map.get Rrsig rrmap in
-          if Rr_map.Rrsig_set.cardinal rrsigs <> 1 then
-            Alcotest.fail "expected single rrsig" ;
-          let rrsig = Rr_map.Rrsig_set.choose rrsigs in
-          let left = Rr_map.remove Rrsig rrmap in
-          if Rr_map.cardinal left <> 1 then
-            Alcotest.fail "expected single element in rr_map";
-          match Rr_map.min_binding left with
-          | None -> assert false
-          | Some (B (k, v)) ->
-            match Dnssec.verify ts key name rrsig k v with
-            | Ok _used_name -> ()
-            | Error _ -> Alcotest.fail "verification failed"
-        end
-      | `Answer (_, auth) ->
-        begin
-          match snd pkt.Packet.question with
-          | `K K k ->
-            begin match Dnssec.validate_no_data ts name dnskeys k auth with
-              | Ok () -> ()
-              | Error `Msg m ->
-                Alcotest.fail ("dnssec no data " ^ m)
-            end
-          | _ -> assert false
-        end
-      | `Rcode_error (NXDomain, Query, Some (_answer, auth)) ->
-        begin
-          match Dnssec.validate_nsec_no_domain ts name dnskeys auth with
-          | Ok () -> ()
-          | Error `Msg m -> Alcotest.fail ("dnssec nxdomain verification: " ^ m)
-        end
-      | _ -> Alcotest.fail "expected an answer"
+let verify_dnssec ts zsks buf =
+  let dnskey =
+    List.map (fun (algorithm, zsk) ->
+        Dnskey.{ algorithm ; key = Cstruct.of_string (Base64.decode_exn zsk) ; flags = F.singleton `Zone })
+      zsks
+  in
+  let dnskeys = Rr_map.Dnskey_set.of_list dnskey in
+  match Packet.decode buf with
+  | Error _ -> Alcotest.fail "packet decoding failed"
+  | Ok pkt ->
+    let name = fst pkt.Packet.question in
+    match pkt.Packet.data with
+    | `Answer (answer, auth) when not (Domain_name.Map.is_empty answer) ->
+      begin
+        match snd pkt.Packet.question with
+        | `K K k ->
+          begin match Dnssec.validate_answer ts name dnskeys k answer auth with
+            | Ok _ -> ()
+            | Error `Msg m ->
+              Alcotest.fail ("dnssec answer " ^ m)
+          end
+        | _ -> assert false
+      end
+    | `Answer (_, auth) ->
+      begin
+        match snd pkt.Packet.question with
+        | `K K k ->
+          begin match Dnssec.validate_no_data ts name dnskeys k auth with
+            | Ok () -> ()
+            | Error `Msg m ->
+              Alcotest.fail ("dnssec no data " ^ m)
+          end
+        | _ -> assert false
+      end
+    | `Rcode_error (NXDomain, Query, Some (_answer, auth)) ->
+      begin
+        match Dnssec.validate_nsec_no_domain ts name dnskeys auth with
+        | Ok () -> ()
+        | Error `Msg m -> Alcotest.fail ("dnssec nxdomain verification: " ^ m)
+      end
+    | _ -> Alcotest.fail "expected an answer"
 
 let test_ns_ripe () =
   let ts = Option.get (Ptime.of_date_time ((2021, 11, 24), ((17, 26, 00), 0)))
@@ -215,7 +208,7 @@ c9 91 77 1f 9b 6c c7 dc  64 76 ad 00 71 15 3c 84
 dc 02 7d 0a 00 00 29 02  00 00 00 80 00 00 00
 |}
   in
-  verify_dnssec ts algorithm zsk buf
+  verify_dnssec ts [ algorithm, zsk ] buf
 
 let test_ds_afnoc_af_mil () =
   let ts = Option.get (Ptime.of_date_time ((2021, 11, 24), ((17, 26, 00), 0)))
@@ -255,7 +248,7 @@ a3 7b 0f c9 43 0f a6 0d  80 53 0a b9 be 1e 24 05
 d6 6e 57 bb b9 b4 3e 61  d2 6d b0 ad ca f4 00 00
 29 02 00 00 00 80 00 00  00|}
   in
-  verify_dnssec ts algorithm zsk buf
+  verify_dnssec ts [ algorithm, zsk ] buf
 
 let test_or_nsec_nxdomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 05), ((18, 00, 00), 00))) in
@@ -328,7 +321,7 @@ let test_or_nsec_nxdomain () =
                                6b 2e 9e 06 96 00 00 29  02 00 00 00 80 00 00 00
 |}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm, zsk ] data
 
 let test_zz_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
@@ -400,7 +393,7 @@ let test_zz_nsec_nodomain () =
                                f3 21 99 18 b3 5f 5d 1b  d8 4f f8 ca 00 00 29 20
                                00 00 00 80 00 00 00|}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm, zsk ] data
 
 let test_aa_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
@@ -453,7 +446,7 @@ let test_aa_nsec_nodomain () =
                                52 93 dd c2 55 03 00 00  29 20 00 00 00 80 00 00
                                00|}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm, zsk ] data
 
 let test_a_se_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 05), ((18, 00, 00), 00))) in
@@ -507,7 +500,7 @@ let test_a_se_nsec_nodata () =
                                11 00 00 29 02 00 00 00  80 00 00 00
 |}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm, zsk ] data
 
 let test_ds_a_se_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
@@ -560,7 +553,7 @@ let test_ds_a_se_nsec_nodata () =
                                a6 71 85 c2 67 06 86 7f  5b e1 4b f9 33 35 e4 c3
                                80 50 af ed c0 00 00 29  20 00 00 00 80 00 00 00|}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm, zsk ] data
 
 let test_ds_a_a_se_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((21, 00, 00), 00))) in
@@ -614,7 +607,7 @@ let test_ds_a_a_se_nsec_nodomain () =
                                e4 c3 80 50 af ed c0 00  00 29 20 00 00 00 80 00
                                00 00|}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm, zsk ] data
 
 let test_ds_b_a_se_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((21, 00, 00), 00))) in
@@ -688,12 +681,14 @@ let test_ds_b_a_se_nsec_nodomain () =
                                06 86 7f 5b e1 4b f9 33  35 e4 c3 80 50 af ed c0
                                00 00 29 20 00 00 00 80  00 00 00|}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm, zsk ] data
 
 let test_ds_trac_ietf_org_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 08), ((13, 00, 00), 00))) in
-  let zsk = "AwEAAdDECajHaTjfSoNTY58WcBah1BxPKVIHBz4IfLjfqMvium4lgKtKZLe97DgJ5/NQrNEGGQmr6fKvUj67cfrZUojZ2cGRizVhgkOqZ9scaTVXNuXLM5Tw7VWOVIceeXAuuH2mPIiEV6MhJYUsW6dvmNsJ4XwCgNgroAmXhoMEiWEjBB+wjYZQ5GtZHBFKVXACSWTiCtddHcueOeSVPi5WH94VlubhHfiytNPZLrObhUCHT6k0tNE6phLoHnXWU+6vpsYpz6GhMw/R9BFxW5PdPFIWBgoWk2/XFVRSKG9Lr61b2z1R126xeUwvw46RVy3hanV3vNO7LM5HniqaYclBbhk=" in
-  let algorithm = Dnskey.RSA_SHA1 in
+  let zsk1 = "AwEAAdDECajHaTjfSoNTY58WcBah1BxPKVIHBz4IfLjfqMvium4lgKtKZLe97DgJ5/NQrNEGGQmr6fKvUj67cfrZUojZ2cGRizVhgkOqZ9scaTVXNuXLM5Tw7VWOVIceeXAuuH2mPIiEV6MhJYUsW6dvmNsJ4XwCgNgroAmXhoMEiWEjBB+wjYZQ5GtZHBFKVXACSWTiCtddHcueOeSVPi5WH94VlubhHfiytNPZLrObhUCHT6k0tNE6phLoHnXWU+6vpsYpz6GhMw/R9BFxW5PdPFIWBgoWk2/XFVRSKG9Lr61b2z1R126xeUwvw46RVy3hanV3vNO7LM5HniqaYclBbhk=" in
+  let algorithm1 = Dnskey.RSA_SHA1 in
+  let zsk2 = "AwEAAeFI7YqOvJueqjQIw0Y1TgnQUlWk24jvkCaz9OY3JLauYLJXkePuoS7wnwqk52eqLnBk5bpeCgba3ZA2PT0X4x8BkwWwEZXRaE9h8qp/XOhr0zV0AP+AfOQ63eKp0qPh0E3T4jfiMY7cABFEvoulZH4IGCdrZNUIrmC7t5fZhEol" in
+  let algorithm2 = Dnskey.RSA_SHA256 in
   let data = Cstruct.of_hex {| 03 3c 81 80 00 01  00 05 00 02 00 01 04 74
                                72 61 63 04 69 65 74 66  03 6f 72 67 00 00 2b 00
                                01 c0 0c 00 05 00 01 00  00 06 e9 00 02 c0 11 c0
@@ -754,7 +749,65 @@ let test_ds_trac_ietf_org_nsec_nodata () =
                                61 8c f5 ce 12 c2 7e 25  38 46 aa 3c b4 c5 d3 83
                                35 43 00 00 29 20 00 00  00 80 00 00 00|}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm1, zsk1 ; algorithm2, zsk2 ] data
+
+let test_ns_trac_ietf_org () =
+  let time = Option.get (Ptime.of_date_time ((2022, 01, 08), ((18, 40, 00), 00))) in
+  let zsk = "AwEAAdDECajHaTjfSoNTY58WcBah1BxPKVIHBz4IfLjfqMvium4lgKtKZLe97DgJ5/NQrNEGGQmr6fKvUj67cfrZUojZ2cGRizVhgkOqZ9scaTVXNuXLM5Tw7VWOVIceeXAuuH2mPIiEV6MhJYUsW6dvmNsJ4XwCgNgroAmXhoMEiWEjBB+wjYZQ5GtZHBFKVXACSWTiCtddHcueOeSVPi5WH94VlubhHfiytNPZLrObhUCHT6k0tNE6phLoHnXWU+6vpsYpz6GhMw/R9BFxW5PdPFIWBgoWk2/XFVRSKG9Lr61b2z1R126xeUwvw46RVy3hanV3vNO7LM5HniqaYclBbhk=" in
+  let algorithm = Dnskey.RSA_SHA1 in
+  let data = Cstruct.of_hex {| b4 da 81 a0 00 01  00 09 00 00 00 01 04 74
+                               72 61 63 04 69 65 74 66  03 6f 72 67 00 00 02 00
+                               01 c0 0c 00 05 00 01 00  00 07 08 00 02 c0 11 c0
+                               0c 00 2e 00 01 00 00 07  08 01 1c 00 05 05 03 00
+                               00 07 08 63 ba 0b 39 61  d8 ca 08 9e 04 04 69 65
+                               74 66 03 6f 72 67 00 98  ff 58 2d 6e 62 1e a1 38
+                               bb 35 b4 90 00 f3 85 40  fc b6 9f 6f 83 02 10 c4
+                               be 72 85 6b 89 6e af af  51 15 4d 04 be 6a 29 bb
+                               5f 5f 8a 5d af 7c 19 b9  32 ec 4c 3d 27 47 e5 d1
+                               03 04 47 20 e7 b3 70 f8  8d 0b 2e fa 9f 04 6a b4
+                               59 c1 71 01 0f 6e 96 92  55 51 8f 1e 81 91 4d 1a
+                               58 b9 d1 09 06 9f be 53  3c df 27 8d 7d 6c 34 dd
+                               fa 2f 36 d0 46 59 65 f4  53 02 23 8b 83 5e 20 f3
+                               b0 95 33 81 6f c8 9a 32  07 16 ac 28 cd ba ef 0f
+                               cf e7 cb 07 54 ee b7 3d  0b 4b bc f5 70 b0 cf d9
+                               b3 e4 eb 3b e6 15 8b 9f  41 c9 67 0d 3f 10 ab e8
+                               11 c6 08 93 30 bd 0a 38  ec 92 7e cf c9 5e aa 9d
+                               70 36 92 40 d7 56 03 d6  fd 85 ef 0d a0 3b 61 0b
+                               3c 2e 7f b5 1a c9 3f 8d  f6 d8 7a 84 44 fe c4 52
+                               1a ae a1 e9 26 31 18 2f  30 1c a5 02 21 e9 8c 3e
+                               05 61 f9 ac ad 6c 90 a9  a7 e4 c0 52 25 d0 89 81
+                               76 2f a7 16 d5 af 94 c0  11 00 02 00 01 00 00 07
+                               08 00 0e 03 6e 73 30 04  61 6d 73 6c 03 63 6f 6d
+                               00 c0 11 00 02 00 01 00  00 07 08 00 1b 03 6e 73
+                               31 04 61 6d 73 31 0b 61  66 69 6c 69 61 73 2d 6e
+                               73 74 04 69 6e 66 6f 00  c0 11 00 02 00 01 00 00
+                               07 08 00 0b 03 6e 73 31  04 68 6b 67 31 c1 84 c0
+                               11 00 02 00 01 00 00 07  08 00 0b 03 6e 73 31 04
+                               6d 69 61 31 c1 84 c0 11  00 02 00 01 00 00 07 08
+                               00 0b 03 6e 73 31 04 73  65 61 31 c1 84 c0 11 00
+                               02 00 01 00 00 07 08 00  0b 03 6e 73 31 04 79 79
+                               7a 31 c1 84 c0 11 00 2e  00 01 00 00 07 08 01 1c
+                               00 02 05 02 00 00 07 08  63 ba 0b 81 61 d8 ca 08
+                               9e 04 04 69 65 74 66 03  6f 72 67 00 15 b5 00 2f
+                               9c 7a db 04 35 5e 30 06  04 2f 7d 7d bb b0 66 a9
+                               32 63 7a 00 f5 0b 64 b1  51 07 d7 9c 70 31 c3 6d
+                               62 7b 18 53 7e ee 57 41  fa c4 ee cc 00 cb 96 cc
+                               d7 be f6 71 78 63 03 22  ce f3 4f 6f c2 84 fe af
+                               e4 ce 7c 0b 8f 36 39 9e  73 07 90 fa 57 12 d7 c8
+                               3b f5 51 a8 c7 2f 5d 09  e8 32 52 ff 03 40 52 73
+                               de 26 8a 88 73 b8 ed b6  4f 84 d3 cc c3 84 0a b8
+                               6c 6a 1a ab 5d d7 7d 11  d4 dd ed 65 9f 2c b0 31
+                               dc 91 36 4a 8c ec 0b bd  ab 46 2d 31 76 cb 4e cc
+                               d5 15 8d 22 6c 28 fb 60  b4 d8 7c 5c 76 00 17 77
+                               7e 1d e2 e9 c3 59 54 3a  3e 1c f9 22 54 60 b9 37
+                               d4 e8 14 8b 4e d5 9a e4  72 2d 68 1b fb 31 b7 32
+                               3e 16 f3 74 96 bf 6c 36  64 a3 d9 f2 ce 27 e9 c9
+                               12 06 8b 99 c9 35 bb 5d  63 d7 ab d4 02 0e d1 72
+                               e6 a5 9b 06 3d ed e1 bf  e8 9a d2 af b8 c2 c6 87
+                               a8 b8 15 4c 07 bc fc 00  25 eb 53 79 00 00 29 04
+                               d0 00 00 80 00 00 00|}
+  in
+  verify_dnssec time [ algorithm, zsk ] data
 
 let test_caa_ietf_org_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 08), ((13, 00, 00), 00))) in
@@ -807,7 +860,7 @@ let test_caa_ietf_org_nsec_nodata () =
                                c2 7e 25 38 46 aa 3c b4  c5 d3 83 35 43 00 00 29
                                20 00 00 00 80 00 00 00 |}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm, zsk ] data
 
 let test_a_de_nsec3 () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 06), ((18, 00, 00), 00))) in
@@ -863,7 +916,7 @@ a7 27 81 80 00 01  00 00 00 06 00 01 01 61
                                90 00 00 29 10 00 00 00  80 00 00 00
 |}
   in
-  verify_dnssec time algorithm zsk data
+  verify_dnssec time [ algorithm, zsk ] data
 
 let tests = [
   "root", `Quick, test_root ;
@@ -876,7 +929,8 @@ let tests = [
   "nodata for DS a.se (nsec)", `Quick, test_ds_a_se_nsec_nodata ;
   "nxdomain for DS a.a.se (nsec)", `Quick, test_ds_a_a_se_nsec_nodomain ;
   "nxdomain for DS b.a.se (nsec)", `Quick, test_ds_b_a_se_nsec_nodomain ;
-  (* "nodata (cname) for DS trac.ietf.org (nsec)", `Quick, test_ds_trac_ietf_org_nsec_nodata ; *)
+  "nodata (cname) for DS trac.ietf.org (nsec)", `Quick, test_ds_trac_ietf_org_nsec_nodata ;
+  "NS trac.ietf.org (with cname)", `Quick, test_ns_trac_ietf_org ;
   "nodata for CAA ietf.org (nsec)", `Quick, test_caa_ietf_org_nsec_nodata ;
   (* "nodata for a.de (nsec3)", `Quick, test_a_de_nsec3 ; *)
 ]

@@ -55,9 +55,9 @@ let jump () hostname typ ns =
           Error (`Msg "no domain")
       in
       let now = Ptime_clock.now () in
-      let retrieve_dnskey ds_set requested_domain =
+      let retrieve_dnskey dnskeys ds_set requested_domain =
         Dns_client_lwt.(get_rr_with_rrsig t Dnskey requested_domain) >|= function
-        | Ok ((_ttl, keys) as rrs, Some (_ttl', rrsigs)) ->
+        | Ok ((_ttl, keys), answer, authority) ->
           let keys_ds =
             Rr_map.Ds_set.fold (fun ds acc ->
                 match Dnssec.validate_ds requested_domain keys ds with
@@ -69,27 +69,34 @@ let jump () hostname typ ns =
               ds_set Rr_map.Dnskey_set.empty
           in
           Logs.debug (fun m -> m "found %d DNSKEYS with matching DS" (Rr_map.Dnskey_set.cardinal keys_ds));
-          let* _used_name = Dnssec.validate_rrsig_keys now keys_ds rrsigs requested_domain Dnskey rrs in
+          let* _rrs = Dnssec.validate_answer now requested_domain keys_ds Rr_map.Dnskey answer authority in
           Logs.info (fun m -> m "verified RRSIG");
           let keys = Rr_map.Dnskey_set.filter (fun k -> Dnskey.F.mem `Zone k.Dnskey.flags) keys in
           Ok keys
-        | Ok (_, None) ->
-          Logs.err (fun m -> m "rrsig missing");
-          Error (`Msg "rrsig missing for dnskeys")
+        | Error `No_domain auth ->
+          let* () = Dnssec.validate_nsec_no_domain now requested_domain dnskeys auth in
+          Error (`Msg "no domain for DNSKEY")
+        | Error `No_data (_answer, auth) ->
+          let* () = Dnssec.validate_no_data now requested_domain dnskeys Dnskey auth in
+          Error (`Msg "no data for DNSKEY")
         | Error e -> log_err e
       in
       let retrieve_ds dnskeys name =
         Dns_client_lwt.(get_rr_with_rrsig t Ds name) >|= function
-        | Ok ((_ttl, ds) as rrs, Some (_ttl', rrsigs)) ->
-          let* _used_name = Dnssec.validate_rrsig_keys now dnskeys rrsigs name Ds rrs in
-          Ok (Some ds)
-        | Ok (_, None) ->
-          Logs.err (fun m -> m "rrsig missing");
-          Error (`Msg "rrsig missing for ds")
-        | Error `No_domain (_, _, auth) ->
+        | Ok (_, answer, authority) ->
+          begin
+            match
+              Dnssec.validate_answer ~follow_cname:false now name dnskeys Rr_map.Ds answer authority
+            with
+            | Ok (_, ds) -> Ok (Some ds)
+            | Error `Msg msg ->
+              Logs.warn (fun m -> m "retrieving DS: %s" msg);
+              Ok None
+          end
+        | Error `No_domain auth ->
           Result.map (fun () -> None)
             (Dnssec.validate_nsec_no_domain now name dnskeys auth)
-        | Error `No_data (_, _, auth) ->
+        | Error `No_data (_answer, auth) ->
           Result.map (fun () -> None)
             (Dnssec.validate_no_data now name dnskeys Rr_map.Ds auth)
         | Error e ->
@@ -99,15 +106,15 @@ let jump () hostname typ ns =
         Logs.info (fun m -> m "validating and retrieving DNSKEYS for %a" Domain_name.pp hostname);
         if Domain_name.equal hostname Domain_name.root then begin
           Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
-          retrieve_dnskey (Rr_map.Ds_set.singleton root_ds) hostname
+          retrieve_dnskey Rr_map.Dnskey_set.empty (Rr_map.Ds_set.singleton root_ds) hostname
         end else
           let open Lwt_result.Infix in
           retrieve_validated_dnskeys Domain_name.(drop_label_exn hostname) >>= fun parent_dnskeys ->
           Logs.info (fun m -> m "retrieving DS for %a" Domain_name.pp hostname);
           retrieve_ds parent_dnskeys hostname >>= function
-          | Some ds ->
+          | Some ds_set ->
             Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
-            retrieve_dnskey ds hostname
+            retrieve_dnskey parent_dnskeys ds_set hostname
           | None ->
             Logs.info (fun m -> m "no DS for %a, continuing with old keys" Domain_name.pp hostname);
             Lwt.return (Ok parent_dnskeys)
@@ -116,18 +123,15 @@ let jump () hostname typ ns =
       | Error _ as e -> Lwt.return e
       | Ok dnskeys ->
         Dns_client_lwt.(get_rr_with_rrsig t k hostname) >|= function
-        | Ok (rrs, Some (_ttl', rrsigs)) ->
-          let* _used_name = Dnssec.validate_rrsig_keys now dnskeys rrsigs hostname k rrs in
+        | Ok (rrs, answer, authority) ->
+          let* _rrs = Dnssec.validate_answer now hostname dnskeys k answer authority in
           Logs.app (fun m -> m "%a" pp_zone (hostname, k, rrs));
           Ok ()
-        | Ok (_, None) ->
-          Logs.err (fun m -> m "rrsig missing");
-          Error (`Msg "rrsig is missing")
-        | Error `No_domain (_, _, auth) ->
+        | Error `No_domain auth ->
           let* () = Dnssec.validate_nsec_no_domain now hostname dnskeys auth in
           Logs.info (fun m -> m "verified nxdomain");
           Ok ()
-        | Error `No_data (_, _, auth) ->
+        | Error `No_data (_answer, auth) ->
           let* () = Dnssec.validate_no_data now hostname dnskeys k auth in
           Logs.info (fun m -> m "verified no data");
           Ok ()
