@@ -190,28 +190,6 @@ let validate_soa now dnskeys auth =
     in
     Ok name
 
-let validate_nsec now name dnskeys auth =
-  let _, rrsigs =
-    Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
-      (Name_rr_map.find name Rr_map.Rrsig auth)
-  in
-  let* (nsec, rrsigs_nsec) =
-    let nsec_int = Rr_map.to_int Nsec in
-    match
-      Name_rr_map.find name Rr_map.Nsec auth,
-      Rr_map.Rrsig_set.filter
-        (fun rrsig -> rrsig.Rrsig.type_covered = nsec_int)
-        rrsigs
-    with
-    | Some nsec, rrsigs when Rr_map.Rrsig_set.cardinal rrsigs > 0 -> Ok (nsec, rrsigs)
-    | None, _ ->
-      Error (`Msg (Fmt.str "couldn't find NSEC for %a" Domain_name.pp name))
-    | _, _ ->
-      Error (`Msg (Fmt.str "couldn't find RRSIG for NSEC %a" Domain_name.pp name))
-  in
-  let* _ = validate_rrsig_keys now dnskeys rrsigs_nsec name Nsec nsec in
-  Ok nsec
-
 let is_name_in_chain ~name ~owner nsec =
   (* for the last NSEC entry, next_domain is zone itself (thus = soa_name) *)
   let next_owner = (snd nsec).Nsec.next_domain
@@ -230,30 +208,17 @@ let name_in_chain ~name ~owner nsec =
                    Domain_name.pp name
                    Domain_name.pp (snd nsec).Nsec.next_domain))
 
-let validate_nsec_no_domain now name dnskeys auth =
-  (* no domain:
-     - a SOA from a parent (zone), plus RRSIG
-     - an NSEC for non-existing wildcard, plus rrsig
-     - a NSEC <prev domain> .. <next-domain>, plus rrsig
-     -> ensure requested_domain is between these domains *)
-  let* soa_name = validate_soa now dnskeys auth in
-  let* () =
-    if Domain_name.is_subdomain ~subdomain:name ~domain:soa_name then
-      Ok ()
-    else
-      Error (`Msg (Fmt.str "question %a is not subdomain of SOA %a"
-                     Domain_name.pp name Domain_name.pp soa_name))
-  in
+let wildcard_non_existence now name dnskeys auth =
   let* (wc_owner, rr_map) =
     (* for non-existing wildcard NSEC: its owner must be between
        <name> and <soa_name> *)
     (* TODO deal with nsec without rrsig etc. *)
     let rec find_it name =
-      let name = Domain_name.(prepend_label_exn (drop_label_exn name) "*") in
+      let wc_name = Domain_name.prepend_label_exn name "*" in
       let matches =
         Domain_name.Map.filter (fun owner rr_map ->
             match Rr_map.find Nsec rr_map with
-            | Some nsec -> is_name_in_chain ~name ~owner nsec
+            | Some nsec -> is_name_in_chain ~name:wc_name ~owner nsec
             | None -> false)
           auth
       in
@@ -275,10 +240,15 @@ let validate_nsec_no_domain now name dnskeys auth =
       Error (`Msg (Fmt.str "wildcard owner %a and wildcard used name %a differ"
                      Domain_name.pp wc_owner Domain_name.pp wc_used_name))
   in
-  let* () =
-    let wc = Domain_name.prepend_label_exn wc_owner "*" in
-    name_in_chain ~name:wc ~owner:wc_owner wc_nsec
-  in
+  let wc = Domain_name.prepend_label_exn wc_owner "*" in
+  let* () = name_in_chain ~name:wc ~owner:wc_owner wc_nsec in
+  Ok wc_nsec
+
+let validate_nsec now owner dnskeys nsec rr_map =
+  let* rrsigs = find_matching_rrsig Nsec rr_map in
+  validate_rrsig_keys now dnskeys rrsigs owner Nsec nsec
+
+let nsec_chain now name dnskeys auth =
   let* (owner, rr_map) =
     let matches =
       Domain_name.Map.filter (fun owner rr_map ->
@@ -294,20 +264,37 @@ let validate_nsec_no_domain now name dnskeys auth =
                      Domain_name.pp name Name_rr_map.pp auth))
   in
   let nsec = Rr_map.get Nsec rr_map in
-  let* rrsigs = find_matching_rrsig Nsec rr_map in
-  let* used_name =
-    validate_rrsig_keys now dnskeys rrsigs owner Nsec nsec
+  let* used_name = validate_nsec now owner dnskeys nsec rr_map in
+  let* () =
+    if Domain_name.equal used_name owner then
+      Ok ()
+    else
+      name_in_chain ~name ~owner nsec
   in
-  if Domain_name.equal used_name owner then
-    Ok ()
-  else
-    name_in_chain ~name ~owner nsec
+  Ok (owner, nsec)
+
+let validate_nsec_no_domain now name dnskeys auth =
+  (* no domain:
+     - a SOA from a parent (zone), plus RRSIG
+     - an NSEC for non-existing wildcard, plus rrsig
+     - a NSEC <prev domain> .. <next-domain>, plus rrsig
+     -> ensure requested_domain is between these domains *)
+  let* soa_name = validate_soa now dnskeys auth in
+  let* () =
+    if Domain_name.is_subdomain ~subdomain:name ~domain:soa_name then
+      Ok ()
+    else
+      Error (`Msg (Fmt.str "question %a is not subdomain of SOA %a"
+                     Domain_name.pp name Domain_name.pp soa_name))
+  in
+  let* _ = wildcard_non_existence now name dnskeys auth in
+  let* _ = nsec_chain now name dnskeys auth in
+  Ok ()
 
 let validate_no_data now name dnskeys k auth =
   (* no data:
      - SOA + RRSIG
-     - NSEC (mentioning next domain, and _not_ this type) + RRSIG
-     - or NSEC3(s)
+     - (NSEC for name (and not for type = k) OR wildcard NSEC) + RRSIG
   *)
   let* soa_name = validate_soa now dnskeys auth in
   let* () =
@@ -317,48 +304,23 @@ let validate_no_data now name dnskeys k auth =
       Error (`Msg (Fmt.str "name %a is not a subdomain of soa %a"
                      Domain_name.pp name Domain_name.pp soa_name))
   in
-  let* nsecs =
-    Domain_name.Map.fold (fun k rr_map acc ->
-        let* acc = acc in
-        match Rr_map.(find Nsec rr_map), Rr_map.(find Nsec3 rr_map), acc with
-        | Some _nsec, Some _nsec3, _ ->
-          Logs.warn (fun m -> m "both nsec and nsec3 found for %a" Domain_name.pp k);
-          Error (`Msg "both nsec and nsec present")
-        | Some _nsec, None, `Nsec3 _ ->
-          Logs.warn (fun m -> m "both nsec and nsec3 found for %a" Domain_name.pp k);
-          Error (`Msg "both nsec and nsec3 present")
-        | Some nsec, None, `None -> Ok (`Nsec [ k, nsec ])
-        | Some nsec, None, `Nsec ns -> Ok (`Nsec ((k, nsec) :: ns))
-        | None, Some nsec3, `None -> Ok (`Nsec3 [ k, nsec3 ])
-        | None, Some nsec3, `Nsec3 ns -> Ok (`Nsec3 ((k, nsec3) :: ns))
-        | None, Some _nsec3, `Nsec _ ->
-          Logs.warn (fun m -> m "both nsec and nsec3 found for %a" Domain_name.pp k);
-          Error (`Msg "both nsec and nsec3 present")
-        | None, None, _ -> Ok acc)
-      auth (Ok `None)
+  let* nsec =
+    match Name_rr_map.find name Nsec auth with
+    | None -> wildcard_non_existence now name dnskeys auth
+    | Some nsec ->
+      let rr_map = Option.get (Domain_name.Map.find name auth) in
+      let* nsec_owner = validate_nsec now name dnskeys nsec rr_map in
+      let* () =
+        if Domain_name.equal nsec_owner name then
+          Ok ()
+        else
+          Error (`Msg (Fmt.str "nsec owner %a is not name %a"
+                         Domain_name.pp nsec_owner
+                         Domain_name.pp name))
+      in
+      Ok nsec
   in
-  match nsecs with
-  | `None ->
-    Logs.err (fun m -> m "neither nsec nor nsec3 found");
-    Error (`Msg "no NSEC/NSEC3")
-  | `Nsec ((nsec_name, _nsec) :: []) ->
-    let* nsec = validate_nsec now nsec_name dnskeys auth in
-    let* () =
-      if Domain_name.(compare name (snd nsec).Nsec.next_domain < 0 &&
-                      compare nsec_name name <= 0)
-      then begin
-        Logs.debug (fun m -> m "NSEC .. name .. next_domain");
-        Ok ()
-      end else
-        Error (`Msg (Fmt.str "bad nsec: %a not after %a"
-                       Domain_name.pp (snd nsec).Nsec.next_domain
-                       Domain_name.pp name))
-    in
-    if Domain_name.compare nsec_name name = 0 &&
-       Bit_map.mem (Rr_map.to_int k) (snd nsec).Nsec.types
-    then
-      Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
-    else
-      Ok ()
-  | `Nsec _ -> assert false
-  | `Nsec3 _nsecs -> assert false
+  if Bit_map.mem (Rr_map.to_int k) (snd nsec).Nsec.types then
+    Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
+  else
+    Ok ()
