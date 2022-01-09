@@ -346,7 +346,16 @@ let rec validate_answer :
       match Rr_map.find k rr_map with
       | Some rrs ->
         let* rrsigs = find_matching_rrsig k rr_map in
-        let* _used_name = validate_rrsig_keys now dnskeys rrsigs name k rrs in
+        let* used_name = validate_rrsig_keys now dnskeys rrsigs name k rrs in
+        let* () =
+          if Domain_name.equal used_name name then
+            Ok ()
+          else
+            (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
+               positive reply (no direct match) *)
+            let* _ = nsec_chain now name dnskeys auth in
+            Ok ()
+        in
         Ok rrs
       | None ->
         match Rr_map.find Cname rr_map with
@@ -354,7 +363,16 @@ let rec validate_answer :
           Error (`Msg (Fmt.str "couldn't find rrs for %a" Rr_map.ppk (K k)))
         | Some rr ->
           let* rrsigs = find_matching_rrsig Cname rr_map in
-          let* _used_name = validate_rrsig_keys now dnskeys rrsigs name Cname rr in
+          let* used_name = validate_rrsig_keys now dnskeys rrsigs name Cname rr in
+          let* () =
+            if Domain_name.equal used_name name then
+              Ok ()
+            else
+              (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
+                 positive reply (no direct match) *)
+              let* _ = nsec_chain now name dnskeys auth in
+              Ok ()
+          in
           Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
           if follow_cname then
             let fuel = fuel - 1 in
