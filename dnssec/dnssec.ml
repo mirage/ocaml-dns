@@ -349,15 +349,15 @@ let rec validate_answer :
         let* _used_name = validate_rrsig_keys now dnskeys rrsigs name k rrs in
         Ok rrs
       | None ->
-        if follow_cname then
-          match Rr_map.find Cname rr_map with
-          | None ->
-            Error (`Msg (Fmt.str "couldn't find rrs for %a" Rr_map.ppk (K k)))
-          | Some rr ->
-            let* rrsigs = find_matching_rrsig Cname rr_map in
-            let* _used_name = validate_rrsig_keys now dnskeys rrsigs name Cname rr in
-            Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
+        match Rr_map.find Cname rr_map with
+        | None ->
+          Error (`Msg (Fmt.str "couldn't find rrs for %a" Rr_map.ppk (K k)))
+        | Some rr ->
+          let* rrsigs = find_matching_rrsig Cname rr_map in
+          let* _used_name = validate_rrsig_keys now dnskeys rrsigs name Cname rr in
+          Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
+          if follow_cname then
             let fuel = fuel - 1 in
             validate_answer ~fuel ~follow_cname now (snd rr) dnskeys k answer auth
-        else (* TODO verify cname RR *)
-          Error (`Msg "no rr and follow_cname is false")
+          else
+            Error (`Msg "no rr and follow_cname is false")
