@@ -69,7 +69,7 @@ let jump () hostname typ ns =
               ds_set Rr_map.Dnskey_set.empty
           in
           Logs.debug (fun m -> m "found %d DNSKEYS with matching DS" (Rr_map.Dnskey_set.cardinal keys_ds));
-          let* _rrs = Dnssec.validate_answer now requested_domain keys_ds Rr_map.Dnskey answer authority in
+          let* (_, keys) = Dnssec.validate_answer now requested_domain keys_ds Rr_map.Dnskey answer authority in
           Logs.info (fun m -> m "verified RRSIG");
           let keys = Rr_map.Dnskey_set.filter (fun k -> Dnskey.F.mem `Zone k.Dnskey.flags) keys in
           Ok keys
