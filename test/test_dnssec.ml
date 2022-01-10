@@ -147,13 +147,14 @@ let test_root () =
 
 let res_err =
   let module M = struct
-    type t = [ `Msg of string | `No_data of [`raw] Domain_name.t * Soa.t | `No_domain of [`raw] Domain_name.t * Soa.t ]
+    type t = [ `Msg of string | `No_data of [`raw] Domain_name.t * Soa.t | `No_domain of [`raw] Domain_name.t * Soa.t | `Cname of [`raw] Domain_name.t ]
     let pp ppf = function
       | `Msg m -> Fmt.string ppf m
       | `No_data (owner, _) -> Fmt.pf ppf "no data for %a" Domain_name.pp owner
       | `No_domain (owner, _) -> Fmt.pf ppf "no domain for %a" Domain_name.pp owner
+      | `Cname alias -> Fmt.pf ppf "cname %a" Domain_name.pp alias
     let equal a b = match a, b with
-      | `Msg _, `Msg _ | `No_data _, `No_data _ | `No_domain _, `No_domain _ -> true
+      | `Msg _, `Msg _ | `No_data _, `No_data _ | `No_domain _, `No_domain _ | `Cname _, `Cname _ -> true
       |  _ -> false
   end in
   (module M : Alcotest.TESTABLE with type t = M.t)

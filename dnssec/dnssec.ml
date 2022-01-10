@@ -389,7 +389,8 @@ let rec validate_answer :
   [`raw] Domain_name.t -> a Rr_map.rr -> Name_rr_map.t -> Name_rr_map.t ->
   (a,
    [> `No_data of [`raw] Domain_name.t * Soa.t
-   | `Msg of string ]) result =
+   | `Msg of string
+   | `Cname of [`raw] Domain_name.t ]) result =
   fun ~fuel ~follow_cname now dnskeys name k answer auth ->
   Logs.debug (fun m -> m "validating %a (%a)"
                  Domain_name.pp name Rr_map.ppk (K k));
@@ -440,13 +441,14 @@ let rec validate_answer :
             let fuel = fuel - 1 in
             validate_answer ~fuel ~follow_cname now dnskeys (snd rr) k answer auth
           else
-            Error (`Msg "no rr and follow_cname is false")
+            Error (`Cname (snd rr))
 
 let verify_reply : type a. ?fuel:int -> ?follow_cname:bool -> Ptime.t ->
   Rr_map.Dnskey_set.t -> [`raw] Domain_name.t -> a Rr_map.rr ->
   Packet.reply ->
   (a,
    [> `Msg of string
+   | `Cname of [ `raw ] Domain_name.t
    | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
    | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result =
   fun ?(fuel = 20) ?(follow_cname = true) now dnskeys name k reply ->
