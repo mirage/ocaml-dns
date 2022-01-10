@@ -119,12 +119,8 @@ sig
         [No_domain] if the [name] does not exist. This allows clients to treat
         these error conditions explicitly. *)
 
-  val get_rr_with_rrsig : t -> 'response Dns.Rr_map.key -> 'a Domain_name.t ->
-    ('response * Dns.Name_rr_map.t * Dns.Name_rr_map.t,
-     [> `Msg of string
-     | `No_data of Dns.Name_rr_map.t option * Dns.Name_rr_map.t
-     | `No_domain of Dns.Name_rr_map.t ]) result T.io
-
+  val get_rr : t -> 'response Dns.Rr_map.key -> 'a Domain_name.t ->
+    (Dns.Packet.reply, [> `Partial | `Msg of string ]) result T.io
 end
 
 module Pure : sig
@@ -153,12 +149,28 @@ module Pure : sig
       and [query_state] is the information required to validate the response. *)
 
   val parse_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
-    ( [ `Data of 'query_type * Dns.Name_rr_map.t * Dns.Name_rr_map.t
-      | `Partial
-      | `No_data of [`raw] Domain_name.t * Dns.Soa.t * Dns.Name_rr_map.t option * Dns.Name_rr_map.t
-      | `No_domain of [`raw] Domain_name.t * Dns.Soa.t * Dns.Name_rr_map.t ],
-      [`Msg of string]) result
+    (Dns.Packet.reply, [ `Partial | `Msg of string]) result
   (** [parse_response query_state response] is the information contained in
+      [response] parsed using [query_state] when the query was successful, or
+      an [`Msg message] if the [response] did not match the [query_state]
+      (or if the query failed).
+
+      In a TCP usage context the [`Partial] means there are more bytes to be
+      read in order to parse correctly. This can happen due to short reads or if
+      the server (or something along the route) chunks its responses into
+      multiple individual packets. In that case you should concatenate
+      [response] and the next received data and call this function again.
+
+      In a UDP usage context the [`Partial] means information was lost, due to
+      an incomplete packet. *)
+
+  val handle_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
+    ( [ `Data of 'query_type
+      | `Partial
+      | `No_data of [`raw] Domain_name.t * Dns.Soa.t
+      | `No_domain of [`raw] Domain_name.t * Dns.Soa.t ],
+      [`Msg of string]) result
+  (** [handle_response query_state response] is the information contained in
       [response] parsed using [query_state] when the query was successful, or
       an [`Msg message] if the [response] did not match the [query_state]
       (or if the query failed).

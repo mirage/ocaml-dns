@@ -1,5 +1,8 @@
 open Dns
 
+let dn = Domain_name.of_string_exn
+let hn s = Domain_name.(host_exn (of_string_exn s))
+
 let ds_root =
   (* from https://data.iana.org/root-anchors/root-anchors.xml *)
   Ds.{ key_tag = 20326 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = Ds.SHA256 ;
@@ -142,6 +145,31 @@ let test_root () =
     | _ ->
       Alcotest.fail "expected an answer"
 
+let res_err =
+  let module M = struct
+    type t = [ `Msg of string | `No_data of [`raw] Domain_name.t * Soa.t | `No_domain of [`raw] Domain_name.t * Soa.t ]
+    let pp ppf = function
+      | `Msg m -> Fmt.string ppf m
+      | `No_data (owner, _) -> Fmt.pf ppf "no data for %a" Domain_name.pp owner
+      | `No_domain (owner, _) -> Fmt.pf ppf "no domain for %a" Domain_name.pp owner
+    let equal a b = match a, b with
+      | `Msg _, `Msg _ | `No_data _, `No_data _ | `No_domain _, `No_domain _ -> true
+      |  _ -> false
+  end in
+  (module M : Alcotest.TESTABLE with type t = M.t)
+
+let fake_soa = Domain_name.root, Soa.create (dn "ns.example")
+
+let b =
+  let module M = struct
+    type t = Rr_map.b
+    let pp = Rr_map.pp_b
+    let equal = Rr_map.equalb
+  end in
+  (module M : Alcotest.TESTABLE with type t = M.t)
+
+let res = Alcotest.result b res_err
+
 let verify_dnssec ?(flags = Dnskey.F.singleton `Zone) ts zsks buf =
   let dnskey =
     List.map (fun (algorithm, zsk) ->
@@ -154,37 +182,18 @@ let verify_dnssec ?(flags = Dnskey.F.singleton `Zone) ts zsks buf =
   match Packet.decode buf with
   | Error _ -> Alcotest.fail "packet decoding failed"
   | Ok pkt ->
-    let name = fst pkt.Packet.question in
     match pkt.Packet.data with
-    | `Answer (answer, auth) when not (Domain_name.Map.is_empty answer) ->
+    | #Packet.reply as reply ->
       begin
+        let name = fst pkt.Packet.question in
         match snd pkt.Packet.question with
         | `K K k ->
-          begin match Dnssec.validate_answer ts name dnskeys k answer auth with
-            | Ok _ -> ()
-            | Error `Msg m ->
-              Alcotest.fail ("dnssec answer " ^ m)
-          end
-        | _ -> assert false
+          let ( let* ) = Result.bind in
+          let* rrs = Dnssec.verify_reply ts dnskeys name k reply in
+          Ok (Rr_map.B (k, rrs))
+        | _ -> Alcotest.fail "expected a valid resource record type in query"
       end
-    | `Answer (_, auth) ->
-      begin
-        match snd pkt.Packet.question with
-        | `K K k ->
-          begin match Dnssec.validate_no_data ts name dnskeys k auth with
-            | Ok () -> ()
-            | Error `Msg m ->
-              Alcotest.fail ("dnssec no data " ^ m)
-          end
-        | _ -> assert false
-      end
-    | `Rcode_error (NXDomain, Query, Some (_answer, auth)) ->
-      begin
-        match Dnssec.validate_nsec_no_domain ts name dnskeys auth with
-        | Ok () -> ()
-        | Error `Msg m -> Alcotest.fail ("dnssec nxdomain verification: " ^ m)
-      end
-    | _ -> Alcotest.fail "expected an answer"
+    | _ -> Alcotest.fail "expected a reply"
 
 let test_ns_ripe () =
   let ts = Option.get (Ptime.of_date_time ((2021, 11, 24), ((17, 26, 00), 0)))
@@ -210,7 +219,17 @@ c9 91 77 1f 9b 6c c7 dc  64 76 ad 00 71 15 3c 84
 dc 02 7d 0a 00 00 29 02  00 00 00 80 00 00 00
 |}
   in
-  verify_dnssec ts [ algorithm, zsk ] buf
+  let exp =
+    let ns =
+      Domain_name.Host_set.of_list
+        (List.map hn
+           ["ns4.apnic.net" ; "ns3.afrinic.net" ;
+            "manus.authdns.ripe.net" ; "ns3.lacnic.net" ; "rirns.arin.net"])
+    in
+    Rr_map.B (Ns, (172800l, ns))
+  in
+  Alcotest.check res __LOC__ (Ok exp)
+    (verify_dnssec ts [ algorithm, zsk ] buf)
 
 let test_ds_afnoc_af_mil () =
   let ts = Option.get (Ptime.of_date_time ((2021, 11, 24), ((17, 26, 00), 0)))
@@ -250,7 +269,24 @@ a3 7b 0f c9 43 0f a6 0d  80 53 0a b9 be 1e 24 05
 d6 6e 57 bb b9 b4 3e 61  d2 6d b0 ad ca f4 00 00
 29 02 00 00 00 80 00 00  00|}
   in
-  verify_dnssec ts [ algorithm, zsk ] buf
+  let exp =
+    let ds0 =
+      Ds.{ key_tag = 53671 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA256 ;
+           digest = Cstruct.of_hex "73081AB8E5260A0CC278FD06218D9EADDAB7955200CBEC3F883DA027D2066F08" }
+    and ds1 =
+      Ds.{ key_tag = 53671 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA1 ;
+           digest = Cstruct.of_hex "98C02C3C768E2BA8AD66CBF2396BEDAA70D6176E" }
+    and ds2 =
+      Ds.{ key_tag = 29356 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA256 ;
+           digest = Cstruct.of_hex "C7D259069B2D9632DB7A55C4B2C2836F06454FA5071D72F8AD682B6A68079710" }
+    and ds3 =
+      Ds.{ key_tag = 29356 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA1 ;
+           digest = Cstruct.of_hex "76EDE5B67B4367A7083E6FE3E1A4DDE69AED3A91" }
+    in
+    Rr_map.B (Ds, (463l, Rr_map.Ds_set.of_list [ ds0 ; ds1 ; ds2 ; ds3 ]))
+  in
+  Alcotest.check res __LOC__ (Ok exp)
+    (verify_dnssec ts [ algorithm, zsk ] buf)
 
 let test_or_nsec_nxdomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 05), ((18, 00, 00), 00))) in
@@ -323,7 +359,9 @@ let test_or_nsec_nxdomain () =
                                6b 2e 9e 06 96 00 00 29  02 00 00 00 80 00 00 00
 |}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_domain fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_zz_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
@@ -395,7 +433,9 @@ let test_zz_nsec_nodomain () =
                                f3 21 99 18 b3 5f 5d 1b  d8 4f f8 ca 00 00 29 20
                                00 00 00 80 00 00 00|}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_domain fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_aa_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
@@ -448,7 +488,9 @@ let test_aa_nsec_nodomain () =
                                52 93 dd c2 55 03 00 00  29 20 00 00 00 80 00 00
                                00|}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_domain fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_a_se_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 05), ((18, 00, 00), 00))) in
@@ -502,7 +544,9 @@ let test_a_se_nsec_nodata () =
                                11 00 00 29 02 00 00 00  80 00 00 00
 |}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_data fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_ds_a_se_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
@@ -712,7 +756,9 @@ let test_ptr_isc_org_nsec_nodata () =
                                c5 f0 b6 43 c0 38 f4 9e  33 f9 c7 f3 46 71 cf 13
                                00 00 29 20 00 00 00 80  00 00 00|}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_data fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_ptr_doesntexist_isc_org_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 09), ((21, 00, 00), 00))) in
@@ -751,9 +797,11 @@ let test_ptr_doesntexist_isc_org_nsec_nodomain () =
                                ec f9 8e 69 1f 28 44 62  b7 eb 1c 25 00 00 29 20
                                00 00 00 80 00 00 00|}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_domain fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
-let test_ds_trac_ietf_org_nsec_nodata () =
+let test_ds_trac_ietf_org_nsec () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 08), ((13, 00, 00), 00))) in
   let zsk1 = "AwEAAdDECajHaTjfSoNTY58WcBah1BxPKVIHBz4IfLjfqMvium4lgKtKZLe97DgJ5/NQrNEGGQmr6fKvUj67cfrZUojZ2cGRizVhgkOqZ9scaTVXNuXLM5Tw7VWOVIceeXAuuH2mPIiEV6MhJYUsW6dvmNsJ4XwCgNgroAmXhoMEiWEjBB+wjYZQ5GtZHBFKVXACSWTiCtddHcueOeSVPi5WH94VlubhHfiytNPZLrObhUCHT6k0tNE6phLoHnXWU+6vpsYpz6GhMw/R9BFxW5PdPFIWBgoWk2/XFVRSKG9Lr61b2z1R126xeUwvw46RVy3hanV3vNO7LM5HniqaYclBbhk=" in
   let algorithm1 = Dnskey.RSA_SHA1 in
@@ -819,7 +867,18 @@ let test_ds_trac_ietf_org_nsec_nodata () =
                                61 8c f5 ce 12 c2 7e 25  38 46 aa 3c b4 c5 d3 83
                                35 43 00 00 29 20 00 00  00 80 00 00 00|}
   in
-  verify_dnssec time [ algorithm1, zsk1 ; algorithm2, zsk2 ] data
+  let exp =
+    let ds0 =
+      Ds.{ key_tag = 45586 ; algorithm = RSA_SHA1 ; digest_type = SHA256 ;
+           digest = Cstruct.of_hex "67FCD7E0B9E0366309F3B6F7476DFF931D5226EDC5348CD80FD82A081DFCF6EE" }
+    and ds1 =
+      Ds.{ key_tag = 45586 ; algorithm = RSA_SHA1 ; digest_type = SHA1 ;
+           digest = Cstruct.of_hex "D0FDF996D1AF2CCDBDC942B02CB02D379629E20B" }
+    in
+    Rr_map.B (Ds, (69176l, Rr_map.Ds_set.(add ds1 (singleton ds0))))
+  in
+  Alcotest.check res __LOC__ (Ok exp)
+    (verify_dnssec time [ algorithm1, zsk1 ; algorithm2, zsk2 ] data)
 
 let test_ns_trac_ietf_org () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 08), ((18, 40, 00), 00))) in
@@ -877,7 +936,17 @@ let test_ns_trac_ietf_org () =
                                a8 b8 15 4c 07 bc fc 00  25 eb 53 79 00 00 29 04
                                d0 00 00 80 00 00 00|}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp =
+    let ns =
+      Domain_name.Host_set.of_list
+        (List.map hn [ "ns0.amsl.com" ; "ns1.ams1.afilias-nst.info" ;
+                       "ns1.hkg1.afilias-nst.info" ; "ns1.mia1.afilias-nst.info" ;
+                       "ns1.sea1.afilias-nst.info" ; "ns1.yyz1.afilias-nst.info" ])
+    in
+    Rr_map.B (Ns, (86400l, ns))
+  in
+  Alcotest.check res __LOC__ (Ok exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_caa_ietf_org_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 08), ((13, 00, 00), 00))) in
@@ -930,7 +999,9 @@ let test_caa_ietf_org_nsec_nodata () =
                                c2 7e 25 38 46 aa 3c b4  c5 d3 83 35 43 00 00 29
                                20 00 00 00 80 00 00 00 |}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_data fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_a_surelynonexistentname_blog_root_cz () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 06), ((18, 00, 00), 00))) in
@@ -983,54 +1054,70 @@ let test_a_surelynonexistentname_blog_root_cz () =
                                fc 37 75 47 86 cd 9b 31  f7 85 a2 88 82 00 00 29
                                20 00 00 00 80 00 00 00|}
   in
-  verify_dnssec ~flags:(Dnskey.F.(add `Secure_entry_point (singleton `Zone)))
-    time [ algorithm, zsk ] data
+  let exp =
+    Rr_map.B (A, (600l, Ipaddr.V4.(Set.singleton (of_string_exn "91.213.160.188"))))
+  in
+  Alcotest.check res __LOC__ (Ok exp)
+    (verify_dnssec ~flags:(Dnskey.F.(add `Secure_entry_point (singleton `Zone)))
+       time [ algorithm, zsk ] data)
 
 let test_ptr_surelynonexistentname_blog_root_cz () =
-  let time = Option.get (Ptime.of_date_time ((2022, 01, 06), ((18, 00, 00), 00))) in
+  let time = Option.get (Ptime.of_date_time ((2022, 01, 10), ((11, 00, 00), 00))) in
   let zsk = "FgkyJ3q30ussc3A+wIzqDsz0z6PUsZ4OuS/GwiE+7t4+WoNqb4Bp4dDr0WWrcVa0k2L7SyKUTlDACZ2lo7ZCWw==" in
   let algorithm = Dnskey.P256_SHA256 in
-  let data = Cstruct.of_hex {|  2c dc 81 80 00 01  00 04 00 04 00 01 15 73
+  let data = Cstruct.of_hex {| 8e ef 81 80 00 01  00 04 00 06 00 01 15 73
                                75 72 65 6c 79 6e 6f 6e  65 78 69 73 74 65 6e 74
                                6e 61 6d 65 04 62 6c 6f  67 04 72 6f 6f 74 02 63
-                               7a 00 00 0c 00 01 c0 0c  00 05 00 01 00 00 00 63
-                               00 02 c0 22 c0 0c 00 2e  00 01 00 00 00 63 00 5b
+                               7a 00 00 0c 00 01 c0 0c  00 05 00 01 00 00 00 c1
+                               00 02 c0 22 c0 0c 00 2e  00 01 00 00 00 c1 00 5b
                                00 05 0d 03 00 00 02 58  61 fd ea b0 61 d6 5d 80
                                03 8a 04 72 6f 6f 74 02  63 7a 00 c4 bf cf b8 61
                                19 92 d8 03 37 db a7 6d  5c 8d c6 be d0 af 05 a0
                                a9 cd 7a 75 2f aa fa af  74 17 dc 25 a0 84 b0 38
                                b4 ea 77 e7 0f ed 40 95  c1 69 c6 c1 af e3 b5 04
                                e9 8b 1e 75 46 31 74 20  91 81 af c0 22 00 05 00
-                               01 00 00 00 63 00 02 c0  27 c0 22 00 2e 00 01 00
-                               00 00 63 00 5b 00 05 0d  03 00 00 02 58 61 fd ea
+                               01 00 00 00 c1 00 02 c0  27 c0 22 00 2e 00 01 00
+                               00 00 c1 00 5b 00 05 0d  03 00 00 02 58 61 fd ea
                                b0 61 d6 5d 80 03 8a 04  72 6f 6f 74 02 63 7a 00
                                b2 9d a7 bf aa b3 03 7b  36 55 60 28 19 df bf 80
                                66 77 d3 94 51 a1 98 65  f6 0d 71 df 05 3e b4 95
                                ee ff 0d 2c 8c 9b a0 a2  81 93 67 c3 a0 14 44 69
                                91 9e 2a 24 0b 12 ea 6e  81 85 05 ca fe 08 0a 0f
-                               c0 27 00 06 00 01 00 00  00 6e 00 2c 02 6e 73 05
-                               69 69 6e 66 6f c0 2c 0a  68 6f 73 74 6d 61 73 74
-                               65 72 c1 2d 78 77 db 02  00 01 51 80 00 00 0e 10
-                               00 36 ee 80 00 00 02 58  c0 27 00 2e 00 01 00 00
-                               00 6e 00 5b 00 06 0d 02  00 00 02 58 62 00 b1 c8
-                               61 d9 16 b8 03 8a 04 72  6f 6f 74 02 63 7a 00 c2
-                               d1 19 f2 d7 77 61 fd 6c  b2 84 db f7 d8 28 97 b6
-                               bb 15 1d 43 26 03 38 9f  80 97 62 4e 59 37 7a de
-                               65 a8 56 83 5a a6 f8 c9  df 44 16 51 bf cc ad 25
-                               c0 dc 1b 0b e4 d9 4c 1a  a4 84 a3 cb 10 a0 5e c0
-                               27 00 2f 00 01 00 00 00  6e 00 16 02 31 30 04 72
-                               6f 6f 74 02 63 7a 00 00  08 62 01 80 08 00 03 80
-                               18 c0 27 00 2e 00 01 00  00 00 6e 00 5b 00 2f 0d
-                               02 00 00 02 58 61 fb c0  87 61 d4 25 77 03 8a 04
-                               72 6f 6f 74 02 63 7a 00  9e 66 04 69 77 b6 de 6e
-                               f4 d9 5d ae f6 d5 7f 15  36 a6 14 db 44 d8 8d e6
-                               85 9d f8 94 2e 8f 18 15  af ba 79 e6 f6 d9 23 15
-                               e6 fb 5d 08 50 14 c1 65  6b a3 5e df 6d 54 ba 66
-                               0a 62 33 0f 88 50 0d e9  00 00 29 20 00 00 00 80
-                               00 00 00|}
+                               0f 5f 61 63 6d 65 2d 63  68 61 6c 6c 65 6e 67 65
+                               c0 22 00 2f 00 01 00 00  00 c1 00 1b 09 62 6c 6f
+                               67 2d 62 65 74 61 04 72  6f 6f 74 02 63 7a 00 00
+                               06 04 00 00 00 00 03 c1  1e 00 2e 00 01 00 00 00
+                               c1 00 5b 00 2f 0d 04 00  00 02 58 61 fd ea b0 61
+                               d6 5d 80 03 8a 04 72 6f  6f 74 02 63 7a 00 91 0f
+                               a1 a4 4d 65 63 35 ef 87  e9 fb 5c af 45 6b 81 62
+                               65 3c db f3 72 8f 3e 3d  b8 49 82 5b 88 7f 9d 4a
+                               52 69 c2 f3 eb 3b d9 bc  93 94 34 81 06 a2 47 e6
+                               85 dd 68 be 95 87 d0 53  62 6c ae fa d3 69 c0 27
+                               00 06 00 01 00 00 00 c1  00 2c 02 6e 73 05 69 69
+                               6e 66 6f c0 2c 0a 68 6f  73 74 6d 61 73 74 65 72
+                               c1 cb 78 77 db 02 00 01  51 80 00 00 0e 10 00 36
+                               ee 80 00 00 02 58 c0 27  00 2e 00 01 00 00 00 c1
+                               00 5b 00 06 0d 02 00 00  02 58 62 00 b1 c8 61 d9
+                               16 b8 03 8a 04 72 6f 6f  74 02 63 7a 00 c2 d1 19
+                               f2 d7 77 61 fd 6c b2 84  db f7 d8 28 97 b6 bb 15
+                               1d 43 26 03 38 9f 80 97  62 4e 59 37 7a de 65 a8
+                               56 83 5a a6 f8 c9 df 44  16 51 bf cc ad 25 c0 dc
+                               1b 0b e4 d9 4c 1a a4 84  a3 cb 10 a0 5e c0 27 00
+                               2f 00 01 00 00 00 c1 00  16 02 31 30 04 72 6f 6f
+                               74 02 63 7a 00 00 08 62  01 80 08 00 03 80 18 c0
+                               27 00 2e 00 01 00 00 00  c1 00 5b 00 2f 0d 02 00
+                               00 02 58 61 fb c0 87 61  d4 25 77 03 8a 04 72 6f
+                               6f 74 02 63 7a 00 9e 66  04 69 77 b6 de 6e f4 d9
+                               5d ae f6 d5 7f 15 36 a6  14 db 44 d8 8d e6 85 9d
+                               f8 94 2e 8f 18 15 af ba  79 e6 f6 d9 23 15 e6 fb
+                               5d 08 50 14 c1 65 6b a3  5e df 6d 54 ba 66 0a 62
+                               33 0f 88 50 0d e9 00 00  29 20 00 00 00 80 00 00
+                               00|}
   in
-  verify_dnssec ~flags:(Dnskey.F.(add `Secure_entry_point (singleton `Zone)))
-    time [ algorithm, zsk ] data
+  let exp = `No_data fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec ~flags:(Dnskey.F.(add `Secure_entry_point (singleton `Zone)))
+       time [ algorithm, zsk ] data)
 
 let test_a_de_nsec3 () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 06), ((18, 00, 00), 00))) in
@@ -1095,16 +1182,16 @@ let tests = [
   "nxdomain for zz (nsec)", `Quick, test_zz_nsec_nodomain ;
   "nxdomain for aa (nsec)", `Quick, test_aa_nsec_nodomain ;
   "nodata for a se (nsec)", `Quick, test_a_se_nsec_nodata ;
-  (* "nodata for DS a.se (nsec)", `Quick, test_ds_a_se_nsec_nodata ; *)
-  (* "nxdomain for DS a.a.se (nsec)", `Quick, test_ds_a_a_se_nsec_nodomain ;
-   * "nxdomain for DS b.a.se (nsec)", `Quick, test_ds_b_a_se_nsec_nodomain ; *)
+  (* "nodata for DS a.se (nsec)", `Quick, test_ds_a_se_nsec_nodata ; -- fails since no nsec for *.se
+     "nxdomain for DS a.a.se (nsec)", `Quick, test_ds_a_a_se_nsec_nodomain ; -- fails since no nsec for *.se
+     "nxdomain for DS b.a.se (nsec)", `Quick, test_ds_b_a_se_nsec_nodomain ;  -- fails since no nsec for *.se *)
   "nodata for PTR isc.org (nsec)", `Quick, test_ptr_isc_org_nsec_nodata ;
   "nodomain for PTR doesntexist.isc.org (nsec)", `Quick, test_ptr_doesntexist_isc_org_nsec_nodomain ;
-  "nodata (cname) for DS trac.ietf.org (nsec)", `Quick, test_ds_trac_ietf_org_nsec_nodata ;
+  "nodata (cname) for DS trac.ietf.org (nsec)", `Quick, test_ds_trac_ietf_org_nsec ;
   "NS trac.ietf.org (with cname)", `Quick, test_ns_trac_ietf_org ;
   "nodata for CAA ietf.org (nsec)", `Quick, test_caa_ietf_org_nsec_nodata ;
   "wildcard match and cname for surelynonexistentname.blog.root.cz (nsec)", `Quick, test_a_surelynonexistentname_blog_root_cz ;
-  (* "wildcard match and cname, nodata (PTR) with cname chain", `Quick, test_ptr_surelynonexistentname_blog_root_cz ; *)
+  "wildcard match and cname, nodata (PTR) with cname chain", `Quick, test_ptr_surelynonexistentname_blog_root_cz ;
   (* "nodata for a.de (nsec3)", `Quick, test_a_de_nsec3 ; *)
 ]
 
@@ -1123,13 +1210,23 @@ module Rfc4035 = struct
       key = Cstruct.of_string (Base64.decode_exn "AQOeX7+baTmvpVHb2CcLnL1dMRWbuscRvHXlLnXwDzvqp4tZVKp1sZMepFb8MvxhhW3y/0QZsyCjczGJ1qk8vJe52iOhInKROVLRwxGpMfzPRLMlGybr51bOV/1se0ODacj3DomyB4QB5gKTYot/K9alk5/j8vfd4jWCWD+E1Sze0Q==")
     }
 
-  let dn = Domain_name.of_string_exn
-  let hn s = Domain_name.(host_exn (of_string_exn s))
   let ts (y, m, d) (hh, mm, ss) =
     Option.get (Ptime.of_date_time ((y, m, d), ((hh, mm, ss), 0)))
 
   let now = ts (2004, 05, 01) (12, 00, 00)
   let dnskeys = Rr_map.Dnskey_set.singleton key1
+
+  let verify_reply : type a . [`raw] Domain_name.t -> a Rr_map.rr ->
+    Packet.reply ->
+    (Rr_map.b,
+     [> `Msg of string
+     | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+     | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result =
+    fun name k reply ->
+    match Dnssec.verify_reply now dnskeys name k reply with
+    | Ok rr -> Ok (Rr_map.B (k, rr))
+    | Error _ as e -> e
+
   let rrsig type_covered label_count signature =
     let signature = Cstruct.of_string (Base64.decode_exn (String.concat "" signature)) in
     Rrsig.{
@@ -1157,16 +1254,14 @@ module Rfc4035 = struct
         "kx70ePCoFgRz1Yq+bVVXCvGuAU4xALv3W/Y1";
         "jNSlwZ2mSWKHfxFQxPtLj8s32+k=" ]
     in
+    let mx_rr = 3600l, Rr_map.Mx_set.singleton mx in
     let answer =
       Domain_name.Map.singleton name
-        Rr_map.(add Mx (3600l, Rr_map.Mx_set.singleton mx)
+        Rr_map.(add Mx mx_rr
                   (singleton Rrsig (3600l, Rr_map.Rrsig_set.singleton rrsig)))
     in
-    match
-      Dnssec.validate_answer now name dnskeys Mx answer Name_rr_map.empty
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Ok (Rr_map.B (Mx, mx_rr)))
+      (verify_reply name Mx (`Answer (answer, Name_rr_map.empty)))
 
   let ns_b1 () =
     let name = dn "example"
@@ -1180,16 +1275,14 @@ module Rfc4035 = struct
         "RO5urFOvoMRTbQxW3U0hXWuggE4g3ZpsHv48";
         "0HjMeRaZB/FRPGfJPajngcq6Kwg=" ]
     in
+    let ns_rr = (3600l, ns) in
     let answer =
       Domain_name.Map.singleton name
-        Rr_map.(add Ns (3600l, ns)
+        Rr_map.(add Ns ns_rr
                   (singleton Rrsig (3600l, Rr_map.Rrsig_set.singleton rrsig)))
     in
-    match
-      Dnssec.validate_answer now name dnskeys Ns answer Name_rr_map.empty
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Ok (Rr_map.B (Ns, ns_rr)))
+      (verify_reply name Ns (`Answer (answer, Name_rr_map.empty)))
 
   let a_b1 () =
     let name = dn "xx.example"
@@ -1203,16 +1296,14 @@ module Rfc4035 = struct
         "VdxG9IK1yZkYGY9AgbTOGPoAgbJyO9EPULsx";
         "kbIDV6GPPSZVusnZU6OMgdgzHV4=" ]
     in
+    let a_rr = 3600l, a in
     let answer =
       Domain_name.Map.singleton name
-        Rr_map.(add A (3600l, a)
+        Rr_map.(add A a_rr
                   (singleton Rrsig (3600l, Rr_map.Rrsig_set.singleton rrsig)))
     in
-    match
-      Dnssec.validate_answer now name dnskeys A answer Name_rr_map.empty
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Ok (Rr_map.B (A, a_rr)))
+      (verify_reply name A (`Answer (answer, Name_rr_map.empty)))
 
   let aaaa_b1 () =
     let name = dn "xx.example"
@@ -1226,16 +1317,14 @@ module Rfc4035 = struct
         "U4zfeA+rDz9stmSBP/4PekH/x2IoAYnwctd/";
         "xS9cL2QgW7FChw16mzlkH6/vsfs=" ]
     in
+    let aaaa_rr = 3600l, aaaa in
     let answer =
       Domain_name.Map.singleton name
-        Rr_map.(add Aaaa (3600l, aaaa)
+        Rr_map.(add Aaaa aaaa_rr
                   (singleton Rrsig (3600l, Rr_map.Rrsig_set.singleton rrsig)))
     in
-    match
-      Dnssec.validate_answer now name dnskeys Aaaa answer Name_rr_map.empty
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Ok (Rr_map.B (Aaaa, aaaa_rr)))
+      (verify_reply name Aaaa (`Answer (answer, Name_rr_map.empty)))
 
   let a2_b1 () =
     let name = dn "ns1.example"
@@ -1249,16 +1338,14 @@ module Rfc4035 = struct
         "+iAqvIfdgW4sFNC6oADb1hK8QNauw9VePJhK";
         "v/iVXSYC0b7mPSU+EOlknFpVECs=" ]
     in
+    let a_rr = 3600l, a in
     let answer =
       Domain_name.Map.singleton name
-        Rr_map.(add A (3600l, a)
+        Rr_map.(add A a_rr
                   (singleton Rrsig (3600l, Rr_map.Rrsig_set.singleton rrsig)))
     in
-    match
-      Dnssec.validate_answer now name dnskeys A answer Name_rr_map.empty
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Ok (Rr_map.B (A, a_rr)))
+      (verify_reply name A (`Answer (answer, Name_rr_map.empty)))
 
   let a3_b1 () =
     let name = dn "ns2.example"
@@ -1272,16 +1359,14 @@ module Rfc4035 = struct
         "6amIjk13Kj/jyJ4nGmdRIc/3cM3ipXFhNTKq";
         "rdhx8SZ0yy4ObIRzIzvBFLiSS8o=" ]
     in
+    let a_rr = 3600l, a in
     let answer =
       Domain_name.Map.singleton name
-        Rr_map.(add A (3600l, a)
+        Rr_map.(add A a_rr
                   (singleton Rrsig (3600l, Rr_map.Rrsig_set.singleton rrsig)))
     in
-    match
-      Dnssec.validate_answer now name dnskeys A answer Name_rr_map.empty
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Ok (Rr_map.B (A, a_rr)))
+      (verify_reply name A (`Answer (answer, Name_rr_map.empty)))
 
   let soa = Soa.{
       nameserver = dn "ns1.example" ;
@@ -1333,11 +1418,9 @@ module Rfc4035 = struct
       in
       Domain_name.Map.(add (dn "example") apex_rrs (singleton (dn "b.example") b_rrs))
     in
-    match
-      Dnssec.validate_nsec_no_domain now name dnskeys map
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Error (`No_domain fake_soa))
+      (verify_reply name Mx
+         (`Rcode_error (NXDomain, Query, Some (Name_rr_map.empty, map))))
 
   let nodata_b3 () =
     let name = dn "ns1.example"
@@ -1361,11 +1444,8 @@ module Rfc4035 = struct
       in
       Domain_name.Map.(add (dn "example") apex_rrs (singleton (dn "ns1.example") ns1_rrs))
     in
-    match
-      Dnssec.validate_no_data now name dnskeys Mx map
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Error (`No_data fake_soa))
+      (verify_reply name Mx (`Answer (Name_rr_map.empty, map)))
 
   let signed_delegate_b4 () =
     (* we treat as an answer to a.example DS, but real is q: mc.a.example MX *)
@@ -1389,18 +1469,16 @@ module Rfc4035 = struct
         "EML8l9wlWVsl7PR2VnZduM9bLyBhaaPmRKX/";
         "Fm+v6ccF2EGNLRiY08kdkz+XHHo=" ]
     in
+    let ds_rr = 3600l, Rr_map.Ds_set.singleton ds in
     let answer =
       let rrs = Rr_map.(add Ns (3600l, ns)
-                          (add Ds (3600l, Ds_set.singleton ds)
+                          (add Ds ds_rr
                              (singleton Rrsig (3600l, Rrsig_set.singleton rrsig))))
       in
       Domain_name.Map.singleton (dn "a.example") rrs
     in
-    match
-      Dnssec.validate_answer now name dnskeys Ds answer Name_rr_map.empty
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Ok (Rr_map.B (Ds, ds_rr)))
+      (verify_reply name Ds (`Answer (answer, Name_rr_map.empty)))
 
   let unsigned_delegate_b5 () =
     (* we treat as an answer to b.example DS, but real is q: mc.b.example MX *)
@@ -1463,8 +1541,9 @@ module Rfc4035 = struct
         "a0ArunJQCzPjOYq5t0SLjm6qp6McJI1AP5Vr";
         "QoKqJDCLnoAlcPOPKAm/jJkn3jk=" ]
     in
+    let mx_rr = 3600l, Rr_map.Mx_set.singleton mx in
     let answer, auth =
-      let mx_rrs = Rr_map.(add Mx (3600l, Mx_set.singleton mx)
+      let mx_rrs = Rr_map.(add Mx mx_rr
                              (singleton Rrsig (3600l, Rrsig_set.singleton rrsig_mx)))
       and apex_rrs = Rr_map.(add Ns (3600l, ns_apex)
                                (singleton Rrsig (3600l, Rrsig_set.singleton ns_apex_rrsig)))
@@ -1474,11 +1553,8 @@ module Rfc4035 = struct
       Domain_name.Map.singleton name mx_rrs,
       Domain_name.Map.(add (dn "example") apex_rrs (singleton (dn "x.y.w.example") x_y_w_rrs))
     in
-    match
-      Dnssec.validate_answer now name dnskeys Mx answer auth
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Ok (Rr_map.B (Mx, mx_rr)))
+      (verify_reply name Mx (`Answer (answer, auth)))
 
   let wildcard_nodata_b7 () =
     let name = dn "a.z.w.example"
@@ -1514,13 +1590,12 @@ module Rfc4035 = struct
       let star_w_rrs = Rr_map.(add Nsec (3600l, star_w_nsec) (singleton Rrsig (3600l, Rrsig_set.singleton star_w_rrsig))) in
       Domain_name.Map.add (dn "*.w.example") star_w_rrs auth
     in
-    match Dnssec.validate_no_data now name dnskeys Aaaa auth with
-    | Ok _ -> Alcotest.fail "auth should miss a wildcard nsec"
-    | Error _ ->
-      match Dnssec.validate_no_data now name dnskeys Aaaa auth' with
-      | Ok _ -> ()
-      | Error `Msg m -> Alcotest.fail m
-
+    let exp = Error (`Msg "invalid packet") in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Aaaa (`Answer (Name_rr_map.empty, auth)));
+    let exp = Error (`No_data fake_soa) in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Aaaa (`Answer (Name_rr_map.empty, auth')))
 
   let ds_nodata_b8 () =
     let name = dn "example"
@@ -1545,11 +1620,9 @@ module Rfc4035 = struct
       in
       Domain_name.Map.singleton name rr_map
     in
-    match
-      Dnssec.validate_no_data now name dnskeys Ds auth
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    let exp = Error (`No_data fake_soa) in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Ds (`Answer (Name_rr_map.empty, auth)))
 
   let tests = [
     "MX (B1)", `Quick, mx_b1 ;

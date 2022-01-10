@@ -64,6 +64,13 @@ module Pure = struct
             let iterations = pred iterations_left in
             follow_cname redirected_host ~iterations ~answer ~state
 
+  let find_soa authority =
+    Domain_name.Map.fold (fun k rr_map acc ->
+        match Rr_map.(find Soa rr_map) with
+        | Some soa -> Some (Domain_name.raw k, soa)
+        | None -> acc)
+      authority None
+
   let consume_protocol_prefix buf =
     function (* consume TCP two-byte length prefix: *)
     | `Udp -> Ok buf
@@ -79,77 +86,81 @@ module Pure = struct
             Logs.warn (fun m -> m "Extraneous data in DNS response");
           Ok (Cstruct.sub buf 2 pkt_len)
 
-  let find_soa authority =
-    Domain_name.Map.fold (fun k rr_map acc ->
-        match Rr_map.(find Soa rr_map) with
-        | Some soa -> Some (Domain_name.raw k, soa)
-        | None -> acc)
-      authority None
+  let distinguish_answer state =
+    let ( let* ) = Result.bind in
+    function
+    | `Answer (answer, authority) when not (Domain_name.Map.is_empty answer) ->
+      begin
+        let q = fst state.query.question in
+        let* o = follow_cname q ~iterations:20 ~answer ~state in
+        match o with
+        | `Data x -> Ok (`Data x)
+        | `Need_soa _name ->
+          (* should we retain CNAMEs (and send them to the client)? *)
+          (* should we 'adjust' the SOA name to be _name? *)
+          match find_soa authority with
+          | Some (n, soa) -> Ok (`No_data (n, soa))
+          | None -> Error (`Msg "invalid reply, couldn't find SOA")
+      end
+    | `Answer (_, authority) ->
+      begin match find_soa authority with
+        | Some (n, soa) -> Ok (`No_data (n, soa))
+        | None -> Error (`Msg "invalid reply, no SOA in no data")
+      end
+    | `Rcode_error (Rcode.NXDomain, Opcode.Query, Some (_answer, authority)) ->
+      begin match find_soa authority with
+        | Some (n, soa) -> Ok (`No_domain (n, soa))
+        | None -> Error (`Msg "invalid reply, no SOA in nodomain")
+      end
+    | r ->
+      Error (`Msg (Fmt.str "Ok %a, expected answer" Packet.pp_reply r))
 
   let consume_rest_of_buffer state buf =
-    let ( let* ) = Result.bind in
-    let to_msg t = function
-      | Ok a -> Ok a
-      | Error e ->
-        Error (`Msg
-                 (Fmt.str
-                    "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a%a \
-                     opt:%a tsig:%B@,failed: %a@,@]"
-                    Packet.pp_header t
-                    (fst t.header) (fst state.query.header)
-                    (Packet.Question.compare t.question state.query.question = 0)
-                    Packet.Question.pp t.question
-                    Packet.pp_data t.data
-                    (Fmt.option Dns.Edns.pp) t.edns
-                    (match t.tsig with None -> false | Some _ -> true)
-                    Packet.pp_mismatch e))
+    let to_msg t =
+      Result.map_error (fun e ->
+          `Msg
+            (Fmt.str
+               "QUERY: @[<v>hdr:%a (id: %d = %d) (q=q: %B)@ query:%a%a \
+                opt:%a tsig:%B@,failed: %a@,@]"
+               Packet.pp_header t
+               (fst t.header) (fst state.query.header)
+               (Packet.Question.compare t.question state.query.question = 0)
+               Packet.Question.pp t.question
+               Packet.pp_data t.data
+               (Fmt.option Dns.Edns.pp) t.edns
+               (match t.tsig with None -> false | Some _ -> true)
+               Packet.pp_mismatch e))
     in
     match Packet.decode buf with
-    | Error `Partial -> Ok `Partial
+    | Error `Partial as e -> e
     | Error err ->
       Error (`Msg (Fmt.str "Error parsing response: %a" Packet.pp_err err))
     | Ok t ->
       Logs.info (fun m -> m "received %a" Dns.Packet.pp t);
-      let* a = to_msg t (Packet.reply_matches_request ~request:state.query t) in
-      match a with
-      | `Answer (answer, authority) when not (Domain_name.Map.is_empty answer) ->
-        begin
-          let q = fst state.query.question in
-          let* o = follow_cname q ~iterations:20 ~answer ~state in
-          match o with
-          | `Data x -> Ok (`Data (x, answer, authority))
-          | `Need_soa _name ->
-            (* should we retain CNAMEs (and send them to the client)? *)
-            (* should we 'adjust' the SOA name to be _name? *)
-            match find_soa authority with
-            | Some (n, soa) -> Ok (`No_data (n, soa, Some answer, authority))
-            | None -> Error (`Msg "invalid reply, couldn't find SOA")
-        end
-      | `Answer (_, authority) ->
-        begin match find_soa authority with
-          | Some (n, soa) -> Ok (`No_data (n, soa, None, authority))
-          | None -> Error (`Msg "invalid reply, no SOA in no data")
-        end
-      | `Rcode_error (NXDomain, Query, Some (_answer, authority)) ->
-        begin match find_soa authority with
-          | Some (n, soa) -> Ok (`No_domain (n, soa, authority))
-          | None -> Error (`Msg "invalid reply, no SOA in nodomain")
-        end
-      | r ->
-        Error (`Msg (Fmt.str "Ok %a, expected answer" Packet.pp_reply r))
+      to_msg t (Packet.reply_matches_request ~request:state.query t)
 
   let parse_response (type requested)
     : requested Rr_map.key query_state -> Cstruct.t ->
-      ( [ `Data of requested * Name_rr_map.t * Name_rr_map.t
-        | `Partial
-        | `No_data of [`raw] Domain_name.t * Soa.t * Name_rr_map.t option * Name_rr_map.t
-        | `No_domain of [`raw] Domain_name.t * Soa.t * Name_rr_map.t ],
-        [`Msg of string]) result =
+      (Packet.reply,
+       [> `Partial
+       | `Msg of string]) result =
     fun state buf ->
     match consume_protocol_prefix buf state.protocol with
     | Ok buf -> consume_rest_of_buffer state buf
-    | Error () -> Ok `Partial
+    | Error () -> Error `Partial
 
+  let handle_response (type requested)
+    : requested Rr_map.key query_state -> Cstruct.t ->
+      ( [ `Data of requested
+        | `Partial
+        | `No_data of [`raw] Domain_name.t * Soa.t
+        | `No_domain of [`raw] Domain_name.t * Soa.t ],
+        [`Msg of string]) result =
+    fun state buf ->
+    match parse_response state buf with
+    | Error `Partial -> Ok `Partial
+    | Error `Msg _ as e -> e
+    | Ok reply -> distinguish_answer state reply
 end
 
 (* Anycast address of uncensoreddns.org *)
@@ -239,11 +250,7 @@ struct
       | Ok (`Serv_fail _)
       | Error _ -> Error (`Msg "")
 
-  let get_rr_with_rrsig (type requested) t (query_type:requested Dns.Rr_map.key) name
-    : (requested * Name_rr_map.t * Name_rr_map.t,
-       [> `Msg of string
-       | `No_data of Name_rr_map.t option * Name_rr_map.t
-       | `No_domain of Name_rr_map.t ]) result Transport.io =
+  let get_rr t query_type name =
     let proto, _ = Transport.nameservers t.transport in
     let tx, state =
       Pure.make_query Transport.rng proto ~dnssec:true t.edns name query_type
@@ -254,13 +261,7 @@ struct
      Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
                     (Cstruct.length recv_buffer)) ;
      Logs.debug (fun m -> m "received: %a" Cstruct.hexdump_pp recv_buffer);
-     Transport.lift
-       (match Pure.parse_response state recv_buffer with
-        | Ok `Data (x, answer, authority) -> Ok (x, answer, authority)
-        | Ok `No_data (_, _, ans, auth) -> Error (`No_data (ans, auth))
-        | Ok `No_domain (_, _, auth) -> Error (`No_domain auth)
-        | Error `Msg xxx -> Error (`Msg xxx)
-        | Ok `Partial -> Error (`Msg "Truncated UDP response"))) >>= fun r ->
+     Transport.lift (Pure.parse_response state recv_buffer)) >>= fun r ->
     Transport.close socket >>= fun () ->
     Transport.lift r
 
@@ -298,16 +299,11 @@ struct
            t.cache <- cache
          in
          Transport.lift
-           (match Pure.parse_response state recv_buffer with
-            | Ok `Data (x, _, _) ->
+           (match Pure.handle_response state recv_buffer with
+            | Ok `Data x ->
               update_cache (`Entry x);
               Ok x
-            | Ok `No_data (n, soa, _, _) ->
-              let nodom = `No_data (n, soa) in
-              update_cache nodom;
-              Error nodom
-            | Ok `No_domain (n, soa, _) ->
-              let nodom = `No_domain (n, soa) in
+            | Ok ((`No_data _ | `No_domain _) as nodom) ->
               update_cache nodom;
               Error nodom
             | Error `Msg xxx -> Error (`Msg xxx)

@@ -47,60 +47,66 @@ let jump () hostname typ ns =
         | `Msg msg ->
           Logs.err (fun m -> m "error from resolver %s" msg);
           Error (`Msg "bad request")
-        | `No_data _ ->
-          Logs.err (fun m -> m "no data from resolver");
-          Error (`Msg "no data")
-        | `No_domain _ ->
-          Logs.err (fun m -> m "no domain from resolver");
-          Error (`Msg "no domain")
+        | `Partial ->
+          Logs.err (fun m -> m "partial from resolver");
+          Error (`Msg "partial")
       in
       let now = Ptime_clock.now () in
       let retrieve_dnskey dnskeys ds_set requested_domain =
-        Dns_client_lwt.(get_rr_with_rrsig t Dnskey requested_domain) >|= function
-        | Ok ((_ttl, keys), answer, authority) ->
-          let keys_ds =
-            Rr_map.Ds_set.fold (fun ds acc ->
-                match Dnssec.validate_ds requested_domain keys ds with
-                | Ok key -> Rr_map.Dnskey_set.add key acc
-                | Error `Msg msg ->
-                  Logs.warn (fun m -> m "couldn't validate DS (for %a): %s"
-                                Domain_name.pp requested_domain msg);
-                  acc)
-              ds_set Rr_map.Dnskey_set.empty
-          in
-          Logs.debug (fun m -> m "found %d DNSKEYS with matching DS" (Rr_map.Dnskey_set.cardinal keys_ds));
-          let* (_, keys) = Dnssec.validate_answer now requested_domain keys_ds Rr_map.Dnskey answer authority in
-          Logs.info (fun m -> m "verified RRSIG");
-          let keys = Rr_map.Dnskey_set.filter (fun k -> Dnskey.F.mem `Zone k.Dnskey.flags) keys in
-          Ok keys
-        | Error `No_domain auth ->
-          let* () = Dnssec.validate_nsec_no_domain now requested_domain dnskeys auth in
-          Error (`Msg "no domain for DNSKEY")
-        | Error `No_data (_answer, auth) ->
-          let* () = Dnssec.validate_no_data now requested_domain dnskeys Dnskey auth in
-          Error (`Msg "no data for DNSKEY")
+        Dns_client_lwt.(get_rr t Dnskey requested_domain) >|= function
         | Error e -> log_err e
+        | Ok reply ->
+          let keys =
+            match reply with
+            | `Answer (answer, _) ->
+              Option.map
+                (fun (_, keys) ->
+                   let valid_keys =
+                     Rr_map.Ds_set.fold (fun ds acc ->
+                         match Dnssec.validate_ds requested_domain keys ds with
+                         | Ok key -> Rr_map.Dnskey_set.add key acc
+                         | Error `Msg msg ->
+                           Logs.warn (fun m -> m "couldn't validate DS (for %a): %s"
+                                         Domain_name.pp requested_domain msg);
+                           acc)
+                       ds_set Rr_map.Dnskey_set.empty
+                   in
+                   Logs.debug (fun m -> m "found %d DNSKEYS with matching DS"
+                                  (Rr_map.Dnskey_set.cardinal valid_keys));
+                   valid_keys)
+                (Name_rr_map.find requested_domain Dnskey answer)
+            | _ -> None
+          in
+          let keys = Option.value ~default:dnskeys keys in
+          match Dnssec.verify_reply now keys requested_domain Dnskey reply with
+          | Error (`No_domain _ | `No_data _) ->
+            Logs.warn (fun m -> m "no DNSKEY for %a"
+                          Domain_name.pp requested_domain);
+            Error (`Msg (Fmt.str "missing DNSKEY for %a"
+                           Domain_name.pp requested_domain))
+          | Error (`Msg _ as e) -> log_err e
+          | Ok (_, keys) ->
+            Logs.info (fun m -> m "verified RRSIG for DNSKEYS");
+            let keys =
+              Rr_map.Dnskey_set.filter
+                (fun k -> Dnskey.F.mem `Zone k.Dnskey.flags)
+                keys
+            in
+            Ok keys
       in
       let retrieve_ds dnskeys name =
-        Dns_client_lwt.(get_rr_with_rrsig t Ds name) >|= function
-        | Ok (_, answer, authority) ->
-          begin
-            match
-              Dnssec.validate_answer ~follow_cname:false now name dnskeys Rr_map.Ds answer authority
-            with
-            | Ok (_, ds) -> Ok (Some ds)
-            | Error `Msg msg ->
-              Logs.warn (fun m -> m "retrieving DS: %s" msg);
-              Ok None
-          end
-        | Error `No_domain auth ->
-          Result.map (fun () -> None)
-            (Dnssec.validate_nsec_no_domain now name dnskeys auth)
-        | Error `No_data (_answer, auth) ->
-          Result.map (fun () -> None)
-            (Dnssec.validate_no_data now name dnskeys Rr_map.Ds auth)
-        | Error e ->
-          log_err e
+        Dns_client_lwt.(get_rr t Ds name) >|= function
+        | Error e -> log_err e
+        | Ok reply ->
+          match Dnssec.verify_reply now dnskeys name Ds reply with
+          | Ok (_, ds) -> Ok (Some ds)
+          | Error (`No_domain _ | `No_data _) ->
+            Logs.warn (fun m -> m "no data or no domain for DS in %a"
+                          Domain_name.pp name);
+            Ok None
+          | Error `Msg msg as e->
+            Logs.warn (fun m -> m "retrieving DS: %s" msg);
+            e
       in
       let rec retrieve_validated_dnskeys hostname =
         Logs.info (fun m -> m "validating and retrieving DNSKEYS for %a" Domain_name.pp hostname);
@@ -122,20 +128,20 @@ let jump () hostname typ ns =
       retrieve_validated_dnskeys hostname >>= function
       | Error _ as e -> Lwt.return e
       | Ok dnskeys ->
-        Dns_client_lwt.(get_rr_with_rrsig t k hostname) >|= function
-        | Ok (rrs, answer, authority) ->
-          let* _rrs = Dnssec.validate_answer now hostname dnskeys k answer authority in
-          Logs.app (fun m -> m "%a" pp_zone (hostname, k, rrs));
-          Ok ()
-        | Error `No_domain auth ->
-          let* () = Dnssec.validate_nsec_no_domain now hostname dnskeys auth in
-          Logs.info (fun m -> m "verified nxdomain");
-          Ok ()
-        | Error `No_data (_answer, auth) ->
-          let* () = Dnssec.validate_no_data now hostname dnskeys k auth in
-          Logs.info (fun m -> m "verified no data");
-          Ok ()
+        Dns_client_lwt.(get_rr t k hostname) >|= function
         | Error e -> log_err e
+        | Ok reply ->
+          match Dnssec.verify_reply now dnskeys hostname k reply with
+          | Ok rrs ->
+            Logs.app (fun m -> m "%a" pp_zone (hostname, k, rrs));
+            Ok ()
+          | Error (`No_domain _ | `No_data _) ->
+            Logs.warn (fun m -> m "no data or no domain for %a (%a)"
+                          Domain_name.pp hostname Rr_map.ppk (K k));
+            Ok ()
+          | Error `Msg msg as e->
+            Logs.warn (fun m -> m "retrieving DS: %s" msg);
+            e
     )
   | _ -> Error (`Msg "couldn't decode type")
 

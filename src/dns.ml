@@ -2904,7 +2904,9 @@ module Rr_map = struct
       in
       (ttl, Txt_set.singleton one), rest'
 
-  let pp_b ppf (B (k, _)) = ppk ppf (K k)
+  let pp_b ppf (B (k, v)) =
+    let txt = text Domain_name.root k v in
+    Fmt.string ppf txt
 
   let names : type a. a key -> a -> Domain_name.Host_set.t = fun k v ->
     match k, v with
