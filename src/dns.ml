@@ -726,12 +726,13 @@ module Dnskey = struct
 
   (* 8 bit *)
   type algorithm =
-    | RSA_SHA1 | RSA_SHA256 | RSA_SHA512
+    | RSA_SHA1 | RSASHA1_NSEC3_SHA1 | RSA_SHA256 | RSA_SHA512
     | P256_SHA256 | P384_SHA384 | ED25519
     | MD5 | SHA1 | SHA224 | SHA256 | SHA384 | SHA512 | Unknown of int
 
   let algorithm_to_int = function
     | RSA_SHA1 -> 5
+    | RSASHA1_NSEC3_SHA1 -> 7
     | RSA_SHA256 -> 8
     | RSA_SHA512 -> 10
     | P256_SHA256 -> 13
@@ -746,6 +747,7 @@ module Dnskey = struct
     | Unknown x -> x
   let int_to_algorithm = function
     | 5 -> RSA_SHA1
+    | 7 -> RSASHA1_NSEC3_SHA1
     | 8 -> RSA_SHA256
     | 10 -> RSA_SHA512
     | 13 -> P256_SHA256
@@ -764,6 +766,7 @@ module Dnskey = struct
         invalid_arg ("invalid DNSKEY algorithm " ^ string_of_int x)
   let algorithm_to_string = function
     | RSA_SHA1 -> "RSASHA1"
+    | RSASHA1_NSEC3_SHA1 -> "RSASHA1NSEC3SHA1"
     | RSA_SHA256 -> "RSASHA256"
     | RSA_SHA512 -> "RSASHA512"
     | P256_SHA256 -> "ECDSAP256SHA256"
@@ -778,6 +781,7 @@ module Dnskey = struct
     | Unknown x -> string_of_int x
   let string_to_algorithm = function
     | "RSASHA1" -> Ok RSA_SHA1
+    | "RSASHA1NSEC3SHA1" -> Ok RSASHA1_NSEC3_SHA1
     | "RSASHA256" -> Ok RSA_SHA256
     | "RSASHA512" -> Ok RSA_SHA512
     | "ECDSAP256SHA256" -> Ok P256_SHA256
@@ -1868,7 +1872,7 @@ module Tsig = struct
 
   let dnskey_to_tsig_algo key =
     match key.Dnskey.algorithm with
-    | Dnskey.RSA_SHA1 | Dnskey.RSA_SHA256 | Dnskey.RSA_SHA512 -> Error (`Msg "TSIG with RSA is not supported")
+    | Dnskey.RSA_SHA1 | Dnskey.RSASHA1_NSEC3_SHA1 | Dnskey.RSA_SHA256 | Dnskey.RSA_SHA512 -> Error (`Msg "TSIG with RSA is not supported")
     | Dnskey.P256_SHA256 | Dnskey.P384_SHA384 | Dnskey.ED25519 -> Error (`Msg "TSIG with EC is not supported")
     | Dnskey.MD5 -> Error (`Msg "TSIG algorithm MD5 is not supported")
     | Dnskey.SHA1 -> Ok SHA1
@@ -2492,6 +2496,14 @@ module Rr_map = struct
     in
     let sorted_cs = List.map snd (List.sort order cs) in
     Ok (name, Cstruct.concat (rrsig_cs :: sorted_cs))
+
+  let canonical_encoded_name name =
+    let buf = Cstruct.create 512 in
+    let _, s =
+      Name.encode ~compress:false (Domain_name.canonical name)
+        Domain_name.Map.empty buf 0
+    in
+    Cstruct.sub buf 0 s
 
   let union_rr : type a. a key -> a -> a -> a = fun k l r ->
     match k, l, r with

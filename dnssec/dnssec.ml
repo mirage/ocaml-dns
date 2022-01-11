@@ -40,7 +40,7 @@ let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
     Result.map_error (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e)) r
   in
   match algorithm with
-  | Dnskey.RSA_SHA1 | Dnskey.RSA_SHA256 | Dnskey.RSA_SHA512 ->
+  | Dnskey.RSA_SHA1 | Dnskey.RSASHA1_NSEC3_SHA1 | Dnskey.RSA_SHA256 | Dnskey.RSA_SHA512 ->
     (* described in RFC 3110 *)
     let* () = if Cstruct.length key > 0 then Ok () else Error (`Msg "key data too short") in
     let e_len = Cstruct.get_uint8 key 0 in
@@ -299,6 +299,71 @@ let nsec_chain now name dnskeys auth =
       name_in_chain ~name ~owner nsec
   in
   Ok (owner, nsec)
+
+let nsec3_hash salt iterations name =
+  let cs_name = Rr_map.canonical_encoded_name name in
+  let rec more = function
+    | 0 -> Mirage_crypto.Hash.SHA1.digest (Cstruct.append cs_name salt)
+    | k -> Mirage_crypto.Hash.SHA1.digest (Cstruct.append (more (k - 1)) salt)
+  in
+  more iterations
+
+let nsec3_non_existence name ~zone auth =
+  let nsec3_map =
+    Domain_name.Map.filter (fun _ ->
+        Rr_map.exists (function | B (Nsec3, _) -> true | _ -> false))
+      auth
+  in
+  let Nsec3.{ iterations ; salt ; _ } =
+    snd (Rr_map.get Nsec3 (snd (Domain_name.Map.choose nsec3_map)))
+  in
+  let* () =
+    if iterations > 150 then
+      Error (`Msg "NSEC3 iterations greater than 150, ignoring")
+    else
+      Ok ()
+  in
+  let hashed_name name =
+    let h = nsec3_hash salt iterations name in
+    Domain_name.prepend_label_exn zone (Base32.encode (Cstruct.to_string h))
+  in
+  let rec find_it chop name =
+    let hashed_name = hashed_name name in
+    if Domain_name.Map.mem hashed_name nsec3_map then
+      Ok (chop, name)
+    else
+      let* parent = Domain_name.drop_label name in
+      let chopped = Domain_name.get_label_exn name 0 in
+      find_it chopped parent
+  in
+  let nsec3_between hashed_name =
+    if
+      Domain_name.Map.exists (fun name rrs ->
+          if Domain_name.compare name hashed_name = -1 then
+            let _, nsec3 = Rr_map.get Nsec3 rrs in
+            let hashed_next_owner =
+              Domain_name.prepend_label_exn zone
+                (Base32.encode (Cstruct.to_string nsec3.Nsec3.next_owner_hashed))
+            in
+            Domain_name.compare hashed_next_owner hashed_name = -1
+          else
+            false)
+        nsec3_map
+    then
+      Ok ()
+    else
+      Error (`Msg (Fmt.str "no NSEC3 with owner < %a < next_owner_hashed"
+                     Domain_name.pp name))
+  in
+  let* (last_chop, closest_encloser) = find_it "" name in
+  (* verify existence of nsec3 where owner < next_closer < next_owner_hashed *)
+  let next_closer = Domain_name.prepend_label_exn closest_encloser last_chop in
+  let hashed_next_closer = hashed_name next_closer in
+  let* () = nsec3_between hashed_next_closer in
+  (* verify existence of nsec3 where owner < wc < next_owner_hashed *)
+  let wc = Domain_name.prepend_label_exn closest_encloser "*" in
+  let hashed_wc = hashed_name wc in
+  nsec3_between hashed_wc
 
 let validate_nsec_no_domain now dnskeys name auth =
   (* no domain:

@@ -310,6 +310,7 @@ module Dnskey : sig
 
   type algorithm =
     | RSA_SHA1
+    | RSASHA1_NSEC3_SHA1
     | RSA_SHA256
     | RSA_SHA512
     | P256_SHA256
@@ -886,6 +887,8 @@ module Rr_map : sig
 
   val prep_for_sig : [`raw] Domain_name.t -> Rrsig.t -> 'a key -> 'a ->
     ([`raw] Domain_name.t * Cstruct.t, [ `Msg of string ]) result
+
+  val canonical_encoded_name : [`raw] Domain_name.t -> Cstruct.t
 
 end
 
