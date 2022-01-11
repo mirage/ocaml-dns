@@ -18,6 +18,7 @@ module Transport : Dns_client.S
     timeout_ns : int64 ;
     (* TODO: avoid race, use a mvar instead of condition *)
     mutable fd : [ `Plain of Lwt_unix.file_descr | `Tls of Tls_lwt.Unix.t ] option ;
+    mutable connected_condition : unit Lwt_condition.t option ;
     mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
     mutable he : Happy_eyeballs.t ;
     mutable waiters : ((Ipaddr.t * int) * Lwt_unix.file_descr, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
@@ -136,6 +137,7 @@ module Transport : Dns_client.S
       nameservers ;
       timeout_ns = timeout ;
       fd = None ;
+      connected_condition = None ;
       requests = IM.empty ;
       he = Happy_eyeballs.create (clock ()) ;
       waiters = Happy_eyeballs.Waiter_map.empty ;
@@ -253,9 +255,14 @@ module Transport : Dns_client.S
       ns
 
   let rec connect_via_tcp_to_ns (t : t) nameservers =
-    match t.fd with
-    | Some _ -> Lwt.return (Ok ())
-    | None ->
+    match t.fd, t.connected_condition with
+    | Some _, _ -> Lwt.return (Ok ())
+    | None, Some w ->
+      Lwt_condition.wait w >>= fun () ->
+      connect_via_tcp_to_ns t nameservers
+    | None, None ->
+      let connected_condition = Lwt_condition.create () in
+      t.connected_condition <- Some connected_condition ;
       let waiter, notify = Lwt.task () in
       let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
       t.waiters <- waiters;
@@ -266,6 +273,8 @@ module Transport : Dns_client.S
       Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
       waiter >>= function
       | Error `Msg msg ->
+        Lwt_condition.broadcast connected_condition ();
+        t.connected_condition <- None;
         Lwt.return
           (Error (`Msg (Fmt.str "error %s connecting to resolver %a"
                           msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
@@ -282,6 +291,8 @@ module Transport : Dns_client.S
                 | Error (`Msg msg) ->
                   Log.err (fun m -> m "error while connecting to resolver: %s"  msg)
                 | Ok () -> ());
+          Lwt_condition.broadcast connected_condition ();
+          t.connected_condition <- None;
           req_all socket t
         in
         let config = find_ns t.nameservers addr in
@@ -294,6 +305,8 @@ module Transport : Dns_client.S
             (fun e ->
                Log.warn (fun m -> m "TLS handshake with %a:%d failed: %s"
                             Ipaddr.pp (fst addr) (snd addr) (Printexc.to_string e));
+               Lwt_condition.broadcast connected_condition ();
+               t.connected_condition <- None;
                let ns' =
                  List.filter
                    (function
