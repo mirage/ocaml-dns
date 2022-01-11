@@ -18,6 +18,8 @@ let pad_int = int_of_char pad_char
 
 let encode ?(pad = true) str =
   let len = String.length str in
+  (* since String.get_uint8 is OCaml >= 4.13 only *)
+  let str = Bytes.unsafe_of_string str in
   let out_len = (len + 4) / 5 * 8 in
   let out = Bytes.make out_len pad_char in
   let o1 b1 = b1 lsr 3
@@ -38,15 +40,15 @@ let encode ?(pad = true) str =
       (* case 1 *) 0
     else if s_off = len - 1 then
       (* case 2 - 6 padding = *)
-      let b1 = String.get_uint8 str s_off in
+      let b1 = Bytes.get_uint8 str s_off in
       let p1 = o1 b1 and p2 = o2 b1 0 in
       Bytes.set_uint8 out d_off ((fst alphabet).(p1));
       Bytes.set_uint8 out (d_off + 1) ((fst alphabet).(p2));
       6
     else if s_off = len - 2 then
       (* case 3 - 4 padding = *)
-      let b1 = String.get_uint8 str s_off
-      and b2 = String.get_uint8 str (s_off + 1)
+      let b1 = Bytes.get_uint8 str s_off
+      and b2 = Bytes.get_uint8 str (s_off + 1)
       in
       let p1 = o1 b1 and p2 = o2 b1 b2 and p3 = o3 b2 and p4 = o4 b2 0 in
       Bytes.set_uint8 out d_off ((fst alphabet).(p1));
@@ -56,9 +58,9 @@ let encode ?(pad = true) str =
       4
     else if s_off = len - 3 then
       (* case 4 - 3 padding = *)
-      let b1 = String.get_uint8 str s_off
-      and b2 = String.get_uint8 str (s_off + 1)
-      and b3 = String.get_uint8 str (s_off + 2)
+      let b1 = Bytes.get_uint8 str s_off
+      and b2 = Bytes.get_uint8 str (s_off + 1)
+      and b3 = Bytes.get_uint8 str (s_off + 2)
       in
       let p1 = o1 b1 and p2 = o2 b1 b2 and p3 = o3 b2 and p4 = o4 b2 b3 and p5 = o5 b3 0 in
       Bytes.set_uint8 out d_off ((fst alphabet).(p1));
@@ -69,10 +71,10 @@ let encode ?(pad = true) str =
       3
     else if s_off = len - 4 then
       (* case 5 - 1 padding = *)
-      let b1 = String.get_uint8 str s_off
-      and b2 = String.get_uint8 str (s_off + 1)
-      and b3 = String.get_uint8 str (s_off + 2)
-      and b4 = String.get_uint8 str (s_off + 3)
+      let b1 = Bytes.get_uint8 str s_off
+      and b2 = Bytes.get_uint8 str (s_off + 1)
+      and b3 = Bytes.get_uint8 str (s_off + 2)
+      and b4 = Bytes.get_uint8 str (s_off + 3)
       in
       let p1 = o1 b1 and p2 = o2 b1 b2 and p3 = o3 b2 and p4 = o4 b2 b3 and p5 = o5 b3 b4 and p6 = o6 b4 and p7 = o7 b4 0 in
       Bytes.set_uint8 out d_off ((fst alphabet).(p1));
@@ -84,11 +86,11 @@ let encode ?(pad = true) str =
       Bytes.set_uint8 out (d_off + 6) ((fst alphabet).(p7));
       1
     else
-      let b1 = String.get_uint8 str s_off in
-      let b2 = String.get_uint8 str (s_off + 1) in
-      let b3 = String.get_uint8 str (s_off + 2) in
-      let b4 = String.get_uint8 str (s_off + 3) in
-      let b5 = String.get_uint8 str (s_off + 4) in
+      let b1 = Bytes.get_uint8 str s_off in
+      let b2 = Bytes.get_uint8 str (s_off + 1) in
+      let b3 = Bytes.get_uint8 str (s_off + 2) in
+      let b4 = Bytes.get_uint8 str (s_off + 3) in
+      let b5 = Bytes.get_uint8 str (s_off + 4) in
       emit b1 b2 b3 b4 b5 d_off;
       enc (s_off + 5) (d_off + 8)
   in
@@ -119,6 +121,7 @@ let decode ?(unpadded = false) str =
       Ok str
   in
   let len = String.length str in
+  let str = Bytes.unsafe_of_string str in
   let out_len = len / 8 * 5 in (* max length *)
   let out = Bytes.create out_len in
   let o1 b1 b2 = b1 lsl 3 + b2 lsr 2
@@ -154,14 +157,14 @@ let decode ?(unpadded = false) str =
     if s_off = len then
       Ok (0, 0)
     else
-      let v1 = String.get_uint8 str s_off
-      and v2 = String.get_uint8 str (s_off + 1)
-      and v3 = String.get_uint8 str (s_off + 2)
-      and v4 = String.get_uint8 str (s_off + 3)
-      and v5 = String.get_uint8 str (s_off + 4)
-      and v6 = String.get_uint8 str (s_off + 5)
-      and v7 = String.get_uint8 str (s_off + 6)
-      and v8 = String.get_uint8 str (s_off + 7)
+      let v1 = Bytes.get_uint8 str s_off
+      and v2 = Bytes.get_uint8 str (s_off + 1)
+      and v3 = Bytes.get_uint8 str (s_off + 2)
+      and v4 = Bytes.get_uint8 str (s_off + 3)
+      and v5 = Bytes.get_uint8 str (s_off + 4)
+      and v6 = Bytes.get_uint8 str (s_off + 5)
+      and v7 = Bytes.get_uint8 str (s_off + 6)
+      and v8 = Bytes.get_uint8 str (s_off + 7)
       in
       if v3 = pad_int then
         let* b1 = c ~off:s_off v1 in
@@ -220,7 +223,7 @@ let decode ?(unpadded = false) str =
   let rec check_pad = function
     | 0 -> Ok ()
     | n ->
-      if String.get_uint8 str (len - n) = pad_int then
+      if Bytes.get_uint8 str (len - n) = pad_int then
         check_pad (n - 1)
       else
         Error (`Msg ("expected pad character at " ^ (string_of_int (len - n))))
