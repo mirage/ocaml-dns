@@ -1,3 +1,11 @@
+### v6.1.4 (2022-01-11)
+
+* dns-client-{mirage,lwt}: avoid multiple simultaneous connection attempts
+  to the same resolver. Now, before a connection is initiated, a Lwt_condition
+  is put into the client state which subsequent resolution requests wait for
+  (#285 @hannesm, review by @reynir, reported by @kit-ty-kate in
+  roburio/http-client-lwt#8)
+
 ### v6.1.3 (2021-12-17)
 
 * dns-mirage: use tcpip >= 7.0.0 instead of deprecated mirage-stack and
