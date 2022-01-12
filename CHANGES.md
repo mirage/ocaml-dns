@@ -4,7 +4,7 @@
   to the same resolver. Now, before a connection is initiated, a Lwt_condition
   is put into the client state which subsequent resolution requests wait for
   (#285 @hannesm, review by @reynir, reported by @kit-ty-kate in
-  roburio/http-client-lwt#8)
+  roburio/http-lwt-client#8)
 
 ### v6.1.3 (2021-12-17)
 
