@@ -1173,7 +1173,82 @@ let test_a_de_nsec3 () =
                                90 00 00 29 10 00 00 00  80 00 00 00
 |}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_data fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
+
+let test_aaaa_asd_house_gov_nsec3_nodomain () =
+  let time = Option.get (Ptime.of_date_time ((2022, 01, 12), ((18, 30, 00), 00))) in
+  let zsk = "AwEAAdT5CpTeKi6ORYqcLBCLYhkJD05TGZwlWH1qfGlTaN55XSh53hjmZ8tZ6WxMOQiu2y8iB4zQ9LKphUswg8ZzNNvbkIbTKnCRrQPYyG2q/uZys2ut5Blxow8/kgLAb/f+UZgNuc82Wxz6vZg75HrY+iLhhfRsq/l5bamc/x2l/gm7" in
+  let algorithm = Dnskey.RSA_SHA256 in
+  let data = Cstruct.of_hex {| 15 ed 81 83 00 01  00 00 00 08 00 01 03 61
+                               73 64 05 68 6f 75 73 65  03 67 6f 76 00 00 1c 00
+                               01 c0 10 00 06 00 01 00  00 01 36 00 28 06 6f 78
+                               79 67 65 6e c0 10 03 6e  63 63 04 6d 61 69 6c c0
+                               10 00 15 bb 03 00 00 2a  30 00 00 04 38 00 24 ea
+                               00 00 00 03 84 c0 10 00  2e 00 01 00 00 01 36 00
+                               9d 00 06 08 02 00 00 70  80 61 f0 7c e9 61 dd f9
+                               d9 2d 15 05 68 6f 75 73  65 03 67 6f 76 00 8d e0
+                               46 3f ff 7b 6f 8d f0 4f  56 d3 7b b4 0b 8d 9e 4d
+                               89 6c c5 dd 2c 2f c9 cd  03 bc ad 00 a7 2f 2a f7
+                               07 cc 93 56 d3 da ec d9  61 d6 30 40 2d d0 d0 19
+                               27 59 0c e2 1c 3c 35 cf  9b ea 41 67 4a c3 37 22
+                               fe e2 af b8 90 3e 9e 39  0f d2 33 27 c6 f7 19 aa
+                               15 6b 26 75 68 bd cf 55  e6 af 59 8c ff ee e5 7b
+                               52 5f d4 fa 4e 9c 89 e5  2a 17 5c b4 67 a9 32 7e
+                               a6 7c a7 c5 66 df 13 66  af 81 e0 8d 96 03 20 44
+                               35 37 43 39 41 39 52 52  4c 55 55 4e 4d 4f 36 34
+                               55 4c 4c 31 4e 31 44 4b  53 4c 30 36 4b 42 42 c0
+                               10 00 32 00 01 00 00 01  36 00 27 01 00 00 0a 04
+                               81 2c d3 ed 14 69 be f8  35 7c 79 72 52 00 ba 51
+                               2c f7 ed 98 a4 a3 39 0f  8c 00 07 62 00 80 00 00
+                               02 90 c0 fc 00 2e 00 01  00 00 01 36 00 9d 00 32
+                               08 03 00 00 03 84 61 f0  5d 18 61 dd e0 a0 2d 15
+                               05 68 6f 75 73 65 03 67  6f 76 00 4d d9 5f bd 16
+                               13 f2 2e 3c f3 5f 49 39  14 c0 0d 05 9a 33 94 34
+                               59 98 19 e8 4a ff 22 8f  d6 5d 5e 52 7a 9a 8b 64
+                               3e 01 a6 16 7b 69 c0 b7  83 0b a4 1c 86 d1 51 76
+                               6e c2 8a 62 8d 35 74 76  74 69 24 76 6c 04 d3 ce
+                               02 0a 51 ad 81 cd d7 e9  d5 2f 30 49 16 bf 05 5f
+                               c5 cd fa 3e ec 38 cc 34  46 c6 2d 7a ac 3d 64 47
+                               02 b3 a4 5a 24 2f 9f fa  48 c3 b0 fe a8 e2 2c e4
+                               cb 76 1e 90 3c c7 57 fc  b8 63 f6 20 32 42 38 37
+                               39 4f 53 4f 55 51 4b 36  55 54 37 47 31 44 35 4e
+                               38 41 36 35 35 36 44 32  39 45 4d 54 c0 10 00 32
+                               00 01 00 00 01 36 00 26  01 00 00 0a 04 81 2c d3
+                               ed 14 13 35 6e e2 f9 f2  f4 10 d0 79 99 17 a3 8d
+                               37 21 7d 30 95 0b 00 06  40 00 00 00 00 02 c1 f9
+                               00 2e 00 01 00 00 01 36  00 9d 00 32 08 03 00 00
+                               03 84 61 f0 5a 1e 61 dd  dc e2 2d 15 05 68 6f 75
+                               73 65 03 67 6f 76 00 4b  56 d8 00 c0 27 7c c9 c5
+                               eb bc ee e4 a8 14 ef af  d7 79 e7 a5 fd dc fb 55
+                               55 a4 0e 77 1a 45 5c 9c  30 0e 2b ae de a3 ee 17
+                               b4 13 5c 09 d1 f2 19 43  fa 40 62 88 5f 37 00 81
+                               0a a0 e9 ea 32 b8 62 e7  c5 e8 12 d7 5b 0f d9 a3
+                               69 83 8c 82 e6 04 ee 4c  0f 13 47 7c 06 32 90 a8
+                               c1 65 9b d7 33 cf cd bd  f1 6f fd 30 b0 23 b6 27
+                               b6 ae d6 5e db 44 5c e7  0c ef ed ee e4 7c ae 55
+                               ea 2a 70 39 60 c3 eb 20  32 48 48 43 54 50 4c 44
+                               42 4f 34 43 36 50 43 39  31 52 39 49 54 44 37 35
+                               50 44 44 4e 35 4e 42 42  c0 10 00 32 00 01 00 00
+                               01 36 00 26 01 00 00 0a  04 81 2c d3 ed 14 14 b9
+                               e2 e9 7d da 66 6a 47 7d  d8 fe 00 08 48 46 85 7d
+                               03 59 00 06 04 00 00 00  00 02 c2 f5 00 2e 00 01
+                               00 00 01 36 00 9d 00 32  08 03 00 00 03 84 61 f0
+                               51 b6 61 dd d5 e1 2d 15  05 68 6f 75 73 65 03 67
+                               6f 76 00 52 6c a7 2c 96  4d 5b ee b0 ed cf 98 44
+                               39 96 0d 3e 38 e9 dd fb  c1 e6 90 98 c5 89 51 f1
+                               46 87 17 bb cb e2 e2 90  90 38 d6 86 f9 a3 5e ee
+                               ef 17 b1 31 7f 21 ca 77  14 97 cd fd 2f a4 06 51
+                               cd 9b 35 19 05 d5 f8 22  5a d0 9c 6f 67 98 8a cc
+                               6d bc 43 33 38 42 fd 43  dc 9f 40 fd c9 51 c9 d3
+                               cb 0b 1f 69 05 07 d3 ef  b4 1c 2a ae 5d 2b 33 08
+                               72 7c 24 7e 77 38 17 7e  70 7e 60 ec 40 b8 d5 1d
+                               33 16 e3 00 00 29 20 00  00 00 80 00 00 00 |}
+  in
+  let exp = `No_domain fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let tests = [
   "root", `Quick, test_root ;
@@ -1194,6 +1269,7 @@ let tests = [
   "wildcard match and cname for surelynonexistentname.blog.root.cz (nsec)", `Quick, test_a_surelynonexistentname_blog_root_cz ;
   "wildcard match and cname, nodata (PTR) with cname chain", `Quick, test_ptr_surelynonexistentname_blog_root_cz ;
   (* "nodata for a.de (nsec3)", `Quick, test_a_de_nsec3 ; *)
+  "nodomain for AAAA asd.house.gov (nsec3)", `Quick, test_aaaa_asd_house_gov_nsec3_nodomain ;
 ]
 
 module Rfc4035 = struct

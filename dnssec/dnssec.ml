@@ -293,64 +293,89 @@ let nsec3_hash salt iterations name =
   in
   more iterations
 
-let nsec3_non_existence name ~zone auth =
+let nsec3_non_existence name ~soa_name auth =
+  Log.debug (fun m -> m "nsec3 non-existence %a (zone %a)"
+                Domain_name.pp name Domain_name.pp soa_name);
   let nsec3_map =
-    Domain_name.Map.filter (fun _ ->
-        Rr_map.exists (function | B (Nsec3, _) -> true | _ -> false))
+    (* filter out any non-nsec3 rrs and those where label_count doesn't match *)
+    Domain_name.Map.filter (fun name (rr_map, kms) ->
+        Rr_map.exists (function | B (Nsec3, _) -> true | _ -> false) rr_map &&
+        Domain_name.equal name (KM.find (K Nsec3) kms))
       auth
   in
-  let Nsec3.{ iterations ; salt ; _ } =
-    snd (Rr_map.get Nsec3 (snd (Domain_name.Map.choose nsec3_map)))
-  in
-  let* () =
-    if iterations > 150 then
-      Error (`Msg "NSEC3 iterations greater than 150, ignoring")
-    else
-      Ok ()
-  in
-  let hashed_name name =
-    let h = nsec3_hash salt iterations name in
-    Domain_name.prepend_label_exn zone (Base32.encode (Cstruct.to_string h))
-  in
-  let rec find_it chop name =
-    let hashed_name = hashed_name name in
-    if Domain_name.Map.mem hashed_name nsec3_map then
-      Ok (chop, name)
-    else
-      let* parent = Domain_name.drop_label name in
-      let chopped = Domain_name.get_label_exn name 0 in
-      find_it chopped parent
-  in
-  let nsec3_between hashed_name =
-    if
-      Domain_name.Map.exists (fun name rrs ->
-          if Domain_name.compare name hashed_name = -1 then
-            let _, nsec3 = Rr_map.get Nsec3 rrs in
-            let hashed_next_owner =
-              Domain_name.prepend_label_exn zone
-                (Base32.encode (Cstruct.to_string nsec3.Nsec3.next_owner_hashed))
-            in
-            Domain_name.compare hashed_next_owner hashed_name = -1
-          else
-            false)
-        nsec3_map
-    then
-      Ok ()
-    else
-      Error (`Msg (Fmt.str "no NSEC3 with owner < %a < next_owner_hashed"
-                     Domain_name.pp name))
-  in
-  let* (last_chop, closest_encloser) = find_it "" name in
-  (* verify existence of nsec3 where owner < next_closer < next_owner_hashed *)
-  let next_closer = Domain_name.prepend_label_exn closest_encloser last_chop in
-  let hashed_next_closer = hashed_name next_closer in
-  let* () = nsec3_between hashed_next_closer in
-  (* verify existence of nsec3 where owner < wc < next_owner_hashed *)
-  let wc = Domain_name.prepend_label_exn closest_encloser "*" in
-  let hashed_wc = hashed_name wc in
-  nsec3_between hashed_wc
+  if Domain_name.Map.is_empty nsec3_map then
+    Error (`Msg "no NSEC3 resource record found")
+  else begin
+    Log.debug (fun m -> m "nsec3 non-existence %d" (Domain_name.Map.cardinal nsec3_map));
+    let Nsec3.{ iterations ; salt ; _ } =
+      let _, (rrs, _) = Domain_name.Map.choose nsec3_map in
+      snd (Rr_map.get Nsec3 rrs)
+    in
+    let* () =
+      if iterations > 150 then
+        Error (`Msg "NSEC3 iterations greater than 150, ignoring")
+      else
+        Ok ()
+    in
+    let hashed_name name =
+      let h = nsec3_hash salt iterations name in
+      Domain_name.prepend_label_exn soa_name (Base32.encode (Cstruct.to_string h))
+    in
+    let rec find_it chop name =
+      let hashed_name = hashed_name name in
+      if Domain_name.Map.mem hashed_name nsec3_map then
+        Ok (chop, name)
+      else
+        let* parent = Domain_name.drop_label name in
+        let chopped = Domain_name.get_label_exn name 0 in
+        find_it chopped parent
+    in
+    let nsec3_between hashed_name =
+      Log.debug (fun m -> m "nsec3 between %a" Domain_name.pp hashed_name);
+      if
+        Domain_name.Map.exists (fun name (rrs, _) ->
+            if Domain_name.compare name hashed_name < 0 then begin
+              Log.debug (fun m -> m "(%a) yes %a" Domain_name.pp hashed_name
+                            Domain_name.pp name);
+              let _, nsec3 = Rr_map.get Nsec3 rrs in
+              let hashed_next_owner =
+                Domain_name.prepend_label_exn soa_name
+                  (Base32.encode (Cstruct.to_string nsec3.Nsec3.next_owner_hashed))
+              in
+              Log.debug (fun m -> m "(%a) comparing with %a: %d"
+                            Domain_name.pp hashed_name
+                            Domain_name.pp hashed_next_owner
+                            (Domain_name.compare hashed_name hashed_next_owner));
+              Domain_name.compare hashed_name hashed_next_owner < 0
+            end else
+              false)
+          nsec3_map
+      then
+        Ok ()
+      else begin
+        Log.debug (fun m -> m "nsec3 between %a no" Domain_name.pp hashed_name);
+        Error (`Msg (Fmt.str "no NSEC3 with owner < %a < next_owner_hashed"
+                       Domain_name.pp name))
+      end
+    in
+    let* (last_chop, closest_encloser) = find_it "" name in
+    Log.debug (fun m -> m "last chop %s closest encloser %a"
+                  last_chop Domain_name.pp closest_encloser);
+    (* verify existence of nsec3 where owner < next_closer < next_owner_hashed *)
+    let next_closer = Domain_name.prepend_label_exn closest_encloser last_chop in
+    let hashed_next_closer = hashed_name next_closer in
+    let* () = nsec3_between hashed_next_closer in
+    (* verify existence of nsec3 where owner < wc < next_owner_hashed *)
+    let wc = Domain_name.prepend_label_exn closest_encloser "*" in
+    let hashed_wc = hashed_name wc in
+    nsec3_between hashed_wc
+  end
 
-let validate_nsec_no_domain name auth =
+let nsec_non_existence name ~soa_name auth =
+  let* _ = nsec_chain name auth in
+  wildcard_non_existence ~soa_name name auth
+
+let validate_no_domain name auth =
   (* no domain:
      - a SOA from a parent (zone), plus RRSIG
      - an NSEC for non-existing wildcard, plus rrsig
@@ -364,23 +389,14 @@ let validate_nsec_no_domain name auth =
       Error (`Msg (Fmt.str "question %a is not subdomain of SOA %a"
                      Domain_name.pp name Domain_name.pp soa_name))
   in
-  let* _ = nsec_chain name auth in
-  let* () = wildcard_non_existence ~soa_name name auth in
-  Ok (soa_name, soa)
+  match
+    nsec_non_existence name ~soa_name auth,
+    nsec3_non_existence name ~soa_name auth
+  with
+  | Ok (), _ | _, Ok () -> Ok (soa_name, soa)
+  | Error _ as e, _ -> e
 
-let validate_no_data name k auth =
-  (* no data:
-     - SOA + RRSIG
-     - (NSEC for name (and not for type = k) OR wildcard NSEC) + RRSIG
-  *)
-  let* (soa_name, soa) = find_soa auth in
-  let* () =
-    if Domain_name.is_subdomain ~subdomain:name ~domain:soa_name then
-      Ok ()
-    else
-      Error (`Msg (Fmt.str "name %a is not a subdomain of soa %a"
-                     Domain_name.pp name Domain_name.pp soa_name))
-  in
+let validate_nsec_no_data ~soa_name name k auth =
   match Domain_name.Map.find name auth with
   | Some (rr_map, kms) when Rr_map.mem Nsec rr_map ->
     let nsec = Rr_map.get Nsec rr_map
@@ -397,7 +413,7 @@ let validate_no_data name k auth =
     if Bit_map.mem (Rr_map.to_int k) (snd nsec).Nsec.types then
       Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
     else
-      Ok (soa_name, soa)
+      Ok ()
   | _ ->
     (* nsec in chain ++ wildcard nsec *)
     let* _ = nsec_chain name auth in
@@ -417,24 +433,41 @@ let validate_no_data name k auth =
       else
         Error (`Msg "no wildcard nsec found")
     in
-    let* () =
-      match find_wc name with
-      | Ok (wc_name, wc_nsec, wc_nsec_owner) ->
-        let* () =
-          if Domain_name.equal wc_nsec_owner wc_name then
-            Ok ()
-          else
-            Error (`Msg (Fmt.str "bad wildcard nsec, wc_name %a nsec_owner %a"
-                           Domain_name.pp wc_name Domain_name.pp wc_nsec_owner))
-        in
-        if Bit_map.mem (Rr_map.to_int k) (snd wc_nsec).Nsec.types then
-          Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
-        else
+    match find_wc name with
+    | Ok (wc_name, wc_nsec, wc_nsec_owner) ->
+      let* () =
+        if Domain_name.equal wc_nsec_owner wc_name then
           Ok ()
-      | Error _ ->
-        wildcard_non_existence ~soa_name name auth
-    in
-    Ok (soa_name, soa)
+        else
+          Error (`Msg (Fmt.str "bad wildcard nsec, wc_name %a nsec_owner %a"
+                         Domain_name.pp wc_name Domain_name.pp wc_nsec_owner))
+      in
+      if Bit_map.mem (Rr_map.to_int k) (snd wc_nsec).Nsec.types then
+        Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
+      else
+        Ok ()
+    | Error _ ->
+      wildcard_non_existence ~soa_name name auth
+
+let validate_no_data name k auth =
+  (* no data:
+     - SOA + RRSIG
+     - (NSEC for name (and not for type = k) OR wildcard NSEC) + RRSIG
+  *)
+  let* (soa_name, soa) = find_soa auth in
+  let* () =
+    if Domain_name.is_subdomain ~subdomain:name ~domain:soa_name then
+      Ok ()
+    else
+      Error (`Msg (Fmt.str "name %a is not a subdomain of soa %a"
+                     Domain_name.pp name Domain_name.pp soa_name))
+  in
+  match
+    validate_nsec_no_data ~soa_name name k auth,
+    nsec3_non_existence ~soa_name name auth
+  with
+  | Ok (), _ | _, Ok () -> Ok (soa_name, soa)
+  | Error _ as e, _ -> e
 
 let rec validate_answer :
   type a. fuel:int -> follow_cname:bool ->
@@ -553,7 +586,7 @@ let verify_reply : type a. ?fuel:int -> ?follow_cname:bool -> Ptime.t ->
     let _answer = check_signatures answer
     and authority = check_signatures authority
     in
-    let* (soa_name, soa) = validate_nsec_no_domain name authority in
+    let* (soa_name, soa) = validate_no_domain name authority in
     Error (`No_domain (soa_name, soa))
   | r ->
     Error (`Msg (Fmt.str "unexpected reply: %a" Packet.pp_reply r))
