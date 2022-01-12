@@ -600,7 +600,9 @@ let test_ds_a_se_nsec_nodata () =
                                a6 71 85 c2 67 06 86 7f  5b e1 4b f9 33 35 e4 c3
                                80 50 af ed c0 00 00 29  20 00 00 00 80 00 00 00|}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_data fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_ds_a_a_se_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((21, 00, 00), 00))) in
@@ -654,7 +656,9 @@ let test_ds_a_a_se_nsec_nodomain () =
                                e4 c3 80 50 af ed c0 00  00 29 20 00 00 00 80 00
                                00 00|}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_domain fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_ds_b_a_se_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((21, 00, 00), 00))) in
@@ -728,7 +732,9 @@ let test_ds_b_a_se_nsec_nodomain () =
                                06 86 7f 5b e1 4b f9 33  35 e4 c3 80 50 af ed c0
                                00 00 29 20 00 00 00 80  00 00 00|}
   in
-  verify_dnssec time [ algorithm, zsk ] data
+  let exp = `No_domain fake_soa in
+  Alcotest.check res __LOC__ (Error exp)
+    (verify_dnssec time [ algorithm, zsk ] data)
 
 let test_ptr_isc_org_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 09), ((21, 00, 00), 00))) in
@@ -1258,9 +1264,9 @@ let tests = [
   "nxdomain for zz (nsec)", `Quick, test_zz_nsec_nodomain ;
   "nxdomain for aa (nsec)", `Quick, test_aa_nsec_nodomain ;
   "nodata for a se (nsec)", `Quick, test_a_se_nsec_nodata ;
-  (* "nodata for DS a.se (nsec)", `Quick, test_ds_a_se_nsec_nodata ; -- fails since no nsec for *.se
-     "nxdomain for DS a.a.se (nsec)", `Quick, test_ds_a_a_se_nsec_nodomain ; -- fails since no nsec for *.se
-     "nxdomain for DS b.a.se (nsec)", `Quick, test_ds_b_a_se_nsec_nodomain ;  -- fails since no nsec for *.se *)
+  "nodata for DS a.se (nsec)", `Quick, test_ds_a_se_nsec_nodata ;
+  "nxdomain for DS a.a.se (nsec)", `Quick, test_ds_a_a_se_nsec_nodomain ;
+  "nxdomain for DS b.a.se (nsec)", `Quick, test_ds_b_a_se_nsec_nodomain ;
   "nodata for PTR isc.org (nsec)", `Quick, test_ptr_isc_org_nsec_nodata ;
   "nodomain for PTR doesntexist.isc.org (nsec)", `Quick, test_ptr_doesntexist_isc_org_nsec_nodomain ;
   "nodata (cname) for DS trac.ietf.org (nsec)", `Quick, test_ds_trac_ietf_org_nsec ;
@@ -1268,7 +1274,7 @@ let tests = [
   "nodata for CAA ietf.org (nsec)", `Quick, test_caa_ietf_org_nsec_nodata ;
   "wildcard match and cname for surelynonexistentname.blog.root.cz (nsec)", `Quick, test_a_surelynonexistentname_blog_root_cz ;
   "wildcard match and cname, nodata (PTR) with cname chain", `Quick, test_ptr_surelynonexistentname_blog_root_cz ;
-  (* "nodata for a.de (nsec3)", `Quick, test_a_de_nsec3 ; *)
+  "nodata for a.de (nsec3)", `Quick, test_a_de_nsec3 ;
   "nodomain for AAAA asd.house.gov (nsec3)", `Quick, test_aaaa_asd_house_gov_nsec3_nodomain ;
 ]
 

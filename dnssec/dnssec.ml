@@ -212,50 +212,6 @@ let name_in_chain ~name ~owner nsec =
                    Domain_name.pp name
                    Domain_name.pp (snd nsec).Nsec.next_domain))
 
-let wildcard_non_existence ~soa_name name auth =
-  Logs.debug (fun m -> m "wildcard non-existence %a" Domain_name.pp name);
-  let* wcs =
-    (* for non-existing wildcard NSEC: its owner must be between
-       <name> and <soa_name> *)
-    let rec find_them acc name =
-      Logs.debug (fun m -> m "find_them with %a" Domain_name.pp name);
-      if not (Domain_name.equal soa_name name) then
-        let wc_name = Domain_name.(prepend_label_exn (drop_label_exn name) "*") in
-        Logs.debug (fun m -> m "find_them %a, wc_name %a" Domain_name.pp name
-                       Domain_name.pp wc_name);
-        let matches =
-          Domain_name.Map.filter (fun owner (rr_map, _) ->
-              match Rr_map.find Nsec rr_map with
-              | Some nsec -> is_name_in_chain ~name:wc_name ~owner nsec
-              | None -> false)
-            auth
-        in
-        if Domain_name.Map.cardinal matches = 1 then
-          let key, v = Domain_name.Map.choose matches in
-          let acc' = Domain_name.Map.add key v acc in
-          find_them acc' (Domain_name.drop_label_exn wc_name)
-        else
-          Error (`Msg (Fmt.str "no denial of existence for %a found"
-                         Domain_name.pp wc_name))
-      else
-        Ok acc
-    in
-    find_them Domain_name.Map.empty name
-  in
-  Domain_name.Map.fold (fun wc_owner (rr_map, km) acc ->
-      let* () = acc in
-      Logs.debug (fun m -> m "wc_owner %a" Domain_name.pp wc_owner);
-      let wc_nsec = Rr_map.get Nsec rr_map in
-      let wc_used_name = KM.find (K Nsec) km in
-      let* () =
-        if Domain_name.equal wc_used_name wc_owner then Ok () else
-          Error (`Msg (Fmt.str "wildcard owner %a and wildcard used name %a differ"
-                         Domain_name.pp wc_owner Domain_name.pp wc_used_name))
-      in
-      let wc = Domain_name.prepend_label_exn wc_owner "*" in
-      name_in_chain ~name:wc ~owner:wc_owner wc_nsec)
-    wcs (Ok ())
-
 let nsec_chain name auth =
   let* (owner, rrs) =
     let matches =
@@ -284,6 +240,63 @@ let nsec_chain name auth =
       name_in_chain ~name ~owner nsec
   in
   Ok (owner, nsec)
+
+let wildcard_non_existence ~soa_name name auth =
+  Logs.debug (fun m -> m "wildcard non-existence %a" Domain_name.pp name);
+  let* (_, nsec) = nsec_chain name auth in
+  if Domain_name.is_subdomain ~domain:name ~subdomain:(snd nsec).Nsec.next_domain then
+    (* ENT *)
+    Ok ()
+  else
+    let* wcs =
+      (* for non-existing wildcard NSEC: its owner must be between
+         <name> and <soa_name> *)
+      let rec find_them acc name =
+        Logs.debug (fun m -> m "find_them with %a" Domain_name.pp name);
+        if not (Domain_name.equal soa_name name) then
+          let wc_name = Domain_name.(prepend_label_exn (drop_label_exn name) "*") in
+          Logs.debug (fun m -> m "find_them %a, wc_name %a" Domain_name.pp name
+                         Domain_name.pp wc_name);
+          let find name =
+            Domain_name.Map.filter (fun owner (rr_map, _) ->
+                match Rr_map.find Nsec rr_map with
+                | Some nsec -> is_name_in_chain ~name ~owner nsec
+                | None -> false)
+              auth
+          in
+          let matches_wc = find wc_name
+          and matches_name = find name
+          in
+          if Domain_name.Map.cardinal matches_wc = 1 then
+            let key, v = Domain_name.Map.choose matches_wc in
+            let acc' = Domain_name.Map.add key v acc in
+            find_them acc' (Domain_name.drop_label_exn wc_name)
+          else if Domain_name.Map.cardinal matches_name = 1 then
+            (* ENT !? *)
+            let key, v = Domain_name.Map.choose matches_name in
+            let acc' = Domain_name.Map.add key v acc in
+            find_them acc' (Domain_name.drop_label_exn wc_name)
+          else
+            Error (`Msg (Fmt.str "no denial of existence for %a found"
+                           Domain_name.pp wc_name))
+        else
+          Ok acc
+      in
+      find_them Domain_name.Map.empty name
+    in
+    Domain_name.Map.fold (fun wc_owner (rr_map, km) acc ->
+        let* () = acc in
+        Logs.debug (fun m -> m "wc_owner %a" Domain_name.pp wc_owner);
+        let wc_nsec = Rr_map.get Nsec rr_map in
+        let wc_used_name = KM.find (K Nsec) km in
+        let* () =
+          if Domain_name.equal wc_used_name wc_owner then Ok () else
+            Error (`Msg (Fmt.str "wildcard owner %a and wildcard used name %a differ"
+                           Domain_name.pp wc_owner Domain_name.pp wc_used_name))
+        in
+        let wc = Domain_name.prepend_label_exn wc_owner "*" in
+        name_in_chain ~name:wc ~owner:wc_owner wc_nsec)
+      wcs (Ok ())
 
 let nsec3_hash salt iterations name =
   let cs_name = Rr_map.canonical_encoded_name name in
@@ -332,8 +345,8 @@ let nsec3_non_existence name ~soa_name auth =
     in
     let nsec3_between hashed_name =
       Log.debug (fun m -> m "nsec3 between %a" Domain_name.pp hashed_name);
-      if
-        Domain_name.Map.exists (fun name (rrs, _) ->
+      let m =
+        Domain_name.Map.filter (fun name (rrs, _) ->
             if Domain_name.compare name hashed_name < 0 then begin
               Log.debug (fun m -> m "(%a) yes %a" Domain_name.pp hashed_name
                             Domain_name.pp name);
@@ -350,8 +363,9 @@ let nsec3_non_existence name ~soa_name auth =
             end else
               false)
           nsec3_map
-      then
-        Ok ()
+      in
+      if Domain_name.Map.cardinal m = 1 then
+        Ok (Domain_name.Map.choose m)
       else begin
         Log.debug (fun m -> m "nsec3 between %a no" Domain_name.pp hashed_name);
         Error (`Msg (Fmt.str "no NSEC3 with owner < %a < next_owner_hashed"
@@ -359,16 +373,30 @@ let nsec3_non_existence name ~soa_name auth =
       end
     in
     let* (last_chop, closest_encloser) = find_it "" name in
-    Log.debug (fun m -> m "last chop %s closest encloser %a"
-                  last_chop Domain_name.pp closest_encloser);
+    Log.debug (fun m -> m "last chop %s closest encloser %a (hashed %a)"
+                  last_chop Domain_name.pp closest_encloser
+                  Domain_name.pp (hashed_name closest_encloser));
     (* verify existence of nsec3 where owner < next_closer < next_owner_hashed *)
     let next_closer = Domain_name.prepend_label_exn closest_encloser last_chop in
     let hashed_next_closer = hashed_name next_closer in
-    let* () = nsec3_between hashed_next_closer in
-    (* verify existence of nsec3 where owner < wc < next_owner_hashed *)
-    let wc = Domain_name.prepend_label_exn closest_encloser "*" in
-    let hashed_wc = hashed_name wc in
-    nsec3_between hashed_wc
+    let* _, (rrs, _) = nsec3_between hashed_next_closer in
+    let nsec_next_closer = Rr_map.get Nsec3 rrs in
+    let opt_out =
+      match (snd nsec_next_closer).Nsec3.flags with
+      | Some `Opt_out -> true
+      | None -> false
+    in
+    Log.debug (fun m -> m "next_closer %a proved, opt out %B"
+                  Domain_name.pp hashed_next_closer opt_out);
+    (* TODO 8.5 and 8.6!? *)
+    if opt_out then
+      Ok ()
+    else
+      (* verify existence of nsec3 where owner < wc < next_owner_hashed *)
+      let wc = Domain_name.prepend_label_exn closest_encloser "*" in
+      let hashed_wc = hashed_name wc in
+      let* _ = nsec3_between hashed_wc in
+      Ok ()
   end
 
 let nsec_non_existence name ~soa_name auth =
