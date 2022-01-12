@@ -1506,11 +1506,8 @@ module Rfc4035 = struct
       in
       Domain_name.Map.singleton (dn "b.example") rrs
     in
-    match
-      Dnssec.validate_no_data now name dnskeys Ds auth
-    with
-    | Ok _ -> ()
-    | Error (`Msg m) -> Alcotest.fail m
+    Alcotest.check res __LOC__ (Error (`No_data fake_soa))
+      (verify_reply name Ds (`Answer (Name_rr_map.empty, auth)))
 
   let wildcard_expansion_b6 () =
     let name = dn "a.z.w.example"

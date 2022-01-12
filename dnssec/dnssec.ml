@@ -1,6 +1,17 @@
 open Dns
 
+let src = Logs.Src.create "dnssec" ~doc:"DNS Security"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 let ( let* ) = Result.bind
+
+module KM = Map.Make(struct type t = Rr_map.k let compare = Rr_map.comparek end)
+
+let pp_km_name_rr_map ppf rrs =
+  List.iter (fun (name, (rr_map, _)) ->
+      Fmt.(list ~sep:(any "@.") string) ppf
+        (List.map (Rr_map.text_b name) (Rr_map.bindings rr_map)))
+    (Domain_name.Map.bindings rrs)
 
 let guard a e = if a then Ok () else Error e
 
@@ -166,34 +177,16 @@ let validate_rrsig_keys now dnskeys rrsigs requested_domain t v =
       open_err (verify now pkey requested_domain rrsig t v))
     (Ok Domain_name.root) keys_rrsigs
 
-let find_matching_rrsig typ rr_map =
-  let _, rrsigs =
-    Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
-      (Rr_map.find Rrsig rr_map)
-  in
-  let int = Rr_map.to_int typ in
-  let rrsigs =
-    Rr_map.Rrsig_set.filter
-      (fun rrsig -> rrsig.Rrsig.type_covered = int)
-      rrsigs
-  in
-  if Rr_map.Rrsig_set.is_empty rrsigs then
-    Error (`Msg (Fmt.str "couldn't find RRSIG for %a" Rr_map.ppk (K typ)))
-  else
-    Ok rrsigs
-
-let validate_soa now dnskeys auth =
+let find_soa auth =
   match
-    Domain_name.Map.fold (fun k rr_map acc ->
+    Domain_name.Map.fold (fun k (rr_map, kms) acc ->
         match Rr_map.(find Soa rr_map) with
-        | Some soa -> Some (Domain_name.raw k, soa, rr_map)
+        | Some soa -> Some (Domain_name.raw k, soa, KM.find (K Soa) kms)
         | None -> acc)
       auth None
   with
   | None -> Error (`Msg "no SOA in authority")
-  | Some (name, soa, rr_map) ->
-    let* rrsigs_soa = find_matching_rrsig Soa rr_map in
-    let* used_name = validate_rrsig_keys now dnskeys rrsigs_soa name Soa soa in
+  | Some (name, soa, used_name) ->
     let* () =
       if Domain_name.equal name used_name then Ok () else
         Error (`Msg (Fmt.str "SOA owner %a differs from used name %a"
@@ -219,12 +212,11 @@ let name_in_chain ~name ~owner nsec =
                    Domain_name.pp name
                    Domain_name.pp (snd nsec).Nsec.next_domain))
 
-let wildcard_non_existence now ~soa_name name dnskeys auth =
+let wildcard_non_existence ~soa_name name auth =
   Logs.debug (fun m -> m "wildcard non-existence %a" Domain_name.pp name);
   let* wcs =
     (* for non-existing wildcard NSEC: its owner must be between
        <name> and <soa_name> *)
-    (* TODO deal with nsec without rrsig etc. *)
     let rec find_them acc name =
       Logs.debug (fun m -> m "find_them with %a" Domain_name.pp name);
       if not (Domain_name.equal soa_name name) then
@@ -232,7 +224,7 @@ let wildcard_non_existence now ~soa_name name dnskeys auth =
         Logs.debug (fun m -> m "find_them %a, wc_name %a" Domain_name.pp name
                        Domain_name.pp wc_name);
         let matches =
-          Domain_name.Map.filter (fun owner rr_map ->
+          Domain_name.Map.filter (fun owner (rr_map, _) ->
               match Rr_map.find Nsec rr_map with
               | Some nsec -> is_name_in_chain ~name:wc_name ~owner nsec
               | None -> false)
@@ -250,14 +242,11 @@ let wildcard_non_existence now ~soa_name name dnskeys auth =
     in
     find_them Domain_name.Map.empty name
   in
-  Domain_name.Map.fold (fun wc_owner rr_map acc ->
+  Domain_name.Map.fold (fun wc_owner (rr_map, km) acc ->
       let* () = acc in
       Logs.debug (fun m -> m "wc_owner %a" Domain_name.pp wc_owner);
       let wc_nsec = Rr_map.get Nsec rr_map in
-      let* wc_rrsigs = find_matching_rrsig Nsec rr_map in
-      let* wc_used_name =
-        validate_rrsig_keys now dnskeys wc_rrsigs wc_owner Nsec wc_nsec
-      in
+      let wc_used_name = KM.find (K Nsec) km in
       let* () =
         if Domain_name.equal wc_used_name wc_owner then Ok () else
           Error (`Msg (Fmt.str "wildcard owner %a and wildcard used name %a differ"
@@ -267,15 +256,11 @@ let wildcard_non_existence now ~soa_name name dnskeys auth =
       name_in_chain ~name:wc ~owner:wc_owner wc_nsec)
     wcs (Ok ())
 
-let validate_nsec now owner dnskeys nsec rr_map =
-  let* rrsigs = find_matching_rrsig Nsec rr_map in
-  validate_rrsig_keys now dnskeys rrsigs owner Nsec nsec
-
-let nsec_chain now name dnskeys auth =
-  let* (owner, rr_map) =
+let nsec_chain name auth =
+  let* (owner, rrs) =
     let matches =
       Domain_name.Map.filter (fun owner rr_map ->
-          match Rr_map.find Nsec rr_map with
+          match Rr_map.find Nsec (fst rr_map) with
           | Some nsec ->
             Logs.debug (fun m -> m "is domain name %a in chain %a (to %a)?"
                            Domain_name.pp name Domain_name.pp owner
@@ -288,10 +273,10 @@ let nsec_chain now name dnskeys auth =
       Ok (Domain_name.Map.choose matches)
     else
       Error (`Msg (Fmt.str "couldn't find nsec chain record covering %a in %a"
-                     Domain_name.pp name Name_rr_map.pp auth))
+                     Domain_name.pp name pp_km_name_rr_map auth))
   in
-  let nsec = Rr_map.get Nsec rr_map in
-  let* used_name = validate_nsec now owner dnskeys nsec rr_map in
+  let nsec = Rr_map.get Nsec (fst rrs) in
+  let used_name = KM.find (K Nsec) (snd rrs) in
   let* () =
     if Domain_name.equal used_name owner then
       Ok ()
@@ -365,13 +350,13 @@ let nsec3_non_existence name ~zone auth =
   let hashed_wc = hashed_name wc in
   nsec3_between hashed_wc
 
-let validate_nsec_no_domain now dnskeys name auth =
+let validate_nsec_no_domain name auth =
   (* no domain:
      - a SOA from a parent (zone), plus RRSIG
      - an NSEC for non-existing wildcard, plus rrsig
      - a NSEC <prev domain> .. <next-domain>, plus rrsig
      -> ensure requested_domain is between these domains *)
-  let* (soa_name, soa) = validate_soa now dnskeys auth in
+  let* (soa_name, soa) = find_soa auth in
   let* () =
     if Domain_name.is_subdomain ~subdomain:name ~domain:soa_name then
       Ok ()
@@ -379,16 +364,16 @@ let validate_nsec_no_domain now dnskeys name auth =
       Error (`Msg (Fmt.str "question %a is not subdomain of SOA %a"
                      Domain_name.pp name Domain_name.pp soa_name))
   in
-  let* _ = nsec_chain now name dnskeys auth in
-  let* () = wildcard_non_existence now ~soa_name name dnskeys auth in
+  let* _ = nsec_chain name auth in
+  let* () = wildcard_non_existence ~soa_name name auth in
   Ok (soa_name, soa)
 
-let validate_no_data now name dnskeys k auth =
+let validate_no_data name k auth =
   (* no data:
      - SOA + RRSIG
      - (NSEC for name (and not for type = k) OR wildcard NSEC) + RRSIG
   *)
-  let* (soa_name, soa) = validate_soa now dnskeys auth in
+  let* (soa_name, soa) = find_soa auth in
   let* () =
     if Domain_name.is_subdomain ~subdomain:name ~domain:soa_name then
       Ok ()
@@ -396,46 +381,11 @@ let validate_no_data now name dnskeys k auth =
       Error (`Msg (Fmt.str "name %a is not a subdomain of soa %a"
                      Domain_name.pp name Domain_name.pp soa_name))
   in
-  match Name_rr_map.find name Nsec auth with
-  | None ->
-    (* nsec in chain ++ wildcard nsec *)
-    let* _ = nsec_chain now name dnskeys auth in
-    let rec find_wc name =
-      if Domain_name.is_subdomain ~domain:soa_name ~subdomain:name then
-        let wc_name = Domain_name.prepend_label_exn name "*" in
-        Logs.debug (fun m -> m "looking for %a" Domain_name.pp wc_name);
-        match Name_rr_map.find wc_name Nsec auth with
-        | None ->
-          let* name = Domain_name.drop_label name in
-          find_wc name
-        | Some nsec ->
-          let rr_map = Option.get (Domain_name.Map.find wc_name auth) in
-          Ok (wc_name, nsec, rr_map)
-      else
-        Error (`Msg "no wildcard nsec found")
+  match Domain_name.Map.find name auth with
+  | Some (rr_map, kms) when Rr_map.mem Nsec rr_map ->
+    let nsec = Rr_map.get Nsec rr_map
+    and nsec_owner = KM.find (K Nsec) kms
     in
-    let* () =
-      match find_wc name with
-      | Ok (wc_name, wc_nsec, wc_rr_map) ->
-        let* nsec_owner = validate_nsec now wc_name dnskeys wc_nsec wc_rr_map in
-        let* () =
-          if Domain_name.equal nsec_owner wc_name then
-            Ok ()
-          else
-            Error (`Msg (Fmt.str "bad wildcard nsec, wc_name %a nsec_owner %a"
-                           Domain_name.pp wc_name Domain_name.pp nsec_owner))
-        in
-        if Bit_map.mem (Rr_map.to_int k) (snd wc_nsec).Nsec.types then
-          Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
-        else
-          Ok ()
-      | Error _ ->
-        wildcard_non_existence now ~soa_name name dnskeys auth
-    in
-    Ok (soa_name, soa)
-  | Some nsec ->
-    let rr_map = Option.get (Domain_name.Map.find name auth) in
-    let* nsec_owner = validate_nsec now name dnskeys nsec rr_map in
     let* () =
       if Domain_name.equal nsec_owner name then
         Ok ()
@@ -448,15 +398,54 @@ let validate_no_data now name dnskeys k auth =
       Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
     else
       Ok (soa_name, soa)
+  | _ ->
+    (* nsec in chain ++ wildcard nsec *)
+    let* _ = nsec_chain name auth in
+    let rec find_wc name =
+      if Domain_name.is_subdomain ~domain:soa_name ~subdomain:name then
+        let wc_name = Domain_name.prepend_label_exn name "*" in
+        Logs.debug (fun m -> m "looking for %a" Domain_name.pp wc_name);
+        match Domain_name.Map.find wc_name auth with
+        | Some (rr_map, kms) when Rr_map.mem Nsec rr_map ->
+          let nsec = Rr_map.get Nsec rr_map
+          and nsec_owner = KM.find (K Nsec) kms
+          in
+          Ok (wc_name, nsec, nsec_owner)
+        | _ ->
+          let* name = Domain_name.drop_label name in
+          find_wc name
+      else
+        Error (`Msg "no wildcard nsec found")
+    in
+    let* () =
+      match find_wc name with
+      | Ok (wc_name, wc_nsec, wc_nsec_owner) ->
+        let* () =
+          if Domain_name.equal wc_nsec_owner wc_name then
+            Ok ()
+          else
+            Error (`Msg (Fmt.str "bad wildcard nsec, wc_name %a nsec_owner %a"
+                           Domain_name.pp wc_name Domain_name.pp wc_nsec_owner))
+        in
+        if Bit_map.mem (Rr_map.to_int k) (snd wc_nsec).Nsec.types then
+          Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
+        else
+          Ok ()
+      | Error _ ->
+        wildcard_non_existence ~soa_name name auth
+    in
+    Ok (soa_name, soa)
 
 let rec validate_answer :
-  type a. fuel:int -> follow_cname:bool -> Ptime.t -> Rr_map.Dnskey_set.t ->
-  [`raw] Domain_name.t -> a Rr_map.rr -> Name_rr_map.t -> Name_rr_map.t ->
+  type a. fuel:int -> follow_cname:bool ->
+  [`raw] Domain_name.t -> a Rr_map.rr ->
+  (Rr_map.t * [`raw] Domain_name.t KM.t) Domain_name.Map.t ->
+  (Rr_map.t * [`raw] Domain_name.t KM.t) Domain_name.Map.t ->
   (a,
    [> `No_data of [`raw] Domain_name.t * Soa.t
    | `Msg of string
    | `Cname of [`raw] Domain_name.t ]) result =
-  fun ~fuel ~follow_cname now dnskeys name k answer auth ->
+  fun ~fuel ~follow_cname name k answer auth ->
   Logs.debug (fun m -> m "validating %a (%a)"
                  Domain_name.pp name Rr_map.ppk (K k));
   if fuel = 0 then
@@ -464,33 +453,31 @@ let rec validate_answer :
   else
     match Domain_name.Map.find name answer with
     | None ->
-      let* (soa_name, soa) = validate_no_data now name dnskeys k auth in
+      let* (soa_name, soa) = validate_no_data name k auth in
       Logs.debug (fun m -> m "validated no data");
       Error (`No_data (soa_name, soa))
-    | Some rr_map ->
+    | Some (rr_map, kms) ->
       match Rr_map.find k rr_map with
       | Some rrs ->
-        let* rrsigs = find_matching_rrsig k rr_map in
-        let* used_name = validate_rrsig_keys now dnskeys rrsigs name k rrs in
+        let used_name = KM.find (K k) kms in
         let* () =
           if Domain_name.equal used_name name then
             Ok ()
           else
             (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
                positive reply (no direct match) *)
-            let* _ = nsec_chain now name dnskeys auth in
+            let* _ = nsec_chain name auth in
             Ok ()
         in
         Ok rrs
       | None ->
         match Rr_map.find Cname rr_map with
         | None ->
-          let* (soa_name, soa) = validate_no_data now name dnskeys k auth in
+          let* (soa_name, soa) = validate_no_data name k auth in
           Logs.debug (fun m -> m "validated no data");
           Error (`No_data (soa_name, soa))
         | Some rr ->
-          let* rrsigs = find_matching_rrsig Cname rr_map in
-          let* used_name = validate_rrsig_keys now dnskeys rrsigs name Cname rr in
+          let used_name = KM.find (K Cname) kms in
           let* () =
             Logs.debug (fun m -> m "name %a used_name %a" Domain_name.pp name Domain_name.pp used_name);
             if Domain_name.equal used_name name then
@@ -498,13 +485,13 @@ let rec validate_answer :
             else
               (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
                  positive reply (no direct match) *)
-              let* _ = nsec_chain now name dnskeys auth in
+              let* _ = nsec_chain name auth in
               Ok ()
           in
           Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
           if follow_cname then
             let fuel = fuel - 1 in
-            validate_answer ~fuel ~follow_cname now dnskeys (snd rr) k answer auth
+            validate_answer ~fuel ~follow_cname (snd rr) k answer auth
           else
             Error (`Cname (snd rr))
 
@@ -517,13 +504,56 @@ let verify_reply : type a. ?fuel:int -> ?follow_cname:bool -> Ptime.t ->
    | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
    | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result =
   fun ?(fuel = 20) ?(follow_cname = true) now dnskeys name k reply ->
-  Logs.debug (fun m -> m "validating %a (%a)"
+  Logs.debug (fun m -> m "verifying %a (%a)"
                  Domain_name.pp name Rr_map.ppk (K k));
+  (* to avoid missing a signature check, and also checking the signature
+     multiple times, first verify all signatures in the map *)
+  let check_signatures map =
+    (* the result is again a map, but with an additional nesting to track the
+       used name (wildcard signatures) *)
+    Domain_name.Map.fold (fun name rr_map acc ->
+        let _, rrsigs =
+          Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
+            (Rr_map.find Rrsig rr_map)
+        in
+        let rrs = Rr_map.fold (fun b ((rrs, names) as acc) ->
+            match b with
+            | B (Rr_map.Rrsig, _) -> acc
+            | B (k, v) ->
+              let int = Rr_map.to_int k in
+              let rrsigs =
+                Rr_map.Rrsig_set.filter
+                  (fun rrsig -> rrsig.Rrsig.type_covered = int)
+                  rrsigs
+              in
+              if Rr_map.Rrsig_set.is_empty rrsigs then
+                Log.warn (fun m -> m "couldn't find RRSIG for %a %a"
+                             Domain_name.pp name Rr_map.pp_b b);
+              match validate_rrsig_keys now dnskeys rrsigs name k v with
+              | Ok used_name ->
+                Rr_map.add k v rrs, KM.add (Rr_map.K k) used_name names
+              | Error `Msg msg ->
+                Log.warn (fun m -> m "RRSIG verification for %a %a failed: %s"
+                             Domain_name.pp name Rr_map.pp_b b msg);
+                acc) rr_map (Rr_map.empty, KM.empty)
+        in
+        if Rr_map.is_empty (fst rrs) then
+          acc
+        else
+          Domain_name.Map.add name rrs acc)
+      map Domain_name.Map.empty
+  in
   match reply with
   | `Answer (answer, authority) ->
-    validate_answer ~fuel ~follow_cname now dnskeys name k answer authority
-  | `Rcode_error (NXDomain, Query, Some (_answer, authority)) ->
-    let* (soa_name, soa) = validate_nsec_no_domain now dnskeys name authority in
+    let answer = check_signatures answer
+    and authority = check_signatures authority
+    in
+    validate_answer ~fuel ~follow_cname name k answer authority
+  | `Rcode_error (NXDomain, Query, Some (answer, authority)) ->
+    let _answer = check_signatures answer
+    and authority = check_signatures authority
+    in
+    let* (soa_name, soa) = validate_nsec_no_domain name authority in
     Error (`No_domain (soa_name, soa))
   | r ->
     Error (`Msg (Fmt.str "unexpected reply: %a" Packet.pp_reply r))
