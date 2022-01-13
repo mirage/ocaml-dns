@@ -1721,6 +1721,303 @@ module Rfc4035 = struct
   ]
 end
 
+module Rfc5155 = struct
+  let key1 =
+    Dnskey.{
+      flags = Dnskey.F.singleton `Zone ;
+      algorithm = RSASHA1_NSEC3_SHA1 ;
+      key = Cstruct.of_string (Base64.decode_exn "AwEAAaetidLzsKWUt4swWR8yu0wPHPiUi8LUsAD0QPWU+wzt89epO6tHzkMBVDkC7qphQO2hTY4hHn9npWFRw5BYubE=")
+    }
+  and key2 =
+    Dnskey.{
+      flags = Dnskey.F.(add `Secure_entry_point (singleton `Zone)) ;
+      algorithm = RSASHA1_NSEC3_SHA1 ;
+      key = Cstruct.of_string (Base64.decode_exn "AwEAAcUlFV1vhmqx6NSOUOq2R/dsR7Xm3upJj7IommWSpJABVfW8Q0rOvXdM6kzt+TAu92L9AbsUdblMFin8CVF3n4s=")
+    }
+
+  let ts (y, m, d) (hh, mm, ss) =
+    Option.get (Ptime.of_date_time ((y, m, d), ((hh, mm, ss), 0)))
+
+  let now = ts (2006, 05, 01) (12, 00, 00)
+  let dnskeys = Rr_map.Dnskey_set.(add key1 (singleton key2))
+
+  let verify_reply : type a . [`raw] Domain_name.t -> a Rr_map.rr ->
+    Packet.reply ->
+    (Rr_map.b,
+     [> `Msg of string
+     | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+     | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result =
+    fun name k reply ->
+    match Dnssec.verify_reply now dnskeys name k reply with
+    | Ok rr -> Ok (Rr_map.B (k, rr))
+    | Error _ as e -> e
+
+  let rrsig type_covered label_count signature =
+    let signature = Cstruct.of_string (Base64.decode_exn (String.concat "" signature)) in
+    Rrsig.{
+        type_covered ;
+        algorithm = RSASHA1_NSEC3_SHA1 ;
+        label_count ;
+        original_ttl = 3600l ;
+        signature_expiration =  ts (2015, 04, 20) (23, 59, 59) ;
+        signature_inception = ts (2005, 10, 21) (00, 00, 00) ;
+        key_tag = 40430 ;
+        signer_name = dn "example" ;
+        signature }
+
+  let nsec3 next_owner types =
+    let next_owner_hashed =
+      Cstruct.of_string (Result.get_ok (Base32.decode (String.uppercase_ascii next_owner)))
+    in
+    Nsec3.{ flags = Some `Opt_out ; iterations = 12 ;
+            salt = Cstruct.of_hex "aabbccdd" ;
+            next_owner_hashed ;
+            types }
+
+  let soa =
+    Soa.{ nameserver = dn "ns1.example" ;
+          hostmaster = dn "bugs.x.w.example" ;
+          serial = 1l ;
+          refresh = 3600l ;
+          retry = 300l ;
+          expiry = 3600000l ;
+          minimum = 3600l ; }
+  let soa_rrsig =
+    rrsig (Rr_map.to_int Soa) 1 [
+      "Hu25UIyNPmvPIVBrldN+9Mlp9Zql39qaUd8i";
+      "q4ZLlYWfUUbbAS41pG+68z81q1xhkYAcEyHd";
+      "VI2LmKusbZsT0Q==" ]
+
+  let b1_name_error () =
+    let name = dn "a.c.x.w.example" in
+    let auth =
+      let n1 =
+        nsec3 "2t7b4g4vsa5smi47k61mv5bv1a22bojr"
+          (Bit_map.of_list [ Rr_map.to_int Mx ; Rr_map.to_int Dnskey ;
+                             Rr_map.to_int Ns ; Rr_map.to_int Soa ;
+                             51 (* nsec3 param *) ; Rr_map.to_int Rrsig ])
+      and n1_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "OSgWSm26B+cS+dDL8b5QrWr/dEWhtCsKlwKL";
+          "IBHYH6blRxK9rC0bMJPwQ4mLIuw85H2EY762";
+          "BOCXJZMnpuwhpA==" ]
+      and n2 =
+        nsec3 "gjeqe526plbf1g8mklp59enfd789njgi"
+          (Bit_map.of_list [ Rr_map.to_int Mx ; Rr_map.to_int Rrsig ])
+      and n2_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "ZkPG3M32lmoHM6pa3D6gZFGB/rhL//Bs3Omh";
+          "5u4m/CUiwtblEVOaAKKZd7S959OeiX43aLX3";
+          "pOv0TSTyiTxIZg==" ]
+      and n3 =
+        nsec3 "b4um86eghhds6nea196smvmlo4ors995"
+          (Bit_map.of_list [ Rr_map.to_int Ns ; Rr_map.to_int Ds ; Rr_map.to_int Rrsig ])
+      and n3_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "g6jPUUpduAJKRljUsN8gB4UagAX0NxY9shwQ";
+          "Aynzo8EUWH+z6hEIBlUTPGj15eZll6VhQqgZ";
+          "XtAIR3chwgW+SA==" ]
+      in
+      Domain_name.Map.(
+        add
+          (dn "example")
+          Rr_map.(add Soa soa (singleton Rrsig (3600l, Rrsig_set.singleton soa_rrsig)))
+          (add (dn "0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example")
+             Rr_map.(add Nsec3 (3600l, n1) (singleton Rrsig (3600l, Rrsig_set.singleton n1_rrsig)))
+             (add (dn "b4um86eghhds6nea196smvmlo4ors995.example")
+                Rr_map.(add Nsec3 (3600l, n2) (singleton Rrsig (3600l, Rrsig_set.singleton n2_rrsig)))
+                (singleton (dn "35mthgpgcu1qg68fab165klnsnk3dpvl.example")
+                   Rr_map.(add Nsec3 (3600l, n3) (singleton Rrsig (3600l, Rrsig_set.singleton n3_rrsig)))))))
+    in
+    let exp = Error (`No_domain fake_soa) in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name A
+         (`Rcode_error (NXDomain, Query, Some (Name_rr_map.empty, auth))))
+
+  let b2_nodata_error () =
+    let name = dn "ns1.example" in
+    let auth =
+      let n = nsec3 "2vptu5timamqttgl4luu9kg21e0aor3s"
+          (Bit_map.of_list [ Rr_map.to_int A ; Rr_map.to_int Rrsig ])
+      and n_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "OmBvJ1Vgg1hCKMXHFiNeIYHK9XVW0iLDLwJN";
+          "4TFoNxZuP03gAXEI634YwOc4YBNITrj413iq";
+          "NI6mRk/r1dOSUw==" ]
+      in
+      Domain_name.Map.(
+        add (dn "example") Rr_map.(add Soa soa (singleton Rrsig (3600l, Rrsig_set.singleton soa_rrsig)))
+          (singleton (dn "2t7b4g4vsa5smi47k61mv5bv1a22bojr.example")
+             Rr_map.(add Nsec3 (3600l, n) (singleton Rrsig (3600l, Rrsig_set.singleton n_rrsig)))))
+    in
+    let exp = Error (`No_data fake_soa) in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Mx (`Answer (Name_rr_map.empty, auth)))
+
+  let b2_1_nodata_error () =
+    let name = dn "y.w.example" in
+    let auth =
+      let n = nsec3 "k8udemvp1j2f7eg6jebps17vp3n8i58h" Bit_map.empty
+      and n_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "gPkFp1s2QDQ6wQzcg1uSebZ61W33rUBDcTj7";
+          "2F3kQ490fEdp7k1BUIfbcZtPbX3YCpE+sIt0";
+          "MpzVSKfTwx4uYA==" ]
+      in
+      Domain_name.Map.(
+        add (dn "example") Rr_map.(add Soa soa (singleton Rrsig (3600l, Rrsig_set.singleton soa_rrsig)))
+          (singleton (dn "ji6neoaepv8b5o6k4ev33abha8ht9fgc.example")
+             Rr_map.(add Nsec3 (3600l, n) (singleton Rrsig (3600l, Rrsig_set.singleton n_rrsig)))))
+    in
+    let exp = Error (`No_data fake_soa) in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name A (`Answer (Name_rr_map.empty, auth)))
+
+  let b3_refer_unsigned () =
+    let name = dn "mc.c.example" in
+    let auth =
+      let n1 = nsec3 "b4um86eghhds6nea196smvmlo4ors995"
+          (Bit_map.of_list [ Rr_map.to_int Ns ; Rr_map.to_int Ds ; Rr_map.to_int Rrsig ])
+      and n1_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "g6jPUUpduAJKRljUsN8gB4UagAX0NxY9shwQ";
+          "Aynzo8EUWH+z6hEIBlUTPGj15eZll6VhQqgZ";
+          "XtAIR3chwgW+SA==" ]
+      and n2 = nsec3 "2t7b4g4vsa5smi47k61mv5bv1a22bojr"
+          (Bit_map.of_list [ Rr_map.to_int Mx ; Rr_map.to_int Dnskey ;
+                             Rr_map.to_int Ns ; Rr_map.to_int Soa ;
+                             51 (* NSEC3PARAM *) ; Rr_map.to_int Rrsig ])
+      and n2_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "OSgWSm26B+cS+dDL8b5QrWr/dEWhtCsKlwKL";
+          "IBHYH6blRxK9rC0bMJPwQ4mLIuw85H2EY762";
+          "BOCXJZMnpuwhpA==" ]
+      and ns =
+        let h s = Domain_name.host_exn (dn s) in
+        Domain_name.Host_set.(add (h "ns1.c.example") (singleton (h "ns2.c.example")))
+      in
+      Domain_name.Map.(
+        add (dn "c.example") (Rr_map.singleton Ns (3600l, ns))
+          (add (dn "35mthgpgcu1qg68fab165klnsnk3dpvl.example")
+             Rr_map.(add Nsec3 (3600l, n1) (singleton Rrsig (3600l, Rrsig_set.singleton n1_rrsig)))
+             (singleton (dn "0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example")
+                Rr_map.(add Nsec3 (3600l, n2) (singleton Rrsig (3600l, Rrsig_set.singleton n2_rrsig))))))
+    in
+    (* TODO unclear what to expect here! *)
+    let exp = Error (`No_data fake_soa) in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Mx (`Answer (Name_rr_map.empty, auth)))
+
+  let b4_wildcard () =
+    let name = dn "a.z.w.example" in
+    let h s = Domain_name.host_exn (dn s) in
+    let mx =
+      let mx = Mx.{ preference = 1 ; mail_exchange = h "ai.example" } in
+      3600l, Rr_map.Mx_set.singleton mx
+    in
+    let answer =
+      let mx_rrsig =
+        rrsig (Rr_map.to_int Mx) 2 [
+          "CikebjQwGQPwijVcxgcZcSJKtfynugtlBiKb";
+          "9FcBTrmOoyQ4InoWVudhCWsh/URX3lc4WRUM";
+          "ivEBP6+4KS3ldA==" ]
+      in
+      Domain_name.Map.singleton name Rr_map.(add Mx mx (singleton Rrsig (3600l, Rrsig_set.singleton mx_rrsig)))
+    and auth =
+      let ns =
+        Domain_name.Host_set.(add (h "ns1.example") (singleton (h "ns2.example")))
+      and ns_rrsig =
+        rrsig (Rr_map.to_int Ns) 1 [
+          "PVOgtMK1HHeSTau+HwDWC8Ts+6C8qtqd4pQJ";
+          "qOtdEVgg+MA+ai4fWDEhu3qHJyLcQ9tbD2vv";
+          "CnMXjtz6SyObxA==" ]
+      and n = nsec3 "r53bq7cc2uvmubfu5ocmm6pers9tk9en"
+          (Bit_map.of_list [ Rr_map.to_int A ; Rr_map.to_int Rrsig ])
+      and n_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "hV5I89b+4FHJDATp09g4bbN0R1F845CaXpL3";
+          "ZxlMKimoPAyqletMlEWwLfFia7sdpSzn+ZlN";
+          "NlkxWcLsIlMmUg==" ]
+      in
+      Domain_name.Map.(
+        add (dn "example") Rr_map.(add Ns (3600l, ns) (singleton Rrsig (3600l, Rrsig_set.singleton ns_rrsig)))
+          (singleton (dn "q04jkcevqvmu85r014c7dkba38o0ji5r.example")
+             Rr_map.(add Nsec3 (3600l, n) (singleton Rrsig (3600l, Rrsig_set.singleton n_rrsig)))))
+    in
+    let exp = Ok (Rr_map.B (Mx, mx)) in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Mx (`Answer (answer, auth)))
+
+  let b5_wildcard_nodata () =
+    let name = dn "a.z.w.example" in
+    let auth =
+      let n1 = nsec3 "kohar7mbb8dc2ce8a9qvl8hon4k53uhi" Bit_map.empty
+      and n1_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "FtXGbvF0+wf8iWkyo73enAuVx03klN+pILBK";
+          "S6qCcftVtfH4yVzsEZquJ27NHR7ruxJWDNMt";
+          "Otx7w9WfcIg62A==" ]
+      and n2 = nsec3 "r53bq7cc2uvmubfu5ocmm6pers9tk9en"
+          (Bit_map.of_list [ Rr_map.to_int A ; Rr_map.to_int Rrsig ])
+      and n2_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "hV5I89b+4FHJDATp09g4bbN0R1F845CaXpL3";
+          "ZxlMKimoPAyqletMlEWwLfFia7sdpSzn+ZlN";
+          "NlkxWcLsIlMmUg==" ]
+      and n3 = nsec3 "t644ebqk9bibcna874givr6joj62mlhv"
+          (Bit_map.of_list [ Rr_map.to_int Mx ; Rr_map.to_int Rrsig ])
+      and n3_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "aupviViruXs4bDg9rCbezzBMf9h1ZlDvbW/C";
+          "ZFKulIGXXLj8B/fsDJarXVDA9bnUoRhEbKp+";
+          "HF1FWKW7RIJdtQ==" ]
+      in
+      Domain_name.Map.(
+        add (dn "example") Rr_map.(add Soa soa (singleton Rrsig (3600l, Rrsig_set.singleton soa_rrsig)))
+          (add (dn "k8udemvp1j2f7eg6jebps17vp3n8i58h.example")
+             Rr_map.(add Nsec3 (3600l, n1) (singleton Rrsig (3600l, Rrsig_set.singleton n1_rrsig)))
+             (add (dn "q04jkcevqvmu85r014c7dkba38o0ji5r.example")
+                Rr_map.(add Nsec3 (3600l, n2) (singleton Rrsig (3600l, Rrsig_set.singleton n2_rrsig)))
+                (singleton (dn "r53bq7cc2uvmubfu5ocmm6pers9tk9en.example")
+                   Rr_map.(add Nsec3 (3600l, n3) (singleton Rrsig (3600l, Rrsig_set.singleton n3_rrsig)))))))
+    in
+    let exp = Error (`No_data fake_soa) in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Aaaa (`Answer (Name_rr_map.empty, auth)))
+
+  let b6_ds_nodata () =
+    let name = dn "example" in
+    let auth =
+      let n = nsec3 "2t7b4g4vsa5smi47k61mv5bv1a22bojr"
+          (Bit_map.of_list [ Rr_map.to_int Mx ; Rr_map.to_int Dnskey ;
+                             Rr_map.to_int Ns ; Rr_map.to_int Soa ;
+                             51 (* NSEC3PARAM *) ; Rr_map.to_int Rrsig ])
+      and n_rrsig =
+        rrsig (Rr_map.to_int Nsec3) 2 [
+          "OSgWSm26B+cS+dDL8b5QrWr/dEWhtCsKlwKL";
+          "IBHYH6blRxK9rC0bMJPwQ4mLIuw85H2EY762";
+          "BOCXJZMnpuwhpA==" ]
+      in
+      Domain_name.Map.(
+        add name Rr_map.(add Soa soa (singleton Rrsig (3600l, Rrsig_set.singleton soa_rrsig)))
+          (singleton (dn "0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example")
+             Rr_map.(add Nsec3 (3600l, n) (singleton Rrsig (3600l, Rrsig_set.singleton n_rrsig)))))
+    in
+    let exp = Error (`No_data fake_soa) in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Ds (`Answer (Name_rr_map.empty, auth)))
+
+  let tests = [
+    "name error (b1)", `Quick, b1_name_error ;
+    "no data error (b2)", `Quick, b2_nodata_error ;
+    "no data (ENT) error (b2.1)", `Quick, b2_1_nodata_error ;
+    "refer to unsigned zone (b3)", `Quick, b3_refer_unsigned ;
+    "wildcard (b4)", `Quick, b4_wildcard ;
+    "wildcard no data (b5)", `Quick, b5_wildcard_nodata ;
+    "DS no data (b6)", `Quick, b6_ds_nodata ;
+  ]
+end
+
 let () =
   Printexc.record_backtrace true;
   Logs.set_reporter (Logs_fmt.reporter ());
@@ -1728,4 +2025,5 @@ let () =
   Alcotest.run "DNSSEC tests" [
     "DNSSEC tests", tests ;
     "RFC 4035 tests" , Rfc4035.tests ;
+    "RFC 5155 tests" , Rfc5155.tests ;
   ]

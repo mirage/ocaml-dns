@@ -86,6 +86,7 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
   let* algorithm =
     match rrsig.Rrsig.algorithm with
     | Dnskey.RSA_SHA1 -> Ok `SHA1
+    | Dnskey.RSASHA1_NSEC3_SHA1 -> Ok `SHA1
     | Dnskey.RSA_SHA256 -> Ok `SHA256
     | Dnskey.RSA_SHA512 -> Ok `SHA512
     | Dnskey.P256_SHA256 -> Ok `SHA256
