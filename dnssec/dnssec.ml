@@ -145,37 +145,27 @@ let validate_ds zone dnskeys ds =
     Error (`Msg "key signing key couldn't be validated")
 
 let validate_rrsig_keys now dnskeys rrsigs requested_domain t v =
-  Logs.debug (fun m -> m "validating for %a typ %a"
+  Log.debug (fun m -> m "validating for %a typ %a"
                  Domain_name.pp requested_domain
                  Rr_map.ppk (K t));
   let keys_rrsigs =
     Rr_map.Dnskey_set.fold (fun key acc ->
         let key_tag = Dnskey.key_tag key in
-        Logs.debug (fun m -> m "key tag (of dnskey) is %d" key_tag);
-        match
-          Rr_map.Rrsig_set.fold (fun rrsig ->
-              Logs.debug (fun m -> m "key tag (of rrsig) is %d" rrsig.Rrsig.key_tag);
-              function
-              | None when rrsig.Rrsig.key_tag = key_tag -> Some rrsig
-              | Some a when rrsig.Rrsig.key_tag = key_tag ->
-                Logs.warn (fun m -> m "multiple rrsig for key %d" key_tag);
-                Some a
-              | _ as s -> s)
-            rrsigs None
-        with
-        | Some rrsig -> (key, rrsig) :: acc
-        | None -> acc)
+        let matching =
+          Rr_map.Rrsig_set.filter (fun rr -> rr.Rrsig.key_tag = key_tag) rrsigs
+        in
+        Rr_map.Rrsig_set.fold (fun rr acc -> (key, rr) :: acc) matching acc)
       dnskeys []
   in
-  let* () = if keys_rrsigs = [] then Error (`Msg "no matching key and rrsig found") else Ok () in
-  Logs.debug (fun m -> m "found %d key-rrsig pairs" (List.length keys_rrsigs));
-  List.fold_left (fun r (key, rrsig) ->
-      let* _name = r in
-      let* pkey = dnskey_to_pk key in
-      Logs.debug (fun m -> m "checking sig with key_tag %d and key %a"
-                     rrsig.Rrsig.key_tag Dnskey.pp key);
-      open_err (verify now pkey requested_domain rrsig t v))
-    (Ok Domain_name.root) keys_rrsigs
+  Log.debug (fun m -> m "found %d key-rrsig pairs" (List.length keys_rrsigs));
+  let verify_signature (key, rrsig) =
+    let* pkey = dnskey_to_pk key in
+    open_err (verify now pkey requested_domain rrsig t v)
+  in
+  match List.partition Result.is_ok (List.map verify_signature keys_rrsigs) with
+  | r :: _, _ -> r
+  | [], e :: _ -> e
+  | [], [] -> Error (`Msg "no key-rrsig pair found")
 
 let find_soa auth =
   match
