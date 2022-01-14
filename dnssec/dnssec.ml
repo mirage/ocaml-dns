@@ -77,7 +77,8 @@ let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
     Error (`Msg (Fmt.str "unsupported key algorithm %a" Dnskey.pp_algorithm algorithm))
 
 let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
-  a Rr_map.key -> a -> ([`raw] Domain_name.t, [ `Msg of string ]) result =
+  a Rr_map.key -> a ->
+  ([`raw] Domain_name.t * [`raw] Domain_name.t, [ `Msg of string ]) result =
   fun now key name rrsig t v ->
   (* from RFC 4034 section 3.1.8.1 *)
   Logs.debug (fun m -> m "verifying for %a (with %a / %a)" Domain_name.pp name
@@ -106,7 +107,10 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
   let* (used_name, data) = Rr_map.prep_for_sig name rrsig t v in
   let hashed () = Mirage_crypto.Hash.digest algorithm data in
   let ok_if_true p =
-    if p then Ok used_name else Error (`Msg "signature verification failed")
+    if p then
+      Ok (used_name, rrsig.Rrsig.signer_name)
+    else
+      Error (`Msg "signature verification failed")
   in
   match key with
   | `P256 key ->
@@ -372,12 +376,16 @@ let nsec3_non_existence name ~soa_name auth =
     Ok ()
 
 let nsec3_chain ~soa_name ~wc_name ~name auth =
+  Log.debug (fun m -> m "nsec3 chain soa %a wc %a name %a"
+                Domain_name.pp soa_name Domain_name.pp wc_name
+                Domain_name.pp name);
   let closest_encloser = Domain_name.drop_label_exn wc_name in
   let next_closer =
     let lbl_idx = Domain_name.count_labels closest_encloser in
-    let lbl = Domain_name.get_label_exn name lbl_idx in
+    let lbl = Domain_name.get_label_exn ~rev:true name lbl_idx in
     Domain_name.prepend_label_exn closest_encloser lbl
   in
+  Log.debug (fun m -> m "next_closer %a" Domain_name.pp next_closer);
   let* (nsec3_map, salt, iterations) = nsec3_rrs auth in
   let hashed_next_closer =
     nsec3_hashed_name ~soa_name salt iterations next_closer
@@ -517,6 +525,7 @@ let no_data name k auth =
 
 let rec validate_answer :
   type a. fuel:int -> follow_cname:bool ->
+  ?signer_name:[`raw] Domain_name.t ->
   [`raw] Domain_name.t -> a Rr_map.rr ->
   (Rr_map.t * [`raw] Domain_name.t KM.t) Domain_name.Map.t ->
   (Rr_map.t * [`raw] Domain_name.t KM.t) Domain_name.Map.t ->
@@ -524,7 +533,7 @@ let rec validate_answer :
    [> `No_data of [`raw] Domain_name.t * Soa.t
    | `Msg of string
    | `Cname of [`raw] Domain_name.t ]) result =
-  fun ~fuel ~follow_cname name k answer auth ->
+  fun ~fuel ~follow_cname ?signer_name name k answer auth ->
   Logs.debug (fun m -> m "validating %a (%a)"
                  Domain_name.pp name Rr_map.ppk (K k));
   if fuel = 0 then
@@ -540,21 +549,23 @@ let rec validate_answer :
         let used_name = KM.find (K k) kms in
         if Domain_name.equal used_name name then
           Ok ()
-        else
-          (* TODO either we know the zone cut (recursive resolver)
-               or there must be some information (NS / SOA) in authority *)
-          let soa_name = Domain_name.root in
+        else begin
           (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
                positive reply (no direct match) *)
           (* RFC 5155 8.8 - there's a candidate closest encloser for qname
              (the used_name without "*") - need to verify existence of a nsec3
              covering next_closer name to qname *)
+          (match signer_name with
+           | None -> Log.warn (fun m -> m "no signer name provided")
+           | Some _ -> ());
+          let soa_name = Option.value ~default:Domain_name.root signer_name in
           match
             nsec_chain ~soa_name name auth,
             nsec3_chain ~soa_name ~wc_name:used_name ~name auth
           with
           | Ok _, _ | _, Ok _ -> Ok ()
           | Error _ as e, _ -> e
+        end
       in
       match Rr_map.find k rr_map with
       | Some rrs ->
@@ -571,12 +582,12 @@ let rec validate_answer :
           Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
           if follow_cname then
             let fuel = fuel - 1 in
-            validate_answer ~fuel ~follow_cname (snd rr) k answer auth
+            validate_answer ~fuel ~follow_cname ?signer_name (snd rr) k answer auth
           else
             Error (`Cname (snd rr))
 
-let verify_reply : type a. ?fuel:int -> ?follow_cname:bool -> Ptime.t ->
-  Rr_map.Dnskey_set.t -> [`raw] Domain_name.t -> a Rr_map.rr ->
+let verify_reply : type a. ?fuel:int -> ?follow_cname:bool ->
+  Ptime.t -> Rr_map.Dnskey_set.t -> [`raw] Domain_name.t -> a Rr_map.rr ->
   Packet.reply ->
   (a,
    [> `Msg of string
@@ -586,17 +597,28 @@ let verify_reply : type a. ?fuel:int -> ?follow_cname:bool -> Ptime.t ->
   fun ?(fuel = 20) ?(follow_cname = true) now dnskeys name k reply ->
   Logs.debug (fun m -> m "verifying %a (%a)"
                  Domain_name.pp name Rr_map.ppk (K k));
+  let fold_option a b =
+    match a, b with
+    | None, None -> None
+    | Some a, None -> Some a
+    | None, Some b -> Some b
+    | Some a, Some b ->
+      if not (Domain_name.equal a b) then
+        Log.warn (fun m -> m "different signer names %a and %a"
+                     Domain_name.pp a Domain_name.pp b);
+      Some a
+  in
   (* to avoid missing a signature check, and also checking the signature
      multiple times, first verify all signatures in the map *)
   let check_signatures map =
     (* the result is again a map, but with an additional nesting to track the
        used name (wildcard signatures) *)
-    Domain_name.Map.fold (fun name rr_map acc ->
+    Domain_name.Map.fold (fun name rr_map (signer_name, acc) ->
         let _, rrsigs =
           Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
             (Rr_map.find Rrsig rr_map)
         in
-        let rrs = Rr_map.fold (fun b ((rrs, names) as acc) ->
+        let signer_name, rrs = Rr_map.fold (fun b ((signer_name, (rrs, names)) as acc) ->
             match b with
             | B (Rr_map.Rrsig, _) -> acc
             | B (k, v) ->
@@ -610,29 +632,33 @@ let verify_reply : type a. ?fuel:int -> ?follow_cname:bool -> Ptime.t ->
                 Log.warn (fun m -> m "couldn't find RRSIG for %a %a"
                              Domain_name.pp name Rr_map.pp_b b);
               match validate_rrsig_keys now dnskeys rrsigs name k v with
-              | Ok used_name ->
-                Rr_map.add k v rrs, KM.add (Rr_map.K k) used_name names
+              | Ok (used_name, signer_name') ->
+                let signer = fold_option signer_name (Some signer_name') in
+                signer, (Rr_map.add k v rrs, KM.add (Rr_map.K k) used_name names)
               | Error `Msg msg ->
                 Log.warn (fun m -> m "RRSIG verification for %a %a failed: %s"
                              Domain_name.pp name Rr_map.pp_b b msg);
-                acc) rr_map (Rr_map.empty, KM.empty)
+                acc) rr_map (signer_name, (Rr_map.empty, KM.empty))
         in
+        signer_name,
         if Rr_map.is_empty (fst rrs) then
           acc
         else
           Domain_name.Map.add name rrs acc)
-      map Domain_name.Map.empty
+      map (None, Domain_name.Map.empty)
   in
   match reply with
   | `Answer (answer, authority) ->
-    let answer = check_signatures answer
-    and authority = check_signatures authority
+    let signer_name, answer = check_signatures answer
+    and signer_name2, authority = check_signatures authority
     in
-    validate_answer ~fuel ~follow_cname name k answer authority
+    let signer_name = fold_option signer_name signer_name2 in
+    validate_answer ~fuel ~follow_cname ?signer_name name k answer authority
   | `Rcode_error (NXDomain, Query, Some (answer, authority)) ->
-    let _answer = check_signatures answer
-    and authority = check_signatures authority
+    let signer_name, _answer = check_signatures answer
+    and signer_name2, authority = check_signatures authority
     in
+    let _signer_name = fold_option signer_name signer_name2 in
     let* (soa_name, soa) = no_domain name authority in
     Error (`No_domain (soa_name, soa))
   | r ->
