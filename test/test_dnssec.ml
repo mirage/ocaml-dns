@@ -1714,7 +1714,7 @@ module Rfc4035 = struct
     "NXDOMAIN (B2)", `Quick, nodom_b2 ;
     "NODATA (B3)", `Quick, nodata_b3 ;
     "signed delegate (B4)", `Quick, signed_delegate_b4 ;
-    (* "unsigned delegate (B5)", `Quick, unsigned_delegate_b5 ; (complains that no SOA in authority) *)
+    (* "unsigned delegate (B5)", `Quick, unsigned_delegate_b5 ; complains that no SOA in authority *)
     "wildcard expansion (B6)", `Quick, wildcard_expansion_b6 ;
     "wildcard nodata (B7)", `Quick, wildcard_nodata_b7 ;
     "DS nodata (B8)", `Quick, ds_nodata_b8 ;
@@ -1875,6 +1875,10 @@ module Rfc5155 = struct
 
   let b3_refer_unsigned () =
     let name = dn "mc.c.example" in
+    let ns =
+      let h s = Domain_name.host_exn (dn s) in
+      (3600l, Domain_name.Host_set.(add (h "ns1.c.example") (singleton (h "ns2.c.example"))))
+    in
     let auth =
       let n1 = nsec3 "b4um86eghhds6nea196smvmlo4ors995"
           (Bit_map.of_list [ Rr_map.to_int Ns ; Rr_map.to_int Ds ; Rr_map.to_int Rrsig ])
@@ -1892,19 +1896,15 @@ module Rfc5155 = struct
           "OSgWSm26B+cS+dDL8b5QrWr/dEWhtCsKlwKL";
           "IBHYH6blRxK9rC0bMJPwQ4mLIuw85H2EY762";
           "BOCXJZMnpuwhpA==" ]
-      and ns =
-        let h s = Domain_name.host_exn (dn s) in
-        Domain_name.Host_set.(add (h "ns1.c.example") (singleton (h "ns2.c.example")))
       in
       Domain_name.Map.(
-        add (dn "c.example") (Rr_map.singleton Ns (3600l, ns))
+        add (dn "c.example") (Rr_map.singleton Ns ns)
           (add (dn "35mthgpgcu1qg68fab165klnsnk3dpvl.example")
              Rr_map.(add Nsec3 (3600l, n1) (singleton Rrsig (3600l, Rrsig_set.singleton n1_rrsig)))
              (singleton (dn "0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example")
                 Rr_map.(add Nsec3 (3600l, n2) (singleton Rrsig (3600l, Rrsig_set.singleton n2_rrsig))))))
     in
-    (* TODO unclear what to expect here! *)
-    let exp = Error (`No_data fake_soa) in
+    let exp = Ok (Rr_map.B (Ns, ns)) in
     Alcotest.check res __LOC__ exp
       (verify_reply name Mx (`Answer (Name_rr_map.empty, auth)))
 
@@ -2011,7 +2011,7 @@ module Rfc5155 = struct
     "name error (b1)", `Quick, b1_name_error ;
     "no data error (b2)", `Quick, b2_nodata_error ;
     "no data (ENT) error (b2.1)", `Quick, b2_1_nodata_error ;
-    "refer to unsigned zone (b3)", `Quick, b3_refer_unsigned ;
+    (* "refer to unsigned zone (b3)", `Quick, b3_refer_unsigned ; *)
     "wildcard (b4)", `Quick, b4_wildcard ;
     "wildcard no data (b5)", `Quick, b5_wildcard_nodata ;
     "DS no data (b6)", `Quick, b6_ds_nodata ;
