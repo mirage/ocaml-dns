@@ -371,6 +371,19 @@ let nsec3_non_existence name ~soa_name auth =
     let* _ = nsec3_between nsec3_map ~soa_name hashed_wc in
     Ok ()
 
+let nsec3_chain ~soa_name ~wc_name ~name auth =
+  let closest_encloser = Domain_name.drop_label_exn wc_name in
+  let next_closer =
+    let lbl_idx = Domain_name.count_labels closest_encloser in
+    let lbl = Domain_name.get_label_exn name lbl_idx in
+    Domain_name.prepend_label_exn closest_encloser lbl
+  in
+  let* (nsec3_map, salt, iterations) = nsec3_rrs auth in
+  let hashed_next_closer =
+    nsec3_hashed_name ~soa_name salt iterations next_closer
+  in
+  nsec3_between nsec3_map ~soa_name hashed_next_closer
+
 let nsec_non_existence name ~soa_name auth =
   let* _ = nsec_chain ~soa_name name auth in
   wildcard_non_existence ~soa_name name auth
@@ -523,21 +536,29 @@ let rec validate_answer :
       Logs.debug (fun m -> m "validated no data");
       Error (`No_data (soa_name, soa))
     | Some (rr_map, kms) ->
+      let maybe_validate_wildcard_answer k =
+        let used_name = KM.find (K k) kms in
+        if Domain_name.equal used_name name then
+          Ok ()
+        else
+          (* TODO either we know the zone cut (recursive resolver)
+               or there must be some information (NS / SOA) in authority *)
+          let soa_name = Domain_name.root in
+          (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
+               positive reply (no direct match) *)
+          (* RFC 5155 8.8 - there's a candidate closest encloser for qname
+             (the used_name without "*") - need to verify existence of a nsec3
+             covering next_closer name to qname *)
+          match
+            nsec_chain ~soa_name name auth,
+            nsec3_chain ~soa_name ~wc_name:used_name ~name auth
+          with
+          | Ok _, _ | _, Ok _ -> Ok ()
+          | Error _ as e, _ -> e
+      in
       match Rr_map.find k rr_map with
       | Some rrs ->
-        let used_name = KM.find (K k) kms in
-        let* () =
-          if Domain_name.equal used_name name then
-            Ok ()
-          else
-            (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
-               positive reply (no direct match) *)
-            let soa_name = Domain_name.root in
-            (* TODO either we know the zone cut (recursive resolver)
-               or there must be some information (NS / SOA) in authority *)
-            let* _ = nsec_chain ~soa_name name auth in
-            Ok ()
-        in
+        let* () = maybe_validate_wildcard_answer k in
         Ok rrs
       | None ->
         match Rr_map.find Cname rr_map with
@@ -546,20 +567,7 @@ let rec validate_answer :
           Logs.debug (fun m -> m "validated no data");
           Error (`No_data (soa_name, soa))
         | Some rr ->
-          let used_name = KM.find (K Cname) kms in
-          let* () =
-            Logs.debug (fun m -> m "name %a used_name %a" Domain_name.pp name Domain_name.pp used_name);
-            if Domain_name.equal used_name name then
-              Ok ()
-            else
-              (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
-                 positive reply (no direct match) *)
-              let soa_name = Domain_name.root in
-              (* TODO either we know the zone cut (recursive resolver)
-                 or there must be some information (NS / SOA) in authority *)
-              let* _ = nsec_chain ~soa_name name auth in
-              Ok ()
-          in
+          let* () = maybe_validate_wildcard_answer Cname in
           Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
           if follow_cname then
             let fuel = fuel - 1 in
