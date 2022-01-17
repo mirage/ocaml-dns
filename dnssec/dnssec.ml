@@ -431,9 +431,10 @@ let nsec_no_data ~soa_name name k auth =
                        Domain_name.pp nsec_owner
                        Domain_name.pp name))
     in
-    (* TODO do we need to check that cname is also not set? *)
     if Bit_map.mem (Rr_map.to_int k) (snd nsec).Nsec.types then
       Error (`Msg (Fmt.str "nsec claims type %a to be present" Rr_map.ppk (K k)))
+    else if Bit_map.mem (Rr_map.to_int Cname) (snd nsec).Nsec.types then
+      Error (`Msg (Fmt.str "nsec claims CNAME to be present"))
     else
       Ok ()
   | _ ->
