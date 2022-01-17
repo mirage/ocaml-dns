@@ -304,17 +304,31 @@ let nsec3_rrs auth =
 let nsec3_closest_encloser nsec3_map salt iterations ~soa_name name =
   let rec find_it chop name =
     let hashed_name = nsec3_hashed_name ~soa_name salt iterations name in
-    if Domain_name.Map.mem hashed_name nsec3_map then
-      Ok (chop, name)
-    else
+    match Domain_name.Map.find hashed_name nsec3_map with
+    | Some (rrs, _) -> Ok (chop, name, Rr_map.get Nsec3 rrs)
+    | None ->
       let* parent = Domain_name.drop_label name in
       let chopped = Domain_name.get_label_exn name 0 in
       find_it chopped parent
   in
-  let* (last_chop, closest_encloser) = find_it "" name in
+  let* (last_chop, closest_encloser, closest_encloser_nsec) = find_it "" name in
   Log.debug (fun m -> m "last chop %s closest encloser %a (hashed %a)"
                 last_chop Domain_name.pp closest_encloser
                 Domain_name.pp (nsec3_hashed_name ~soa_name salt iterations closest_encloser));
+  (* 8.3: DNAME bit must not be set, and NS may only be set if SOA bit is set *)
+  (* TODO DNAME *)
+  let* () =
+    let types = (snd closest_encloser_nsec).Nsec3.types in
+    if Bit_map.mem (Rr_map.to_int Ns) types then
+      if not (Bit_map.mem (Rr_map.to_int Soa) types) then
+        Error (`Msg (Fmt.str "nsec3 with NS but not SOA %a %a"
+                       Domain_name.pp closest_encloser
+                       Nsec3.pp (snd closest_encloser_nsec)))
+      else
+        Ok ()
+    else
+      Ok ()
+  in
   (* verify existence of nsec3 where owner < next_closer < next_owner_hashed *)
   let next_closer = Domain_name.prepend_label_exn closest_encloser last_chop in
   let next_closer_hashed = nsec3_hashed_name ~soa_name salt iterations next_closer in
