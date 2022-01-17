@@ -224,9 +224,9 @@ let nsec_chain ~soa_name name auth =
     if Domain_name.equal used_name owner then
       Ok (owner, nsec)
     else
-      Error (`Msg "used_name is not owner in NSEC")
-      (* TODO not sure about the error, find a testcase *)
-      (*name_in_chain ~soa_name ~name ~owner:used_name nsec*)
+      Error (`Msg (Fmt.str "used_name %a is not owner %a in NSEC %a"
+                     Domain_name.pp used_name Domain_name.pp owner
+                     Nsec.pp (snd nsec)))
   else
     Error (`Msg (Fmt.str "couldn't find nsec chain record covering %a in %a"
                    Domain_name.pp name pp_km_name_rr_map auth))
