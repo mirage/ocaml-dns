@@ -381,13 +381,13 @@ let nsec3_non_existence name ~soa_name auth =
                 Domain_name.pp hashed_next_closer opt_out);
   (* TODO 8.5 and 8.6!? *)
   if opt_out then
-    Ok ()
+    Ok nsec_next_closer
   else
     (* verify existence of nsec3 where owner < wc < next_owner_hashed *)
     let wc = Domain_name.prepend_label_exn closest_encloser "*" in
     let hashed_wc = nsec3_hashed_name ~soa_name salt iterations wc in
     let* _ = nsec3_between nsec3_map ~soa_name hashed_wc in
-    Ok ()
+    Ok nsec_next_closer
 
 let nsec3_chain ~soa_name ~wc_name ~name auth =
   Log.debug (fun m -> m "nsec3 chain soa %a wc %a name %a"
@@ -428,7 +428,7 @@ let no_domain name auth =
     nsec_non_existence name ~soa_name auth,
     nsec3_non_existence name ~soa_name auth
   with
-  | Ok (), _ | _, Ok () -> Ok (soa_name, soa)
+  | Ok (), _ | _, Ok _ -> Ok (soa_name, soa)
   | Error _ as e, _ -> e
 
 let nsec_no_data ~soa_name name k auth =
@@ -538,23 +538,83 @@ let no_data name k auth =
   | Ok (), _ | _, Ok () -> Ok (soa_name, soa)
   | Error _ as e, _ -> e
 
+let has_delegation name_rr_map name =
+  let rrs =
+    Domain_name.Map.filter (fun owner_name rrs ->
+        Domain_name.is_subdomain ~domain:owner_name ~subdomain:name &&
+        Rr_map.mem Ns rrs) name_rr_map
+  in
+  Logs.debug (fun m -> m "has_delegation with %d in %a"
+                 (Domain_name.Map.cardinal rrs)
+                 Name_rr_map.pp name_rr_map);
+  if Domain_name.Map.cardinal rrs = 1 then
+    Some (Domain_name.Map.choose rrs)
+  else
+    None
+
 let validate_answer :
   type a. ?signer_name:[`raw] Domain_name.t ->
   [`raw] Domain_name.t -> a Rr_map.rr ->
   (Rr_map.t * [`raw] Domain_name.t KM.t) Domain_name.Map.t ->
   (Rr_map.t * [`raw] Domain_name.t KM.t) Domain_name.Map.t ->
+  Name_rr_map.t ->
   (a,
-   [> `No_data of [`raw] Domain_name.t * Soa.t
-   | `Msg of string
-   | `Cname of [`raw] Domain_name.t ]) result =
-  fun ?signer_name name k answer auth ->
+   [> `Cname of [`raw] Domain_name.t
+   | `Unsigned_delegation of [`raw] Domain_name.t * Domain_name.Host_set.t
+   | `Signed_delegation of [`raw] Domain_name.t * Domain_name.Host_set.t * Rr_map.Ds_set.t
+   | `No_data of [`raw] Domain_name.t * Soa.t
+   | `Msg of string ]) result =
+  fun ?signer_name name k answer auth raw_auth ->
   Logs.debug (fun m -> m "validating %a (%a)"
                  Domain_name.pp name Rr_map.ppk (K k));
   match Domain_name.Map.find name answer with
   | None ->
-    let* (soa_name, soa) = no_data name k auth in
-    Logs.debug (fun m -> m "validated no data");
-    Error (`No_data (soa_name, soa))
+    (* left are two options: no data OR delegation *)
+    Option.fold
+      ~none:(
+        let* (soa_name, soa) = no_data name k auth in
+        Logs.debug (fun m -> m "validated no data");
+        Error (`No_data (soa_name, soa)))
+      ~some:(fun (zname, rrs) ->
+          let _, ns = Rr_map.get Ns rrs in
+          match Domain_name.Map.find zname auth with
+          | Some (rrs, kms) when Rr_map.mem Ds rrs ->
+            let ds = snd (Rr_map.get Ds rrs) in
+            let used_name = KM.find (K Ds) kms in
+            if not (Domain_name.equal used_name zname) then
+              Error (`Msg (Fmt.str "owner %a of DS %a does not match used name %a"
+                             Domain_name.pp zname
+                             Fmt.(list ~sep:(any ", ") Ds.pp)
+                             (Rr_map.Ds_set.elements ds)
+                             Domain_name.pp used_name))
+            else
+              Error (`Signed_delegation (zname, ns, ds))
+          | Some (rrs, kms) when Rr_map.mem Nsec rrs ->
+            let nsec = snd (Rr_map.get Nsec rrs) in
+            let used_name = KM.find (K Nsec) kms in
+            if not (Domain_name.equal used_name zname) then
+              Error (`Msg (Fmt.str "owner %a of Nsec %a does not match used name %a"
+                             Domain_name.pp zname
+                             Nsec.pp nsec
+                             Domain_name.pp used_name))
+            else if
+              (not (Bit_map.mem (Rr_map.to_int Ds) nsec.Nsec.types)) &&
+              Bit_map.mem (Rr_map.to_int Ns) nsec.Nsec.types
+            then
+              Error (`Unsigned_delegation (zname, ns))
+            else
+              Error (`Msg (Fmt.str "NSEC present for %a (%a), but either has DS or no NS bits"
+                             Domain_name.pp zname Nsec.pp nsec))
+          | _ ->
+            let soa_name = Option.value ~default:Domain_name.root signer_name in
+            let* nsec3 = nsec3_non_existence zname ~soa_name auth in
+            if (snd nsec3).Nsec3.flags = Some `Opt_out then
+              Error (`Unsigned_delegation (zname, ns))
+            else
+              Error (`Msg (Fmt.str "NSEC3 for closest encloser %a present %a, but not opt-out"
+                             Domain_name.pp zname
+                             Nsec3.pp (snd nsec3))))
+      (has_delegation raw_auth name)
   | Some (rr_map, kms) ->
     let maybe_validate_wildcard_answer k =
       let used_name = KM.find (K k) kms in
@@ -593,14 +653,45 @@ let validate_answer :
         Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
         Error (`Cname (snd rr))
 
+type err = [
+  | `Cname of [ `raw ] Domain_name.t
+  | `Unsigned_delegation of [`raw] Domain_name.t * Domain_name.Host_set.t
+  | `Signed_delegation of [`raw] Domain_name.t * Domain_name.Host_set.t * Rr_map.Ds_set.t
+  | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
+  | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t
+  | `Msg of string
+]
+
+let pp_err ppf = function
+  | `Cname alias -> Fmt.pf ppf "cname %a" Domain_name.pp alias
+  | `Unsigned_delegation (owner, ns) ->
+    Fmt.pf ppf "unsigned delegation of %a to %a"
+      Domain_name.pp owner
+      Fmt.(list ~sep:(any ", ") Domain_name.pp)
+      (Domain_name.Host_set.elements ns)
+  | `Signed_delegation (owner, ns, ds) ->
+    Fmt.pf ppf "signed delegation of %a to %a (DS %a)"
+      Domain_name.pp owner
+      Fmt.(list ~sep:(any ", ") Domain_name.pp)
+      (Domain_name.Host_set.elements ns)
+      Fmt.(list ~sep:(any ", ") Ds.pp)
+      (Rr_map.Ds_set.elements ds)
+  | `No_data (name, soa) ->
+    Fmt.pf ppf "no data %a %a" Domain_name.pp name Soa.pp soa
+  | `No_domain (name, soa) ->
+    Fmt.pf ppf "no domain %a %a" Domain_name.pp name Soa.pp soa
+  | `Msg m -> Fmt.pf ppf "error %s" m
+
 let verify_reply : type a. ?fuel:int -> ?follow_cname:bool ->
   Ptime.t -> Rr_map.Dnskey_set.t -> [`raw] Domain_name.t -> a Rr_map.rr ->
   Packet.reply ->
   (a,
-   [> `Msg of string
-   | `Cname of [ `raw ] Domain_name.t
+   [> `Cname of [ `raw ] Domain_name.t
+   | `Unsigned_delegation of [`raw] Domain_name.t * Domain_name.Host_set.t
+   | `Signed_delegation of [`raw] Domain_name.t * Domain_name.Host_set.t * Rr_map.Ds_set.t
    | `No_data of [ `raw ] Domain_name.t * Dns.Soa.t
-   | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t ]) result =
+   | `No_domain of [ `raw ] Domain_name.t * Dns.Soa.t
+   | `Msg of string ]) result =
   fun ?(fuel = 20) ?(follow_cname = true) now dnskeys name k reply ->
   Logs.debug (fun m -> m "verifying %a (%a)"
                  Domain_name.pp name Rr_map.ppk (K k));
@@ -656,8 +747,8 @@ let verify_reply : type a. ?fuel:int -> ?follow_cname:bool ->
   in
   match reply with
   | `Answer (answer, authority) ->
-    let signer_name, answer = check_signatures answer
-    and signer_name2, authority = check_signatures authority
+    let signer_name, signed_answer = check_signatures answer
+    and signer_name2, signed_authority = check_signatures authority
     in
     let signer_name = fold_option signer_name signer_name2 in
     begin
@@ -665,7 +756,7 @@ let verify_reply : type a. ?fuel:int -> ?follow_cname:bool ->
         if fuel = 0 then
           Error (`Msg "too many CNAME redirections")
         else
-          match validate_answer ?signer_name name k answer authority with
+          match validate_answer ?signer_name name k signed_answer signed_authority authority with
           | Error `Cname other when follow_cname ->
             more ~fuel:(fuel - 1) other
           | r -> r

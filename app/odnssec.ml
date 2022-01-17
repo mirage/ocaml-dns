@@ -50,9 +50,9 @@ let jump () hostname typ ns =
         | `Partial ->
           Logs.err (fun m -> m "partial from resolver");
           Error (`Msg "partial")
-        | `Cname a ->
-          Logs.err (fun m -> m "unexpected cname to %a" Domain_name.pp a);
-          Error (`Msg "cname")
+        | #Dnssec.err as e ->
+          Logs.err (fun m -> m "dnssec error %a" Dnssec.pp_err e);
+          Error (`Msg "error")
       in
       let now = Ptime_clock.now () in
       let retrieve_dnskey dnskeys ds_set requested_domain =
@@ -87,7 +87,7 @@ let jump () hostname typ ns =
                           Domain_name.pp requested_domain);
             Error (`Msg (Fmt.str "missing DNSKEY for %a"
                            Domain_name.pp requested_domain))
-          | Error (`Msg _ | `Cname _ as e) -> log_err e
+          | Error e -> log_err e
           | Ok (_, keys) ->
             Logs.info (fun m -> m "verified RRSIG for DNSKEYS");
             let keys =
@@ -103,18 +103,17 @@ let jump () hostname typ ns =
         | Ok reply ->
           match Dnssec.verify_reply ~follow_cname:false now dnskeys name Ds reply with
           | Ok (_, ds) -> Ok (Some ds)
+          | Error (`No_domain _ | `No_data _) ->
+            Logs.warn (fun m -> m "no data or no domain for DS in %a"
+                          Domain_name.pp name);
+            Ok None
           | Error (`Cname a) ->
             Logs.warn (fun m -> m "cname alias for %a (DS) to %a"
                           Domain_name.pp name
                           Domain_name.pp a);
             Ok None
-          | Error (`No_domain _ | `No_data _) ->
-            Logs.warn (fun m -> m "no data or no domain for DS in %a"
-                          Domain_name.pp name);
-            Ok None
-          | Error `Msg msg as e->
-            Logs.warn (fun m -> m "retrieving DS: %s" msg);
-            e
+          | Error e->
+            log_err e
       in
       let rec retrieve_validated_dnskeys hostname =
         Logs.info (fun m -> m "validating and retrieving DNSKEYS for %a" Domain_name.pp hostname);
@@ -147,10 +146,7 @@ let jump () hostname typ ns =
             Logs.warn (fun m -> m "no data or no domain for %a (%a)"
                           Domain_name.pp hostname Rr_map.ppk (K k));
             Ok ()
-          | Error `Msg msg as e->
-            Logs.warn (fun m -> m "error %s" msg);
-            e
-          | Error `Cname _ -> assert false
+          | Error e -> log_err e
     )
   | _ -> Error (`Msg "couldn't decode type")
 

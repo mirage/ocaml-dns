@@ -147,14 +147,16 @@ let test_root () =
 
 let res_err =
   let module M = struct
-    type t = [ `Msg of string | `No_data of [`raw] Domain_name.t * Soa.t | `No_domain of [`raw] Domain_name.t * Soa.t | `Cname of [`raw] Domain_name.t ]
-    let pp ppf = function
-      | `Msg m -> Fmt.string ppf m
-      | `No_data (owner, _) -> Fmt.pf ppf "no data for %a" Domain_name.pp owner
-      | `No_domain (owner, _) -> Fmt.pf ppf "no domain for %a" Domain_name.pp owner
-      | `Cname alias -> Fmt.pf ppf "cname %a" Domain_name.pp alias
+    type t = Dnssec.err
+    let pp = Dnssec.pp_err
     let equal a b = match a, b with
-      | `Msg _, `Msg _ | `No_data _, `No_data _ | `No_domain _, `No_domain _ | `Cname _, `Cname _ -> true
+      | `Msg _, `Msg _ | `No_data _, `No_data _ | `No_domain _, `No_domain _ -> true
+      | `Cname a, `Cname b -> Domain_name.equal a b
+      | `Unsigned_delegation (n, ns), `Unsigned_delegation (n', ns') ->
+        Domain_name.equal n n' && Domain_name.Host_set.equal ns ns'
+      | `Signed_delegation (n, ns, ds), `Signed_delegation (n', ns', ds') ->
+        Domain_name.equal n n' && Domain_name.Host_set.equal ns ns' &&
+        Rr_map.Ds_set.equal ds ds'
       |  _ -> false
   end in
   (module M : Alcotest.TESTABLE with type t = M.t)
@@ -1531,12 +1533,10 @@ module Rfc4035 = struct
       (verify_reply name Mx (`Answer (Name_rr_map.empty, map)))
 
   let signed_delegate_b4 () =
-    (* we treat as an answer to a.example DS, but real is q: mc.a.example MX *)
-    (* the map below is in authority *)
     (* ;; Additional
        ns1.a.example. 3600 IN A   192.0.2.5
        ns2.a.example. 3600 IN A   192.0.2.6 *)
-    let name = dn "a.example"
+    let name = dn "mc.a.example"
     and ns = Domain_name.Host_set.(add (hn "ns1.a.example") (singleton (hn "ns2.a.example")))
     and ds = Ds.{
         key_tag = 57855 ;
@@ -1552,23 +1552,25 @@ module Rfc4035 = struct
         "EML8l9wlWVsl7PR2VnZduM9bLyBhaaPmRKX/";
         "Fm+v6ccF2EGNLRiY08kdkz+XHHo=" ]
     in
-    let ds_rr = 3600l, Rr_map.Ds_set.singleton ds in
-    let answer =
+    let ds = Rr_map.Ds_set.singleton ds in
+    let auth =
       let rrs = Rr_map.(add Ns (3600l, ns)
-                          (add Ds ds_rr
+                          (add Ds (3600l, ds)
                              (singleton Rrsig (3600l, Rrsig_set.singleton rrsig))))
       in
       Domain_name.Map.singleton (dn "a.example") rrs
     in
-    Alcotest.check res __LOC__ (Ok (Rr_map.B (Ds, ds_rr)))
-      (verify_reply name Ds (`Answer (answer, Name_rr_map.empty)))
+    let exp =
+      Error (`Signed_delegation (dn "a.example", ns, ds))
+    in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Mx (`Answer (Name_rr_map.empty, auth)))
 
   let unsigned_delegate_b5 () =
-    (* we treat as an answer to b.example DS, but real is q: mc.b.example MX *)
     (* ;; Additional
        ns1.b.example. 3600 IN A   192.0.2.7
        ns2.b.example. 3600 IN A   192.0.2.8 *)
-    let name = dn "b.example"
+    let name = dn "mc.b.example"
     and ns = Domain_name.Host_set.(add (hn "ns1.b.example") (singleton (hn "ns2.b.example")))
     and nsec =
       let types = Bit_map.of_list [ Rr_map.to_int Ns ; Rr_map.to_int Rrsig ; Rr_map.to_int Nsec ] in
@@ -1588,8 +1590,11 @@ module Rfc4035 = struct
       in
       Domain_name.Map.singleton (dn "b.example") rrs
     in
-    Alcotest.check res __LOC__ (Error (`No_data fake_soa))
-      (verify_reply name Ds (`Answer (Name_rr_map.empty, auth)))
+    let exp =
+      Error (`Unsigned_delegation (dn "b.example", ns))
+    in
+    Alcotest.check res __LOC__ exp
+      (verify_reply name Mx (`Answer (Name_rr_map.empty, auth)))
 
   let wildcard_expansion_b6 () =
     let name = dn "a.z.w.example"
@@ -1714,7 +1719,7 @@ module Rfc4035 = struct
     "NXDOMAIN (B2)", `Quick, nodom_b2 ;
     "NODATA (B3)", `Quick, nodata_b3 ;
     "signed delegate (B4)", `Quick, signed_delegate_b4 ;
-    (* "unsigned delegate (B5)", `Quick, unsigned_delegate_b5 ; complains that no SOA in authority *)
+    "unsigned delegate (B5)", `Quick, unsigned_delegate_b5 ;
     "wildcard expansion (B6)", `Quick, wildcard_expansion_b6 ;
     "wildcard nodata (B7)", `Quick, wildcard_nodata_b7 ;
     "DS nodata (B8)", `Quick, ds_nodata_b8 ;
@@ -1877,7 +1882,7 @@ module Rfc5155 = struct
     let name = dn "mc.c.example" in
     let ns =
       let h s = Domain_name.host_exn (dn s) in
-      (3600l, Domain_name.Host_set.(add (h "ns1.c.example") (singleton (h "ns2.c.example"))))
+      Domain_name.Host_set.(add (h "ns1.c.example") (singleton (h "ns2.c.example")))
     in
     let auth =
       let n1 = nsec3 "b4um86eghhds6nea196smvmlo4ors995"
@@ -1898,13 +1903,15 @@ module Rfc5155 = struct
           "BOCXJZMnpuwhpA==" ]
       in
       Domain_name.Map.(
-        add (dn "c.example") (Rr_map.singleton Ns ns)
+        add (dn "c.example") (Rr_map.singleton Ns (3600l, ns))
           (add (dn "35mthgpgcu1qg68fab165klnsnk3dpvl.example")
              Rr_map.(add Nsec3 (3600l, n1) (singleton Rrsig (3600l, Rrsig_set.singleton n1_rrsig)))
              (singleton (dn "0p9mhaveqvm6t7vbl5lop2u3t2rp3tom.example")
                 Rr_map.(add Nsec3 (3600l, n2) (singleton Rrsig (3600l, Rrsig_set.singleton n2_rrsig))))))
     in
-    let exp = Ok (Rr_map.B (Ns, ns)) in
+    let exp =
+      Error (`Unsigned_delegation (dn "c.example", ns))
+    in
     Alcotest.check res __LOC__ exp
       (verify_reply name Mx (`Answer (Name_rr_map.empty, auth)))
 
@@ -2011,7 +2018,7 @@ module Rfc5155 = struct
     "name error (b1)", `Quick, b1_name_error ;
     "no data error (b2)", `Quick, b2_nodata_error ;
     "no data (ENT) error (b2.1)", `Quick, b2_1_nodata_error ;
-    (* "refer to unsigned zone (b3)", `Quick, b3_refer_unsigned ; *)
+    "refer to unsigned zone (b3)", `Quick, b3_refer_unsigned ;
     "wildcard (b4)", `Quick, b4_wildcard ;
     "wildcard no data (b5)", `Quick, b5_wildcard_nodata ;
     "DS no data (b6)", `Quick, b6_ds_nodata ;
