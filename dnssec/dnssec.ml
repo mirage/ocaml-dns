@@ -538,9 +538,8 @@ let no_data name k auth =
   | Ok (), _ | _, Ok () -> Ok (soa_name, soa)
   | Error _ as e, _ -> e
 
-let rec validate_answer :
-  type a. fuel:int -> follow_cname:bool ->
-  ?signer_name:[`raw] Domain_name.t ->
+let validate_answer :
+  type a. ?signer_name:[`raw] Domain_name.t ->
   [`raw] Domain_name.t -> a Rr_map.rr ->
   (Rr_map.t * [`raw] Domain_name.t KM.t) Domain_name.Map.t ->
   (Rr_map.t * [`raw] Domain_name.t KM.t) Domain_name.Map.t ->
@@ -548,58 +547,51 @@ let rec validate_answer :
    [> `No_data of [`raw] Domain_name.t * Soa.t
    | `Msg of string
    | `Cname of [`raw] Domain_name.t ]) result =
-  fun ~fuel ~follow_cname ?signer_name name k answer auth ->
+  fun ?signer_name name k answer auth ->
   Logs.debug (fun m -> m "validating %a (%a)"
                  Domain_name.pp name Rr_map.ppk (K k));
-  if fuel = 0 then
-    Error (`Msg "too many redirections")
-  else
-    match Domain_name.Map.find name answer with
+  match Domain_name.Map.find name answer with
+  | None ->
+    let* (soa_name, soa) = no_data name k auth in
+    Logs.debug (fun m -> m "validated no data");
+    Error (`No_data (soa_name, soa))
+  | Some (rr_map, kms) ->
+    let maybe_validate_wildcard_answer k =
+      let used_name = KM.find (K k) kms in
+      if Domain_name.equal used_name name then
+        Ok ()
+      else begin
+        (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
+           positive reply (no direct match) *)
+        (* RFC 5155 8.8 - there's a candidate closest encloser for qname
+           (the used_name without "*") - need to verify existence of a nsec3
+           covering next_closer name to qname *)
+        (match signer_name with
+         | None -> Log.warn (fun m -> m "no signer name provided")
+         | Some _ -> ());
+        let soa_name = Option.value ~default:Domain_name.root signer_name in
+        match
+          nsec_chain ~soa_name name auth,
+          nsec3_chain ~soa_name ~wc_name:used_name ~name auth
+        with
+        | Ok _, _ | _, Ok _ -> Ok ()
+        | Error _ as e, _ -> e
+      end
+    in
+    match Rr_map.find k rr_map with
+    | Some rrs ->
+      let* () = maybe_validate_wildcard_answer k in
+      Ok rrs
     | None ->
-      let* (soa_name, soa) = no_data name k auth in
-      Logs.debug (fun m -> m "validated no data");
-      Error (`No_data (soa_name, soa))
-    | Some (rr_map, kms) ->
-      let maybe_validate_wildcard_answer k =
-        let used_name = KM.find (K k) kms in
-        if Domain_name.equal used_name name then
-          Ok ()
-        else begin
-          (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
-               positive reply (no direct match) *)
-          (* RFC 5155 8.8 - there's a candidate closest encloser for qname
-             (the used_name without "*") - need to verify existence of a nsec3
-             covering next_closer name to qname *)
-          (match signer_name with
-           | None -> Log.warn (fun m -> m "no signer name provided")
-           | Some _ -> ());
-          let soa_name = Option.value ~default:Domain_name.root signer_name in
-          match
-            nsec_chain ~soa_name name auth,
-            nsec3_chain ~soa_name ~wc_name:used_name ~name auth
-          with
-          | Ok _, _ | _, Ok _ -> Ok ()
-          | Error _ as e, _ -> e
-        end
-      in
-      match Rr_map.find k rr_map with
-      | Some rrs ->
-        let* () = maybe_validate_wildcard_answer k in
-        Ok rrs
+      match Rr_map.find Cname rr_map with
       | None ->
-        match Rr_map.find Cname rr_map with
-        | None ->
-          let* (soa_name, soa) = no_data name k auth in
-          Logs.debug (fun m -> m "validated no data");
-          Error (`No_data (soa_name, soa))
-        | Some rr ->
-          let* () = maybe_validate_wildcard_answer Cname in
-          Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
-          if follow_cname then
-            let fuel = fuel - 1 in
-            validate_answer ~fuel ~follow_cname ?signer_name (snd rr) k answer auth
-          else
-            Error (`Cname (snd rr))
+        let* (soa_name, soa) = no_data name k auth in
+        Logs.debug (fun m -> m "validated no data");
+        Error (`No_data (soa_name, soa))
+      | Some rr ->
+        let* () = maybe_validate_wildcard_answer Cname in
+        Logs.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
+        Error (`Cname (snd rr))
 
 let verify_reply : type a. ?fuel:int -> ?follow_cname:bool ->
   Ptime.t -> Rr_map.Dnskey_set.t -> [`raw] Domain_name.t -> a Rr_map.rr ->
@@ -668,7 +660,18 @@ let verify_reply : type a. ?fuel:int -> ?follow_cname:bool ->
     and signer_name2, authority = check_signatures authority
     in
     let signer_name = fold_option signer_name signer_name2 in
-    validate_answer ~fuel ~follow_cname ?signer_name name k answer authority
+    begin
+      let rec more ~fuel name =
+        if fuel = 0 then
+          Error (`Msg "too many CNAME redirections")
+        else
+          match validate_answer ?signer_name name k answer authority with
+          | Error `Cname other when follow_cname ->
+            more ~fuel:(fuel - 1) other
+          | r -> r
+      in
+      more ~fuel name
+    end
   | `Rcode_error (NXDomain, Query, Some (answer, authority)) ->
     let signer_name, _answer = check_signatures answer
     and signer_name2, authority = check_signatures authority
