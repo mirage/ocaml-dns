@@ -172,7 +172,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
     | `Query, `K Rr_map.K key ->
       begin Client.get_resource_record t.client key name >|= function
         | Error `Msg msg ->
-          Logs.err (fun m -> m "couldn't resolve %s" msg);
+          Log.err (fun m -> m "couldn't resolve %s" msg);
           let data = `Rcode_error (Rcode.ServFail, Opcode.Query, None) in
           metrics `Resolver_servfail;
           Some (build_reply data)
@@ -193,7 +193,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
           Some (build_reply data)
       end
     | _ ->
-      Logs.err (fun m -> m "not implemented %a, data %a"
+      Log.err (fun m -> m "not implemented %a, data %a"
                    Dns.Packet.Question.pp question
                    Dns.Packet.pp_data data);
       let data = `Rcode_error (Rcode.NotImp, Packet.opcode_data data, None) in
@@ -214,7 +214,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
     | Error err ->
       metrics `Decoding_errors;
       (* TODO send FormErr back *)
-      Logs.err (fun m -> m "couldn't decode %a" Packet.pp_err err);
+      Log.err (fun m -> m "couldn't decode %a" Packet.pp_err err);
       Lwt.return None
     | Ok packet ->
       metrics `Queries;
@@ -247,7 +247,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
       | None -> Lwt.return_unit
       | Some data ->
         S.UDP.write ~src_port:53 ~dst:src ~dst_port:src_port (S.udp stack) data >|= function
-        | Error e -> Logs.warn (fun m -> m "udp: failure %a while sending to %a:%d"
+        | Error e -> Log.warn (fun m -> m "udp: failure %a while sending to %a:%d"
                                   S.UDP.pp_error e Ipaddr.pp src src_port)
         | Ok () -> ()
     in

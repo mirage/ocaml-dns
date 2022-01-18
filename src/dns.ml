@@ -1997,7 +1997,7 @@ module Edns = struct
       ?(payload_size = min_payload_size) ?(extensions = []) () =
     let payload_size =
       if payload_size < min_payload_size then begin
-        Logs.warn (fun m -> m "requested payload size %d is too small, using %d"
+        Log.warn (fun m -> m "requested payload size %d is too small, using %d"
                       payload_size min_payload_size);
         min_payload_size
       end else
@@ -2485,7 +2485,7 @@ module Rr_map = struct
       fun name rrsig typ value ->
     let buf, off = Rrsig.prep_rrsig rrsig in
     let rrsig_cs = Cstruct.sub buf 0 off in
-    Logs.debug (fun m -> m "using rrsig %a" Cstruct.hexdump_pp rrsig_cs);
+    Log.debug (fun m -> m "using rrsig %a" Cstruct.hexdump_pp rrsig_cs);
     let* name =
       let* used_name = Rrsig.used_name rrsig name in
       Ok (Domain_name.canonical used_name)

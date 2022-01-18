@@ -2,6 +2,9 @@
 
 open Dns
 
+let src = Logs.Src.create "dns_cache" ~doc:"DNS cache"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 type rank =
   | ZoneFile
   | ZoneTransfer
@@ -291,11 +294,11 @@ let set cache ts name query_type rank entry  =
   let cache' map = insert cache ?map ts name query_type rank entry' in
   match find cache name query_type with
   | map, Error _ ->
-    Logs.debug (fun m -> m "set: %a nothing found, adding: %a"
+    Log.debug (fun m -> m "set: %a nothing found, adding: %a"
                    pp_query (name, `K (K query_type)) (pp_entry query_type) entry');
     metrics `Insert; cache' map
   | map, Ok ((created, rank'), entry) ->
-    Logs.debug (fun m -> m "set: %a found rank %a insert rank %a: %d"
+    Log.debug (fun m -> m "set: %a found rank %a insert rank %a: %d"
                    pp_query (name, `K (K query_type)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
     match update_ttl query_type entry ~created ~now:ts, compare_rank rank' rank with
     | Ok _, 1 -> cache

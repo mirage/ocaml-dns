@@ -1,5 +1,8 @@
 open Dns
 
+let src = Logs.Src.create "dns_client" ~doc:"DNS client"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 module Pure = struct
 
   type 'key query_state =
@@ -29,7 +32,7 @@ module Pure = struct
       Randomconv.int16 rng, flags
     in
     let query = Packet.create ?edns header question `Query in
-    Logs.debug (fun m -> m "sending %a" Dns.Packet.pp query);
+    Log.debug (fun m -> m "sending %a" Dns.Packet.pp query);
     let cs , _ = Packet.encode protocol query in
     begin match protocol with
       | `Udp -> cs
@@ -71,12 +74,12 @@ module Pure = struct
       match Cstruct.BE.get_uint16 buf 0 with
         | exception Invalid_argument _ -> Error () (* TODO *)
         | pkt_len when pkt_len > Cstruct.length buf -2 ->
-          Logs.debug (fun m -> m "Partial: %d >= %d-2"
+          Log.debug (fun m -> m "Partial: %d >= %d-2"
                           pkt_len (Cstruct.length buf));
           Error () (* TODO return remaining # *)
         | pkt_len ->
           if 2 + pkt_len < Cstruct.length buf then
-            Logs.warn (fun m -> m "Extraneous data in DNS response");
+            Log.warn (fun m -> m "Extraneous data in DNS response");
           Ok (Cstruct.sub buf 2 pkt_len)
 
   let find_soa authority =
@@ -136,7 +139,7 @@ module Pure = struct
     | Error err ->
       Error (`Msg (Fmt.str "Error parsing response: %a" Packet.pp_err err))
     | Ok t ->
-      Logs.info (fun m -> m "received %a" Dns.Packet.pp t);
+      Log.info (fun m -> m "received %a" Dns.Packet.pp t);
       to_msg t (Packet.reply_matches_request ~request:state.query t)
 
   let parse_response (type requested)
@@ -256,11 +259,11 @@ struct
       Pure.make_query Transport.rng proto ~dnssec:true t.edns name query_type
     in
     Transport.connect t.transport >>| fun socket ->
-    Logs.debug (fun m -> m "Connected to NS.");
+    Log.debug (fun m -> m "Connected to NS.");
     (Transport.send_recv socket tx >>| fun recv_buffer ->
-     Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
+     Log.debug (fun m -> m "Read @[<v>%d bytes@]"
                     (Cstruct.length recv_buffer)) ;
-     Logs.debug (fun m -> m "received: %a" Cstruct.hexdump_pp recv_buffer);
+     Log.debug (fun m -> m "received: %a" Cstruct.hexdump_pp recv_buffer);
      Transport.lift (Pure.parse_response state recv_buffer)) >>= fun r ->
     Transport.close socket >>= fun () ->
     Transport.lift r
@@ -287,9 +290,9 @@ struct
           Pure.make_query Transport.rng proto t.edns name query_type
         in
         Transport.connect t.transport >>| fun socket ->
-        Logs.debug (fun m -> m "Connected to NS.");
+        Log.debug (fun m -> m "Connected to NS.");
         (Transport.send_recv socket tx >>| fun recv_buffer ->
-         Logs.debug (fun m -> m "Read @[<v>%d bytes@]"
+         Log.debug (fun m -> m "Read @[<v>%d bytes@]"
                         (Cstruct.length recv_buffer)) ;
          let update_cache entry =
            let rank = Dns_cache.NonAuthoritativeAnswer in

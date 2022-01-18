@@ -1840,7 +1840,7 @@ module Secondary = struct
       let mac = find_mac zones p in
       match handle_tsig ?mac server now p buf with
       | Error (e, data) ->
-        Logs.err (fun m -> m "error %a while handling tsig" Tsig_op.pp_e e);
+        Log.err (fun m -> m "error %a while handling tsig" Tsig_op.pp_e e);
         t, data, None
       | Ok None ->
         let t, answer, out = handle_inner None in
