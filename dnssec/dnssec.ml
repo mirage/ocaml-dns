@@ -325,7 +325,12 @@ let nsec3_closest_encloser nsec3_map salt iterations ~soa_name name =
                        Domain_name.pp closest_encloser
                        Nsec3.pp (snd closest_encloser_nsec)))
       else
+        (* RFC 5155 8.9: presence of NS implies absence of NS *)
         Ok ()
+    else if Bit_map.mem (*DNAME*)39 types then
+      Error (`Msg (Fmt.str "nsec3 with DNAME %a %a"
+                     Domain_name.pp closest_encloser
+                     Nsec3.pp (snd closest_encloser_nsec)))
     else
       Ok ()
   in
