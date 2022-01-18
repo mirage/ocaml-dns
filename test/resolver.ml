@@ -12,7 +12,7 @@ let sec = Duration.of_sec
 
 let invalid_soa = Dns_resolver_utils.invalid_soa
 
-let root_servers = snd (List.split Dns_resolver_root.root_servers)
+let root_servers = List.map (fun (_, ip4, _) -> ip4) Dns_resolver_root.root_servers
 let a_root = List.hd root_servers
 
 let rng i = Cstruct.create i
@@ -863,23 +863,23 @@ let handle_query_res =
   let module M = struct
     type t = [
       | `Reply of Packet.Flags.t * Packet.reply
-      | `Query of [`raw] Domain_name.t * ([`raw] Domain_name.t * Packet.Question.qtype) * Ipaddr.t
+      | `Query of [`raw] Domain_name.t * ([`raw] Domain_name.t * Packet.Question.qtype list) * Ipaddr.t
     ] * Dns_cache.t
     let pp ppf = function
       | `Reply (flags, reply), _ ->
         Fmt.pf ppf "reply flags %a, %a"
           Fmt.(list ~sep:(any ", ") Packet.Flag.pp_short) (Packet.Flags.elements flags)
           Packet.pp_reply reply
-      | `Query (zone, (qname, qtype), ip), _ ->
+      | `Query (zone, (qname, qtypes), ip), _ ->
         Fmt.pf ppf "zone %a, query %a (%a), IP %a"
           Domain_name.pp zone Domain_name.pp qname
-          Packet.Question.pp_qtype qtype Ipaddr.pp ip
+          Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) qtypes Ipaddr.pp ip
     let equal a b = match fst a, fst b with
       | `Reply (f1, r1), `Reply (f2, r2) ->
         Packet.Flags.equal f1 f2 && Packet.equal_reply r1 r2
       | `Query (z1, (q1, t1), ip1), `Query (z2, (q2, t2), ip2) ->
         Domain_name.equal z1 z2 && Domain_name.equal q1 q2 &&
-        Packet.Question.compare_qtype t1 t2 = 0 &&
+        List.for_all2 (fun t1 t2 -> Packet.Question.compare_qtype t1 t2 = 0) t1 t2 &&
         Ipaddr.compare ip1 ip2 = 0
       | _ -> false
     end in
@@ -899,8 +899,8 @@ let handle_query_with_cname () =
     Dns_cache.set cache 0L (name "ns.reynir.dk") A AuthoritativeAnswer (`Entry a)
   in
   Alcotest.check handle_query_res "..."
-    (`Query (name "reynir.dk", (name "reynir.dk", `K (Rr_map.K A)), ip "127.0.0.1"), cache)
-    (Dns_resolver_cache.handle_query cache ~rng 0L (name "www.reynir.dk", `K (Rr_map.K A)))
+    (`Query (name "reynir.dk", (name "reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
+    (Dns_resolver_cache.handle_query cache ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K A)))
 
 let handle_query_tests = [
   "cname", `Quick, handle_query_with_cname ;

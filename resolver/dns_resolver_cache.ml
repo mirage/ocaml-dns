@@ -11,7 +11,7 @@ let pp_err ppf = function
 let pp_question ppf (name, typ) =
   Fmt.pf ppf "%a (%a)" Domain_name.pp name Packet.Question.pp_qtype typ
 
-let find_nearest_ns rng ts t name =
+let find_nearest_ns rng ip_proto ts t name =
   let pick = function
     | [] -> None
     | [ x ] -> Some x
@@ -20,15 +20,34 @@ let find_nearest_ns rng ts t name =
   let find_ns name = match snd (Dns_cache.get t ts name Ns) with
     | Ok `Entry (_, names) -> Domain_name.Host_set.elements names
     | _ -> []
-  and find_a name = match snd (Dns_cache.get t ts name A) with
-    | Ok `Entry (_, ips) -> Ipaddr.V4.Set.elements ips
-    | _ -> []
+  and find_address name =
+    let ip4s =
+      Result.fold
+        ~ok:(function
+            | `Entry (_, ips) ->
+              List.map (fun ip -> Ipaddr.V4 ip) (Ipaddr.V4.Set.elements ips)
+            | _ -> [])
+        ~error:(fun _ -> [])
+        (snd (Dns_cache.get t ts name A))
+    and ip6s =
+      Result.fold
+        ~ok:(function
+            | `Entry (_, ips) ->
+              List.map (fun ip -> Ipaddr.V6 ip) (Ipaddr.V6.Set.elements ips)
+            | _ -> [])
+        ~error:(fun _ -> [])
+        (snd (Dns_cache.get t ts name Aaaa))
+    in
+    match ip_proto with
+    | `Both -> ip4s @ ip6s
+    | `Ipv4_only -> ip4s
+    | `Ipv6_only -> ip6s
   in
   let or_root f nam =
     if Domain_name.(equal root nam) then
-      match pick (snd (List.split Dns_resolver_root.root_servers)) with
+      match pick (Dns_resolver_root.ips ip_proto) with
       | None -> assert false
-      | Some ip -> `HaveIP (Domain_name.root, Ipaddr.V4 ip)
+      | Some ip -> `HaveIP (Domain_name.root, ip)
     else
       f (Domain_name.drop_label_exn nam)
   in
@@ -37,26 +56,31 @@ let find_nearest_ns rng ts t name =
     | None -> or_root go nam
     | Some ns ->
       let host = Domain_name.raw ns in
-      match pick (find_a host) with
+      match pick (find_address host) with
       | None ->
         if Domain_name.is_subdomain ~subdomain:ns ~domain:nam then
           (* we actually need glue *)
           or_root go nam
         else
-          `NeedA host
-      | Some ip -> `HaveIP (nam, Ipaddr.V4 ip)
+          `NeedAddress host
+      | Some ip -> `HaveIP (nam, ip)
   in
   go name
 
-let resolve t ~rng ts name typ =
+let resolve t ~rng ip_proto ts name typ =
   (* the standard recursive algorithm *)
-  let rec go t typ name =
-    Logs.debug (fun m -> m "go %a" Domain_name.pp name) ;
-    match find_nearest_ns rng ts t (Domain_name.raw name) with
-    | `NeedA ns -> go t (`K (Rr_map.K A)) ns
-    | `HaveIP (zone, ip) -> zone, name, typ, ip, t
+  let addresses = match ip_proto with
+    | `Both -> [`K (Rr_map.K A); `K (Rr_map.K Aaaa)]
+    | `Ipv4_only -> [`K (Rr_map.K A)]
+    | `Ipv6_only -> [`K (Rr_map.K Aaaa)]
   in
-  go t typ name
+  let rec go t types name =
+    Logs.debug (fun m -> m "go %a" Domain_name.pp name) ;
+    match find_nearest_ns rng ip_proto ts t (Domain_name.raw name) with
+    | `NeedAddress ns -> go t addresses ns
+    | `HaveIP (zone, ip) -> zone, name, types, ip, t
+  in
+  go t [typ] name
 
 let to_map (name, soa) = Name_rr_map.singleton name Soa soa
 
@@ -160,12 +184,13 @@ let answer t ts name typ =
       let data = Name_rr_map.singleton name ty v in
       `Packet (packet t true Rcode.NoError data Domain_name.Map.empty), t
 
-let handle_query t ~rng ts (qname, qtype) =
+let handle_query t ~rng ip_proto ts (qname, qtype) =
   match answer t ts qname qtype with
   | `Packet (flags, data), t -> `Reply (flags, data), t
   | `Query name, t ->
-    let zone, name', typ, ip, t = resolve t ~rng ts name qtype in
+    let zone, name', types, ip, t = resolve t ~rng ip_proto ts name qtype in
     Logs.debug (fun m -> m "resolve returned zone %a query %a (%a), ip %a"
                    Domain_name.pp zone Domain_name.pp name'
-                   Packet.Question.pp_qtype typ Ipaddr.pp ip);
-    `Query (zone, (name', typ), ip), t
+                   Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) types
+                   Ipaddr.pp ip);
+    `Query (zone, (name', types), ip), t
