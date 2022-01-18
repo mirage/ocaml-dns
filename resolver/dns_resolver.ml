@@ -383,7 +383,10 @@ let handle_buf t now ts query proto sender sport buf =
 
 let query_root t now proto =
   let root_ip () =
-    match pick t.rng (snd (List.split Dns_resolver_root.root_servers)) with
+    match
+      pick t.rng
+        (List.map (fun (_, ip4, _) -> ip4) Dns_resolver_root.root_servers)
+    with
     | None -> assert false
     | Some x -> Ipaddr.V4 x
   in

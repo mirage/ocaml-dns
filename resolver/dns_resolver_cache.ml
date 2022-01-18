@@ -26,7 +26,7 @@ let find_nearest_ns rng ts t name =
   in
   let or_root f nam =
     if Domain_name.(equal root nam) then
-      match pick (snd (List.split Dns_resolver_root.root_servers)) with
+      match pick (List.map (fun (_, ip4, _) -> ip4) Dns_resolver_root.root_servers) with
       | None -> assert false
       | Some ip -> `HaveIP (Domain_name.root, Ipaddr.V4 ip)
     else

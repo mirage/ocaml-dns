@@ -12,7 +12,7 @@ let sec = Duration.of_sec
 
 let invalid_soa = Dns_resolver_utils.invalid_soa
 
-let root_servers = snd (List.split Dns_resolver_root.root_servers)
+let root_servers = List.map (fun (_, ip4, _) -> ip4) Dns_resolver_root.root_servers
 let a_root = List.hd root_servers
 
 let rng i = Cstruct.create i

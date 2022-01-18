@@ -2,7 +2,7 @@
 
 open Dns
 
-val root_servers : ([ `raw ] Domain_name.t * Ipaddr.V4.t) list
+val root_servers : ([ `raw ] Domain_name.t * Ipaddr.V4.t * Ipaddr.V6.t) list
 (** [root_servers] are the root servers. *)
 
 val ns_records : (int32 * Domain_name.Host_set.t)
@@ -10,6 +10,10 @@ val ns_records : (int32 * Domain_name.Host_set.t)
 
 val a_records : ([ `raw ] Domain_name.t * (int32 * Ipaddr.V4.Set.t)) list
 (** [a_records] is a list of names and bindings (A records) for the root
+   servers. *)
+
+val aaaa_records : ([ `raw ] Domain_name.t * (int32 * Ipaddr.V6.Set.t)) list
+(** [aaaa_records] is a list of names and bindings (AAAA records) for the root
    servers. *)
 
 val reserved_zones : ([ `raw ] Domain_name.t * Rr_map.b) list
