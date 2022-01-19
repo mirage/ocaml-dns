@@ -320,25 +320,38 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
       | `Query name ->
         (* we should look into delegation for the actual delegation name,
            but instead we're looking for any glue (A) in additional *)
-        let ips = Domain_name.Map.fold (fun _ rrmap ips ->
-            match Rr_map.(find A rrmap) with
-            | None -> ips
-            | Some (_, ips') -> Ipaddr.V4.Set.union ips ips')
-            add_data Ipaddr.V4.Set.empty
+        let ips =
+          let ip4s, ip6s =
+            Domain_name.Map.fold (fun _ rrmap (ip4s, ip6s) ->
+                (match Rr_map.(find A rrmap) with
+                 | None -> ip4s
+                 | Some (_, ip4s') -> Ipaddr.V4.Set.union ip4s ip4s'),
+                (match Rr_map.(find Aaaa rrmap) with
+                 | None -> ip6s
+                 | Some (_, ip6s') -> Ipaddr.V6.Set.union ip6s ip6s'))
+            add_data (Ipaddr.V4.Set.empty, Ipaddr.V6.Set.empty)
+          in
+          let ip4s = List.map (fun ip -> Ipaddr.V4 ip) (Ipaddr.V4.Set.elements ip4s)
+          and ip6s = List.map (fun ip -> Ipaddr.V6 ip) (Ipaddr.V6.Set.elements ip6s)
+          in
+          match t.ip_protocol with
+            | `Both -> ip4s @ ip6s
+            | `Ipv4_only -> ip4s
+            | `Ipv6_only -> ip6s
         in
-        begin match pick t.rng (Ipaddr.V4.Set.elements ips) with
+        begin match pick t.rng ips with
           | None ->
             Logs.err (fun m -> m "something is wrong, delegation but no IP");
             t, [], []
           | Some ip ->
             Logs.debug (fun m -> m "found ip %a, maybe querying %a"
-                           Ipaddr.V4.pp ip pp_key (name, qtype)) ;
+                           Ipaddr.pp ip pp_key (name, qtype)) ;
             (* TODO is Domain_name.root correct here? *)
             let await = { ts; retry = 0; proto; zone = Domain_name.root; edns = req.edns; ip = sender; port = sport; question = (fst req.question, qtype); id = fst req.header; } in
-            begin match maybe_query ~recursion_desired:true t ts await 0 (Ipaddr.V4 ip) name qtype with
+            begin match maybe_query ~recursion_desired:true t ts await 0 ip name qtype with
               | None, t ->
                 Logs.warn (fun m -> m "maybe_query for %a at %a returned nothing"
-                              Domain_name.pp name Ipaddr.V4.pp ip) ;
+                              Domain_name.pp name Ipaddr.pp ip) ;
                 t, [], []
               | Some (cs, ip), t -> t, [], [ `Udp, ip, cs ]
             end
@@ -407,15 +420,26 @@ let query_root t now proto =
   let ip =
     match Dns_cache.get t.cache now Domain_name.root Ns with
     | _, Ok `Entry (_, names) ->
-      let ips =
-        Domain_name.Host_set.fold (fun name acc ->
-            match Dns_cache.get t.cache now (Domain_name.raw name) A with
-            | _, Ok `Entry (_, ips) -> Ipaddr.V4.Set.union ips acc
-            | _ -> acc)
-          names Ipaddr.V4.Set.empty
+      let ip4s, ip6s =
+        Domain_name.Host_set.fold (fun name (v4s, v6s) ->
+            (match snd (Dns_cache.get t.cache now (Domain_name.raw name) A) with
+             | Ok `Entry (_, ips) -> Ipaddr.V4.Set.union ips v4s
+             | _ -> v4s),
+            (match snd (Dns_cache.get t.cache now (Domain_name.raw name) Aaaa) with
+             | Ok `Entry (_, ips) -> Ipaddr.V6.Set.union ips v6s
+             | _ -> v6s))
+          names (Ipaddr.V4.Set.empty, Ipaddr.V6.Set.empty)
       in
-      begin match pick t.rng (Ipaddr.V4.Set.elements ips) with
-        | Some ip -> Ipaddr.V4 ip
+      let ip4s = List.map (fun ip -> Ipaddr.V4 ip) (Ipaddr.V4.Set.elements ip4s)
+      and ip6s = List.map (fun ip -> Ipaddr.V6 ip) (Ipaddr.V6.Set.elements ip6s)
+      in
+      let ips = match t.ip_protocol with
+        | `Both -> ip4s @ ip6s
+        | `Ipv4_only -> ip4s
+        | `Ipv6_only -> ip6s
+      in
+      begin match pick t.rng ips with
+        | Some ip -> ip
         | None -> root_ip ()
       end
     | _ -> root_ip ()
