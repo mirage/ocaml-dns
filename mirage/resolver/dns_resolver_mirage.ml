@@ -125,7 +125,8 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
         Dns_resolver.handle_buf !state now ts req `Udp src src_port buf
       in
       if not req then
-        S.UDP.unlisten (S.udp stack) ~port:lport;
+        (Log.app (fun m -> m "unlisten on UDP %d" src_port);
+         S.UDP.unlisten (S.udp stack) ~port:lport);
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
       Lwt_list.iter_p handle_query queries

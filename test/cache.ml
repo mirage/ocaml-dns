@@ -35,8 +35,9 @@ let entry_eq t a b =
   | _, _ -> false
 
 let cached_ok (t : 'a Rr_map.key) =
-  let pp ppf res = Dns_cache.pp_entry t ppf res
-  and equal r r' = entry_eq t r r'
+  let pp ppf res = Dns_cache.pp_entry t ppf (fst res)
+  and equal (r, rank) (r', rank') =
+    entry_eq t r r' && Dns_cache.compare_rank rank rank' = 0
   in
   Alcotest.testable pp equal
 
@@ -52,9 +53,10 @@ let cache_a () =
   let cache = Dns_cache.empty 100 in
   let name = name "an-actual-website.com" in
   let a = 250l, Ipaddr.V4.Set.singleton (ip "1.2.3.4") in
-  let cache = Dns_cache.set cache 0L name A AuthoritativeAnswer (`Entry a) in
+  let cache = Dns_cache.set cache 0L name A (AuthoritativeAnswer false) (`Entry a) in
   Alcotest.check (cached_r Rr_map.A) "cache with A results in res"
-    (Ok (`Entry a)) (snd (Dns_cache.get cache 0L name A)) ;
+    (Ok (`Entry a, AuthoritativeAnswer false))
+    (snd (Dns_cache.get cache 0L name A)) ;
   Alcotest.check (cached_r Rr_map.Cname) "cache with A results in CacheMiss"
     (Error `Cache_miss) (snd (Dns_cache.get cache 0L name Cname))
 
@@ -66,19 +68,19 @@ let cache_nodata () =
   let soa = invalid_soa name in
   let nodata = `No_data (subname, soa) in
   let a = 250l, Ipaddr.V4.Set.singleton (ip "1.2.3.4") in
-  let cache = Dns_cache.set cache 0L name A AuthoritativeAnswer (`Entry a) in
-  let cache = Dns_cache.set cache 0L subname A AuthoritativeAnswer nodata in
+  let cache = Dns_cache.set cache 0L name A (AuthoritativeAnswer false) (`Entry a) in
+  let cache = Dns_cache.set cache 0L subname A (AuthoritativeAnswer false) nodata in
   Alcotest.check (cached_r Rr_map.A) "cache with A nodata results in nodata"
-    (Ok nodata) (snd (Dns_cache.get cache 0L subname A)) ;
+    (Ok (nodata, AuthoritativeAnswer false)) (snd (Dns_cache.get cache 0L subname A)) ;
   Alcotest.check (cached_r Rr_map.Ns) "cache with A nodata results in cache miss for NS"
     (Error `Cache_miss) (snd (Dns_cache.get cache 0L subname Ns)) ;
   Alcotest.check (cached_r Rr_map.A) "cache with A nodata results in a record"
-    (Ok (`Entry a)) (snd (Dns_cache.get cache 0L name A)) ;
+    (Ok (`Entry a, AuthoritativeAnswer false)) (snd (Dns_cache.get cache 0L name A)) ;
   Alcotest.check (cached_r Rr_map.Ns) "cache with A nodata results in cache miss for NS'"
     (Error `Cache_miss) (snd (Dns_cache.get cache 0L name Ns)) ;
-  let cache = Dns_cache.set cache 0L subname A AuthoritativeAnswer (`Entry a) in
+  let cache = Dns_cache.set cache 0L subname A (AuthoritativeAnswer false) (`Entry a) in
   Alcotest.check (cached_r Rr_map.A) "cache with A nodata results in nodata"
-    (Ok (`Entry a)) (snd (Dns_cache.get cache 0L subname A))
+    (Ok (`Entry a, AuthoritativeAnswer false)) (snd (Dns_cache.get cache 0L subname A))
 
 let cache_tests = [
   "empty cache", `Quick, empty_cache ;
@@ -87,13 +89,16 @@ let cache_tests = [
 ]
 
 let entry_or_cname t a b = match a, b with
- | `Alias (ttl, name), `Alias (ttl', name') -> ttl = ttl' && Domain_name.equal name name'
- | (#Dns_cache.entry as e1), (#Dns_cache.entry as e2) -> entry_eq t e1 e2
+  | (`Alias (ttl, name), r),
+    (`Alias (ttl', name'), r') ->
+    ttl = ttl' && Domain_name.equal name name' && Dns_cache.compare_rank r r' = 0
+ | (#Dns_cache.entry as e1, r1), (#Dns_cache.entry as e2, r2) ->
+   entry_eq t e1 e2 && Dns_cache.compare_rank r1 r2 = 0
  | _ -> false
 
 let pp_or_cname t ppf = function
- | `Alias (ttl, name) -> Fmt.pf ppf "alias %lu %a" ttl Domain_name.pp name
- | #Dns_cache.entry as e -> Dns_cache.pp_entry t ppf e
+ | `Alias (ttl, name), _ -> Fmt.pf ppf "alias %lu %a" ttl Domain_name.pp name
+ | #Dns_cache.entry as e, _ -> Dns_cache.pp_entry t ppf e
 
 let cname_or_cached t =
   Alcotest.testable (pp_or_cname t) (entry_or_cname t)
@@ -110,9 +115,9 @@ let cname_empty_cache () =
 let cname_cache_a () =
   let name = name "foo.com" in
   let a = 250l, Ipaddr.V4.Set.singleton (ip "1.2.3.4") in
-  let cache = Dns_cache.set empty 0L name A AuthoritativeAnswer (`Entry a) in
+  let cache = Dns_cache.set empty 0L name A (AuthoritativeAnswer false) (`Entry a) in
   Alcotest.check (cached_cname_r Rr_map.A) "cache with A results in res"
-    (Ok (`Entry a))
+    (Ok (`Entry a, AuthoritativeAnswer false))
     (snd (Dns_cache.get_or_cname cache 0L name A)) ;
   Alcotest.check (cached_cname_r Rr_map.Cname) "cache with A results in CacheMiss"
     (Error `Cache_miss)
@@ -122,15 +127,15 @@ let cname_cache_cname () =
   let rel = name "bar.com" in
   let name = name "foo.com" in
   let cname = 250l, rel in
-  let cache = Dns_cache.set empty 0L name Cname AuthoritativeAnswer (`Entry cname) in
+  let cache = Dns_cache.set empty 0L name Cname (AuthoritativeAnswer false) (`Entry cname) in
   Alcotest.check (cached_cname_r Rr_map.Cname) "cache with CNAME results in res"
-    (Ok (`Alias cname))
+    (Ok (`Alias cname, AuthoritativeAnswer false))
     (snd (Dns_cache.get_or_cname cache 0L name Cname)) ;
   Alcotest.check (cached_cname_r Rr_map.A) "cache with CNAME results in res for A"
-    (Ok (`Alias cname))
+    (Ok (`Alias cname, AuthoritativeAnswer false))
     (snd (Dns_cache.get_or_cname cache 0L name A)) ;
   Alcotest.check (cached_cname_r Rr_map.Ns) "cache with CNAME results in res for NS"
-    (Ok (`Alias cname))
+    (Ok (`Alias cname, AuthoritativeAnswer false))
     (snd (Dns_cache.get_or_cname cache 0L name Ns))
 
 let cname_cache_cname_nodata () =
@@ -140,17 +145,17 @@ let cname_cache_cname_nodata () =
   let bad_soa = invalid_soa name in
   let cache =
     Dns_cache.set
-      (Dns_cache.set empty 0L name Cname AuthoritativeAnswer (`Entry cname))
-      0L name Ns AuthoritativeAnswer (`No_data (name, bad_soa))
+      (Dns_cache.set empty 0L name Cname (AuthoritativeAnswer false) (`Entry cname))
+      0L name Ns (AuthoritativeAnswer false) (`No_data (name, bad_soa))
   in
   Alcotest.check (cached_cname_r Rr_map.Cname) "cache with CNAME results in res"
-    (Ok (`Alias cname))
+    (Ok (`Alias cname, AuthoritativeAnswer false))
     (snd (Dns_cache.get_or_cname cache 0L name Cname)) ;
   Alcotest.check (cached_cname_r Rr_map.Ns) "cache with CNAME results in res for NS"
-    (Ok (`Alias cname))
+    (Ok (`Alias cname, AuthoritativeAnswer false))
     (snd (Dns_cache.get_or_cname cache 0L name Ns)) ;
   Alcotest.check (cached_cname_r Rr_map.A) "cache with CNAME results in res for A"
-    (Ok (`Alias cname))
+    (Ok (`Alias cname, AuthoritativeAnswer false))
     (snd (Dns_cache.get_or_cname cache 0L name A))
 
 let cname_cache_tests = [

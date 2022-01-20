@@ -5,7 +5,7 @@ val pp_question : ([ `raw ] Domain_name.t * Packet.Question.qtype) Fmt.t
 
 val follow_cname : Dns_cache.t -> int64 -> 'a Rr_map.key -> name:[ `raw ] Domain_name.t -> int32 ->
   alias:[ `raw ] Domain_name.t ->
-  [ `Out of Rcode.t * Name_rr_map.t * Name_rr_map.t
+  [ `Out of Rcode.t * bool * Name_rr_map.t * Name_rr_map.t
   | `Query of [ `raw ] Domain_name.t ] * Dns_cache.t
 
 val answer : Dns_cache.t -> int64 -> [ `raw ] Domain_name.t -> Packet.Question.qtype ->

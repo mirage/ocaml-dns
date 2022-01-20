@@ -18,7 +18,7 @@ let invalid_soa name =
     expiry = 1048576l ; minimum = 300l
   }
 
-let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
+let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) additional =
   (* maybe should be passed explicitly (when we don't do qname minimisation) *)
   let in_bailiwick name = Domain_name.is_subdomain ~domain:bailiwick ~subdomain:name in
   (* ANSWER *)
@@ -37,7 +37,7 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
            --> but how to discover SOA/zone boundaries? *)
         let rank =
           if Packet.Flags.mem `Authoritative flags then
-            Dns_cache.AuthoritativeAuthority
+            Dns_cache.AuthoritativeAuthority signed
           else
             Dns_cache.Additional
         in
@@ -67,7 +67,7 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
     | Some rr_map ->
       let rank =
         if Packet.Flags.mem `Authoritative flags then
-          Dns_cache.AuthoritativeAnswer
+          Dns_cache.AuthoritativeAnswer signed
         else
           Dns_cache.NonAuthoritativeAnswer
       in
@@ -113,34 +113,49 @@ let noerror bailiwick (_, flags) q_name q_type (answer, authority) additional =
             Domain_name.Set.singleton (snd cname)
   in
 
-  (* AUTHORITY - NS records *)
+  (* AUTHORITY - NS and DS records, also nsec and nsec3 *)
   let ns, nsnames =
     (* authority points us to NS of q_name! *)
     (* we collect a list of NS records and the ns names *)
     (* TODO need to be more careful, q: foo.com a: foo.com a 1.2.3.4 au: foo.com ns blablubb.com ad: blablubb.com A 1.2.3.4 *)
-    let nm, names =
-      Domain_name.Map.fold (fun name map (acc, s) ->
-          if in_bailiwick name then
-            match Rr_map.find Ns map with
-            | None -> acc, s
-            | Some (ns : int32 * Domain_name.Host_set.t) ->
-              (name, ns) :: acc, Domain_name.Host_set.fold (fun n acc ->
-                  Domain_name.Set.add (Domain_name.raw n) acc)
-                (snd ns) s
-          else
-            acc, s)
-        authority
-        ([], Domain_name.Set.empty)
-    in
-    let rank =
+    let rank s =
       if Packet.Flags.mem `Authoritative flags then
-        Dns_cache.AuthoritativeAuthority
+        Dns_cache.AuthoritativeAuthority (signed && s)
       else
         Dns_cache.Additional
     in
+    let ns, others, names =
+      Domain_name.Map.fold (fun name map (ns_acc, other_acc, s) ->
+          if in_bailiwick name then
+            let ns, s =
+              match Rr_map.find Ns map with
+              | None -> ns_acc, s
+              | Some (ns : int32 * Domain_name.Host_set.t) ->
+                (name, ns) :: ns_acc, Domain_name.Host_set.fold (fun n acc ->
+                    Domain_name.Set.add (Domain_name.raw n) acc)
+                  (snd ns) s
+            in
+            let others = match Rr_map.find Nsec map with
+              | None -> other_acc
+              | Some n -> (name, E (Nsec, `Entry n), rank true) :: other_acc
+            in
+            let others = match Rr_map.find Nsec3 map with
+              | None -> others
+              | Some n -> (name, E (Nsec3, `Entry n), rank true) :: others
+            in
+            let others = match Rr_map.find Ds map with
+              | None -> others
+              | Some n -> (name, E (Ds, `Entry n), rank true) :: others
+            in
+            ns, others, s
+          else
+            ns_acc, other_acc, s)
+        authority
+        ([], [], Domain_name.Set.empty)
+    in
     List.fold_left (fun acc (name, ns) ->
-        (name, E (Ns, `Entry ns), rank) :: acc)
-      [] nm, names
+        (name, E (Ns, `Entry ns), rank false) :: acc)
+      others ns, names
   in
 
   (* ADDITIONAL *)
@@ -199,7 +214,7 @@ let find_soa name authority =
   in
   try Some (go name) with Invalid_argument _ -> None
 
-let nxdomain (_, flags) name data =
+let nxdomain (_, flags) ~signed name data =
   (* we can't do much if authoritiative is not set (some auth dns do so) *)
   (* There are cases where answer is non-empty, but contains a CNAME *)
   (* RFC 2308 Sec 1 + 2.1 show that NXDomain is for the last QNAME! *)
@@ -222,7 +237,7 @@ let nxdomain (_, flags) name data =
   (* since NXDomain have CNAME semantics, we store them as CNAME *)
   let rank =
     if Packet.Flags.mem `Authoritative flags then
-      Dns_cache.AuthoritativeAnswer
+      Dns_cache.AuthoritativeAnswer signed
     else
       Dns_cache.NonAuthoritativeAnswer
   in
@@ -243,12 +258,13 @@ let nxdomain (_, flags) name data =
   (* the cname does not matter *)
   List.map (fun (name, res) -> name, res, rank) entries
 
-(* stub vs recursive: maybe sufficient to look into *)
-let scrub zone qtype p =
+let scrub zone ~signed qtype p =
   Logs.debug (fun m -> m "scrubbing (bailiwick %a) data %a"
                  Domain_name.pp zone Packet.pp p);
   let qname = fst p.question in
   match p.Packet.data with
-  | `Answer data -> Ok (noerror zone p.header qname qtype data p.additional)
-  | `Rcode_error (Rcode.NXDomain, _, data) -> Ok (nxdomain p.Packet.header qname data)
+  | `Answer data ->
+    Ok (noerror zone p.header ~signed qname qtype data p.additional)
+  | `Rcode_error (Rcode.NXDomain, _, data) ->
+    Ok (nxdomain p.Packet.header ~signed qname data)
   | e -> Error (Packet.rcode_data e)
