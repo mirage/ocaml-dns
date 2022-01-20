@@ -126,8 +126,27 @@ let jump () hostname typ ns =
           Logs.info (fun m -> m "retrieving DS for %a" Domain_name.pp hostname);
           retrieve_ds parent_dnskeys hostname >>= function
           | Some ds_set ->
+            (* following 4509 - if there's a sha2 DS, drop sha1 ones *)
+            let ds_set' =
+              if
+                Rr_map.Ds_set.exists
+                  (fun ds ->
+                     match ds.Ds.digest_type with
+                     | Ds.SHA256 | Ds.SHA384 -> true
+                     | _ -> false)
+                  ds_set
+              then
+                Rr_map.Ds_set.filter
+                  (fun ds -> not (ds.Ds.digest_type = Ds.SHA1))
+                  ds_set
+              else
+                ds_set
+            in
+            if Rr_map.Ds_set.cardinal ds_set > Rr_map.Ds_set.cardinal ds_set' then
+              Logs.warn (fun m -> m "dropped %d DS records (SHA1)"
+                            (Rr_map.Ds_set.cardinal ds_set' - Rr_map.Ds_set.cardinal ds_set));
             Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
-            retrieve_dnskey parent_dnskeys ds_set hostname
+            retrieve_dnskey parent_dnskeys ds_set' hostname
           | None ->
             Logs.info (fun m -> m "no DS for %a, continuing with old keys" Domain_name.pp hostname);
             Lwt.return (Ok parent_dnskeys)

@@ -45,6 +45,7 @@ This library is published under the 2 clause BSD license.
 * [RFC 4035](https://tools.ietf.org/html/rfc4035) Protocol Modifications for the DNS Security Extensions
 * [RFC 4255](https://tools.ietf.org/html/rfc4255) Using DNS to Securely Publish Secure Shell (SSH) Key Fingerprints
 * [RFC 4343](https://tools.ietf.org/html/rfc4343) Domain Name System (DNS) Case Insensitivity Clarification
+* [RFC 4509](https://tools.ietf.org/html/rfc4509) Use of SHA-256 in DNSSEC Delegation Signer (DS) Resource Records (RRs)
 * [RFC 4592](https://tools.ietf.org/html/rfc4592) The Role of Wildcards in the Domain Name System
 * [RFC 4635](https://tools.ietf.org/html/rfc4635) HMAC SHA TSIG Algorithm Identifiers
 * `*` [RFC 5001](https://tools.ietf.org/html/rfc5001) DNS Name Server Identifier (NSID) Option
