@@ -55,14 +55,14 @@ module Transport : Dns_client.S
         t.nameservers <- default_resolvers ()
     in
     match read_file "/etc/resolv.conf", t.resolv_conf with
+    | Ok data, Some d ->
+      let digest = Digest.string data in
+      if Digest.equal digest d then () else decode_update data digest
+    | Ok data, None -> decode_update data (Digest.string data)
     | Error _, None -> ()
     | Error _, Some _ ->
       t.resolv_conf <- None;
       t.nameservers <- default_resolvers ()
-    | Ok data, None -> decode_update data (Digest.string data)
-    | Ok data, Some d ->
-      let digest = Digest.string data in
-      if Digest.equal digest d then () else decode_update data digest
 
   let create ?nameservers ~timeout () =
     let (protocol, nameservers), resolv_conf =
