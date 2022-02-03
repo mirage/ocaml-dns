@@ -12,7 +12,8 @@ module Transport : Dns_client.S
   type stack = unit
   type t = {
     protocol : Dns.proto ;
-    nameservers : io_addr list ;
+    mutable resolv_conf : Digest.t option ;
+    mutable nameservers : io_addr list ;
     timeout_ns : int64 ;
   }
   type context = {
@@ -34,23 +35,54 @@ module Transport : Dns_client.S
         Error (`Msg ("Error reading file: " ^ file))
     with _ -> Error (`Msg ("Error opening file " ^ file))
 
-  let create ?nameservers ~timeout () =
-    let protocol, nameservers =
-      match nameservers with
-      | Some ns -> ns
-      | None ->
-        let ips =
-          match
-            Result.bind
-              (read_file "/etc/resolv.conf")
-              (fun data -> Dns_resolvconf.parse data)
-          with
-          | Error _ | Ok [] -> List.map (fun ip -> ip, 53) Dns_client.default_resolvers
-          | Ok ips -> List.map (function `Nameserver ip -> (ip, 53)) ips
-        in
-        `Tcp, ips
+  let decode_resolv_conf data =
+    match Dns_resolvconf.parse data with
+    | Ok [] -> Error (`Msg "empty nameservers from resolv.conf")
+    | Ok ips -> Ok ips
+    | Error _ as e -> e
+
+  let default_resolvers () =
+    List.map (fun ip -> ip, 53) Dns_client.default_resolvers
+
+  let maybe_resolv_conf t =
+    let decode_update data dgst =
+      match decode_resolv_conf data with
+      | Ok ips ->
+        t.resolv_conf <- Some dgst;
+        t.nameservers <- List.map (function `Nameserver ip -> (ip, 53)) ips
+      | Error _ ->
+        t.resolv_conf <- None;
+        t.nameservers <- default_resolvers ()
     in
-    { protocol ; nameservers ; timeout_ns = timeout }
+    match read_file "/etc/resolv.conf", t.resolv_conf with
+    | Error _, None -> ()
+    | Error _, Some _ ->
+      t.resolv_conf <- None;
+      t.nameservers <- default_resolvers ()
+    | Ok data, None -> decode_update data (Digest.string data)
+    | Ok data, Some d ->
+      let digest = Digest.string data in
+      if Digest.equal digest d then () else decode_update data digest
+
+  let create ?nameservers ~timeout () =
+    let (protocol, nameservers), resolv_conf =
+      match nameservers with
+      | Some ns -> ns, None
+      | None ->
+        let ips, digest =
+          match
+            let ( let* ) = Result.bind in
+            let* data = read_file "/etc/resolv.conf" in
+            let* ips = decode_resolv_conf data in
+            Ok (ips, Digest.string data)
+          with
+          | Error _ -> default_resolvers (), None
+          | Ok (ips, digest) ->
+            List.map (function `Nameserver ip -> (ip, 53)) ips, Some digest
+        in
+        (`Tcp, ips), digest
+    in
+    { protocol ; resolv_conf ; nameservers ; timeout_ns = timeout }
 
   let nameservers { protocol ; nameservers ; _ } = protocol, nameservers
   let clock = Mtime_clock.elapsed_ns
@@ -74,6 +106,7 @@ module Transport : Dns_client.S
 
   (* there is no connect timeouts, just a request timeout (unix: receive timeout) *)
   let connect t =
+    maybe_resolv_conf t;
     match nameservers t with
     | _, [] -> Error (`Msg "empty nameserver list")
     | proto, (server, port) :: _ ->
