@@ -13,9 +13,14 @@ module Transport : Dns_client.S
   type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
   type +'a io = 'a Lwt.t
   type stack = unit
+  type nameservers =
+    | Static of io_addr list
+    | Resolv_conf of {
+        mutable nameservers : io_addr list;
+        mutable digest : Digest.t option
+      }
   type t = {
-    mutable nameservers : io_addr list ;
-    mutable resolv_conf : Digest.t option ;
+    nameservers : nameservers;
     timeout_ns : int64 ;
     (* TODO: avoid race, use a mvar instead of condition *)
     mutable fd : [ `Plain of Lwt_unix.file_descr | `Tls of Tls_lwt.Unix.t ] option ;
@@ -150,51 +155,53 @@ module Transport : Dns_client.S
            ]) Dns_client.default_resolvers)
 
   let maybe_resolv_conf t =
-    let needs_update =
-      match read_file "/etc/resolv.conf", t.resolv_conf with
-      | Ok data, Some dgst ->
-        let dgst' = Digest.string data in
-        if Digest.equal dgst' dgst then
+    match t.nameservers with
+    | Static _ -> ()
+    | Resolv_conf resolv_conf ->
+      let needs_update =
+        match read_file "/etc/resolv.conf", resolv_conf.digest with
+        | Ok data, Some dgst ->
+          let dgst' = Digest.string data in
+          if Digest.equal dgst' dgst then
+            `No
+          else
+            `Data (data, dgst')
+        | Ok data, None ->
+          let digest = Digest.string data in
+          `Data (data, digest)
+        | Error _, None ->
           `No
-        else
-          `Data (data, dgst')
-      | Ok data, None ->
-        let digest = Digest.string data in
-        `Data (data, digest)
-      | Error _, None ->
-        `No
-      | Error `Msg msg, Some _ ->
-        Log.warn (fun m -> m "error reading /etc/resolv.conf: %s" msg);
-        `Default
-    in
-    match needs_update with
-    | `No -> ()
-    | `Default ->
-      t.resolv_conf <- None;
-      t.nameservers <- default_resolver ()
-    | `Data (data, dgst) ->
-      match decode_resolv_conf data with
-      | Ok ns ->
-        t.resolv_conf <- Some dgst;
-        t.nameservers <- ns
-      | Error `Msg msg ->
-        Log.warn (fun m -> m "error %s decoding resolv.conf: %S" msg data);
-        t.resolv_conf <- None;
-        t.nameservers <- default_resolver ()
+        | Error `Msg msg, Some _ ->
+          Log.warn (fun m -> m "error reading /etc/resolv.conf: %s" msg);
+          `Default
+      in
+      match needs_update with
+      | `No -> ()
+      | `Default ->
+        resolv_conf.digest <- None;
+        resolv_conf.nameservers <- default_resolver ()
+      | `Data (data, dgst) ->
+        match decode_resolv_conf data with
+        | Ok ns ->
+          resolv_conf.digest <- Some dgst;
+          resolv_conf.nameservers <- ns
+        | Error `Msg msg ->
+          Log.warn (fun m -> m "error %s decoding resolv.conf: %S" msg data);
+          resolv_conf.digest <- None;
+          resolv_conf.nameservers <- default_resolver ()
 
   let create ?nameservers ~timeout () =
-    let nameservers, resolv_conf =
+    let nameservers =
       match nameservers with
       | Some (`Udp, _) -> invalid_arg "UDP is not supported"
-      | Some (`Tcp, ns) -> ns, None
+      | Some (`Tcp, ns) -> Static ns
       | None ->
         match resolv_conf () with
-        | Error _ -> default_resolver (), None
-        | Ok (ips, digest) -> ips, Some digest
+        | Error _ -> Resolv_conf { nameservers = default_resolver (); digest = None }
+        | Ok (ips, digest) -> Resolv_conf { nameservers = ips; digest = Some digest }
     in
     let t = {
       nameservers ;
-      resolv_conf ;
       timeout_ns = timeout ;
       fd = None ;
       connected_condition = None ;
@@ -206,7 +213,10 @@ module Transport : Dns_client.S
     Lwt.async (fun () -> he_timer t);
     t
 
-  let nameservers { nameservers ; _ } = `Tcp, nameservers
+  let _nameservers = function
+    | Static nameservers -> nameservers
+    | Resolv_conf { nameservers; _ } -> nameservers
+  let nameservers { nameservers; _ } = `Tcp, _nameservers nameservers
   let rng = Mirage_crypto_rng.generate ?g:None
 
   let with_timeout timeout f =
@@ -330,7 +340,7 @@ module Transport : Dns_client.S
       Lwt.return
         (Error (`Msg (Fmt.str "error %s connecting to resolver %a"
                         msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
-                        (to_pairs t.nameservers))))
+                        (to_pairs (_nameservers t.nameservers)))))
     | Ok (addr, socket) ->
       let continue socket =
         t.fd <- Some socket;
@@ -347,7 +357,7 @@ module Transport : Dns_client.S
         t.connected_condition <- None;
         req_all socket t
       in
-      let config = find_ns t.nameservers addr in
+      let config = find_ns (_nameservers t.nameservers) addr in
       match config with
       | `Plaintext _ -> continue (`Plain socket)
       | `Tls (tls_cfg, _, _) ->
@@ -382,7 +392,7 @@ module Transport : Dns_client.S
       let connected_condition = Lwt_condition.create () in
       t.connected_condition <- Some connected_condition ;
       maybe_resolv_conf t;
-      connect_to_ns_list t connected_condition t.nameservers
+      connect_to_ns_list t connected_condition (_nameservers t.nameservers)
 
   let connect t =
     connect_via_tcp_to_ns t >|= function
