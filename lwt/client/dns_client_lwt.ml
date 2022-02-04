@@ -32,6 +32,10 @@ module Transport : Dns_client.S
   }
   type context = t
 
+  let nameserver_ips = function
+    | Static nameservers -> nameservers
+    | Resolv_conf { nameservers; _ } -> nameservers
+
   let read_file file =
     try
       let fh = open_in file in
@@ -110,12 +114,12 @@ module Transport : Dns_client.S
     loop ()
 
   let authenticator =
-    let _authenticator = ref None in
+    let authenticator_ref = ref None in
     fun () ->
-      match !_authenticator with
+      match !authenticator_ref with
       | Some x -> x
       | None -> match Ca_certs.authenticator () with
-        | Ok a -> _authenticator := Some a ; a
+        | Ok a -> authenticator_ref := Some a ; a
         | Error `Msg m -> invalid_arg ("failed to load trust anchors: " ^ m)
 
   let decode_resolv_conf data =
@@ -213,10 +217,8 @@ module Transport : Dns_client.S
     Lwt.async (fun () -> he_timer t);
     t
 
-  let _nameservers = function
-    | Static nameservers -> nameservers
-    | Resolv_conf { nameservers; _ } -> nameservers
-  let nameservers { nameservers; _ } = `Tcp, _nameservers nameservers
+  let nameservers { nameservers; _ } = `Tcp, nameserver_ips nameservers
+
   let rng = Mirage_crypto_rng.generate ?g:None
 
   let with_timeout timeout f =
@@ -340,7 +342,7 @@ module Transport : Dns_client.S
       Lwt.return
         (Error (`Msg (Fmt.str "error %s connecting to resolver %a"
                         msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
-                        (to_pairs (_nameservers t.nameservers)))))
+                        (to_pairs (nameserver_ips t.nameservers)))))
     | Ok (addr, socket) ->
       let continue socket =
         t.fd <- Some socket;
@@ -357,7 +359,7 @@ module Transport : Dns_client.S
         t.connected_condition <- None;
         req_all socket t
       in
-      let config = find_ns (_nameservers t.nameservers) addr in
+      let config = find_ns (nameserver_ips t.nameservers) addr in
       match config with
       | `Plaintext _ -> continue (`Plain socket)
       | `Tls (tls_cfg, _, _) ->
@@ -392,7 +394,7 @@ module Transport : Dns_client.S
       let connected_condition = Lwt_condition.create () in
       t.connected_condition <- Some connected_condition ;
       maybe_resolv_conf t;
-      connect_to_ns_list t connected_condition (_nameservers t.nameservers)
+      connect_to_ns_list t connected_condition (nameserver_ips t.nameservers)
 
   let connect t =
     connect_via_tcp_to_ns t >|= function
