@@ -80,7 +80,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
           client_out dst port >>= function
           | Error () ->
             let sport = sport () in
-            S.UDP.listen (S.udp stack) ~port:sport (udp_cb false) ;
+            S.UDP.listen (S.udp stack) ~port:sport (udp_cb sport false) ;
             Dns.send_udp stack sport dst port data
           | Ok () -> client_tcp dst port data
         end
@@ -97,7 +97,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
       | Ok () -> Lwt.return_unit
       | Error () ->
         let sport = sport () in
-        S.UDP.listen (S.udp stack) ~port:sport (udp_cb false) ;
+        S.UDP.listen (S.udp stack) ~port:sport (udp_cb sport false) ;
         Dns.send_udp stack sport dst port data
     and handle_query (proto, dst, data) = match proto with
       | `Udp -> maybe_tcp dst port data
@@ -117,20 +117,22 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
           (send_tls flow data >|= function
            | Ok () -> ()
            | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in)
-    and udp_cb req ~src ~dst:_ ~src_port buf =
+    and udp_cb lport req ~src ~dst:_ ~src_port buf =
       let now = Ptime.v (P.now_d_ps ())
       and ts = M.elapsed_ns ()
       in
       let new_state, answers, queries =
         Dns_resolver.handle_buf !state now ts req `Udp src src_port buf
       in
-      if not req then S.UDP.unlisten (S.udp stack) ~port:src_port;
+      if not req then
+        (Log.app (fun m -> m "unlisten on UDP %d" src_port);
+         S.UDP.unlisten (S.udp stack) ~port:lport);
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
       Lwt_list.iter_p handle_query queries
     in
     if udp then begin
-      S.UDP.listen (S.udp stack) ~port (udp_cb true);
+      S.UDP.listen (S.udp stack) ~port (udp_cb port true);
       Log.app (fun f -> f "DNS resolver listening on UDP port %d" port);
     end;
 

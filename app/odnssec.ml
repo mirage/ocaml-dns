@@ -15,21 +15,6 @@ let pp_nameserver ppf = function
       Fmt.(option ~none:(any "") (append (any "#") Domain_name.pp))
       ((Tls.Config.of_client tls_cfg).Tls.Config.peer_name)
 
-let root_ds =
-  (* <KeyDigest id="Klajeyz" validFrom="2017-02-02T00:00:00+00:00">
-  <KeyTag>20326</KeyTag>
-  <Algorithm>8</Algorithm>
-  <DigestType>2</DigestType>
-  <Digest>
-  E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
-  </Digest>
-  </KeyDigest> *)
-  { Ds.key_tag = 20326 ;
-    algorithm = Dnskey.RSA_SHA256 ;
-    digest_type = SHA256 ;
-    digest = Cstruct.of_hex "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D" ;
-  }
-
 let jump () hostname typ ns =
   match Dns.Rr_map.of_string typ with
   | Ok K k ->
@@ -119,15 +104,34 @@ let jump () hostname typ ns =
         Logs.info (fun m -> m "validating and retrieving DNSKEYS for %a" Domain_name.pp hostname);
         if Domain_name.equal hostname Domain_name.root then begin
           Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
-          retrieve_dnskey Rr_map.Dnskey_set.empty (Rr_map.Ds_set.singleton root_ds) hostname
+          retrieve_dnskey Rr_map.Dnskey_set.empty Dnssec.root_ds hostname
         end else
           let open Lwt_result.Infix in
           retrieve_validated_dnskeys Domain_name.(drop_label_exn hostname) >>= fun parent_dnskeys ->
           Logs.info (fun m -> m "retrieving DS for %a" Domain_name.pp hostname);
           retrieve_ds parent_dnskeys hostname >>= function
           | Some ds_set ->
+            (* following 4509 - if there's a sha2 DS, drop sha1 ones *)
+            let ds_set' =
+              if
+                Rr_map.Ds_set.exists
+                  (fun ds ->
+                     match ds.Ds.digest_type with
+                     | Ds.SHA256 | Ds.SHA384 -> true
+                     | _ -> false)
+                  ds_set
+              then
+                Rr_map.Ds_set.filter
+                  (fun ds -> not (ds.Ds.digest_type = Ds.SHA1))
+                  ds_set
+              else
+                ds_set
+            in
+            if Rr_map.Ds_set.cardinal ds_set > Rr_map.Ds_set.cardinal ds_set' then
+              Logs.warn (fun m -> m "dropped %d DS records (SHA1)"
+                            (Rr_map.Ds_set.cardinal ds_set' - Rr_map.Ds_set.cardinal ds_set));
             Logs.info (fun m -> m "retrieving DNSKEYS for %a" Domain_name.pp hostname);
-            retrieve_dnskey parent_dnskeys ds_set hostname
+            retrieve_dnskey parent_dnskeys ds_set' hostname
           | None ->
             Logs.info (fun m -> m "no DS for %a, continuing with old keys" Domain_name.pp hostname);
             Lwt.return (Ok parent_dnskeys)

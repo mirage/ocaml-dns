@@ -281,7 +281,7 @@ struct
         Dns_cache.get t.cache (Transport.clock ()) domain_name query_type
       in
       t.cache <- cache';
-      match lift_ok r with
+      match lift_ok (Result.map fst r) with
       | Ok _ as ok -> Transport.lift ok
       | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
       | Error `Msg _ ->

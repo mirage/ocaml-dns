@@ -20,6 +20,21 @@ let open_err : ('a, [ `Msg of string ]) result ->
   | Ok _ as a -> a
   | Error (`Msg _) as b -> b
 
+let root_ds =
+  (* <KeyDigest id="Klajeyz" validFrom="2017-02-02T00:00:00+00:00">
+  <KeyTag>20326</KeyTag>
+  <Algorithm>8</Algorithm>
+  <DigestType>2</DigestType>
+  <Digest>
+  E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
+  </Digest>
+  </KeyDigest> *)
+  { Ds.key_tag = 20326 ;
+    algorithm = Dnskey.RSA_SHA256 ;
+    digest_type = SHA256 ;
+    digest = Cstruct.of_hex "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D" ;
+  } |> Rr_map.Ds_set.singleton
+
 type pub = [
   | `P256 of Mirage_crypto_ec.P256.Dsa.pub
   | `P384 of Mirage_crypto_ec.P384.Dsa.pub
@@ -563,6 +578,68 @@ let has_delegation name_rr_map name =
   else
     None
 
+let validate_delegation signer_name auth (zname, rrs) =
+  let _, ns = Rr_map.get Ns rrs in
+  match Domain_name.Map.find zname auth with
+  | Some (rrs, kms) when Rr_map.mem Ds rrs ->
+    let ds = snd (Rr_map.get Ds rrs) in
+    let used_name = KM.find (K Ds) kms in
+    if not (Domain_name.equal used_name zname) then
+      Error (`Msg (Fmt.str "owner %a of DS %a does not match used name %a"
+                     Domain_name.pp zname
+                     Fmt.(list ~sep:(any ", ") Ds.pp)
+                     (Rr_map.Ds_set.elements ds)
+                     Domain_name.pp used_name))
+    else
+      Ok (`Signed_delegation (zname, ns, ds))
+  | Some (rrs, kms) when Rr_map.mem Nsec rrs ->
+    let nsec = snd (Rr_map.get Nsec rrs) in
+    let used_name = KM.find (K Nsec) kms in
+    if not (Domain_name.equal used_name zname) then
+      Error (`Msg (Fmt.str "owner %a of Nsec %a does not match used name %a"
+                     Domain_name.pp zname
+                     Nsec.pp nsec
+                     Domain_name.pp used_name))
+    else if
+      (not (Bit_map.mem (Rr_map.to_int Ds) nsec.Nsec.types)) &&
+      Bit_map.mem (Rr_map.to_int Ns) nsec.Nsec.types
+    then
+      Ok (`Unsigned_delegation (zname, ns))
+    else
+      Error (`Msg (Fmt.str "NSEC present for %a (%a), but either has DS or no NS bits"
+                     Domain_name.pp zname Nsec.pp nsec))
+  | _ ->
+    let soa_name = Option.value ~default:Domain_name.root signer_name in
+    let* nsec3 = nsec3_non_existence zname ~soa_name auth in
+    if (snd nsec3).Nsec3.flags = Some `Opt_out then
+      Ok (`Unsigned_delegation (zname, ns))
+    else
+      Error (`Msg (Fmt.str "NSEC3 for closest encloser %a present %a, but not opt-out"
+                     Domain_name.pp zname
+                     Nsec3.pp (snd nsec3)))
+
+let maybe_validate_wildcard_answer signer_name auth kms name k =
+  let used_name = KM.find (K k) kms in
+  if Domain_name.equal used_name name then
+    Ok ()
+  else begin
+    (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
+       positive reply (no direct match) *)
+    (* RFC 5155 8.8 - there's a candidate closest encloser for qname
+       (the used_name without "*") - need to verify existence of a nsec3
+       covering next_closer name to qname *)
+    (match signer_name with
+     | None -> Log.warn (fun m -> m "no signer name provided")
+     | Some _ -> ());
+    let soa_name = Option.value ~default:Domain_name.root signer_name in
+    match
+      nsec_chain ~soa_name name auth,
+      nsec3_chain ~soa_name ~wc_name:used_name ~name auth
+    with
+    | Ok _, _ | _, Ok _ -> Ok ()
+    | Error _ as e, _ -> e
+  end
+
 let validate_answer :
   type a. ?signer_name:[`raw] Domain_name.t ->
   [`raw] Domain_name.t -> a Rr_map.rr ->
@@ -586,72 +663,14 @@ let validate_answer :
         let* (soa_name, soa) = no_data name k auth in
         Log.debug (fun m -> m "validated no data");
         Error (`No_data (soa_name, soa)))
-      ~some:(fun (zname, rrs) ->
-          let _, ns = Rr_map.get Ns rrs in
-          match Domain_name.Map.find zname auth with
-          | Some (rrs, kms) when Rr_map.mem Ds rrs ->
-            let ds = snd (Rr_map.get Ds rrs) in
-            let used_name = KM.find (K Ds) kms in
-            if not (Domain_name.equal used_name zname) then
-              Error (`Msg (Fmt.str "owner %a of DS %a does not match used name %a"
-                             Domain_name.pp zname
-                             Fmt.(list ~sep:(any ", ") Ds.pp)
-                             (Rr_map.Ds_set.elements ds)
-                             Domain_name.pp used_name))
-            else
-              Error (`Signed_delegation (zname, ns, ds))
-          | Some (rrs, kms) when Rr_map.mem Nsec rrs ->
-            let nsec = snd (Rr_map.get Nsec rrs) in
-            let used_name = KM.find (K Nsec) kms in
-            if not (Domain_name.equal used_name zname) then
-              Error (`Msg (Fmt.str "owner %a of Nsec %a does not match used name %a"
-                             Domain_name.pp zname
-                             Nsec.pp nsec
-                             Domain_name.pp used_name))
-            else if
-              (not (Bit_map.mem (Rr_map.to_int Ds) nsec.Nsec.types)) &&
-              Bit_map.mem (Rr_map.to_int Ns) nsec.Nsec.types
-            then
-              Error (`Unsigned_delegation (zname, ns))
-            else
-              Error (`Msg (Fmt.str "NSEC present for %a (%a), but either has DS or no NS bits"
-                             Domain_name.pp zname Nsec.pp nsec))
-          | _ ->
-            let soa_name = Option.value ~default:Domain_name.root signer_name in
-            let* nsec3 = nsec3_non_existence zname ~soa_name auth in
-            if (snd nsec3).Nsec3.flags = Some `Opt_out then
-              Error (`Unsigned_delegation (zname, ns))
-            else
-              Error (`Msg (Fmt.str "NSEC3 for closest encloser %a present %a, but not opt-out"
-                             Domain_name.pp zname
-                             Nsec3.pp (snd nsec3))))
+      ~some:(fun x ->
+          let* r =  validate_delegation signer_name auth x in
+          Error r)
       (has_delegation raw_auth name)
   | Some (rr_map, kms) ->
-    let maybe_validate_wildcard_answer k =
-      let used_name = KM.find (K k) kms in
-      if Domain_name.equal used_name name then
-        Ok ()
-      else begin
-        (* RFC 4035 5.3.4 - verify in authority the wildcard-expanded
-           positive reply (no direct match) *)
-        (* RFC 5155 8.8 - there's a candidate closest encloser for qname
-           (the used_name without "*") - need to verify existence of a nsec3
-           covering next_closer name to qname *)
-        (match signer_name with
-         | None -> Log.warn (fun m -> m "no signer name provided")
-         | Some _ -> ());
-        let soa_name = Option.value ~default:Domain_name.root signer_name in
-        match
-          nsec_chain ~soa_name name auth,
-          nsec3_chain ~soa_name ~wc_name:used_name ~name auth
-        with
-        | Ok _, _ | _, Ok _ -> Ok ()
-        | Error _ as e, _ -> e
-      end
-    in
     match Rr_map.find k rr_map with
     | Some rrs ->
-      let* () = maybe_validate_wildcard_answer k in
+      let* () = maybe_validate_wildcard_answer signer_name auth kms name k in
       Ok rrs
     | None ->
       match Rr_map.find Cname rr_map with
@@ -660,7 +679,7 @@ let validate_answer :
         Log.debug (fun m -> m "validated no data");
         Error (`No_data (soa_name, soa))
       | Some rr ->
-        let* () = maybe_validate_wildcard_answer Cname in
+        let* () = maybe_validate_wildcard_answer signer_name auth kms name Cname in
         Log.info (fun m -> m "verified CNAME to %a" Domain_name.pp (snd rr));
         Error (`Cname (snd rr))
 
@@ -693,6 +712,64 @@ let pp_err ppf = function
     Fmt.pf ppf "no domain %a %a" Domain_name.pp name Soa.pp soa
   | `Msg m -> Fmt.pf ppf "error %s" m
 
+let fold_option a b =
+  match a, b with
+  | None, None -> None
+  | Some a, None -> Some a
+  | None, Some b -> Some b
+  | Some a, Some b ->
+    if not (Domain_name.equal a b) then
+      Log.warn (fun m -> m "different signer names %a and %a"
+                   Domain_name.pp a Domain_name.pp b);
+    Some a
+
+(* to avoid missing a signature check, and also checking the signature
+   multiple times, first verify all signatures in the map *)
+let check_signatures now dnskeys map =
+  (* the result is again a map, but with an additional nesting to track the
+     used name (wildcard signatures) *)
+  Domain_name.Map.fold (fun name rr_map (signer_name, acc) ->
+      let rrsig_ttl, rrsigs =
+        Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
+          (Rr_map.find Rrsig rr_map)
+      in
+      let signer_name, rrs = Rr_map.fold (fun b ((signer_name, (rrs, names)) as acc) ->
+          match b with
+          | B (Rr_map.Rrsig, _) -> acc
+          | B (k, v) ->
+            let int = Rr_map.to_int k in
+            let rrsigs =
+              Rr_map.Rrsig_set.filter
+                (fun rrsig -> rrsig.Rrsig.type_covered = int)
+                rrsigs
+            in
+            if Rr_map.Rrsig_set.is_empty rrsigs then
+              Log.warn (fun m -> m "couldn't find RRSIG for %a %a"
+                           Domain_name.pp name Rr_map.pp_b b);
+            match validate_rrsig_keys now dnskeys rrsigs name k v with
+            | Ok (used_name, signer_name') ->
+              let signer = fold_option signer_name (Some signer_name') in
+              let rrs = Rr_map.add k v rrs in
+              let rrs =
+                Rr_map.update Rrsig (function
+                    | None -> Some (rrsig_ttl, rrsigs)
+                    | Some (_, s) ->
+                      Some (rrsig_ttl, Rr_map.Rrsig_set.union s rrsigs))
+                  rrs
+              in
+              signer, (rrs, KM.add (Rr_map.K k) used_name names)
+            | Error `Msg msg ->
+              Log.warn (fun m -> m "RRSIG verification for %a %a failed: %s"
+                           Domain_name.pp name Rr_map.pp_b b msg);
+              acc) rr_map (signer_name, (Rr_map.empty, KM.empty))
+      in
+      signer_name,
+      if Rr_map.is_empty (fst rrs) then
+        acc
+      else
+        Domain_name.Map.add name rrs acc)
+    map (None, Domain_name.Map.empty)
+
 let verify_reply : type a. ?fuel:int -> ?follow_cname:bool ->
   Ptime.t -> Rr_map.Dnskey_set.t -> [`raw] Domain_name.t -> a Rr_map.rr ->
   Packet.reply ->
@@ -705,61 +782,11 @@ let verify_reply : type a. ?fuel:int -> ?follow_cname:bool ->
    | `Msg of string ]) result =
   fun ?(fuel = 20) ?(follow_cname = true) now dnskeys name k reply ->
   Log.debug (fun m -> m "verifying %a (%a)"
-                 Domain_name.pp name Rr_map.ppk (K k));
-  let fold_option a b =
-    match a, b with
-    | None, None -> None
-    | Some a, None -> Some a
-    | None, Some b -> Some b
-    | Some a, Some b ->
-      if not (Domain_name.equal a b) then
-        Log.warn (fun m -> m "different signer names %a and %a"
-                     Domain_name.pp a Domain_name.pp b);
-      Some a
-  in
-  (* to avoid missing a signature check, and also checking the signature
-     multiple times, first verify all signatures in the map *)
-  let check_signatures map =
-    (* the result is again a map, but with an additional nesting to track the
-       used name (wildcard signatures) *)
-    Domain_name.Map.fold (fun name rr_map (signer_name, acc) ->
-        let _, rrsigs =
-          Option.value ~default:(0l, Rr_map.Rrsig_set.empty)
-            (Rr_map.find Rrsig rr_map)
-        in
-        let signer_name, rrs = Rr_map.fold (fun b ((signer_name, (rrs, names)) as acc) ->
-            match b with
-            | B (Rr_map.Rrsig, _) -> acc
-            | B (k, v) ->
-              let int = Rr_map.to_int k in
-              let rrsigs =
-                Rr_map.Rrsig_set.filter
-                  (fun rrsig -> rrsig.Rrsig.type_covered = int)
-                  rrsigs
-              in
-              if Rr_map.Rrsig_set.is_empty rrsigs then
-                Log.warn (fun m -> m "couldn't find RRSIG for %a %a"
-                             Domain_name.pp name Rr_map.pp_b b);
-              match validate_rrsig_keys now dnskeys rrsigs name k v with
-              | Ok (used_name, signer_name') ->
-                let signer = fold_option signer_name (Some signer_name') in
-                signer, (Rr_map.add k v rrs, KM.add (Rr_map.K k) used_name names)
-              | Error `Msg msg ->
-                Log.warn (fun m -> m "RRSIG verification for %a %a failed: %s"
-                             Domain_name.pp name Rr_map.pp_b b msg);
-                acc) rr_map (signer_name, (Rr_map.empty, KM.empty))
-        in
-        signer_name,
-        if Rr_map.is_empty (fst rrs) then
-          acc
-        else
-          Domain_name.Map.add name rrs acc)
-      map (None, Domain_name.Map.empty)
-  in
+                Domain_name.pp name Rr_map.ppk (K k));
   match reply with
   | `Answer (answer, authority) ->
-    let signer_name, signed_answer = check_signatures answer
-    and signer_name2, signed_authority = check_signatures authority
+    let signer_name, signed_answer = check_signatures now dnskeys answer
+    and signer_name2, signed_authority = check_signatures now dnskeys authority
     in
     let signer_name = fold_option signer_name signer_name2 in
     begin
@@ -775,11 +802,87 @@ let verify_reply : type a. ?fuel:int -> ?follow_cname:bool ->
       more ~fuel name
     end
   | `Rcode_error (NXDomain, Query, Some (answer, authority)) ->
-    let signer_name, _answer = check_signatures answer
-    and signer_name2, authority = check_signatures authority
+    let signer_name, _answer = check_signatures now dnskeys answer
+    and signer_name2, authority = check_signatures now dnskeys authority
     in
     let _signer_name = fold_option signer_name signer_name2 in
     let* (soa_name, soa) = no_domain name authority in
     Error (`No_domain (soa_name, soa))
   | r ->
     Error (`Msg (Fmt.str "unexpected reply: %a" Packet.pp_reply r))
+
+let remove_km map =
+  Domain_name.Map.fold
+    (fun name (rrs, _) acc -> Domain_name.Map.add name rrs acc)
+    map Domain_name.Map.empty
+
+let verify_packet now dnskeys packet =
+  let qname = fst packet.Packet.question in
+  let* data =
+    match packet.Packet.data with
+    | `Answer (answer, authority) ->
+      let signer_name, signed_answer = check_signatures now dnskeys answer
+      and signer_name2, signed_auth = check_signatures now dnskeys authority
+      in
+      let signer_name = fold_option signer_name signer_name2 in
+      let ans = remove_km signed_answer and auth = remove_km signed_auth in
+      begin match Domain_name.Map.find qname signed_answer with
+        | None ->
+          Option.fold
+            ~none:(
+              match snd packet.question with
+              | `K K k ->
+                let* _ = no_data qname k signed_auth in
+                Ok (`Answer (ans, auth))
+              | _ -> Error (`Msg "qtype is not a valid typ"))
+            ~some:(fun (zname, rrs) ->
+                (* add (unsigned!) rrs back into auth *)
+                let* _ = validate_delegation signer_name signed_auth (zname, rrs) in
+                let ns_rr = Rr_map.get Ns rrs in
+                let auth =
+                  Domain_name.Map.update zname
+                    (function
+                      | None -> Some Rr_map.(singleton Ns ns_rr)
+                      | Some rrs -> Some Rr_map.(add Ns ns_rr rrs))
+                    auth
+                in
+                Ok (`Answer (ans, auth))
+                )
+            (has_delegation authority qname)
+        | Some (rrs, kms) ->
+          begin match snd packet.question with
+            | `K K k ->
+              begin match Rr_map.find k rrs, Rr_map.find Cname rrs with
+                | None, None ->
+                  let* _ = no_data qname k signed_auth in
+                  Ok (`Answer (ans, auth))
+                | Some _, _ ->
+                  let* _ = maybe_validate_wildcard_answer signer_name signed_auth kms qname k in
+                  Ok (`Answer (ans, auth))
+                | _, Some _ ->
+                  let* _ = maybe_validate_wildcard_answer signer_name signed_auth kms qname Cname in
+                  Ok (`Answer (ans, auth))
+              end
+            | _ -> Error (`Msg "qtype is not a valid typ")
+          end
+      end
+    | `Rcode_error (Rcode.NXDomain, Query, Some (answer, authority)) ->
+      let signer_name, signed_answer = check_signatures now dnskeys answer
+      and signer_name2, signed_authority = check_signatures now dnskeys authority
+      in
+      let _signer_name = fold_option signer_name signer_name2 in
+      let* _ = no_domain qname signed_authority in
+      let answer = remove_km signed_answer and auth = remove_km signed_authority in
+      Ok (`Rcode_error (Rcode.NXDomain, Opcode.Query, Some (answer, auth)))
+    | `Rcode_error (rc, op, Some (ans, aut)) ->
+      let signer_name, signed_answer = check_signatures now dnskeys ans
+      and signer_name2, signed_authority = check_signatures now dnskeys aut
+      in
+      let _signer_name = fold_option signer_name signer_name2 in
+      let answer = remove_km signed_answer and auth = remove_km signed_authority in
+      Ok (`Rcode_error (rc, op, Some (answer, auth)))
+    | `Rcode_error (rc, op, None) -> Ok (`Rcode_error (rc, op, None))
+    | x -> Ok x
+  in
+  Ok (Packet.create ~additional:packet.additional ?edns:packet.edns
+        ?tsig:packet.tsig packet.header packet.question data)
