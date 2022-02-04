@@ -10,9 +10,15 @@ module Transport : Dns_client.S
 = struct
   type io_addr = Ipaddr.t * int
   type stack = unit
+  type nameservers =
+    | Static of io_addr list
+    | Resolv_conf of {
+        mutable nameservers : io_addr list;
+        mutable digest : Digest.t option
+      }
   type t = {
     protocol : Dns.proto ;
-    nameservers : io_addr list ;
+    nameservers : nameservers ;
     timeout_ns : int64 ;
   }
   type context = {
@@ -34,25 +40,60 @@ module Transport : Dns_client.S
         Error (`Msg ("Error reading file: " ^ file))
     with _ -> Error (`Msg ("Error opening file " ^ file))
 
+  let decode_resolv_conf data =
+    match Dns_resolvconf.parse data with
+    | Ok [] -> Error (`Msg "empty nameservers from resolv.conf")
+    | Ok ips -> Ok ips
+    | Error _ as e -> e
+
+  let default_resolvers () =
+    List.map (fun ip -> ip, 53) Dns_client.default_resolvers
+
+  let maybe_resolv_conf t =
+    match t.nameservers with
+    | Static _ -> ()
+    | Resolv_conf resolv_conf ->
+      let decode_update data dgst =
+        match decode_resolv_conf data with
+        | Ok ips ->
+          resolv_conf.digest <- Some dgst;
+          resolv_conf.nameservers <- List.map (function `Nameserver ip -> (ip, 53)) ips
+        | Error _ ->
+          resolv_conf.digest <- None;
+          resolv_conf.nameservers <- default_resolvers ()
+      in
+      match read_file "/etc/resolv.conf", resolv_conf.digest with
+      | Ok data, Some d ->
+        let digest = Digest.string data in
+        if Digest.equal digest d then () else decode_update data digest
+      | Ok data, None -> decode_update data (Digest.string data)
+      | Error _, None -> ()
+      | Error _, Some _ ->
+        resolv_conf.digest <- None;
+        resolv_conf.nameservers <- default_resolvers ()
+
   let create ?nameservers ~timeout () =
     let protocol, nameservers =
       match nameservers with
-      | Some ns -> ns
+      | Some (proto, ns) -> (proto, Static ns)
       | None ->
-        let ips =
+        let ips, digest =
           match
-            Result.bind
-              (read_file "/etc/resolv.conf")
-              (fun data -> Dns_resolvconf.parse data)
+            let ( let* ) = Result.bind in
+            let* data = read_file "/etc/resolv.conf" in
+            let* ips = decode_resolv_conf data in
+            Ok (ips, Digest.string data)
           with
-          | Error _ | Ok [] -> List.map (fun ip -> ip, 53) Dns_client.default_resolvers
-          | Ok ips -> List.map (function `Nameserver ip -> (ip, 53)) ips
+          | Error _ -> default_resolvers (), None
+          | Ok (ips, digest) ->
+            List.map (function `Nameserver ip -> (ip, 53)) ips, Some digest
         in
-        `Tcp, ips
+        (`Tcp, Resolv_conf { nameservers = ips; digest })
     in
     { protocol ; nameservers ; timeout_ns = timeout }
 
-  let nameservers { protocol ; nameservers ; _ } = protocol, nameservers
+  let nameservers { protocol ; nameservers = Static nameservers | Resolv_conf { nameservers; _ } ; _ } =
+    protocol, nameservers
   let clock = Mtime_clock.elapsed_ns
   let rng = Mirage_crypto_rng.generate ?g:None
 
@@ -74,6 +115,7 @@ module Transport : Dns_client.S
 
   (* there is no connect timeouts, just a request timeout (unix: receive timeout) *)
   let connect t =
+    maybe_resolv_conf t;
     match nameservers t with
     | _, [] -> Error (`Msg "empty nameserver list")
     | proto, (server, port) :: _ ->
