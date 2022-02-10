@@ -5,7 +5,49 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module IM = Map.Make(Int)
 
+module type S = sig
+  module Transport : Dns_client.S
+    with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
+     and type +'a io = 'a Lwt.t
+
+  include module type of Dns_client.Make(Transport)
+
+  val nameserver_of_string : string -> (Dns.proto * Transport.io_addr, [> `Msg of string ]) result
+
+  val connect_device :
+    ?nameservers:string list ->
+    ?timeout:int64 ->
+    Transport.stack -> t Lwt.t
+end
+
 module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) = struct
+  let nameserver_of_string str =
+    let (let+) = Result.bind in
+    match String.split_on_char ':' str with
+    | "tls" :: rest ->
+      let str = String.concat ":" rest in
+      ( match String.split_on_char '!' str with
+      | [ nameserver ] ->
+        let+ ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
+        let authenticator = fun ?ip:_ ~host:_ _ -> Ok None in
+        let tls = Tls.Config.client ~authenticator () in
+        Ok (`Tcp, `Tls (tls, ipaddr, port))
+      | nameserver :: authenticator ->
+        let+ ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
+        let authenticator = String.concat "!" authenticator in
+        let+ authenticator = X509.Authenticator.of_string authenticator in
+        let time () = Some (Ptime.v (P.now_d_ps ())) in
+        let authenticator = authenticator time in
+        let tls = Tls.Config.client ~authenticator () in
+        Ok (`Tcp, `Tls (tls, ipaddr, port))
+      | [] -> assert false )
+    | "udp" :: nameserver ->
+      let nameserver = String.concat ":" nameserver in
+      let+ ipaddr, port = Ipaddr.with_port_of_string ~default:53 nameserver in
+      Ok (`Udp, (`Plaintext (ipaddr, port)))
+    | _ ->
+      let+ ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
+      Ok (`Tcp, (`Plaintext (ipaddr, port)))
 
   module TLS = Tls_mirage.Make(S.TCP)
   module CA = Ca_certs_nss.Make(P)
@@ -310,4 +352,23 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
   end
 
   include Dns_client.Make(Transport)
+
+  let connect_device ?(nameservers= []) ?(timeout= 5_000_000L) stack =
+    let nameservers = List.map (fun nameserver -> match nameserver_of_string nameserver with
+      | Ok nameserver -> nameserver
+      | Error (`Msg err) -> failwith err) nameservers in
+    let udp, tcp = List.partition (fun x -> match x with
+      | `Udp, _ -> true
+      | `Tcp, _ -> false) nameservers in
+    match udp, tcp with
+    | [], [] ->
+      Lwt.return (create ~timeout stack)
+    | [], nameservers ->
+      let nameservers = List.map snd nameservers in
+      Lwt.return (create ~nameservers:(`Tcp, nameservers) ~timeout stack)
+    | nameservers, [] ->
+      let nameservers = List.map snd nameservers in
+      Lwt.return (create ~nameservers:(`Udp, nameservers) ~timeout stack)
+    | _, _ ->
+      failwith "Impossible to initiate a DNS client with multiple protocols (TCP and UDP)"
 end
