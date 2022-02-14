@@ -1,5 +1,5 @@
 (library
   (name        dns_client_mirage)
   (public_name dns-client.mirage)
-  (libraries   astring hex domain-name ipaddr mirage-random mirage-time tcpip mirage-clock dns-client happy-eyeballs tls-mirage ca-certs-nss)
+  (libraries   domain-name ipaddr mirage-random mirage-time tcpip mirage-clock dns-client happy-eyeballs tls-mirage ca-certs-nss)
   (wrapped     false))
