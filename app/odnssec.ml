@@ -182,7 +182,10 @@ let arg_typ : string Term.t =
   Arg.(value & opt string "A" & info ["type"] ~docv:"TYPE" ~doc)
 
 let cmd =
-  Term.(term_result (const jump $ Dns_cli.setup_log $ arg_domain $ arg_typ $ nameserver)),
-  Term.info "odnssec" ~version:"%%VERSION_NUM%%"
+  let term =
+    Term.(term_result (const jump $ Dns_cli.setup_log $ arg_domain $ arg_typ $ nameserver))
+  and info = Cmd.info "odnssec" ~version:"%%VERSION_NUM%%"
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)

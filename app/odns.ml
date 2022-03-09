@@ -149,38 +149,17 @@ let setup_log =
   Term.(const setup_log $ Fmt_cli.style_renderer ~docs:sdocs ()
         $ Logs_cli.level ~docs:sdocs ())
 
-let parse_ns : Ipaddr.t Arg.conv =
-  ( fun ns ->
-      match Ipaddr.of_string ns with
-      | Ok ip -> `Ok ip
-      | Error (`Msg m) -> `Error ("bad name server: " ^ m)),
-  Ipaddr.pp
-
 let arg_ns : 'a Term.t =
   let doc = "IP of nameserver to use" in
-  Arg.(value & opt (some parse_ns) None & info ~docv:"NS-IP" ~doc ["ns"])
+  Arg.(value & opt (some Dns_cli.ip_c) None & info ~docv:"NS-IP" ~doc ["ns"])
 
 let arg_port : 'a Term.t =
   let doc = "Port of nameserver" in
   Arg.(value & opt int 53 & info ~docv:"NS-PORT" ~doc ["ns-port"])
 
-let to_presult = function
-  | Ok a -> `Ok a
-  | Error s -> `Error s
-
-let hostname : [ `host ] Domain_name.t Arg.conv =
-  (fun name ->
-     Result.map_error
-       (fun (`Msg m) -> Fmt.str "Invalid domain: %S: %s" name m)
-       (Result.bind
-          (Domain_name.of_string name)
-          Domain_name.host)
-      |> to_presult),
-  Domain_name.pp
-
 let tls_hostname =
   let doc = "Hostname to use for TLS authentication" in
-  Arg.(value & opt (some hostname) None &
+  Arg.(value & opt (some Dns_cli.name_c) None &
        info ~docv:"HOSTNAME" ~doc ["tls-hostname"])
 
 let tls_ca_file =
@@ -275,17 +254,9 @@ let nameserver =
   in
   Term.(const ns $ no_tls $ tls_ca_file $ tls_ca_dir $ tls_cert_fp $ tls_key_fp $ tls_hostname $ arg_ns $ arg_port)
 
-let parse_domain : [ `raw ] Domain_name.t Arg.conv =
-  (fun name ->
-     Result.map_error
-       (function `Msg m -> Fmt.str "Invalid domain: %S: %s" name m)
-       (Domain_name.of_string name)
-     |> to_presult),
-  Domain_name.pp
-
 let arg_domains : [ `raw ] Domain_name.t list Term.t =
   let doc = "Domain names to operate on" in
-  Arg.(non_empty & pos_all parse_domain []
+  Arg.(non_empty & pos_all Dns_cli.domain_name_c []
        & info [] ~docv:"DOMAIN(s)" ~doc)
 
 let arg_selector : string Term.t =
@@ -293,31 +264,43 @@ let arg_selector : string Term.t =
   Arg.(required & opt (some string) None
        & info ["selector"] ~docv:"SELECTOR" ~doc)
 
-let cmd_a : unit Term.t * Term.info =
+let cmd_a : unit Cmd.t =
   let doc = "Query a NS for A records" in
   let man = [
     `P {| Output mimics that of $(b,dig A )$(i,DOMAIN)|}
   ] in
-  Term.(term_result (const do_a $ nameserver $ arg_domains $ setup_log)),
-  Term.info "a" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  let term =
+    Term.(term_result (const do_a $ nameserver $ arg_domains $ setup_log))
+  and info =
+    Cmd.info "a" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  in
+  Cmd.v info term
 
-let cmd_aaaa : unit Term.t * Term.info =
+let cmd_aaaa : unit Cmd.t =
   let doc = "Query a NS for AAAA records" in
   let man = [
     `P {| Output mimics that of $(b,dig AAAA )$(i,DOMAIN)|}
   ] in
-  Term.(term_result (const do_aaaa $ nameserver $ arg_domains $ setup_log)),
-  Term.info "aaaa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  let term =
+    Term.(term_result (const do_aaaa $ nameserver $ arg_domains $ setup_log))
+  and info =
+    Cmd.info "aaaa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  in
+  Cmd.v info term
 
-let cmd_mx : unit Term.t * Term.info =
+let cmd_mx : unit Cmd.t =
   let doc = "Query a NS for mailserver (MX) records" in
   let man = [
     `P {| Output mimics that of $(b,dig MX )$(i,DOMAIN)|}
   ] in
-  Term.(term_result (const do_mx $ nameserver $ arg_domains $ setup_log)),
-  Term.info "mx" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  let term =
+    Term.(term_result (const do_mx $ nameserver $ arg_domains $ setup_log))
+  and info =
+    Cmd.info "mx" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  in
+  Cmd.v info term
 
-let cmd_tlsa : unit Term.t * Term.info =
+let cmd_tlsa : unit Cmd.t =
   let doc = "Query a NS for TLSA records (see DANE / RFC 7671)" in
   let man = [
     `S Manpage.s_arguments ;
@@ -336,10 +319,14 @@ let cmd_tlsa : unit Term.t * Term.info =
     `P {| $(b,_993._tcp) (IMAP) |} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_tlsa $ nameserver $ arg_domains $ setup_log)),
-  Term.info "tlsa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  let term =
+    Term.(term_result (const do_tlsa $ nameserver $ arg_domains $ setup_log))
+  and info =
+    Cmd.info "tlsa" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  in
+  Cmd.v info term
 
-let cmd_txt : unit Term.t * Term.info =
+let cmd_txt : unit Cmd.t =
   let doc = "Query a NS for TXT records" in
   let man = [
     `S Manpage.s_arguments ;
@@ -348,10 +335,14 @@ let cmd_txt : unit Term.t * Term.info =
           It would be nice to mirror `dig` output here.|} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_txt $ nameserver $ arg_domains $ setup_log)),
-  Term.info "txt" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  let term =
+    Term.(term_result (const do_txt $ nameserver $ arg_domains $ setup_log))
+  and info =
+    Cmd.info "txt" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  in
+  Cmd.v info term
 
-let cmd_any : unit Term.t * Term.info =
+let cmd_any : unit Cmd.t =
   let doc = "Query a NS for ANY records" in
   let man = [
     `S Manpage.s_arguments ;
@@ -359,10 +350,14 @@ let cmd_any : unit Term.t * Term.info =
     `P {| The output will be fairly similar to $(b,dig ANY )$(i,example.com)|} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_any $ nameserver $ arg_domains $ setup_log)),
-  Term.info "any" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  let term =
+    Term.(term_result (const do_any $ nameserver $ arg_domains $ setup_log))
+  and info =
+    Cmd.info "any" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  in
+  Cmd.v info term
 
-let cmd_dkim : unit Term.t * Term.info =
+let cmd_dkim : unit Cmd.t =
   let doc = "Query a NS for DKIM (RFC 6376) records for a given selector" in
   let man = [
     `S Manpage.s_arguments ;
@@ -375,34 +370,45 @@ let cmd_dkim : unit Term.t * Term.info =
        |} ;
     `S Manpage.s_options ;
   ] in
-  Term.(term_result (const do_dkim $ nameserver $ arg_selector
-                     $ arg_domains $ setup_log)),
-  Term.info "dkim" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  let term =
+    Term.(term_result (const do_dkim $ nameserver $ arg_selector
+                       $ arg_domains $ setup_log))
+  and info =
+    Cmd.info "dkim" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  in
+  Cmd.v info term
 
 let arg_typ : int Term.t =
   let doc = "Type to query" in
   Arg.(required & opt (some int) None
        & info ["type"] ~docv:"TYPE" ~doc)
 
-let cmd_type : unit Term.t * Term.info =
+let cmd_type : unit Cmd.t =
   let doc = "Query a NS for a type, providing its integer number" in
-  Term.(term_result (const do_type $ nameserver $ arg_typ
-                     $ arg_domains $ setup_log)),
-  Term.info "type" ~version:(Manpage.escape "%%VERSION%%") ~doc ~sdocs
+  let term =
+    Term.(term_result (const do_type $ nameserver $ arg_typ
+                       $ arg_domains $ setup_log))
+  and info =
+    Cmd.info "type" ~version:(Manpage.escape "%%VERSION%%") ~doc ~sdocs
+  in
+  Cmd.v info term
 
-let cmd_help : 'a Term.t * Term.info =
+let cmd_help : 'a Term.t =
+  let help _ = `Help (`Pager, None) in
+  Term.(ret (const help $ setup_log))
+
+let cmds =
+  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ; cmd_aaaa ; cmd_mx ; cmd_type ]
+
+let () =
   let doc = "OCaml uDns alternative to `dig`" in
   let man = [
     `P {|For more information about the available subcommands,
 run them while passing the help flag: $(tname) $(i,SUBCOMMAND) $(b,--help)
 |}
   ] in
-  let help _ = `Help (`Pager, None) in
-  Term.(ret (const help $ setup_log)),
-  Term.info "odns" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
-
-let cmds =
-  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ; cmd_aaaa ; cmd_mx ; cmd_type ]
-
-let () =
-  Term.(exit @@ eval_choice cmd_help cmds)
+  let info =
+    Cmd.info "odns" ~version:(Manpage.escape "%%VERSION%%") ~man ~doc ~sdocs
+  in
+  let group = Cmd.group ~default:cmd_help info cmds in
+  exit (Cmd.eval group)

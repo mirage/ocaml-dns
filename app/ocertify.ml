@@ -198,7 +198,10 @@ let force =
 let ocertify =
   let doc = "ocertify requests a signed certificate" in
   let man = [ `S "BUGS"; `P "Submit bugs to me";] in
-  Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ hostname $ more_hostnames $ dns_key $ csr $ key $ keytype $ keydata $ seed $ bits $ cert $ force)),
-  Term.info "ocertify" ~version:"%%VERSION_NUM%%" ~doc ~man
+  let term =
+    Term.(term_result (const jump $ Dns_cli.setup_log $ dns_server $ port $ hostname $ more_hostnames $ dns_key $ csr $ key $ keytype $ keydata $ seed $ bits $ cert $ force))
+  and info = Cmd.info "ocertify" ~version:"%%VERSION_NUM%%" ~doc ~man
+  in
+  Cmd.v info term
 
-let () = match Term.eval ocertify with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval ocertify)

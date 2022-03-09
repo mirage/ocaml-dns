@@ -51,46 +51,33 @@ let setup_log =
         $ Fmt_cli.style_renderer ()
         $ Logs_cli.level ())
 
-let ip_c : Ipaddr.t Arg.converter =
-  let parse s =
-    match Ipaddr.of_string s with
-    | Ok ip -> `Ok ip
-    | Error (`Msg m) -> `Error ("failed to parse IP address: " ^ m)
-  in
-  parse, Ipaddr.pp
+let ip_c = Arg.conv (Ipaddr.of_string, Ipaddr.pp)
 
 let namekey_c =
   let parse s =
-    match Dns.Dnskey.name_key_of_string s with
-    | Error (`Msg m) -> `Error ("failed to parse key: " ^ m)
-    | Ok (name, key) ->
-      let is_op s =
-        Domain_name.(equal_label s "_update" || equal_label s "_transfer" || equal_label s "_notify")
-      in
-      let amount = match Domain_name.find_label ~rev:true name is_op with
-        | None -> 0
-        | Some x -> succ x
-      in
-      match
-        Result.bind
-          (Domain_name.drop_label ~amount name)
-          Domain_name.host
-      with
-      | Error (`Msg m) -> `Error ("failed to parse zone (idx " ^ string_of_int amount ^ "): " ^ m)
-      | Ok zone -> `Ok (name, zone, key)
+    let ( let* ) = Result.bind in
+    let* (name, key) = Dns.Dnskey.name_key_of_string s in
+    let is_op s =
+      Domain_name.(equal_label s "_update" || equal_label s "_transfer" || equal_label s "_notify")
+    in
+    let amount = match Domain_name.find_label ~rev:true name is_op with
+      | None -> 0
+      | Some x -> succ x
+    in
+    let* zone = Domain_name.drop_label ~amount name in
+    let* zone = Domain_name.host zone in
+    Ok (name, zone, key)
   in
-  parse, fun ppf (name, zone, key) -> Fmt.pf ppf "key name %a zone %a dnskey %a"
+  let pp ppf (name, zone, key) =
+    Fmt.pf ppf "key name %a zone %a dnskey %a"
       Domain_name.pp name Domain_name.pp zone Dns.Dnskey.pp key
+  in
+  Arg.conv (parse, pp)
 
 let name_c =
-  (fun s -> match Domain_name.of_string s with
-     | Error _ -> `Error "failed to parse hostname"
-     | Ok name ->
-       match Domain_name.host name with
-       | Error (`Msg e) -> `Error ("failed to parse hostname: " ^ e)
-       | Ok host -> `Ok host), Domain_name.pp
+  Arg.conv
+    ((fun s -> Result.bind (Domain_name.of_string s) Domain_name.host),
+     Domain_name.pp)
 
 let domain_name_c =
-  (fun s -> match Domain_name.of_string s with
-     | Error _ -> `Error "failed to parse domain name"
-     | Ok name -> `Ok name), Domain_name.pp
+  Arg.conv (Domain_name.of_string, Domain_name.pp)

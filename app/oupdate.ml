@@ -69,7 +69,7 @@ let hostname =
   let doc = "Hostname to modify" in
   Arg.(required & pos 2 (some Dns_cli.domain_name_c) None & info [] ~doc ~docv:"HOSTNAME")
 
-let ipv4_c : Ipaddr.V4.t Arg.converter =
+let ipv4_c =
   let parse s =
     match Ipaddr.V4.of_string s with
     | Ok ip -> `Ok ip
@@ -82,7 +82,10 @@ let ip_address =
   Arg.(required & pos 3 (some ipv4_c) None & info [] ~doc ~docv:"IP")
 
 let cmd =
-  Term.(term_result (const jump $ Dns_cli.setup_log $ serverip $ port $ key $ hostname $ ip_address)),
-  Term.info "oupdate" ~version:"%%VERSION_NUM%%"
+  let term =
+    Term.(term_result (const jump $ Dns_cli.setup_log $ serverip $ port $ key $ hostname $ ip_address))
+  and info = Cmd.info "oupdate" ~version:"%%VERSION_NUM%%"
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)
