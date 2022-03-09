@@ -86,7 +86,10 @@ let zone =
   Arg.(required & pos 1 (some Dns_cli.name_c) None & info [] ~doc ~docv:"ZONE")
 
 let cmd =
-  Term.(term_result (const jump $ Dns_cli.setup_log $ serverip $ port $ zone $ key $ serial)),
-  Term.info "onotify" ~version:"%%VERSION_NUM%%"
+  let info = Cmd.info "onotify" ~version:"%%VERSION_NUM%%"
+  and term =
+    Term.(term_result (const jump $ Dns_cli.setup_log $ serverip $ port $ zone $ key $ serial))
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)

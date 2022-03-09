@@ -63,7 +63,10 @@ let oldzone =
   Arg.(value & opt (some file) None & info [ "old" ] ~doc ~docv:"ZONE")
 
 let cmd =
-  Term.(term_result (const jump $ Dns_cli.setup_log $ newzone $ oldzone)),
-  Term.info "ozone" ~version:"%%VERSION_NUM%%"
+  let term =
+    Term.(term_result (const jump $ Dns_cli.setup_log $ newzone $ oldzone))
+  and info = Cmd.info "ozone" ~version:"%%VERSION_NUM%%"
+  in
+  Cmd.v info term
 
-let () = match Term.eval cmd with `Ok () -> exit 0 | _ -> exit 1
+let () = exit (Cmd.eval cmd)
