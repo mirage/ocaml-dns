@@ -1,3 +1,19 @@
+### v6.2.0 (2022-03-09)
+
+* New opam package "dnssec" implementing dnssec validation (@reynir @hannesm)
+* Use custom log sources, not the default one from Logs (@reynir @hannesm)
+* BUGFIX dns-resolver: unlisten on the listen port, not the packet src_port
+  (#290 @hannesm)
+* dns-resolver: add IPv6 addresses of root servers (fixes #262, @hannesm)
+* dns-resolver: preliminary support for DNSSec (#262 @reynir @hannesm)
+* dns-client: when /etc/resolv.conf modifies, update the list of nameservers
+  (#291 @hannesm @reynir)
+* dns-cli: update to cmdliner 1.1.0 (#300 @hannesm)
+* dns-client-mirage: add module type and nameserver_of_string and connect to
+  allow creation of a MirageOS device (#297 @dinosaure)
+* dns-cache: add size, capacity, and weight to metrics (#301, fixes #299,
+  @hannesm)
+
 ### v6.1.4 (2022-01-11)
 
 * dns-client-{mirage,lwt}: avoid multiple simultaneous connection attempts
