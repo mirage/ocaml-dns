@@ -5,10 +5,51 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module IM = Map.Make(Int)
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) = struct
+module type S = sig
+  module Transport : Dns_client.S
+    with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
+     and type +'a io = 'a Lwt.t
 
+  include module type of Dns_client.Make(Transport)
+
+  val nameserver_of_string : string -> (Transport.io_addr, [> `Msg of string ]) result
+
+  val connect :
+    ?nameservers:string list ->
+    ?timeout:int64 ->
+    Transport.stack -> t Lwt.t
+end
+
+module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) = struct
   module TLS = Tls_mirage.Make(S.TCP)
   module CA = Ca_certs_nss.Make(P)
+
+  let nameserver_of_string str =
+    let ( let* ) = Result.bind in
+    match String.split_on_char ':' str with
+    | "tls" :: rest ->
+      let str = String.concat ":" rest in
+      ( match String.split_on_char '!' str with
+      | [ nameserver ] ->
+        let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
+        let* authenticator = CA.authenticator () in
+        let tls = Tls.Config.client ~authenticator () in
+        Ok (`Tls (tls, ipaddr, port))
+      | nameserver :: authenticator ->
+        let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
+        let authenticator = String.concat "!" authenticator in
+        let* authenticator = X509.Authenticator.of_string authenticator in
+        let time () = Some (Ptime.v (P.now_d_ps ())) in
+        let authenticator = authenticator time in
+        let tls = Tls.Config.client ~authenticator () in
+        Ok (`Tls (tls, ipaddr, port))
+      | [] -> assert false )
+    | "tcp" :: nameserver ->
+      let str = String.concat ":" nameserver in
+      let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
+      Ok (`Plaintext (ipaddr, port))
+    | _ ->
+      Error (`Msg ("Unable to decode nameserver " ^ str))
 
   module Transport : Dns_client.S
     with type stack = S.t
@@ -310,4 +351,18 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
   end
 
   include Dns_client.Make(Transport)
+
+  let connect ?(nameservers= []) ?timeout stack =
+    let nameservers =
+      List.map
+        (fun nameserver -> match nameserver_of_string nameserver with
+           | Ok nameserver -> nameserver
+           | Error (`Msg err) -> invalid_arg err)
+        nameservers
+    in
+    match nameservers with
+    | [] ->
+      Lwt.return (create ?timeout stack)
+    | _ ->
+      Lwt.return (create ~nameservers:(`Tcp, nameservers) ?timeout stack)
 end
