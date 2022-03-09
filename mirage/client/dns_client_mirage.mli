@@ -8,8 +8,6 @@ module type S = sig
   val nameserver_of_string : string -> (Transport.io_addr, [> `Msg of string ]) result
   (** [nameserver_of_string authenticators str] returns a {!Transport.io_addr}
       from the given string. The format is:
-      - [<ipaddr>(:port)?] for a simple nameserver and we will communicate with
-        it {i via} the TCP/IP protocol
       - [tcp:<ipaddr>(:port)?] for a simple nameserver and we will communicate
         with it {i via} the TCP/IP protocol
       - [tls:<ipaddr>(:port)?(!authenticator)?] for a nameserver and we will

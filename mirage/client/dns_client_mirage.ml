@@ -49,8 +49,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
       let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
       Ok (`Plaintext (ipaddr, port))
     | _ ->
-      let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
-      Ok (`Plaintext (ipaddr, port))
+      Error (`Msg ("Unable to decode nameserver " ^ str))
 
   module Transport : Dns_client.S
     with type stack = S.t
