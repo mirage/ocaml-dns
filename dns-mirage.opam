@@ -15,7 +15,6 @@ depends: [
   "ipaddr" {>= "5.2.0"}
   "lwt" {>= "4.2.1"}
   "tcpip" {>= "7.0.0"}
-  "x509" {>= "0.16.0"}
 ]
 
 build: [
@@ -39,12 +38,3 @@ of the hash algorithm is used).
 Please read [the blog article](https://hannes.nqsb.io/Posts/DNS) for a more
 detailed overview.
 """
-
-pin-depends: [
-  [ "ipaddr.5.3.0" "git+https://github.com/mirage/ocaml-ipaddr.git#842b88da1b699f8c087e15696f76f6e0f47055c8" ]
-  [ "ipaddr-cstruct.5.3.0" "git+https://github.com/mirage/ocaml-ipaddr.git#842b88da1b699f8c087e15696f76f6e0f47055c8" ]
-  [ "ipaddr-sexp.5.3.0" "git+https://github.com/mirage/ocaml-ipaddr.git#842b88da1b699f8c087e15696f76f6e0f47055c8" ]
-  [ "macaddr.5.3.0" "git+https://github.com/mirage/ocaml-ipaddr.git#842b88da1b699f8c087e15696f76f6e0f47055c8" ]
-  [ "macaddr-cstruct.5.3.0" "git+https://github.com/mirage/ocaml-ipaddr.git#842b88da1b699f8c087e15696f76f6e0f47055c8" ]
-  [ "macaddr-sexp.5.3.0" "git+https://github.com/mirage/ocaml-ipaddr.git#842b88da1b699f8c087e15696f76f6e0f47055c8" ]
-]

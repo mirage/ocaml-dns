@@ -21,7 +21,7 @@ depends: [
   "dns" {= version}
   "randomconv" {>= "0.1.2"}
   "domain-name" {>= "0.4.0"}
-  "ipaddr" {>= "4.0.0"}
+  "ipaddr" {>= "5.3.0"}
   "lwt" {>= "4.2.1"}
   "tcpip" {>= "7.0.0"}
   "mirage-random" {>= "2.0.0"}
@@ -33,6 +33,7 @@ depends: [
   "alcotest" {with-test}
   "tls" {>= "0.15.0"}
   "tls-mirage" {>= "0.15.0"}
+  "x509" {>= "0.16.0"}
   "ca-certs"
   "ca-certs-nss"
 ]
