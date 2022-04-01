@@ -226,7 +226,6 @@ type zone_check = [ `Missing_soa of [ `raw ] Domain_name.t
                   | `Bad_ttl of [ `raw ] Domain_name.t * Rr_map.b
                   | `Empty of [ `raw ] Domain_name.t * Rr_map.k
                   | `Missing_address of [ `host ] Domain_name.t
-                  | `Soa_not_ns of [ `raw ] Domain_name.t
                   | `Soa_not_a_host of [ `raw ] Domain_name.t * string ]
 
 let pp_zone_check ppf = function
@@ -235,7 +234,6 @@ let pp_zone_check ppf = function
   | `Bad_ttl (name, v) -> Fmt.pf ppf "bad TTL for %a %a" Domain_name.pp name Rr_map.pp_b v
   | `Empty (name, typ) -> Fmt.pf ppf "%a empty %a" Domain_name.pp name Rr_map.ppk typ
   | `Missing_address name -> Fmt.pf ppf "missing address record for %a" Domain_name.pp name
-  | `Soa_not_ns name -> Fmt.pf ppf "%a nameserver of SOA is not in nameserver set" Domain_name.pp name
   | `Soa_not_a_host (name, msg) -> Fmt.pf ppf "%a the SOA nameserver is not a hostname: %s" Domain_name.pp name msg
 
 (* TODO: check for no cname loops? and dangling cname!? *)
@@ -302,14 +300,9 @@ let check trie =
           | B (Ptr, (ttl, name)) ->
             if ttl < 0l then Error (`Bad_ttl (Domain_name.raw name, v)) else Ok ()
           | B (Soa, soa) ->
-            begin match Rr_map.find Ns map with
-              | Some (_, names) ->
-                begin match Domain_name.host soa.nameserver with
-                  | Error (`Msg m) -> Error (`Soa_not_a_host (soa.nameserver, m))
-                  | Ok host when Domain_name.Host_set.mem host names -> Ok ()
-                  | Ok _ -> Error (`Soa_not_ns soa.nameserver)
-                end
-              | None -> Ok () (* we're happy to only have a soa, but nothing else -- useful for grounding zones! *)
+            begin match Domain_name.host soa.nameserver with
+              | Error (`Msg m) -> Error (`Soa_not_a_host (soa.nameserver, m))
+              | Ok _ -> Ok ()
             end
           | B (Txt, (ttl, txts)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))

@@ -79,7 +79,6 @@ type zone_check = [ `Missing_soa of [ `raw ] Domain_name.t
                   | `Bad_ttl of [ `raw ] Domain_name.t * Rr_map.b
                   | `Empty of [ `raw ] Domain_name.t * Rr_map.k
                   | `Missing_address of [ `host ] Domain_name.t
-                  | `Soa_not_ns of [ `raw ] Domain_name.t
                   | `Soa_not_a_host of [ `raw ] Domain_name.t * string ]
 
 val pp_zone_check : zone_check Fmt.t
