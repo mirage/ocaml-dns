@@ -1,3 +1,10 @@
+### v6.2.1 (2022-04-01)
+
+* BUGFIX dns: RTYPE is 16 bit, previously 15 bit were accepted (#304, @hannesm)
+* dns-server: dns-trie zone check no longer enforces that the nameserver is in
+  the nameserve set of the zone, this enables hidden primary setups (fixes #303,
+  @hannesm)
+
 ### v6.2.0 (2022-03-09)
 
 * New opam package "dnssec" implementing dnssec validation (@reynir @hannesm)
