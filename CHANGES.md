@@ -1,6 +1,7 @@
 ### v6.2.1 (2022-04-01)
 
-* BUGFIX dns: RTYPE is 16 bit, previously 15 bit were accepted (#304, @hannesm)
+* BUGFIX dns: RTYPE is 16 bit, previously 15 bit were accepted, also check for
+  being positive (#304, @hannesm @reynir)
 * dns-server: dns-trie zone check no longer enforces that the nameserver is in
   the nameserve set of the zone, this enables hidden primary setups (fixes #303,
   @hannesm)
