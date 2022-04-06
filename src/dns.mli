@@ -791,6 +791,20 @@ module Edns : sig
       buffer. *)
 end
 
+(* TODO LOC *)
+(** Loc records *)
+module Loc : sig
+  type t = string
+  (** The type of a Loc record. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the Loc record [t] on [ppf]. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the Loc record [a] with [b] (using
+     [String.compare]). *)
+end
+
  (** A map whose keys are record types and their values are the time-to-live and
     the record set. The relation between key and value type is restricted by the
     below defined GADT. *)
@@ -805,6 +819,8 @@ module Rr_map : sig
   module Sshfp_set : Set.S with type elt = Sshfp.t
   module Ds_set : Set.S with type elt = Ds.t
   module Rrsig_set : Set.S with type elt = Rrsig.t
+  (* TODO LOC *)
+  module Loc_set : Set.S with type elt = Loc.t
 
   module I : sig
     type t
@@ -834,6 +850,7 @@ module Rr_map : sig
     | Rrsig : Rrsig_set.t with_ttl rr
     | Nsec : Nsec.t with_ttl rr
     | Nsec3 : Nsec3.t with_ttl rr
+    | Loc : Loc_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
   (** The type of resource record sets, as GADT: the value depends on the
      specific constructor. There may only be a single SOA and Cname and Ptr

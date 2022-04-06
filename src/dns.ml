@@ -1303,6 +1303,53 @@ module Nsec3 = struct
     names, off
 end
 
+(* TODO LOC *)
+(* locator record *)
+module Loc = struct
+  type t = string
+
+  let pp ppf txt = Fmt.pf ppf "TXT %s" txt
+
+  let compare = String.compare
+
+  let decode_exn names buf ~off ~len =
+    let decode_character_str buf off =
+      let len = Cstruct.get_uint8 buf off in
+      let data = Cstruct.to_string (Cstruct.sub buf (succ off) len) in
+      (data, off + len + 1)
+    in
+    let sub = Cstruct.sub buf off len in
+    let rec more acc off =
+      if len = off then
+        List.rev acc
+      else
+        let d, off = decode_character_str sub off in
+        more (d::acc) off
+    in
+    let txts = more [] 0 in
+    Ok (String.concat "" txts, names, off + len)
+
+  let encode txt names buf off =
+    let max_len = 255 in
+    let rec more off txt =
+      if txt = "" then
+        off
+      else
+        let len = String.length txt in
+        let len, rest =
+          if len > max_len then
+            max_len, String.(sub txt max_len (len - max_len))
+          else
+            len, ""
+        in
+        Cstruct.set_uint8 buf off len ;
+        Cstruct.blit_from_string txt 0 buf (succ off) len ;
+        more (off + len + 1) rest
+    in
+    let off = more off txt in
+    names, off
+end
+
 (* certificate authority authorization *)
 module Caa = struct
   type t = {
@@ -2102,6 +2149,8 @@ module Rr_map = struct
   module Sshfp_set = Set.Make(Sshfp)
   module Ds_set = Set.Make(Ds)
   module Rrsig_set = Set.Make(Rrsig)
+  (* TODO LOC *)
+  module Loc_set = Set.Make(Loc)
 
   module I : sig
     type t
@@ -2138,6 +2187,7 @@ module Rr_map = struct
     | Rrsig : Rrsig_set.t with_ttl rr
     | Nsec : Nsec.t with_ttl rr
     | Nsec3 : Nsec3.t with_ttl rr
+    | Loc : Loc_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
 
   module K = struct
@@ -2163,6 +2213,7 @@ module Rr_map = struct
       | Rrsig, Rrsig -> Eq | Rrsig, _ -> Lt | _, Rrsig -> Gt
       | Nsec, Nsec -> Eq | Nsec, _ -> Lt | _, Nsec -> Gt
       | Nsec3, Nsec3 -> Eq | Nsec3, _ -> Lt | _, Nsec3 -> Gt
+      | Loc, Loc -> Eq | Loc, _ -> Lt | _, Loc -> Gt
       | Unknown a, Unknown b ->
         let r = I.compare a b in
         if r = 0 then Eq else if r < 0 then Lt else Gt
@@ -2194,6 +2245,8 @@ module Rr_map = struct
     | Rrsig, (_, rrs), (_, rrs') -> Rrsig_set.equal rrs rrs'
     | Nsec, (_, ns), (_, ns') -> Nsec.compare ns ns' = 0
     | Nsec3, (_, ns), (_, ns') -> Nsec3.compare ns ns' = 0
+    (* TODO LOC *)
+    | Loc, (_, loc), (_, loc') -> Loc_set.equal loc loc'
     | Unknown _, (_, data), (_, data') -> Txt_set.equal data data'
 
   let equalb (B (k, v)) (B (k', v')) = match K.compare k k' with
@@ -2203,7 +2256,7 @@ module Rr_map = struct
   let to_int : type a. a key -> int = function
     | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Ptr -> 12 | Mx -> 15
     | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Ds -> 43 | Sshfp -> 44
-    | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Nsec3 -> 50
+    | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Nsec3 -> 50 | Loc -> 28
     | Tlsa -> 52 | Caa -> 257
     | Unknown x -> I.to_int x
 
@@ -2237,6 +2290,7 @@ module Rr_map = struct
     | Rrsig -> Fmt.string ppf "RRSIG"
     | Nsec -> Fmt.string ppf "NSEC"
     | Nsec3 -> Fmt.string ppf "NSEC3"
+    | Loc -> Fmt.string ppf "LOC"
     | Unknown x -> Fmt.pf ppf "TYPE%d" (I.to_int x)
 
   let of_string = function
@@ -2257,6 +2311,7 @@ module Rr_map = struct
     | "RRSIG" -> Ok (K Rrsig)
     | "NSEC" -> Ok (K Nsec)
     | "NSEC3" -> Ok (K Nsec3)
+    | "LOC" -> Ok (K Loc)
     | x when String.length x > 4 && String.(equal "TYPE" (sub x 0 4)) ->
       Result.map_error
         (function `Malformed (_, m) -> `Msg m | `Msg m -> `Msg m)
@@ -2361,6 +2416,11 @@ module Rr_map = struct
       rr names (Nsec.encode nsec) off ttl, 1
     | Nsec3, (ttl, nsec) ->
       rr names (Nsec3.encode nsec) off ttl, 1
+    (*LOC TODO*)
+    | Loc, (ttl, locs) ->
+      Loc_set.fold (fun loc ((names, off), count) ->
+          rr names (Loc.encode loc) off ttl, succ count)
+        locs ((names, off), 0)
     | Unknown _, (ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -2442,6 +2502,10 @@ module Rr_map = struct
       [ rr (Nsec.encode ns) ]
     | Nsec3, (_ttl, ns) ->
       [ rr (Nsec3.encode ns) ]
+    | Loc, (_ttl, locs) ->
+      Loc_set.fold (fun loc acc ->
+          rr (Loc.encode loc) :: acc)
+        locs []
     | Unknown _, (_ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -2537,6 +2601,8 @@ module Rr_map = struct
     | Rrsig, (_, rrs), (ttl, rrs') -> (ttl, Rrsig_set.union rrs rrs')
     | Nsec, _, nsec -> nsec
     | Nsec3, _, nsec -> nsec
+    (* TODO LOC *)
+    | Loc, _, loc -> loc
     | Unknown _, (_, data), (ttl, data') -> (ttl, Txt_set.union data data')
 
   let unionee : type a. a key -> a -> a -> a option =
@@ -2590,6 +2656,8 @@ module Rr_map = struct
       if Rrsig_set.is_empty s then None else Some (ttl, s)
     | Nsec, _, _ -> None
     | Nsec3, _, _ -> None
+    (* TODO LOC *)
+    | Loc, _, _ -> None
     | Unknown _, (ttl, datas), (_, rm) ->
       let data = Txt_set.diff datas rm in
       if Txt_set.is_empty data then None else Some (ttl, data)
@@ -2779,6 +2847,11 @@ module Rr_map = struct
             (if Cstruct.length ns.Nsec3.salt = 0 then "-" else hex ns.Nsec3.salt)
             (hex (* TODO base32 *) ns.Nsec3.next_owner_hashed)
             Fmt.(list ~sep:(any " ") ppk) types ]
+      (* TODO LOC *)
+      | Loc, (ttl, locs) ->
+        Loc_set.fold (fun loc acc ->
+            Fmt.str "%s\t%aloc\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) loc :: acc)
+          locs []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
             Fmt.str "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
@@ -2806,6 +2879,7 @@ module Rr_map = struct
     | Rrsig, (ttl, _) -> ttl
     | Nsec, (ttl, _) -> ttl
     | Nsec3, (ttl, _) -> ttl
+    | Loc, (ttl, _) -> ttl
     | Unknown _, (ttl, _) -> ttl
 
   let with_ttl : type a. a key -> a -> int32 -> a = fun k v ttl ->
@@ -2827,6 +2901,7 @@ module Rr_map = struct
     | Rrsig, (_, rrs) -> ttl, rrs
     | Nsec, (_, ns) -> ttl, ns
     | Nsec3, (_, ns) -> ttl, ns
+    | Loc, (_, loc) -> ttl, loc
     | Unknown _, (_, datas) -> ttl, datas
 
   let split : type a. a key -> a -> a * a option = fun k v ->
@@ -2921,6 +2996,8 @@ module Rr_map = struct
       (ttl, Rrsig_set.singleton one), rest'
     | Nsec, (ttl, rr) -> (ttl, rr), None
     | Nsec3, (ttl, rr) -> (ttl, rr), None
+    (* TODO LOC *)
+    | Loc, (ttl, rr) -> (ttl, rr), None
     | Unknown _, (ttl, datas) ->
       let one = Txt_set.choose datas in
       let rest = Txt_set.remove one datas in
@@ -3022,6 +3099,10 @@ module Rr_map = struct
           | Nsec3 ->
             let* rr, names, off = Nsec3.decode_exn names buf ~off ~len in
             Ok (B (Nsec3, (ttl, rr)), names, off)
+          (* TODO LOC *)
+          | Loc ->
+            let* loc, names, off = Loc.decode_exn names buf ~off ~len in
+            Ok (B (Loc, (ttl, Loc_set.singleton loc)), names, off)
           | Unknown x ->
             let data = Cstruct.sub buf off len in
             Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)

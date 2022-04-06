@@ -368,6 +368,17 @@ let check trie =
           | B (Nsec3, (ttl, _rr)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else Ok ()
+          (* TODO LOC *)
+          | B (Loc, (ttl, locs)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Loc_set.is_empty locs then
+              Error (`Empty (name, K Loc))
+            else if
+              Rr_map.Loc_set.exists (fun s -> String.length s > 0) locs
+            then
+              Ok ()
+            else
+              Error (`Empty (name, K Loc))
           | B (Unknown x, (ttl, datas)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Txt_set.is_empty datas then
