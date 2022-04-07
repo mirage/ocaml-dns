@@ -340,6 +340,9 @@ module Dnskey : sig
   type flag = [ `Zone | `Revoke | `Secure_entry_point ]
   (** The type of DNSKEY flags. *)
 
+  val pp_flag : flag Fmt.t
+  (** [pp_flag ppf flag] pretty-prints the flag. *)
+
   module F : Set.S with type elt = flag
   (** The set of DNSKEY flags. *)
 
