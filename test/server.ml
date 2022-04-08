@@ -446,6 +446,43 @@ module Trie = struct
                 (Some a_record, None)
                 (Dns_trie.lookup_glue (n_of_s "ns1.foo.com") t))
 
+  let subdomain_zone () =
+    let soa = {
+      Soa.nameserver = n_of_s "ns1.foo.com" ;
+      hostmaster = n_of_s "hs.foo.com" ;
+      serial = 1l ; refresh = 10l ; retry = 5l ; expiry = 3l ; minimum = 4l
+    } in
+    let myzone = n_of_s "foo.com" in
+    let t =
+      ins_zone myzone soa 10l (sn (n_of_s "ns1.foo.com")) empty
+    in
+    match Dns_trie.entries myzone t with
+    | Error _ -> Alcotest.fail "Expected some entries"
+    | Ok (soa, entries) ->
+      let sub = n_of_s "bar.foo.com"
+      and sub_ns = sn (n_of_s "ns2.foo.com")
+      in
+      let t = ins_zone sub soa 10l sub_ns t in
+      let t =
+        insert (n_of_s "foo.bar.foo.com")
+          Rr_map.A (10l, Ipaddr.V4.Set.singleton (ip "1.4.5.2")) t
+      in
+      match Dns_trie.entries myzone t with
+      | Error _ -> Alcotest.fail "Expected some entries"
+      | Ok (soa', entries') ->
+        Alcotest.(check bool "SOA is the same" true (Soa.compare soa' soa = 0));
+        let entries'' =
+          match Domain_name.Map.find sub entries' with
+          | Some rr ->
+            Alcotest.(check int "exactly one rr (delegation)" 1 (Rr_map.cardinal rr));
+            Alcotest.(check bool "it is the NS" true
+                        (Rr_map.equal_rr Ns (Rr_map.get Ns rr) (10l, sub_ns)));
+            Domain_name.Map.remove sub entries'
+          | None -> Alcotest.fail "expected a NS record"
+        in
+        Alcotest.(check bool "rrs are the same" true
+                    (Name_rr_map.equal entries entries''))
+
   let tests = [
     "simple", `Quick, simple ;
     "basic", `Quick, basic ;
@@ -454,6 +491,7 @@ module Trie = struct
     "rmzone", `Quick, rmzone ;
     "zone", `Quick, zone ;
     "no soa", `Quick, no_soa ;
+    "subdomain and entries", `Quick, subdomain_zone ;
   ]
 end
 
