@@ -19,3 +19,20 @@
 val parse : string -> (Dns.Name_rr_map.t, [> `Msg of string ]) result
 (** [parse data] attempts to parse the [data], given in [zone file format].
     It either returns the content as a map, or an error. *)
+
+val decode_keys : 'a Domain_name.t -> string -> Dns.Dnskey.t Domain_name.Map.t
+(** [decode_keys zone data] decodes DNSKEY in [data], and ensure that all are
+    within [zone]. Errors are logged via the logs library. *)
+
+val decode_zones : (string * string) list -> Domain_name.Set.t * Dns_trie.t
+(** [decode_zones (name, data)] parses the zones [data] with the names
+    [name], and constructs a trie that has been checked for consistency.
+    The set of zones are returned, together with the constructed trie.
+    Errors and inconsistencies are logged via the logs library, and the
+    respective zone data is ignored. *)
+
+val decode_zones_keys : (string * string) list ->
+  Domain_name.Set.t * Dns_trie.t * ([`raw] Domain_name.t * Dns.Dnskey.t) list
+(** [decode_zones_keys (name, data)] is [decode_zones], but also if a [name]
+    ends with "_keys", the Dnskey records are decoded (using [decode_keys] and
+    are added to the last part of the return value. *)
