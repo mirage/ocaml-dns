@@ -1,3 +1,16 @@
+### v6.2.2 (2022-04-08)
+
+* BUGFIX dns-trie: the collect_entries function jumped over zone boundaries.
+  This lead dns-primary-git to detect changes in zones with subdomains delegated
+  to the same name servers, leading to dropping of zones (#308 @hannesm,
+  reported by @reynir)
+* BUGFIX dns-server.text: add address glue records for name servers out of the
+  authority of this server. This is crucial since dns-primary-git supports
+  such glue records to notify these about zone updates (#307 @hannesm)
+* New functionality in dns-zone (dns-server.zone): decode_keys, decode_zones,
+  and decode_zones_keys copied from dns-primary-git for reusing in other
+  projects (#307 @hannesm)
+
 ### v6.2.1 (2022-04-01)
 
 * BUGFIX dns: RTYPE is 16 bit, previously 15 bit were accepted, also check for
