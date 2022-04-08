@@ -199,6 +199,22 @@ type t = {
 
 let with_data t data = { t with data }
 
+let lookup_glue_for_zone zone data =
+  match Dns_trie.lookup zone Rr_map.Ns data with
+  | Error _ -> Domain_name.Map.empty
+  | Ok (_, names) ->
+    Domain_name.Host_set.fold (fun ns acc ->
+        match Dns_trie.lookup ns Rr_map.A data with
+        | Ok _ -> acc
+        | Error _ -> match Dns_trie.lookup_glue ns data with
+          | None, None -> acc
+          | Some v4, None -> Name_rr_map.add (Domain_name.raw ns) Rr_map.A v4 acc
+          | None, Some v6 -> Name_rr_map.add (Domain_name.raw ns) Rr_map.Aaaa v6 acc
+          | Some v4, Some v6 ->
+            Name_rr_map.add (Domain_name.raw ns) Rr_map.A v4
+              (Name_rr_map.add (Domain_name.raw ns) Rr_map.Aaaa v6 acc))
+      names Domain_name.Map.empty
+
 let text name data =
   match Dns_trie.entries name data with
   | Error e ->
@@ -230,6 +246,10 @@ let text name data =
     in
     let service, entries = Domain_name.Map.partition is_special map in
     out entries;
+    Buffer.add_char buf '\n';
+    let glue = lookup_glue_for_zone name data in
+    out glue;
+    Buffer.add_char buf '\n';
     Buffer.add_char buf '\n';
     out service;
     Ok (Buffer.contents buf)
