@@ -171,21 +171,35 @@ let fold key (N (sub, map)) f s =
   collect name sub (get name map s)
 
 let collect_rrs name sub map =
-  (* TODO: do not cross zone boundaries! or maybe not!? *)
   let collect_map name rrmap =
-    (* collecting rr out of rrmap + name, no SOA! *)
-    Rr_map.fold (fun v acc ->
-        match v with
-        | Rr_map.(B (Soa, _)) -> acc
-        | v -> (name, v) :: acc)
-      rrmap []
+    if Rr_map.mem Soa rrmap then
+      (* delegation *)
+      let ns_entries =
+        Option.fold ~none:[]
+          ~some:(fun ns -> [ name, Rr_map.B (Ns, ns) ])
+          (Rr_map.find Ns rrmap)
+      and ds_entries =
+        Option.fold ~none:[]
+          ~some:(fun ds -> [ name, Rr_map.B (Ds, ds) ])
+          (Rr_map.find Ds rrmap)
+      and rrsig_entries =
+        Option.fold ~none:[]
+          ~some:(fun rrsig -> [ name, Rr_map.B (Rrsig, rrsig) ])
+          (Rr_map.find Rrsig rrmap)
+      in
+      ns_entries @ ds_entries @ rrsig_entries, false
+    else
+      Rr_map.fold (fun v acc -> (name, v) :: acc) rrmap [], true
   in
   let rec go name sub map =
-    let entries = collect_map name map in
-    List.fold_left
-      (fun acc (pre, N (sub, map)) ->
-         acc @ go (Domain_name.prepend_label_exn name pre) sub map)
-      entries (M.bindings sub)
+    let entries, recurse = collect_map name map in
+    if recurse then
+      List.fold_left
+        (fun acc (pre, N (sub, map)) ->
+           acc @ go (Domain_name.prepend_label_exn name pre) sub map)
+        entries (M.bindings sub)
+    else
+      entries
   in
   go name sub map
 
@@ -203,7 +217,8 @@ let collect_entries name sub map =
   match ttlsoa with
   | None -> Error `NotAuthoritative
   | Some soa ->
-    let entries = collect_rrs name sub map in
+    let map' = Rr_map.remove Soa map in
+    let entries = collect_rrs name sub map' in
     let map =
       List.fold_left (fun acc (name, (Rr_map.B (k, v))) ->
           Name_rr_map.add name k v acc) Domain_name.Map.empty entries
