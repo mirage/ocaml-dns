@@ -2,7 +2,7 @@
  (name dns_zone)
  (public_name dns-server.zone)
  (private_modules dns_zone_state dns_zone_parser dns_zone_lexer)
- (libraries dns)
+ (libraries dns dns-server logs)
  (wrapped false))
 
 (ocamlyacc dns_zone_parser)
