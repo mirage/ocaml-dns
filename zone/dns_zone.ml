@@ -40,6 +40,8 @@ let decode_zone trie zone data =
     trie, Dns.Name_rr_map.empty
   | Ok rrs ->
     (* we take all resource records within the zone *)
+    (* TODO should we add RR one by one, and avoid to add RRs where we have
+       delegations? (e.g. a NS ? ; a TXT foo <- the TXT should be discarded) *)
     let in_zone subdomain = Domain_name.is_subdomain ~domain:zone ~subdomain in
     let zone_rrs, other_rrs =
       Domain_name.Map.partition (fun name _ -> in_zone name) rrs
