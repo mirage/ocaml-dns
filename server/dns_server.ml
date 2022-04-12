@@ -334,9 +334,9 @@ let handle_axfr_request t proto key ((zone, _) as question) =
   in
   match Dns_trie.entries zone t.data with
   | Ok (soa, entries) ->
-    Log.info (fun m -> m "transfer key %a authorised for AXFR %a"
-                 Fmt.(option ~none:(any "none") Domain_name.pp) key
-                 Packet.Question.pp question);
+    Log.debug (fun m -> m "transfer key %a authorised for AXFR %a"
+                  Fmt.(option ~none:(any "none") Domain_name.pp) key
+                  Packet.Question.pp question);
     Ok (soa, entries)
   | Error e ->
     Log.err (fun m -> m "AXFR attempted on %a, where we're not authoritative %a"
@@ -356,9 +356,9 @@ let handle_ixfr_request t m proto key ((zone, _) as question) soa =
   let* () =
     authorise_zone_transfer t.unauthenticated_zone_transfer proto key zone
   in
-  Log.info (fun m -> m "transfer key %a authorised for IXFR %a"
-               Fmt.(option ~none:(any "none") Domain_name.pp) key
-               Packet.Question.pp question);
+  Log.debug (fun m -> m "transfer key %a authorised for IXFR %a"
+                Fmt.(option ~none:(any "none") Domain_name.pp) key
+                Packet.Question.pp question);
   let old = match find_trie m zone soa.Soa.serial with
     | None -> Dns_trie.empty
     | Some old -> old
@@ -530,8 +530,8 @@ module Notification = struct
     in
     match IPM.find_opt ip (to_notify cs ~data ~auth zone) with
     | None ->
-      Log.info (fun m -> m "inserting notifications for %a key %a IP %a"
-                   Domain_name.pp zone Domain_name.pp key Ipaddr.pp ip);
+      Log.debug (fun m -> m "inserting notifications for %a key %a IP %a"
+                    Domain_name.pp zone Domain_name.pp key Ipaddr.pp ip);
       cs'
     | Some (Some k) ->
       if Domain_name.equal k key then begin
@@ -545,15 +545,15 @@ module Notification = struct
         cs'
       end
     | Some None ->
-      Log.info (fun m -> m "adding zone %a (key %a) IP %a (previously no key)"
-                   Domain_name.pp zone Domain_name.pp key Ipaddr.pp ip);
+      Log.debug (fun m -> m "adding zone %a (key %a) IP %a (previously no key)"
+                    Domain_name.pp zone Domain_name.pp key Ipaddr.pp ip);
       cs'
 
   let remove conn ip =
     let is_not_it name (_, ip') =
       if Ipaddr.compare ip ip' = 0 then begin
-        Log.info (fun m -> m "removing notification for %a %a"
-                     Domain_name.pp name Ipaddr.pp ip);
+        Log.debug (fun m -> m "removing notification for %a %a"
+                      Domain_name.pp name Ipaddr.pp ip);
         false
       end else true
     in
@@ -771,9 +771,9 @@ let update_data trie zone (prereq, update) =
 
 let handle_update t _proto key (zone, _) u =
   if Authentication.access `Update ?key ~zone then begin
-    Log.info (fun m -> m "update key %a authorised for update %a"
-                 Fmt.(option ~none:(any "none") Domain_name.pp) key
-                 Packet.Update.pp u);
+    Log.debug (fun m -> m "update key %a authorised for update %a"
+                  Fmt.(option ~none:(any "none") Domain_name.pp) key
+                  Packet.Update.pp u);
     match Domain_name.host zone with
     | Ok z -> update_data t.data z u
     | Error _ ->
@@ -1419,8 +1419,8 @@ module Secondary = struct
                            Domain_name.pp zone);
               Ok (zones, None)
             | _, Some soa, Error _ ->
-              Log.info (fun m -> m "signed notify %a soa %a no local SOA"
-                           Domain_name.pp zone Soa.pp soa);
+              Log.debug (fun m -> m "signed notify %a soa %a no local SOA"
+                            Domain_name.pp zone Soa.pp soa);
               begin match axfr t now ts zone name with
                 | None ->
                   Log.warn (fun m -> m "signed notify for %a couldn't sign axfr"
@@ -1438,8 +1438,8 @@ module Secondary = struct
                                  Domain_name.pp zone);
                     Ok (zones, None)
                   | Some (st, buf) ->
-                    Log.info (fun m -> m "signed notify %a, ixfr"
-                                 Domain_name.pp zone);
+                    Log.debug (fun m -> m "signed notify %a, ixfr"
+                                  Domain_name.pp zone);
                     Ok (Domain_name.Host_map.add zone (st, ip, name) zones,
                         Some (ip, buf))
               else begin
@@ -1487,14 +1487,14 @@ module Secondary = struct
     let* st, ip, name = authorise_zone zones keyname header zone in
     match st with
     | Requested_axfr (_, _, _) ->
-      Log.info (fun m -> m "received authorised AXFR for %a: %a"
-                   Domain_name.pp zone Packet.Axfr.pp (fresh_soa, fresh_zone));
+      Log.debug (fun m -> m "received authorised AXFR for %a: %a"
+                    Domain_name.pp zone Packet.Axfr.pp (fresh_soa, fresh_zone));
       (* SOA should be higher than ours! *)
       let* () =
         match Dns_trie.lookup zone Soa t.data with
         | Error _ ->
-          Log.info (fun m -> m "no soa for %a, maybe first axfr"
-                       Domain_name.pp zone);
+          Log.debug (fun m -> m "no soa for %a, maybe first axfr"
+                        Domain_name.pp zone);
           Ok ()
         | Ok soa ->
           if Soa.newer ~old:soa fresh_soa then
@@ -1517,8 +1517,8 @@ module Secondary = struct
       (* check new trie *)
       (match Dns_trie.check trie' with
         | Ok () ->
-          Log.info (fun m -> m "zone %a transferred, and life %a"
-                       Domain_name.pp zone Soa.pp fresh_soa)
+          Log.debug (fun m -> m "zone %a transferred, and life %a"
+                        Domain_name.pp zone Soa.pp fresh_soa)
         | Error err ->
           Log.warn (fun m -> m "check on transferred zone %a failed: %a"
                        Domain_name.pp zone Dns_trie.pp_zone_check err));
@@ -1570,8 +1570,8 @@ module Secondary = struct
         let trie' = Dns_trie.insert zone Rr_map.Soa fresh_soa trie' in
         (match Dns_trie.check trie' with
          | Ok () ->
-           Log.info (fun m -> m "zone %a transferred, and life %a"
-                        Domain_name.pp zone Soa.pp fresh_soa)
+           Log.debug (fun m -> m "zone %a transferred, and life %a"
+                         Domain_name.pp zone Soa.pp fresh_soa)
          | Error err ->
            Log.warn (fun m -> m "check on IXFR zone %a failed: %a"
                         Domain_name.pp zone Dns_trie.pp_zone_check err));
@@ -1618,18 +1618,20 @@ module Secondary = struct
               let zones = Domain_name.Host_map.add zone (st, ip, name) zones in
               Ok (t, zones, Some (ip, buf))
           else begin
-            Log.info (fun m -> m "received soa %a %a is not newer than %a"
-                         Soa.pp fresh Domain_name.pp zone Soa.pp cached_soa);
+            Log.debug (fun m -> m "received soa %a %a is not newer than %a"
+                          Soa.pp fresh Domain_name.pp zone Soa.pp cached_soa);
             let zones =
               Domain_name.Host_map.add zone (Transferred ts, ip, name) zones
             in
             Ok (t, zones, None)
           end
         | Error _, _ ->
-          Log.info (fun m -> m "couldn't find soa, requesting AXFR");
+          Log.debug (fun m -> m "couldn't find soa %a, requesting AXFR"
+                    Domain_name.pp zone);
           begin match axfr t now ts zone name with
             | None ->
-              Log.warn (fun m -> m "trouble building axfr");
+              Log.warn (fun m -> m "trouble building axfr for %a"
+                           Domain_name.pp zone);
               Ok (t, zones, None)
             | Some (st, buf) ->
               Log.debug (fun m -> m "requesting AXFR for %a now!"

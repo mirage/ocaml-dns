@@ -1754,11 +1754,100 @@ subdel.example.          3600     NS    ns.example.net.
                 (Error (`EmptyNonTerminal (n_of_s "example", soa)))
                 (Trie.lookup_b (n_of_s "example") Rr_map.Txt trie))
 
+  let parse_zone_with_glue () =
+    let zone = {|$ORIGIN example.
+$TTL 3600
+@	SOA	ns	root	1	86400	10800	1048576	3600
+@	NS	ns.example.org.
+@	NS	ns.example.net.
+
+ns.example.net.	A	5.6.7.8
+ns.example.org.	A	1.2.3.4
+
+
+|}
+    in
+    let _, trie = Dns_zone.decode_zones [ "example", zone ] in
+    match Dns_trie.lookup (n_of_s "example") Rr_map.Ns trie with
+    | Error _ -> Alcotest.fail "couldn't find NS for example"
+    | Ok (_, name_servers) ->
+      let ns =
+        Domain_name.(Host_set.of_list [
+            host_exn (n_of_s "ns.example.org");
+            host_exn (n_of_s "ns.example.net");
+          ])
+      in
+      Alcotest.(check bool "NS for example are correct" true
+                  (Domain_name.Host_set.equal ns name_servers));
+      (match Dns_trie.lookup_glue (n_of_s "ns.example.org") trie with
+       | Some (_, ips), None ->
+         Alcotest.(check bool "IP for ns.example.org is correct" true
+                     Ipaddr.V4.Set.(equal (singleton (Ipaddr.V4.of_string_exn "1.2.3.4")) ips))
+       | _ -> Alcotest.fail "expected some IPv4 addresses for NS");
+      (match Dns_trie.lookup_glue (n_of_s "ns.example.net") trie with
+       | Some (_, ips), None ->
+         Alcotest.(check bool "IP for ns.example.net is correct" true
+                     Ipaddr.V4.Set.(equal (singleton (Ipaddr.V4.of_string_exn "5.6.7.8")) ips))
+           | _ -> Alcotest.fail "expected some IPv4 addresses for NS");
+      match Dns_server.text (n_of_s "example") trie with
+      | Ok data ->
+        Alcotest.(check string "text (decode_zones z) = z" zone data)
+      | Error _ -> Alcotest.fail "failed to encode zone"
+
+  let parse_zone_with_glue_sub () =
+    let zone = {|$ORIGIN example.
+$TTL 3600
+@	SOA	ns	root	1	86400	10800	1048576	3600
+@	NS	ns
+@	NS	a.b
+b	NS	a.b
+ns	A	5.6.7.8
+
+a.b	A	1.2.3.4
+
+
+|}
+    in
+    let _, trie = Dns_zone.decode_zones [ "example", zone ] in
+    match Dns_trie.lookup (n_of_s "example") Rr_map.Ns trie with
+    | Error _ -> Alcotest.fail "couldn't find NS for example"
+    | Ok (_, name_servers) ->
+      let ns =
+        Domain_name.(Host_set.of_list [
+            host_exn (n_of_s "ns.example");
+            host_exn (n_of_s "a.b.example");
+          ])
+      in
+      Alcotest.(check bool "NS for example are correct" true
+                  (Domain_name.Host_set.equal ns name_servers));
+      (match Dns_trie.lookup_glue (n_of_s "ns.example") trie with
+       | Some (_, ips), None ->
+         Alcotest.(check bool "IP for ns.example is correct" true
+                     Ipaddr.V4.Set.(equal (singleton (Ipaddr.V4.of_string_exn "5.6.7.8")) ips))
+       | _ -> Alcotest.fail "expected some IPv4 addresses for NS");
+      (match Dns_trie.lookup_glue (n_of_s "a.b.example") trie with
+       | Some (_, ips), None ->
+         Alcotest.(check bool "IP for a.b.example is correct" true
+                     Ipaddr.V4.Set.(equal (singleton (Ipaddr.V4.of_string_exn "1.2.3.4")) ips))
+       | _ -> Alcotest.fail "expected some IPv4 addresses for NS");
+      (match Dns_trie.lookup (n_of_s "b.example") Rr_map.Soa trie with
+       | Error `Delegation _ -> ()
+       | _ -> Alcotest.fail "expected delegation for b.example");
+      (match Dns_trie.lookup (n_of_s "a.b.example") Rr_map.Soa trie with
+       | Error `Delegation _ -> ()
+       | _ -> Alcotest.fail "expected delegation for a.b.example");
+      match Dns_server.text (n_of_s "example") trie with
+      | Ok data ->
+        Alcotest.(check string "text (decode_zones z) = z" zone data)
+      | Error _ -> Alcotest.fail "failed to encode zone"
+
   let tests = [
     "parsing simple zone", `Quick, parse_simple_zone ;
     "parsing wildcard zone", `Quick, parse_wildcard_zone ;
     "parsing RFC 4592 zone", `Quick, parse_rfc4592_zone ;
     "RFC 4592 questions", `Quick, rfc4592_questions ;
+    "parse zone with additional glue", `Quick, parse_zone_with_glue ;
+    "parse zone with additional glue and sub", `Quick, parse_zone_with_glue_sub ;
   ]
 end
 

@@ -40,6 +40,8 @@ let decode_zone trie zone data =
     trie, Dns.Name_rr_map.empty
   | Ok rrs ->
     (* we take all resource records within the zone *)
+    (* TODO should we add RR one by one, and avoid to add RRs where we have
+       delegations? (e.g. a NS ? ; a TXT foo <- the TXT should be discarded) *)
     let in_zone subdomain = Domain_name.is_subdomain ~domain:zone ~subdomain in
     let zone_rrs, other_rrs =
       Domain_name.Map.partition (fun name _ -> in_zone name) rrs
@@ -55,7 +57,7 @@ let decode_zone trie zone data =
       trie, Dns.Name_rr_map.empty
     | Ok _, Ok () -> trie', other_rrs
 
-let add_additional_glue zones trie (zone, other_rrs) =
+let add_additional_glue trie (zone, other_rrs) =
   (* collect potential glue:
      - find NS entries for zone
      - find A and AAAA records for name servers in other rrs
@@ -67,63 +69,55 @@ let add_additional_glue zones trie (zone, other_rrs) =
     Log.warn (fun m -> m "no NS entries for %a" Domain_name.pp zone);
     trie
   | Ok (_, name_servers) ->
-    let not_in_zones nameserver =
-      let in_this_zone =
-        Domain_name.is_subdomain ~domain:zone ~subdomain:nameserver
-      and in_other_zones =
-        if Domain_name.Set.exists (fun domain ->
-            Domain_name.is_subdomain ~domain ~subdomain:nameserver)
-            zones
-        then begin
-          Log.warn (fun m -> m "ignoring glue for NS %a in %a (authoritative)"
-                       Domain_name.pp nameserver Domain_name.pp zone);
-        true
-      end else false
+    let not_authoritative nameserver =
+      match Dns_trie.lookup nameserver Dns.Rr_map.A trie with
+      | Error (`NotAuthoritative | `Delegation _) -> true
+      | _ -> false
     in
-    not (in_this_zone || in_other_zones)
-  in
-  let need_glue = Domain_name.Host_set.filter not_in_zones name_servers in
-  let raw_need_glue =
-    Domain_name.Host_set.fold (fun ns acc ->
-        Domain_name.Set.add (Domain_name.raw ns) acc)
-      need_glue Domain_name.Set.empty
-  in
-  let trie =
-    Domain_name.Host_set.fold (fun ns trie ->
-        let dn = Domain_name.raw ns in
-        match
-          Dns.Name_rr_map.find dn Dns.Rr_map.A other_rrs,
-          Dns.Name_rr_map.find dn Dns.Rr_map.Aaaa other_rrs
-        with
-        | Some v4, Some v6 ->
-          let trie = Dns_trie.insert ns Dns.Rr_map.A v4 trie in
-          Dns_trie.insert ns Dns.Rr_map.Aaaa v6 trie
-        | Some v4, None -> Dns_trie.insert ns Dns.Rr_map.A v4 trie
-        | None, Some v6 -> Dns_trie.insert ns Dns.Rr_map.Aaaa v6 trie
-        | None, None ->
-          Logs.info (fun m -> m "unknown IP for NS %a (used in zone %a)"
-                        Domain_name.pp ns Domain_name.pp zone);
-          trie)
-      need_glue trie
-  in
-  Domain_name.Map.iter (fun name value ->
-      let leftover =
-        if Domain_name.Set.mem name raw_need_glue then
-          Dns.Rr_map.remove A (Dns.Rr_map.remove Aaaa value)
-        else
-          value
-      in
-      if Dns.Rr_map.is_empty leftover then
-        ()
-      else begin
-        Log.warn (fun m -> m "ignoring %d entries in zone file %a"
-                     (Dns.Rr_map.cardinal leftover) Domain_name.pp zone);
-        Dns.Rr_map.iter (fun b ->
-            Log.warn (fun m -> m "%s" (Dns.Rr_map.text_b name b)))
-          leftover
-      end)
-    other_rrs;
-  trie
+    let need_glue =
+      Domain_name.Host_set.filter not_authoritative name_servers
+    in
+    let raw_need_glue =
+      Domain_name.Host_set.fold (fun ns acc ->
+          Domain_name.Set.add (Domain_name.raw ns) acc)
+        need_glue Domain_name.Set.empty
+    in
+    let trie =
+      Domain_name.Host_set.fold (fun ns trie ->
+          let dn = Domain_name.raw ns in
+          match
+            Dns.Name_rr_map.find dn Dns.Rr_map.A other_rrs,
+            Dns.Name_rr_map.find dn Dns.Rr_map.Aaaa other_rrs
+          with
+          | Some v4, Some v6 ->
+            let trie = Dns_trie.insert ns Dns.Rr_map.A v4 trie in
+            Dns_trie.insert ns Dns.Rr_map.Aaaa v6 trie
+          | Some v4, None -> Dns_trie.insert ns Dns.Rr_map.A v4 trie
+          | None, Some v6 -> Dns_trie.insert ns Dns.Rr_map.Aaaa v6 trie
+          | None, None ->
+            Logs.info (fun m -> m "unknown IP for NS %a (used in zone %a)"
+                          Domain_name.pp ns Domain_name.pp zone);
+            trie)
+        need_glue trie
+    in
+    Domain_name.Map.iter (fun name value ->
+        let leftover =
+          if Domain_name.Set.mem name raw_need_glue then
+            Dns.Rr_map.remove A (Dns.Rr_map.remove Aaaa value)
+          else
+            value
+        in
+        if Dns.Rr_map.is_empty leftover then
+          ()
+        else begin
+          Log.warn (fun m -> m "ignoring %d entries in zone file %a"
+                       (Dns.Rr_map.cardinal leftover) Domain_name.pp zone);
+          Dns.Rr_map.iter (fun b ->
+              Log.warn (fun m -> m "%s" (Dns.Rr_map.text_b name b)))
+            leftover
+        end)
+      other_rrs;
+    trie
 
 let decode_keys zone keys =
   match parse keys with
@@ -165,7 +159,7 @@ let decode_zones bindings =
       (Dns_trie.empty, Domain_name.Set.empty, [])
       bindings
   in
-  let trie = List.fold_left (add_additional_glue zones) trie glue in
+  let trie = List.fold_left add_additional_glue trie glue in
   zones, trie
 
 let decode_zones_keys bindings =
@@ -192,5 +186,5 @@ let decode_zones_keys bindings =
       (Dns_trie.empty, Domain_name.Map.empty, Domain_name.Set.empty, [])
       bindings
   in
-  let trie = List.fold_left (add_additional_glue zones) trie glue in
+  let trie = List.fold_left add_additional_glue trie glue in
   zones, trie, Domain_name.Map.bindings keys
