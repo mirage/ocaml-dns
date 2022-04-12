@@ -71,7 +71,6 @@ let check_zone = function
 
 let lookup_res zone ty m =
   let* z, zmap = check_zone zone in
-  let* () = guard (not (Rr_map.is_empty m)) (ent z zmap) in
   match Rr_map.find ty m with
   | Some v -> Ok (Rr_map.B (ty, v), to_ns z zmap)
   | None -> match Rr_map.find Cname m with
@@ -122,14 +121,9 @@ let lookup_with_cname name ty t =
   lookup_res zone ty map
 
 let lookup name key t =
-  match lookup_aux name t with
-  | Error e -> Error e
-  | Ok (None, _sub, _map) -> Error `NotAuthoritative
-  | Ok (Some zone, _sub, map) ->
-    match Rr_map.find key map, zone with
-    | Some v, _ -> Ok v
-    | None, `Delegation (name, (ttl, ns)) -> Error (`Delegation (name, (ttl, ns)))
-    | None, `Soa (z, zmap) -> Error (ent z zmap)
+  let* zone, _sub, map = lookup_aux name t in
+  let* z, zmap = check_zone zone in
+  Option.to_result ~none:(ent z zmap) (Rr_map.find key map)
 
 let lookup_any name t =
   match lookup_aux name t with
@@ -171,8 +165,8 @@ let fold key (N (sub, map)) f s =
   collect name sub (get name map s)
 
 let collect_rrs name sub map =
-  let collect_map name rrmap =
-    if Rr_map.mem Soa rrmap then
+  let collect_map top name rrmap =
+    if not top && Rr_map.mem Ns rrmap then
       (* delegation *)
       let ns_entries =
         Option.fold ~none:[]
@@ -191,17 +185,17 @@ let collect_rrs name sub map =
     else
       Rr_map.fold (fun v acc -> (name, v) :: acc) rrmap [], true
   in
-  let rec go name sub map =
-    let entries, recurse = collect_map name map in
+  let rec go top name sub map =
+    let entries, recurse = collect_map top name map in
     if recurse then
       List.fold_left
         (fun acc (pre, N (sub, map)) ->
-           acc @ go (Domain_name.prepend_label_exn name pre) sub map)
+           acc @ go false (Domain_name.prepend_label_exn name pre) sub map)
         entries (M.bindings sub)
     else
       entries
   in
-  go name sub map
+  go true name sub map
 
 let collect_entries name sub map =
   let ttlsoa =
@@ -217,13 +211,12 @@ let collect_entries name sub map =
   match ttlsoa with
   | None -> Error `NotAuthoritative
   | Some soa ->
-    let map' = Rr_map.remove Soa map in
-    let entries = collect_rrs name sub map' in
-    let map =
+    let entries = collect_rrs name sub (Rr_map.remove Soa map) in
+    let res =
       List.fold_left (fun acc (name, (Rr_map.B (k, v))) ->
           Name_rr_map.add name k v acc) Domain_name.Map.empty entries
     in
-    Ok (soa, map)
+    Ok (soa, res)
 
 let entries name t =
   let name = Domain_name.raw name in
