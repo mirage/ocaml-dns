@@ -291,31 +291,32 @@ int32: NUMBER
        with Failure _ ->
 	 parse_error ($1 ^ " is not a 32-bit number") }
 
+ufloat:
+    NUMBER                { Float.of_string $1 }
+  | NUMBER DOT            { Float.of_string $1 }
+  | NUMBER DOT NUMBER     { Float.of_string (String.concat "." [$1; $3]) }
+
+float:
+    NUMBER                { Float.of_string $1 }
+  | NEG_NUMBER            { Float.of_string $1 }
+  | NUMBER DOT            { Float.of_string $1 }
+  | NEG_NUMBER DOT        { Float.of_string $1 }
+  | NUMBER DOT NUMBER     { Float.of_string (String.concat "." [$1; $3]) }
+  | NEG_NUMBER DOT NUMBER { Float.of_string (String.concat "." [$1; $3]) }
+
 meters:
-    METERS
-    { try Float.of_string $1
-        with Failure _ -> parse_error ($1 ^ " is not a 32-bit number")}
-  | NUMBER
-    { try Float.of_string $1
-        with Failure _ -> parse_error ($1 ^ " is not a 32-bit number")}
-  | NUMBER DOT NUMBER
-    { let m = String.concat "." [$1; $3] in
-      try Float.of_string m
-        with Failure _ -> parse_error (m ^ " is not a 32-bit number") }
-  | NEG_NUMBER DOT NUMBER
-    { let m = String.concat "." [$1; $3] in
-      try Float.of_string m
-        with Failure _ -> parse_error (m ^ " is not a 32-bit number") }
+    METERS { Float.of_string $1 }
+  | float { $1 }
 
 latitude:
-    int32 s int32 s int32 s LAT_DIR { ($1, $3, $5, $7 == "N") }
-  | int32 s int32 s LAT_DIR { ($1, $3, 0l, $5 == "N") }
-  | int32 s LAT_DIR { ($1, 0l, 0l, $3 == "N") }
+    int32 s int32 s ufloat s LAT_DIR { $1, $3, $5, $7 = "N" }
+  | int32 s int32 s LAT_DIR          { $1, $3, 0., $5 = "N" }
+  | int32 s LAT_DIR                  { $1, 0l, 0., $3 = "N" }
 
 longitude:
-    int32 s int32 s int32 s LONG_DIR { $1, $3, $5, $7 == "E" }
-  | int32 s int32 s LONG_DIR { $1, $3, 0l, $5 == "E" }
-  | int32 s LONG_DIR { $1, 0l, 0l, $3 == "E" }
+    int32 s int32 s ufloat s LONG_DIR { $1, $3, $5, $7 = "E" }
+  | int32 s int32 s LONG_DIR          { $1, $3, 0., $5 = "E" }
+  | int32 s LONG_DIR                  { $1, 0l, 0., $3 = "E" }
 
 altitude: meters { $1 }
 

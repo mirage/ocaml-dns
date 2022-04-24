@@ -796,8 +796,8 @@ end
     A locator record (LOC) is used to express location information associated with domain. *)
 module Loc : sig
   type t = {
-    lat : int32 * int32 * int32 * bool;
-    long : int32 * int32 * int32 * bool;
+    lat : int32 * int32 * float * bool;
+    long : int32 * int32 * float * bool;
     alt : float;
     size : float;
     horiz_pre : float;

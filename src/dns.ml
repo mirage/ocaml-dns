@@ -1303,32 +1303,50 @@ module Nsec3 = struct
     names, off
 end
 
+external format_float : string -> float -> string = "caml_format_float"
+
 (* TODO LOC *)
 (* locator record *)
 module Loc = struct
   type t = {
-    lat : int32 * int32 * int32 * bool;
-    long : int32 * int32 * int32 * bool;
+    lat : int32 * int32 * float * bool;
+    long : int32 * int32 * float * bool;
     alt : float;
     size : float;
     horiz_pre : float;
     vert_pre : float;
   }
 
-  (* let to_string t = "" *)
-  let to_string _ = ""
+  let to_string loc =
+    let lat_long_to_string deg min sec dir =
+        String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
+    in
+    let lat_string =
+      let lat_deg, lat_min, lat_sec, lat_dir = loc.lat in
+      lat_long_to_string lat_deg lat_min lat_sec (if lat_dir then "N" else "S")
+    in
+    let long_string =
+      let long_deg, long_min, long_sec, long_dir = loc.long in
+      lat_long_to_string long_deg long_min long_sec (if long_dir then "E" else "W")
+    in
+    let meter_values =
+      List.map (fun m -> (format_float "%.2f" m) ^ "m") [loc.alt; loc.size; loc.horiz_pre; loc.vert_pre]
+    in
+    String.concat " " ([lat_string; long_string;] @ meter_values)
 
   let pp ppf loc = Fmt.pf ppf "LOC %s" (to_string loc)
 
-  (* let compare a b = 0 *)
-  let compare _ _ = 0
-
-  (* let decode_exn names buf ~off ~len = *)
+  let compare a b =
+    andThen (compare a.lat b.lat)
+      (andThen (compare a.long b.long)
+        (andThen (compare a.alt b.alt)
+          (andThen (compare a.size b.size)
+            (andThen (compare a.horiz_pre b.horiz_pre)
+              (compare a.vert_pre b.vert_pre)))))
 
   let decode_exn names _ ~off ~len =
-    (* let ... *)
-    let lat = (0l, 0l, 0l, false) in
-    let long = (0l, 0l, 0l, false) in
+    let lat = (0l, 0l, 0., false) in
+    let long = (0l, 0l, 0., false) in
     let alt = 0. in
     let size = 0. in
     let horiz_pre = 0. in
@@ -2842,7 +2860,7 @@ module Rr_map = struct
       (* actually TODO LOC *)
       | Loc, (ttl, locs) ->
         Loc_set.fold (fun loc acc ->
-            Fmt.str "%s\t%aLOC\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) (Loc.to_string loc) :: acc)
+            Fmt.str "%s\t%aLOC\t%s" str_name ttl_fmt (ttl_opt ttl) (Loc.to_string loc) :: acc)
           locs []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
