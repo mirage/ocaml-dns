@@ -67,6 +67,7 @@ let parse_lat lat dir =
 %token SPACE
 %token GENERIC
 %token <string> NUMBER
+%token <string> NEG_NUMBER
 %token <string> CHARSTRING
 
 %token <string> TYPE_A
@@ -299,18 +300,29 @@ int32: NUMBER
        with Failure _ ->
 	 parse_error ($1 ^ " is not a 32-bit number") }
 
-meters: METERS
-     { try Float.of_string $1
-       with Failure _ ->
-	 parse_error ($1 ^ " is not a 32-bit number") }
+meters:
+    METERS
+    { try Float.of_string $1
+        with Failure _ -> parse_error ($1 ^ " is not a 32-bit number")}
+  | NUMBER
+    { try Float.of_string $1
+        with Failure _ -> parse_error ($1 ^ " is not a 32-bit number")}
+  | NUMBER DOT NUMBER
+    { let m = String.concat "." [$1; $3] in
+      try Float.of_string m
+        with Failure _ -> parse_error (m ^ " is not a 32-bit number") }
+  | NEG_NUMBER DOT NUMBER
+    { let m = String.concat "." [$1; $3] in
+      try Float.of_string m
+        with Failure _ -> parse_error (m ^ " is not a 32-bit number") }
 
 latitude:
-  | int32 s int32 s int32 s LAT_DIR { parse_lat [$1; $3; $5] $7 }
+    int32 s int32 s int32 s LAT_DIR { parse_lat [$1; $3; $5] $7 }
   | int32 s int32 s LAT_DIR { parse_lat [$1; $3; 0l] $5 }
   | int32 s LAT_DIR { parse_lat [$1; 0l; 0l] $3 }
 
 longitude:
-  | int32 s int32 s int32 s LONG_DIR { parse_lat [$1; $3; $5] $7 }
+    int32 s int32 s int32 s LONG_DIR { parse_lat [$1; $3; $5] $7 }
   | int32 s int32 s LONG_DIR { parse_lat [$1; $3; 0l] $5 }
   | int32 s LONG_DIR { parse_lat [$1; 0l; 0l] $3 }
 
