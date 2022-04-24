@@ -229,11 +229,11 @@ generic_type s generic_rdata {
     { let lat = $3 in
       let long = $5 in
       let alt = $7 in
-      let size, h_prec, v_prec = $8 in
+      let size, horiz_pre, vert_pre = $8 in
       let list =
         lat
         @ long
-        @ (List.map (Float.to_string) ([alt; size; h_prec; v_prec]))
+        @ (List.map (Float.to_string) ([alt; size; horiz_pre; vert_pre]))
       in
       let txt = String.concat " " list in
       B (Loc, (0l, Rr_map.Loc_set.singleton txt)) }
