@@ -1305,19 +1305,26 @@ end
 
 external format_float : string -> float -> string = "caml_format_float"
 
-(* TODO LOC *)
-(* locator record *)
 module Loc = struct
   type t = {
-    lat : int32 * int32 * float * bool;
-    long : int32 * int32 * float * bool;
-    alt : float;
-    size : float;
-    horiz_pre : float;
-    vert_pre : float;
+    lat : int32;
+    long : int32;
+    alt : int32;
+    size : int;
+    horiz_pre : int;
+    vert_pre : int;
   }
+  
+  let lat_long_decode _ =
+    0l, 0l, 0., false
+  
+  let alt_decode _ =
+    0.
+  
+  let precision_decode _ =
+    0.
 
-  let to_string loc =
+  (* let to_string loc =
     let lat_long_to_string deg min sec dir =
         String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
     in
@@ -1332,6 +1339,23 @@ module Loc = struct
     let meter_values =
       List.map (fun m -> (format_float "%.2f" m) ^ "m") [loc.alt; loc.size; loc.horiz_pre; loc.vert_pre]
     in
+    String.concat " " ([lat_string; long_string;] @ meter_values) *)
+
+  let to_string loc =
+    let lat_long_to_string deg min sec dir =
+        String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
+    in
+    let lat_string =
+      let lat_deg, lat_min, lat_sec, lat_dir = lat_long_decode loc.lat in
+      lat_long_to_string lat_deg lat_min lat_sec (if lat_dir then "N" else "S")
+    in
+    let long_string =
+      let long_deg, long_min, long_sec, long_dir = lat_long_decode loc.long in
+      lat_long_to_string long_deg long_min long_sec (if long_dir then "E" else "W")
+    in
+    let meter_values =
+      List.map (fun m -> (format_float "%.2f" m) ^ "m") [alt_decode loc.alt; precision_decode loc.size; precision_decode loc.horiz_pre; precision_decode loc.vert_pre]
+    in
     String.concat " " ([lat_string; long_string;] @ meter_values)
 
   let pp ppf loc = Fmt.pf ppf "LOC %s" (to_string loc)
@@ -1345,17 +1369,22 @@ module Loc = struct
               (compare a.vert_pre b.vert_pre)))))
 
   let decode_exn names _ ~off ~len =
-    let lat = (0l, 0l, 0., false) in
-    let long = (0l, 0l, 0., false) in
-    let alt = 0. in
-    let size = 0. in
-    let horiz_pre = 0. in
-    let vert_pre = 0. in
+    let lat = 0l in
+    let long = 0l in
+    let alt = 0l in
+    let size = 0 in
+    let horiz_pre = 0 in
+    let vert_pre = 0 in
     Ok ({ lat ; long ; alt ; size ; horiz_pre; vert_pre }, names, off + len)
 
-  (* let encode loc names buf off = *)
-  let encode _ names _ off =
-    (* let Cstruct... *)
+  let encode loc names buf off =
+    Cstruct.set_uint8 buf off 0;
+    Cstruct.set_uint8 buf (off + 1) loc.size;
+    Cstruct.set_uint8 buf (off + 2) loc.horiz_pre;
+    Cstruct.set_uint8 buf (off + 3) loc.vert_pre;
+    Cstruct.LE.set_uint32 buf (off + 4) loc.lat;
+    Cstruct.LE.set_uint32 buf (off + 16) loc.long;
+    Cstruct.LE.set_uint32 buf (off + 24) loc.alt;
     names, off
 
 end
