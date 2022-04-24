@@ -1306,48 +1306,40 @@ end
 (* TODO LOC *)
 (* locator record *)
 module Loc = struct
-  type t = string
+  type t = {
+    lat : int32 * int32 * int32 * bool;
+    long : int32 * int32 * int32 * bool;
+    alt : float;
+    size : float;
+    horiz_pre : float;
+    vert_pre : float;
+  }
 
-  let pp ppf txt = Fmt.pf ppf "TXT %s" txt
+  (* let to_string t = "" *)
+  let to_string _ = ""
 
-  let compare = String.compare
+  let pp ppf loc = Fmt.pf ppf "LOC %s" (to_string loc)
 
-  let decode_exn names buf ~off ~len =
-    let decode_character_str buf off =
-      let len = Cstruct.get_uint8 buf off in
-      let data = Cstruct.to_string (Cstruct.sub buf (succ off) len) in
-      (data, off + len + 1)
-    in
-    let sub = Cstruct.sub buf off len in
-    let rec more acc off =
-      if len = off then
-        List.rev acc
-      else
-        let d, off = decode_character_str sub off in
-        more (d::acc) off
-    in
-    let txts = more [] 0 in
-    Ok (String.concat "" txts, names, off + len)
+  (* let compare a b = 0 *)
+  let compare _ _ = 0
 
-  let encode txt names buf off =
-    let max_len = 255 in
-    let rec more off txt =
-      if txt = "" then
-        off
-      else
-        let len = String.length txt in
-        let len, rest =
-          if len > max_len then
-            max_len, String.(sub txt max_len (len - max_len))
-          else
-            len, ""
-        in
-        Cstruct.set_uint8 buf off len ;
-        Cstruct.blit_from_string txt 0 buf (succ off) len ;
-        more (off + len + 1) rest
-    in
-    let off = more off txt in
+  (* let decode_exn names buf ~off ~len = *)
+
+  let decode_exn names _ ~off ~len =
+    (* let ... *)
+    let lat = (0l, 0l, 0l, false) in
+    let long = (0l, 0l, 0l, false) in
+    let alt = 0. in
+    let size = 0. in
+    let horiz_pre = 0. in
+    let vert_pre = 0. in
+    Ok ({ lat ; long ; alt ; size ; horiz_pre; vert_pre }, names, off + len)
+
+  (* let encode loc names buf off = *)
+  let encode _ names _ off =
+    (* let Cstruct... *)
     names, off
+
 end
 
 (* certificate authority authorization *)
@@ -2847,10 +2839,10 @@ module Rr_map = struct
             (if Cstruct.length ns.Nsec3.salt = 0 then "-" else hex ns.Nsec3.salt)
             (hex (* TODO base32 *) ns.Nsec3.next_owner_hashed)
             Fmt.(list ~sep:(any " ") ppk) types ]
-      (* TODO LOC *)
+      (* actually TODO LOC *)
       | Loc, (ttl, locs) ->
         Loc_set.fold (fun loc acc ->
-            Fmt.str "%s\t%aLOC\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) loc :: acc)
+            Fmt.str "%s\t%aLOC\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) (Loc.to_string loc) :: acc)
           locs []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->

@@ -791,18 +791,25 @@ module Edns : sig
       buffer. *)
 end
 
-(* TODO LOC *)
-(** Loc records *)
+(** Loc
+
+    A locator record (LOC) is used to express location information associated with domain. *)
 module Loc : sig
-  type t = string
+  type t = {
+    lat : int32 * int32 * int32 * bool;
+    long : int32 * int32 * int32 * bool;
+    alt : float;
+    size : float;
+    horiz_pre : float;
+    vert_pre : float;
+  }
   (** The type of a Loc record. *)
 
   val pp : t Fmt.t
   (** [pp ppf t] pretty-prints the Loc record [t] on [ppf]. *)
 
   val compare : t -> t -> int
-  (** [compare a b] compares the Loc record [a] with [b] (using
-     [String.compare]). *)
+  (** [compare a b] compares the Loc record [a] with [b]. *)
 end
 
  (** A map whose keys are record types and their values are the time-to-live and

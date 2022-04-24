@@ -53,9 +53,6 @@ let add_to_map name ~ttl (Rr_map.B (k, v)) =
   let v = Rr_map.with_ttl k v ttl in
   Name_rr_map.add name k v
 
-let parse_lat lat dir =
-  List.map (Int32.to_string) lat @ [dir] 
-
 %}
 
 %token EOF
@@ -225,19 +222,13 @@ generic_type s generic_rdata {
        let caa = { Caa.critical ; tag = $5 ; value = $7 } in
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
      /* RFC 1876 */
-     // TODO optional args
  | TYPE_LOC s latitude s longitude s altitude precision
     { let lat = $3 in
       let long = $5 in
       let alt = $7 in
       let size, horiz_pre, vert_pre = $8 in
-      let list =
-        lat
-        @ long
-        @ (List.map (Float.to_string) ([alt; size; horiz_pre; vert_pre]))
-      in
-      let txt = String.concat " " list in
-      B (Loc, (0l, Rr_map.Loc_set.singleton txt)) }
+      let loc = { Loc.lat ; long ; alt ; size ; horiz_pre ; vert_pre} in
+        B (Loc, (0l, Rr_map.Loc_set.singleton loc)) }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
 
 single_hex: charstring
@@ -317,14 +308,14 @@ meters:
         with Failure _ -> parse_error (m ^ " is not a 32-bit number") }
 
 latitude:
-    int32 s int32 s int32 s LAT_DIR { parse_lat [$1; $3; $5] $7 }
-  | int32 s int32 s LAT_DIR { parse_lat [$1; $3; 0l] $5 }
-  | int32 s LAT_DIR { parse_lat [$1; 0l; 0l] $3 }
+    int32 s int32 s int32 s LAT_DIR { ($1, $3, $5, $7 == "N") }
+  | int32 s int32 s LAT_DIR { ($1, $3, 0l, $5 == "N") }
+  | int32 s LAT_DIR { ($1, 0l, 0l, $3 == "N") }
 
 longitude:
-    int32 s int32 s int32 s LONG_DIR { parse_lat [$1; $3; $5] $7 }
-  | int32 s int32 s LONG_DIR { parse_lat [$1; $3; 0l] $5 }
-  | int32 s LONG_DIR { parse_lat [$1; 0l; 0l] $3 }
+    int32 s int32 s int32 s LONG_DIR { $1, $3, $5, $7 == "E" }
+  | int32 s int32 s LONG_DIR { $1, $3, 0l, $5 == "E" }
+  | int32 s LONG_DIR { $1, 0l, 0l, $3 == "E" }
 
 // TODO why does this not work?
 // "2 rules never reduced
