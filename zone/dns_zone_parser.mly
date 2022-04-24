@@ -317,19 +317,8 @@ longitude:
   | int32 s int32 s LONG_DIR { $1, $3, 0l, $5 == "E" }
   | int32 s LONG_DIR { $1, 0l, 0l, $3 == "E" }
 
-// TODO why does this not work?
-// "2 rules never reduced
-// 2 shift/reduce conflicts."
-// latitude: lat_long_deg_min_sec s LAT_DIR { parse_lat $1 $3 }
-
-// lat_long_deg_min_sec:
-//   int32 s int32 s int32 { [$1; $3; $5] }
-//   | int32 s int32 { [$1; $3; 0l] }
-//   | int32 { [$1; 0l; 0l] }
-
 altitude: meters { $1 }
 
-// TODO is there a better way to avoid duplicating default values?
 precision:
   | { (1., 10000., 10.) }
   | s meters s meters s meters { ($2, $4, $6) }
