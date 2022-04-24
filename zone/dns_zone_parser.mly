@@ -79,12 +79,17 @@ let add_to_map name ~ttl (Rr_map.B (k, v)) =
 %token <string> TYPE_TLSA
 %token <string> TYPE_SSHFP
 %token <string> TYPE_DS
+%token <string> TYPE_LOC
 %token <string> TYPE_GENERIC
 
 %token <string> CLASS_IN
 %token <string> CLASS_CS
 %token <string> CLASS_CH
 %token <string> CLASS_HS
+
+%token <string> METERS
+%token <string> LAT_DIR
+%token <string> LONG_DIR
 
 %start zfile
 %type <Dns.Name_rr_map.t> zfile
@@ -214,6 +219,28 @@ generic_type s generic_rdata {
          parse_error "CAA exceeds maximum rdata size";
        let caa = { Caa.critical ; tag = $5 ; value = $7 } in
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
+     /* RFC 1876 */
+     // TODO optional args, uint32, and meters
+ | TYPE_LOC s int32 s int32 s int32 s LAT_DIR s int32 s int32 s int32 s LONG_DIR s METERS s METERS
+    { let lat_deg = $3 in
+      let lat_min = $5 in
+      let lat_sec = $7 in
+      let lat_dir = $9 in
+      let long_deg = $11 in
+      let long_min = $13 in
+      let long_sec = $15 in
+      let long_dir = $17 in
+      let alt = $19 in
+      let size = $21 in
+      let list =
+        (List.map (Int32.to_string) [lat_deg; lat_min; lat_sec])
+        @ [lat_dir]
+        @ (List.map (Int32.to_string) [long_deg; long_min; long_sec])
+        @ [long_dir]
+        @ [alt; size]
+      in
+      let txt = String.concat " " list in
+      B (Loc, (0l, Rr_map.Loc_set.singleton txt)) }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
 
 single_hex: charstring
@@ -328,6 +355,7 @@ keyword_or_number:
  | TYPE_DNSKEY { $1 }
  | TYPE_TLSA { $1 }
  | TYPE_SSHFP { $1 }
+ | TYPE_LOC { $1 }
  | CLASS_IN { $1 }
  | CLASS_CS { $1 }
  | CLASS_CH { $1 }

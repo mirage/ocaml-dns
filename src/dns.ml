@@ -2850,7 +2850,7 @@ module Rr_map = struct
       (* TODO LOC *)
       | Loc, (ttl, locs) ->
         Loc_set.fold (fun loc acc ->
-            Fmt.str "%s\t%aloc\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) loc :: acc)
+            Fmt.str "%s\t%aLOC\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) loc :: acc)
           locs []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->

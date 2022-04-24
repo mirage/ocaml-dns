@@ -43,10 +43,15 @@ let kw_or_cs s = match (String.uppercase_ascii s) with
   | "TLSA" -> TYPE_TLSA s
   | "SSHFP" -> TYPE_SSHFP s
   | "DS" -> TYPE_DS s
+  | "LOC" -> TYPE_LOC s
   | "IN" -> CLASS_IN s
   | "CS" -> CLASS_CS s
   | "CH" -> CLASS_CH s
   | "HS" -> CLASS_HS s
+  | "N" -> LAT_DIR s
+  | "S" -> LAT_DIR s
+  | "E" -> LONG_DIR s
+  | "W" -> LONG_DIR s
   | _ -> CHARSTRING s
 
 (* Scan an accepted token for linebreaks *)
@@ -61,10 +66,10 @@ let escape = '\\' _ (* Strictly \0 is not an escape, but be liberal *)
 let qstring = '"' ((([^'\\''"']|octet|escape)*) as contents) '"'
 let label = (([^'\\'' ''\t''\n''.''('')']|octet|escape)*) as contents
 let number = (['0'-'9']+) as contents
+let meters = (['0'-'9']+) 'm' as contents
 let openpar = [' ''\t']* '(' ([' ''\t''\n'] | eol)*
 let closepar = (eol | [' ''\t''\n'])* ')' [' ''\t']*
 let typefoo = (['T''t']['Y''y']['P''p']['E''e'] number) as contents
-
 rule token = parse
   eol           { state.lineno <- state.lineno + 1;
 	          if state.paren > 0 then SPACE else EOL }
@@ -80,6 +85,7 @@ rule token = parse
 | '.'           { DOT }
 | '@'           { AT }
 | number        { NUMBER contents }
+| meters        { METERS contents }
 | typefoo       { TYPE_GENERIC contents }
 | qstring       { count_linebreaks contents; CHARSTRING contents }
 | label         { count_linebreaks contents; kw_or_cs contents }
