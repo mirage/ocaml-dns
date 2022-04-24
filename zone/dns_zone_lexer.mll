@@ -66,6 +66,7 @@ let escape = '\\' _ (* Strictly \0 is not an escape, but be liberal *)
 let qstring = '"' ((([^'\\''"']|octet|escape)*) as contents) '"'
 let label = (([^'\\'' ''\t''\n''.''('')']|octet|escape)*) as contents
 let number = (['0'-'9']+) as contents
+(* TODO make 'm' optional - currently ambigious with NUMBER DOT *)
 let meters = ('-'? ['0'-'9']+ ('.' ['0'-'9']*)? as contents) 'm'
 let openpar = [' ''\t']* '(' ([' ''\t''\n'] | eol)*
 let closepar = (eol | [' ''\t''\n'])* ')' [' ''\t']*

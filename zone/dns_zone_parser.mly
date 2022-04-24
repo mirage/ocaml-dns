@@ -52,6 +52,10 @@ let parse_ipv6 s =
 let add_to_map name ~ttl (Rr_map.B (k, v)) =
   let v = Rr_map.with_ttl k v ttl in
   Name_rr_map.add name k v
+
+let parse_lat lat dir =
+  List.map (Int32.to_string) lat @ [dir] 
+
 %}
 
 %token EOF
@@ -221,23 +225,15 @@ generic_type s generic_rdata {
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
      /* RFC 1876 */
      // TODO optional args
- | TYPE_LOC s int32 s int32 s int32 s LAT_DIR s int32 s int32 s int32 s LONG_DIR s meters s meters
-    { let lat_deg = $3 in
-      let lat_min = $5 in
-      let lat_sec = $7 in
-      let lat_dir = $9 in
-      let long_deg = $11 in
-      let long_min = $13 in
-      let long_sec = $15 in
-      let long_dir = $17 in
-      let alt = $19 in
-      let size = $21 in
+ | TYPE_LOC s latitude s longitude s altitude precision
+    { let lat = $3 in
+      let long = $5 in
+      let alt = $7 in
+      let size, h_prec, v_prec = $8 in
       let list =
-        (List.map (Int32.to_string) [lat_deg; lat_min; lat_sec])
-        @ [lat_dir]
-        @ (List.map (Int32.to_string) [long_deg; long_min; long_sec])
-        @ [long_dir]
-        @ (List.map (Float.to_string) [alt; size])
+        lat
+        @ long
+        @ (List.map (Float.to_string) ([alt; size; h_prec; v_prec]))
       in
       let txt = String.concat " " list in
       B (Loc, (0l, Rr_map.Loc_set.singleton txt)) }
@@ -307,6 +303,35 @@ meters: METERS
      { try Float.of_string $1
        with Failure _ ->
 	 parse_error ($1 ^ " is not a 32-bit number") }
+
+latitude:
+  | int32 s int32 s int32 s LAT_DIR { parse_lat [$1; $3; $5] $7 }
+  | int32 s int32 s LAT_DIR { parse_lat [$1; $3; 0l] $5 }
+  | int32 s LAT_DIR { parse_lat [$1; 0l; 0l] $3 }
+
+longitude:
+  | int32 s int32 s int32 s LONG_DIR { parse_lat [$1; $3; $5] $7 }
+  | int32 s int32 s LONG_DIR { parse_lat [$1; $3; 0l] $5 }
+  | int32 s LONG_DIR { parse_lat [$1; 0l; 0l] $3 }
+
+// TODO why does this not work?
+// "2 rules never reduced
+// 2 shift/reduce conflicts."
+// latitude: lat_long_deg_min_sec s LAT_DIR { parse_lat $1 $3 }
+
+// lat_long_deg_min_sec:
+//   int32 s int32 s int32 { [$1; $3; $5] }
+//   | int32 s int32 { [$1; $3; 0l] }
+//   | int32 { [$1; 0l; 0l] }
+
+altitude: meters { $1 }
+
+// TODO is there a better way to avoid duplicating default values?
+precision:
+  | { (1., 10000., 10.) }
+  | s meters s meters s meters { ($2, $4, $6) }
+  | s meters s meters { ($2, $4, 10.) }
+  | s meters { ($2, 10000., 10.) }
 
 /* The owner of an RR is more restricted than a general domain name: it
    can't be a pure number or a type or class.  If we see one of those we
