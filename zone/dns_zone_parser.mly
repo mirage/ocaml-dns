@@ -220,8 +220,8 @@ generic_type s generic_rdata {
        let caa = { Caa.critical ; tag = $5 ; value = $7 } in
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
      /* RFC 1876 */
-     // TODO optional args, uint32, and meters
- | TYPE_LOC s int32 s int32 s int32 s LAT_DIR s int32 s int32 s int32 s LONG_DIR s METERS s METERS
+     // TODO optional args
+ | TYPE_LOC s int32 s int32 s int32 s LAT_DIR s int32 s int32 s int32 s LONG_DIR s meters s meters
     { let lat_deg = $3 in
       let lat_min = $5 in
       let lat_sec = $7 in
@@ -237,7 +237,7 @@ generic_type s generic_rdata {
         @ [lat_dir]
         @ (List.map (Int32.to_string) [long_deg; long_min; long_sec])
         @ [long_dir]
-        @ [alt; size]
+        @ (List.map (Float.to_string) [alt; size])
       in
       let txt = String.concat " " list in
       B (Loc, (0l, Rr_map.Loc_set.singleton txt)) }
@@ -300,6 +300,11 @@ int16: NUMBER
 
 int32: NUMBER
      { try parse_uint32 $1
+       with Failure _ ->
+	 parse_error ($1 ^ " is not a 32-bit number") }
+
+meters: METERS
+     { try Float.of_string $1
        with Failure _ ->
 	 parse_error ($1 ^ " is not a 32-bit number") }
 
