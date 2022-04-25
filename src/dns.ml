@@ -1324,23 +1324,6 @@ module Loc = struct
   let precision_decode _ =
     0.
 
-  (* let to_string loc =
-    let lat_long_to_string deg min sec dir =
-        String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
-    in
-    let lat_string =
-      let lat_deg, lat_min, lat_sec, lat_dir = loc.lat in
-      lat_long_to_string lat_deg lat_min lat_sec (if lat_dir then "N" else "S")
-    in
-    let long_string =
-      let long_deg, long_min, long_sec, long_dir = loc.long in
-      lat_long_to_string long_deg long_min long_sec (if long_dir then "E" else "W")
-    in
-    let meter_values =
-      List.map (fun m -> (format_float "%.2f" m) ^ "m") [loc.alt; loc.size; loc.horiz_pre; loc.vert_pre]
-    in
-    String.concat " " ([lat_string; long_string;] @ meter_values) *)
-
   let to_string loc =
     let lat_long_to_string deg min sec dir =
         String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
