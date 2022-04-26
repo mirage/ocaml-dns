@@ -804,6 +804,14 @@ module Loc : sig
     vert_pre : int;
   }
   (** The type of a Loc record. *)
+  
+  val lat_long_encode : int32 * int32 * float * bool -> int32
+
+  val alt_encode : float -> int32
+
+  val precision_encode : float * float * float -> int * int * int
+
+  val to_string : t -> string
 
   val pp : t Fmt.t
   (** [pp ppf t] pretty-prints the Loc record [t] on [ppf]. *)

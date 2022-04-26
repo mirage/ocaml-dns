@@ -1314,6 +1314,36 @@ module Loc = struct
     horiz_pre : int;
     vert_pre : int;
   }
+
+  let lat_long_encode lat_long =
+    let deg, min, sec, dir = lat_long in
+    let retval =
+      (Int.shift_left 1 31)
+      + Int.of_float (
+        (
+          Float.of_int(
+            ((Int32.to_int deg * 60) + Int32.to_int min) * 60
+          ) +. sec
+        ) *. 1000.
+      ) * if dir then 1 else -1
+    in
+    Int32.of_int retval
+
+  let alt_encode alt = Int32.of_float (10000000. +. alt *. 100.)
+
+  let precision_encode precision =
+    let size, horiz_pre, vert_pre = precision in
+    let encode = fun p ->
+      (* convert from m to cm *)
+      let cm = Float.of_int (Int.of_float (p *. 100.)) in
+      let e = Int.of_float (Float.log10 cm) in
+      let mantissa = 
+        let m = cm /. (10. ** Float.of_int e) in
+        if m > 9. then 9 else Int.of_float m
+      in
+      (Int.shift_left mantissa 4) lor e
+    in
+    (encode size, encode horiz_pre, encode vert_pre)
   
   let lat_long_decode _ =
     0l, 0l, 0., false
