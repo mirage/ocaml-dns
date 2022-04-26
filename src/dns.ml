@@ -1303,8 +1303,6 @@ module Nsec3 = struct
     names, off
 end
 
-external format_float : string -> float -> string = "caml_format_float"
-
 module Loc = struct
   type t = {
     lat : int32;
@@ -1315,59 +1313,69 @@ module Loc = struct
     vert_pre : int;
   }
 
-  let lat_long_encode lat_long =
+  let lat_long_parse lat_long =
     let deg, min, sec, dir = lat_long in
     let retval =
-      (Int.shift_left 1 31)
-      + Int.of_float (
-        (
-          Float.of_int(
-            ((Int32.to_int deg * 60) + Int32.to_int min) * 60
-          ) +. sec
-        ) *. 1000.
+      (Int.shift_left 1 31) + (
+        (((Int32.to_int deg * 60) + Int32.to_int min) * 60) * 1000 +
+        Int.of_float (sec *. 1000.)
       ) * if dir then 1 else -1
     in
     Int32.of_int retval
 
-  let alt_encode alt = Int32.of_float (10000000. +. alt *. 100.)
+  let alt_parse alt =
+    let _ = Printf.printf "%d\n" (Int.of_float (10000000. +. alt *. 100.)) in
+    Int32.of_float (10000000. +. alt *. 100.)
 
-  let precision_encode precision =
-    let size, horiz_pre, vert_pre = precision in
+  let precision_parse prec =
+    let size, horiz_pre, vert_pre = prec in
     let encode = fun p ->
       (* convert from m to cm *)
       let cm = Float.of_int (Int.of_float (p *. 100.)) in
-      let e = Int.of_float (Float.log10 cm) in
+      let exponent = Int.of_float (Float.log10 cm) in
       let mantissa = 
-        let m = cm /. (10. ** Float.of_int e) in
+        let m = cm /. (10. ** Float.of_int exponent) in
         if m > 9. then 9 else Int.of_float m
       in
-      (Int.shift_left mantissa 4) lor e
+      (Int.shift_left mantissa 4) lor exponent
     in
     (encode size, encode horiz_pre, encode vert_pre)
   
-  let lat_long_decode _ =
-    0l, 0l, 0., false
+  let lat_long_print lat_long =
+    let lat_long = Int32.to_int lat_long in
+    let dir = lat_long < 0 in
+    let lat_long = Int.abs lat_long in
+    let lat_long = (Int.shift_left 1 31) - lat_long in
+    let _ = Printf.printf "%d" lat_long in
+    let sec = Float.of_int (lat_long mod (60 * 1000)) /. 1000. in
+    let min = (lat_long / (1000 * 60)) mod 60 in
+    let deg = (lat_long / (1000 * 60 * 60)) mod 60 in
+    deg, min, sec, dir
   
-  let alt_decode _ =
-    0.
+  let alt_print alt =
+    ((Float.of_int (Int32.to_int alt)) /. 100.) -. 100000.
   
-  let precision_decode _ =
-    0.
+  let precision_print prec =
+    let mantissa = ((Int.shift_right prec 4) land 0x0f) mod 10 in
+    let exponent = ((Int.shift_right prec 0) land 0x0f) mod 10 in
+    Float.of_int mantissa *. (10. ** Float.of_int exponent) /. 100.
 
   let to_string loc =
     let lat_long_to_string deg min sec dir =
-        String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
+        String.concat " " ((List.map (Int.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
     in
     let lat_string =
-      let lat_deg, lat_min, lat_sec, lat_dir = lat_long_decode loc.lat in
+      let lat_deg, lat_min, lat_sec, lat_dir = lat_long_print loc.lat in
       lat_long_to_string lat_deg lat_min lat_sec (if lat_dir then "N" else "S")
     in
     let long_string =
-      let long_deg, long_min, long_sec, long_dir = lat_long_decode loc.long in
+      let long_deg, long_min, long_sec, long_dir = lat_long_print loc.long in
       lat_long_to_string long_deg long_min long_sec (if long_dir then "E" else "W")
     in
     let meter_values =
-      List.map (fun m -> (format_float "%.2f" m) ^ "m") [alt_decode loc.alt; precision_decode loc.size; precision_decode loc.horiz_pre; precision_decode loc.vert_pre]
+      List.map (fun m -> Float.to_string m ^ "m") (
+        [alt_print loc.alt] @ (List.map precision_print [loc.size; loc.horiz_pre; loc.vert_pre])
+      )
     in
     String.concat " " ([lat_string; long_string;] @ meter_values)
 
@@ -1381,13 +1389,13 @@ module Loc = struct
             (andThen (compare a.horiz_pre b.horiz_pre)
               (compare a.vert_pre b.vert_pre)))))
 
-  let decode_exn names _ ~off ~len =
-    let lat = 0l in
-    let long = 0l in
-    let alt = 0l in
-    let size = 0 in
-    let horiz_pre = 0 in
-    let vert_pre = 0 in
+  let decode_exn names buf ~off ~len =
+    let lat = Cstruct.BE.get_uint32 buf (off + 4) in
+    let long = Cstruct.BE.get_uint32 buf (off + 8) in
+    let alt = Cstruct.BE.get_uint32 buf (off + 12) in
+    let size = Cstruct.get_uint8 buf (off + 1) in
+    let horiz_pre = Cstruct.get_uint8 buf (off + 2) in
+    let vert_pre = Cstruct.get_uint8 buf (off + 3) in
     Ok ({ lat ; long ; alt ; size ; horiz_pre; vert_pre }, names, off + len)
 
   let encode loc names buf off =

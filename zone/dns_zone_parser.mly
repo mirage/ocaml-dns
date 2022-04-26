@@ -224,39 +224,10 @@ generic_type s generic_rdata {
      /* RFC 1876 */
  | TYPE_LOC s latitude s longitude s altitude precision
     { (* RFC 1876 Appendix A *)
-      let lat_long_encode lat_long =
-        let deg, min, sec, dir = lat_long in
-        let retval =
-          (Int.shift_left 1 31)
-          + Int.of_float (
-            (
-              Float.of_int(
-                ((Int32.to_int deg * 60) + Int32.to_int min) * 60
-              ) +. sec
-            ) *. 1000.
-          ) * if dir then 1 else -1
-        in
-        Int32.of_int retval
-      in
-      let alt_encode alt = Int32.of_float (10000000. +. alt *. 100.) in
-      let precision_encode precision =
-        let size, horiz_pre, vert_pre = precision in
-        let encode = fun p ->
-          (* convert from m to cm *)
-          let cm = Float.of_int (Int.of_float (p *. 100.)) in
-          let e = Int.of_float (Float.log10 cm) in
-          let mantissa = 
-            let m = cm /. (10. ** Float.of_int e) in
-            if m > 9. then 9 else Int.of_float m
-          in
-          (Int.shift_left mantissa 4) lor e
-        in
-        (encode size, encode horiz_pre, encode vert_pre)
-      in
-      let lat = lat_long_encode $3 in
-      let long = lat_long_encode $5 in
-      let alt = alt_encode $7 in
-      let size, horiz_pre, vert_pre = precision_encode $8 in
+      let lat = Loc.lat_long_parse $3 in
+      let long = Loc.lat_long_parse $5 in
+      let alt = Loc.alt_parse $7 in
+      let size, horiz_pre, vert_pre = Loc.precision_parse $8 in
       let loc = { Loc.lat ; long ; alt ; size ; horiz_pre ; vert_pre} in
         B (Loc, (0l, Rr_map.Loc_set.singleton loc)) }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }

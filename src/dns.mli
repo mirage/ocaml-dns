@@ -805,11 +805,11 @@ module Loc : sig
   }
   (** The type of a Loc record. *)
   
-  val lat_long_encode : int32 * int32 * float * bool -> int32
+  val lat_long_parse : int32 * int32 * float * bool -> int32
 
-  val alt_encode : float -> int32
+  val alt_parse : float -> int32
 
-  val precision_encode : float * float * float -> int * int * int
+  val precision_parse : float * float * float -> int * int * int
 
   val to_string : t -> string
 
