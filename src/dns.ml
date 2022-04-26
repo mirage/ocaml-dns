@@ -2297,7 +2297,6 @@ module Rr_map = struct
     | Rrsig, (_, rrs), (_, rrs') -> Rrsig_set.equal rrs rrs'
     | Nsec, (_, ns), (_, ns') -> Nsec.compare ns ns' = 0
     | Nsec3, (_, ns), (_, ns') -> Nsec3.compare ns ns' = 0
-    (* TODO LOC *)
     | Loc, (_, loc), (_, loc') -> Loc_set.equal loc loc'
     | Unknown _, (_, data), (_, data') -> Txt_set.equal data data'
 
@@ -2469,7 +2468,6 @@ module Rr_map = struct
       rr names (Nsec.encode nsec) off ttl, 1
     | Nsec3, (ttl, nsec) ->
       rr names (Nsec3.encode nsec) off ttl, 1
-    (*LOC TODO*)
     | Loc, (ttl, locs) ->
       Loc_set.fold (fun loc ((names, off), count) ->
           rr names (Loc.encode loc) off ttl, succ count)
@@ -2709,8 +2707,9 @@ module Rr_map = struct
       if Rrsig_set.is_empty s then None else Some (ttl, s)
     | Nsec, _, _ -> None
     | Nsec3, _, _ -> None
-    (* TODO LOC *)
-    | Loc, _, _ -> None
+    | Loc, (ttl, locs), (_, rm) ->
+      let s = Loc_set.diff locs rm in
+      if Loc_set.is_empty s then None else Some (ttl, s)
     | Unknown _, (ttl, datas), (_, rm) ->
       let data = Txt_set.diff datas rm in
       if Txt_set.is_empty data then None else Some (ttl, data)
@@ -2900,7 +2899,6 @@ module Rr_map = struct
             (if Cstruct.length ns.Nsec3.salt = 0 then "-" else hex ns.Nsec3.salt)
             (hex (* TODO base32 *) ns.Nsec3.next_owner_hashed)
             Fmt.(list ~sep:(any " ") ppk) types ]
-      (* actually TODO LOC *)
       | Loc, (ttl, locs) ->
         Loc_set.fold (fun loc acc ->
             Fmt.str "%s\t%aLOC\t%s" str_name ttl_fmt (ttl_opt ttl) (Loc.to_string loc) :: acc)
@@ -3049,8 +3047,13 @@ module Rr_map = struct
       (ttl, Rrsig_set.singleton one), rest'
     | Nsec, (ttl, rr) -> (ttl, rr), None
     | Nsec3, (ttl, rr) -> (ttl, rr), None
-    (* TODO LOC *)
-    | Loc, (ttl, rr) -> (ttl, rr), None
+    | Loc, (ttl, locs) ->
+      let one = Loc_set.choose locs in
+      let rest = Loc_set.remove one locs in
+      let rest' =
+        if Loc_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Loc_set.singleton one), rest'
     | Unknown _, (ttl, datas) ->
       let one = Txt_set.choose datas in
       let rest = Txt_set.remove one datas in
@@ -3152,7 +3155,6 @@ module Rr_map = struct
           | Nsec3 ->
             let* rr, names, off = Nsec3.decode_exn names buf ~off ~len in
             Ok (B (Nsec3, (ttl, rr)), names, off)
-          (* TODO LOC *)
           | Loc ->
             let* loc, names, off = Loc.decode_exn names buf ~off ~len in
             Ok (B (Loc, (ttl, Loc_set.singleton loc)), names, off)
