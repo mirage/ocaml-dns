@@ -1395,10 +1395,10 @@ module Loc = struct
     Cstruct.set_uint8 buf (off + 1) loc.size;
     Cstruct.set_uint8 buf (off + 2) loc.horiz_pre;
     Cstruct.set_uint8 buf (off + 3) loc.vert_pre;
-    Cstruct.LE.set_uint32 buf (off + 4) loc.lat;
-    Cstruct.LE.set_uint32 buf (off + 16) loc.long;
-    Cstruct.LE.set_uint32 buf (off + 24) loc.alt;
-    names, off
+    Cstruct.BE.set_uint32 buf (off + 4) loc.lat;
+    Cstruct.BE.set_uint32 buf (off + 8) loc.long;
+    Cstruct.BE.set_uint32 buf (off + 12) loc.alt;
+    names, off + 16
 
 end
 
