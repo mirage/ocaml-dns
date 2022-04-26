@@ -2308,7 +2308,7 @@ module Rr_map = struct
   let to_int : type a. a key -> int = function
     | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Ptr -> 12 | Mx -> 15
     | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Ds -> 43 | Sshfp -> 44
-    | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Nsec3 -> 50 | Loc -> 28
+    | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Nsec3 -> 50 | Loc -> 29
     | Tlsa -> 52 | Caa -> 257
     | Unknown x -> I.to_int x
 
@@ -2319,7 +2319,8 @@ module Rr_map = struct
     | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
     | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
     | 46 -> Ok (K Rrsig) | 47 -> Ok (K Nsec) | 48 -> Ok (K Dnskey)
-    | 50 -> Ok (K Nsec3) |  52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
+    | 50 -> Ok (K Nsec3) | 29 -> Ok (K Loc) | 52 -> Ok (K Tlsa)
+    | 257 -> Ok (K Caa)
     | x ->
       let* i = I.of_int ~off x in
       Ok (K (Unknown i))
