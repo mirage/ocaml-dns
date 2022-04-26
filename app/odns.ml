@@ -105,11 +105,8 @@ let do_tlsa nameserver domains () =
 
 
 let do_txt nameserver domains () =
-  for_all_domains nameserver ~domains Dns.Rr_map.Txt
-    (fun _domain (ttl, txtset) ->
-       Dns.Rr_map.Txt_set.iter (fun txtrr ->
-           Logs.app (fun m -> m "%ld: @[<v>%s@]" ttl txtrr)
-         ) txtset)
+  for_all_domains nameserver ~domains Dns.Rr_map.Loc
+    (output_response Dns.Rr_map.Loc)
 
 
 let do_any _nameserver _domains () =
@@ -135,6 +132,15 @@ let do_type nameserver typ domains () =
       (fun domain resp ->
          Logs.app (fun m -> m "%a" pp_zone (domain, k, resp)))
   | _ -> Error (`Msg "bad argument")
+
+let do_loc nameserver domains () =
+  for_all_domains nameserver ~domains Dns.Rr_map.Loc
+    (output_response Dns.Rr_map.Loc)
+  (* for_all_domains nameserver ~domains Dns.Rr_map.Loc
+    (fun _domain (ttl, locset) ->
+       Dns.Rr_map.Loc_set.iter (fun locrr ->
+           Logs.app (fun m -> m "%ld: %s" ttl (Dns.Loc.to_string locrr))
+         ) locset) *)
 
 open Cmdliner
 
@@ -393,12 +399,21 @@ let cmd_type : unit Cmd.t =
   in
   Cmd.v info term
 
+let cmd_loc : unit Cmd.t =
+  let doc = "Query a NS for LOC records" in
+  let term =
+    Term.(term_result (const do_loc $ nameserver $ arg_domains $ setup_log))
+  and info =
+    Cmd.info "loc" ~version:(Manpage.escape "%%VERSION%%") ~doc ~sdocs
+  in
+  Cmd.v info term
+
 let cmd_help : 'a Term.t =
   let help _ = `Help (`Pager, None) in
   Term.(ret (const help $ setup_log))
 
 let cmds =
-  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ; cmd_aaaa ; cmd_mx ; cmd_type ]
+  [ cmd_a ; cmd_tlsa; cmd_txt ; cmd_any; cmd_dkim ; cmd_aaaa ; cmd_mx ; cmd_type ; cmd_loc ]
 
 let () =
   let doc = "OCaml uDns alternative to `dig`" in
