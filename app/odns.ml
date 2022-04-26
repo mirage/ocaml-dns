@@ -105,8 +105,11 @@ let do_tlsa nameserver domains () =
 
 
 let do_txt nameserver domains () =
-  for_all_domains nameserver ~domains Dns.Rr_map.Loc
-    (output_response Dns.Rr_map.Loc)
+  for_all_domains nameserver ~domains Dns.Rr_map.Txt
+    (fun _domain (ttl, txtset) ->
+       Dns.Rr_map.Txt_set.iter (fun txtrr ->
+           Logs.app (fun m -> m "%ld: @[<v>%s@]" ttl txtrr)
+         ) txtset)
 
 
 let do_any _nameserver _domains () =
