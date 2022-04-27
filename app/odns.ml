@@ -139,11 +139,6 @@ let do_type nameserver typ domains () =
 let do_loc nameserver domains () =
   for_all_domains nameserver ~domains Dns.Rr_map.Loc
     (output_response Dns.Rr_map.Loc)
-  (* for_all_domains nameserver ~domains Dns.Rr_map.Loc
-    (fun _domain (ttl, locset) ->
-       Dns.Rr_map.Loc_set.iter (fun locrr ->
-           Logs.app (fun m -> m "%ld: %s" ttl (Dns.Loc.to_string locrr))
-         ) locset) *)
 
 open Cmdliner
 
