@@ -2209,7 +2209,6 @@ module Rr_map = struct
   module Sshfp_set = Set.Make(Sshfp)
   module Ds_set = Set.Make(Ds)
   module Rrsig_set = Set.Make(Rrsig)
-  (* TODO LOC *)
   module Loc_set = Set.Make(Loc)
 
   module I : sig
@@ -2660,7 +2659,6 @@ module Rr_map = struct
     | Rrsig, (_, rrs), (ttl, rrs') -> (ttl, Rrsig_set.union rrs rrs')
     | Nsec, _, nsec -> nsec
     | Nsec3, _, nsec -> nsec
-    (* TODO LOC *)
     | Loc, _, loc -> loc
     | Unknown _, (_, data), (ttl, data') -> (ttl, Txt_set.union data data')
 

@@ -834,7 +834,6 @@ module Rr_map : sig
   module Sshfp_set : Set.S with type elt = Sshfp.t
   module Ds_set : Set.S with type elt = Ds.t
   module Rrsig_set : Set.S with type elt = Rrsig.t
-  (* TODO LOC *)
   module Loc_set : Set.S with type elt = Loc.t
 
   module I : sig
