@@ -805,7 +805,7 @@ module Loc : sig
   }
   (** The type of a Loc record. *)
   
-  val lat_long_parse : int32 * int32 * float * bool -> int32
+  val lat_long_parse : (int32 * int32 * float) * bool -> int32
 
   val alt_parse : float -> int32
 

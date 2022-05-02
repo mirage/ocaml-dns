@@ -222,14 +222,14 @@ generic_type s generic_rdata {
        let caa = { Caa.critical ; tag = $5 ; value = $7 } in
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
      /* RFC 1876 */
- | TYPE_LOC s latitude s longitude s altitude precision
-    { (* RFC 1876 Appendix A *)
-      let lat = Loc.lat_long_parse $3 in
-      let long = Loc.lat_long_parse $5 in
-      let alt = Loc.alt_parse $7 in
-      let size, horiz_pre, vert_pre = Loc.precision_parse $8 in
-      let loc = { Loc.lat ; long ; alt ; size ; horiz_pre ; vert_pre} in
-        B (Loc, (0l, Rr_map.Loc_set.singleton loc)) }
+ | TYPE_LOC s deg_min_sec s LAT_DIR s deg_min_sec s LONG_DIR s altitude precision
+     { (* RFC 1876 Appendix A *)
+       let lat = Loc.lat_long_parse ($3, $5 = "N") in
+       let long = Loc.lat_long_parse ($7, $9 = "E") in
+       let alt = Loc.alt_parse $11 in
+       let size, horiz_pre, vert_pre = Loc.precision_parse $12 in
+       let loc = { Loc.lat ; long ; alt ; size ; horiz_pre ; vert_pre} in
+       B (Loc, (0l, Rr_map.Loc_set.singleton loc)) }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
 
 single_hex: charstring
@@ -309,15 +309,10 @@ meters:
     METERS { Float.of_string $1 }
   | float { $1 }
 
-latitude:
-    int32 s int32 s ufloat s LAT_DIR { $1, $3, $5, $7 = "N" }
-  | int32 s int32 s LAT_DIR          { $1, $3, 0., $5 = "N" }
-  | int32 s LAT_DIR                  { $1, 0l, 0., $3 = "N" }
-
-longitude:
-    int32 s int32 s ufloat s LONG_DIR { $1, $3, $5, $7 = "E" }
-  | int32 s int32 s LONG_DIR          { $1, $3, 0., $5 = "E" }
-  | int32 s LONG_DIR                  { $1, 0l, 0., $3 = "E" }
+deg_min_sec:
+    int32 s int32 s ufloat { $1, $3, $5 }
+  | int32 s int32          { $1, $3, 0. }
+  | int32                  { $1, 0l, 0. }
 
 altitude: meters { $1 }
 
