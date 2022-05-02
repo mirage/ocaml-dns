@@ -1313,8 +1313,7 @@ module Loc = struct
     vert_pre : int;
   }
 
-  let lat_long_parse lat_long =
-    let (deg, min, sec), dir = lat_long in
+  let lat_long_parse ((deg, min, sec), dir) =
     let retval =
       (Int.shift_left 1 31) + (
         (((Int32.to_int deg * 60) + Int32.to_int min) * 60) * 1000 +
@@ -1325,8 +1324,7 @@ module Loc = struct
 
   let alt_parse alt = Int32.of_float (10000000. +. alt *. 100.)
 
-  let precision_parse prec =
-    let size, horiz_pre, vert_pre = prec in
+  let precision_parse (size, horiz_pre, vert_pre) =
     let encode = fun p ->
       (* convert from m to cm *)
       let cm = Float.of_int (Int.of_float (p *. 100.)) in
