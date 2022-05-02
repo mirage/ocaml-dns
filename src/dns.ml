@@ -1344,7 +1344,6 @@ module Loc = struct
     let dir = lat_long < 0 in
     let lat_long = Int.abs lat_long in
     let lat_long = (Int.shift_left 1 31) - lat_long in
-    let _ = Printf.printf "%d" lat_long in
     let sec = Float.of_int (lat_long mod (60 * 1000)) /. 1000. in
     let min = (lat_long / (1000 * 60)) mod 60 in
     let deg = (lat_long / (1000 * 60 * 60)) mod 60 in
