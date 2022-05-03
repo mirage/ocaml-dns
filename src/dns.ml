@@ -1314,13 +1314,11 @@ module Loc = struct
   }
 
   let lat_long_parse ((deg, min, sec), dir) =
-    let retval =
-      (Int.shift_left 1 31) + (
-        (((Int32.to_int deg * 60) + Int32.to_int min) * 60) * 1000 +
-        Int.of_float (sec *. 1000.)
-      ) * if dir then 1 else -1
-    in
-    Int32.of_int retval
+    let ( * ), (+) = Int32.mul, Int32.add in
+    (Int32.shift_left 1l 31) + (
+      (((deg * 60l) + min) * 60l) * 1000l +
+      Int32.of_float (sec *. 1000.)
+    ) * if dir then 1l else -1l
 
   let alt_parse alt = Int32.of_float (10000000. +. alt *. 100.)
 
@@ -1338,14 +1336,19 @@ module Loc = struct
     (encode size, encode horiz_pre, encode vert_pre)
   
   let lat_long_print lat_long =
-    let lat_long = Int32.to_int lat_long in
-    let dir = lat_long < 0 in
-    let lat_long = Int.abs lat_long in
-    let lat_long = (Int.shift_left 1 31) - lat_long in
-    let sec = Float.of_int (lat_long mod (60 * 1000)) /. 1000. in
-    let min = (lat_long / (1000 * 60)) mod 60 in
-    let deg = (lat_long / (1000 * 60 * 60)) mod 60 in
-    deg, min, sec, dir
+    let ( * ), (-), (/) = Int32.mul, Int32.sub, Int32.div in
+    let lat_long = (Int32.shift_left 1l 31) - lat_long in
+    let dir = lat_long < 0l in
+    let lat_long = Int32.abs lat_long in
+    let modulo divident divisor =
+      let quotient = Int32.div divident divisor in
+      let remainder = divident - divisor * quotient in
+      remainder
+    in
+    let sec = Int32.to_float (modulo lat_long (60l * 1000l)) /. 1000. in
+    let min = modulo (lat_long / (1000l * 60l)) 60l in
+    let deg = modulo (lat_long / (1000l * 60l * 60l)) 60l in
+    (deg, min, sec), dir
   
   let alt_print alt =
     ((Float.of_int (Int32.to_int alt)) /. 100.) -. 100000.
@@ -1357,14 +1360,14 @@ module Loc = struct
 
   let to_string loc =
     let lat_long_to_string deg min sec dir =
-        String.concat " " ((List.map (Int.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
+        String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
     in
     let lat_string =
-      let lat_deg, lat_min, lat_sec, lat_dir = lat_long_print loc.lat in
+      let (lat_deg, lat_min, lat_sec), lat_dir = lat_long_print loc.lat in
       lat_long_to_string lat_deg lat_min lat_sec (if lat_dir then "N" else "S")
     in
     let long_string =
-      let long_deg, long_min, long_sec, long_dir = lat_long_print loc.long in
+      let (long_deg, long_min, long_sec), long_dir = lat_long_print loc.long in
       lat_long_to_string long_deg long_min long_sec (if long_dir then "E" else "W")
     in
     let meter_values =
