@@ -1,8 +1,9 @@
 (* (c) 2019 Hannes Mehnert, all rights reserved *)
 
-(* goal is to check a given zonefile whether it is valid (and to-be-uesd
+(* goal is to check a given zonefile whether it is valid (and to-be-used
    by an authoritative NS - i.e. there must be a SOA record, TTL are good)
-   if a NS/MX name is within the zone, it needs an address record *)
+   if a NS/MX name is within the zone, it needs an address record
+   the name of the file is taken as the domain name *)
 open Dns
 
 let ( let* ) = Result.bind
@@ -11,14 +12,13 @@ let load_zone zone =
   let* data = Bos.OS.File.read Fpath.(v zone) in
   let* rrs = Dns_zone.parse data in
   let domain = Domain_name.of_string_exn Fpath.(basename (v zone)) in
-  let good =
-    Domain_name.Map.for_all
-      (fun name _ -> Domain_name.is_subdomain ~domain ~subdomain:name)
+  let bad = Domain_name.Map.filter
+      (fun name _ -> not (Domain_name.is_subdomain ~domain ~subdomain:name))
       rrs
   in
-  if not good then
-    Error (`Msg (Fmt.str "an entry of %a is not in its zone, won't handle this@.%a"
-                   Domain_name.pp domain Dns.Name_rr_map.pp rrs))
+  if not (Domain_name.Map.is_empty bad) then
+    Error (`Msg (Fmt.str "Entries of domain '%a' are not in its zone, won't handle this:@.%a"
+                   Domain_name.pp domain Dns.Name_rr_map.pp bad))
   else
     Ok (Dns_trie.insert_map rrs Dns_trie.empty)
 
