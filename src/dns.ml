@@ -491,6 +491,39 @@ module Name = struct
     *)
 end
 
+(* private bindings for printing resource records *)
+let to_name_str :
+  type a . ?origin : 'b Domain_name.t -> a Domain_name.t -> string =
+  fun ?origin name ->
+  match origin with
+  | Some domain when Domain_name.is_subdomain ~subdomain:name ~domain ->
+    let amount = Array.length (Domain_name.to_array domain) in
+    let n = Domain_name.drop_label_exn ~rev:true ~amount name in
+    if Domain_name.equal n Domain_name.root then
+      "@"
+    else
+      Domain_name.to_string n
+  | _ -> Domain_name.to_string name
+
+let rec ws_after_56 s =
+  let pos = 56 in
+  let l = String.length s in
+  if l < pos then s
+  else String.sub s 0 pos ^ " " ^ ws_after_56 (String.sub s pos (l - pos))
+
+let hex cs =
+  let buf = Bytes.create (Cstruct.length cs * 2) in
+  for i = 0 to pred (Cstruct.length cs) do
+    let byte = Cstruct.get_uint8 cs i in
+    let up, low = byte lsr 4, byte land 0x0F in
+    let to_hex_char v = char_of_int (if v < 10 then 0x30 + v else 0x37 + v) in
+    Bytes.set buf (i * 2) (to_hex_char up) ;
+    Bytes.set buf (i * 2 + 1) (to_hex_char low)
+  done;
+  Bytes.unsafe_to_string buf |> ws_after_56
+and b64 cs =
+  Base64.encode_string (Cstruct.to_string cs) |> ws_after_56
+
 (* start of authority *)
 module Soa = struct
   type t = {
@@ -521,10 +554,13 @@ module Soa = struct
     { t with nameserver = Domain_name.canonical t.nameserver ;
              hostmaster = Domain_name.canonical t.hostmaster }
 
-  let pp ppf soa =
-    Fmt.pf ppf "SOA %a %a %lu %lu %lu %lu %lu"
-      Domain_name.pp soa.nameserver Domain_name.pp soa.hostmaster
+  let text ?origin () ppf soa =
+    Fmt.pf ppf "SOA\t%s\t%s\t%lu\t%lu\t%lu\t%lu\t%lu"
+      (to_name_str ?origin soa.nameserver)
+      (to_name_str ?origin soa.hostmaster)
       soa.serial soa.refresh soa.retry soa.expiry soa.minimum
+
+  let pp = text ()
 
   let compare soa soa' =
     andThen (int32_compare soa.serial soa'.serial)
@@ -567,7 +603,10 @@ module Ns = struct
 
   let canonical t = Domain_name.canonical t
 
-  let pp ppf ns = Fmt.pf ppf "NS %a" Domain_name.pp ns
+  let text ?origin () ppf ns =
+    Fmt.pf ppf "NS\t%s" (to_name_str ?origin ns)
+
+  let pp = text ()
 
   let compare = Domain_name.compare
 
@@ -589,8 +628,10 @@ module Mx = struct
   let canonical t =
     { t with mail_exchange = Domain_name.canonical t.mail_exchange }
 
-  let pp ppf { preference ; mail_exchange } =
-    Fmt.pf ppf "MX %u %a" preference Domain_name.pp mail_exchange
+  let text ?origin () ppf { preference ; mail_exchange } =
+    Fmt.pf ppf "MX\t%u\t%s" preference (to_name_str ?origin mail_exchange)
+
+  let pp = text ()
 
   let compare mx mx' =
     andThen (int_compare mx.preference mx'.preference)
@@ -614,7 +655,10 @@ module Cname = struct
 
   let canonical t = Domain_name.canonical t
 
-  let pp ppf alias = Fmt.pf ppf "CNAME %a" Domain_name.pp alias
+  let text ?origin () ppf alias =
+    Fmt.pf ppf "CNAME\t%s" (to_name_str ?origin alias)
+
+  let pp = text ()
 
   let compare = Domain_name.compare
 
@@ -627,7 +671,10 @@ end
 module A = struct
   type t = Ipaddr.V4.t
 
-  let pp ppf address = Fmt.pf ppf "A %a" Ipaddr.V4.pp address
+  let text ?origin:_ () ppf address =
+    Fmt.pf ppf "A\t%s" (Ipaddr.V4.to_string address)
+
+  let pp = text ()
 
   let compare = Ipaddr.V4.compare
 
@@ -645,7 +692,10 @@ end
 module Aaaa = struct
   type t = Ipaddr.V6.t
 
-  let pp ppf address = Fmt.pf ppf "AAAA %a" Ipaddr.V6.pp address
+  let text ?origin:_ () ppf address =
+    Fmt.pf ppf "AAAA\t%s" (Ipaddr.V6.to_string address)
+
+  let pp = text ()
 
   let compare = Ipaddr.V6.compare
 
@@ -668,7 +718,10 @@ module Ptr = struct
 
   let canonical t = Domain_name.canonical t
 
-  let pp ppf rev = Fmt.pf ppf "PTR %a" Domain_name.pp rev
+  let text ?origin () ppf rev =
+    Fmt.pf ppf "PTR\t%s" (to_name_str ?origin rev)
+
+  let pp = text ()
 
   let compare = Domain_name.compare
 
@@ -692,10 +745,11 @@ module Srv = struct
   let canonical t =
     { t with target = Domain_name.canonical t.target }
 
-  let pp ppf t =
-    Fmt.pf ppf
-      "SRV priority %d weight %d port %d target %a"
-      t.priority t.weight t.port Domain_name.pp t.target
+  let text ?origin () ppf t =
+    Fmt.pf ppf "SRV\t%u\t%u\t%u\t%s"
+      t.priority t.weight t.port (to_name_str ?origin t.target)
+
+  let pp = text ()
 
   let compare a b =
     andThen (int_compare a.priority b.priority)
@@ -835,6 +889,8 @@ module Dnskey = struct
     key : Cstruct.t ;
   }
 
+  let proto = 3
+
   let compare a b =
     andThen (F.compare b.flags a.flags)
       (andThen (compare b.algorithm a.algorithm)
@@ -842,12 +898,12 @@ module Dnskey = struct
 
   let decode_exn names buf ~off ~len =
     let flags = Cstruct.BE.get_uint16 buf off
-    and proto = Cstruct.get_uint8 buf (off + 2)
+    and proto' = Cstruct.get_uint8 buf (off + 2)
     and algo = Cstruct.get_uint8 buf (off + 3)
     in
     let* () =
-      guard (proto = 3)
-        (`Not_implemented (off + 2, Fmt.str "dnskey protocol 0x%x" proto))
+      guard (proto' = proto)
+        (`Not_implemented (off + 2, Fmt.str "dnskey protocol 0x%x" proto'))
     in
     let algorithm = int_to_algorithm algo in
     let key = Cstruct.sub buf (off + 4) (len - 4) in
@@ -857,7 +913,7 @@ module Dnskey = struct
   let encode t names buf off =
     let flags = encode_flags t.flags in
     Cstruct.BE.set_uint16 buf off flags ;
-    Cstruct.set_uint8 buf (off + 2) 3 ;
+    Cstruct.set_uint8 buf (off + 2) proto ;
     Cstruct.set_uint8 buf (off + 3) (algorithm_to_int t.algorithm) ;
     let kl = Cstruct.length t.key in
     Cstruct.blit t.key 0 buf (off + 4) kl ;
@@ -877,12 +933,11 @@ module Dnskey = struct
     in
     go 0 0
 
-  let pp ppf t =
-    Fmt.pf ppf "DNSKEY flags %a algo %a key_tag %d key %a"
-      Fmt.(list ~sep:(any ", ") pp_flag) (F.elements t.flags)
-      pp_algorithm t.algorithm
-      (key_tag t)
-      Cstruct.hexdump_pp t.key
+  let text ?origin:_ () ppf t =
+    Fmt.pf ppf "DNSKEY\t%u\t%u\t%d\t%s"
+      (encode_flags t.flags) proto (algorithm_to_int t.algorithm) (b64 t.key)
+
+  let pp = text ()
 
   let digest_prep owner t =
     let kl = Cstruct.length t.key in
@@ -910,8 +965,10 @@ module Dnskey = struct
       Ok (name, dnskey)
     | [] -> Error (`Msg ("couldn't parse name:key in " ^ str))
 
-  let pp_name_key ppf (name, key) =
-    Fmt.pf ppf "%a %a" Domain_name.pp name pp key
+  let text_name_key ?origin () ppf (name, key) =
+    Fmt.pf ppf "%s %a" (to_name_str ?origin name) (text ?origin ()) key
+
+  let pp_name_key = text_name_key ()
 end
 
 (** RRSIG *)
@@ -932,15 +989,21 @@ module Rrsig = struct
   let canonical t =
     { t with signer_name = Domain_name.canonical t.signer_name }
 
-  let pp ppf t =
-    Fmt.pf ppf "RRSIG type covered %u algo %a labels %u original ttl %lu signature expiration %a signature inception %a key tag %u signer name %a signature %a"
-      t.type_covered
-      Dnskey.pp_algorithm t.algorithm
+  let text ?origin () ppf t =
+    let pp_ts ppf ts =
+      let (year, month, day), ((hour, minute, second), _) = Ptime.to_date_time ts in
+      Fmt.pf ppf "%04d%02d%02d%02d%02d%02d" year month day hour minute second
+    in
+    Fmt.pf ppf "RRSIG\t%s\t%u\t%u\t%lu\t%a\t%a\t%u\t%s\t%s"
+      ("TYPE" ^ string_of_int t.type_covered)
+      (Dnskey.algorithm_to_int t.algorithm)
       t.label_count t.original_ttl
-      (Ptime.pp_rfc3339 ()) t.signature_expiration
-      (Ptime.pp_rfc3339 ()) t.signature_inception
-      t.key_tag Domain_name.pp t.signer_name
-      Cstruct.hexdump_pp t.signature
+      pp_ts t.signature_expiration
+      pp_ts t.signature_inception
+      t.key_tag (to_name_str ?origin t.signer_name)
+      (b64 t.signature)
+
+  let pp = text ()
 
   let compare a b =
     andThen (compare a.type_covered b.type_covered)
@@ -1060,12 +1123,14 @@ module Ds = struct
     digest : Cstruct.t
   }
 
-  let pp ppf t =
-    Fmt.pf ppf "DS key_tag %u algo %a digest type %a digest %a"
+  let text ?origin:_ () ppf t =
+    Fmt.pf ppf "DS\t%u\t%u\t%u\t%s"
       t.key_tag
-      Dnskey.pp_algorithm t.algorithm
-      pp_digest_type t.digest_type
-      Cstruct.hexdump_pp t.digest
+      (Dnskey.algorithm_to_int t.algorithm)
+      (digest_type_to_int t.digest_type)
+      (hex t.digest)
+
+  let pp = text ()
 
   let compare a b =
     andThen (compare a.key_tag b.key_tag)
@@ -1094,7 +1159,10 @@ end
 
 module Bit_map = struct
   include Set.Make
-        (struct type t = int let compare (a : int) (b : int) = compare a b end)
+      (struct type t = int let compare (a : int) (b : int) = compare a b end)
+
+  let pp ppf s =
+    Fmt.(list ~sep:(any " ") ((any "TYPE") ++ int)) ppf (elements s)
 
   let byte_to_bits byte =
     let rec more v =
@@ -1196,9 +1264,11 @@ module Nsec = struct
     types : Bit_map.t;
   }
 
-  let pp ppf { next_domain ; types } =
-    Fmt.pf ppf "NSEC %a: %a" Domain_name.pp next_domain
-      Fmt.(list ~sep:(any " ") int) (Bit_map.elements types)
+  let text ?origin () ppf { next_domain ; types } =
+    Fmt.pf ppf "NSEC\t%s\t(%a)" (to_name_str ?origin next_domain)
+      Bit_map.pp types
+
+  let pp = text ()
 
   let compare a b =
     andThen (Domain_name.compare a.next_domain b.next_domain)
@@ -1253,15 +1323,16 @@ module Nsec3 = struct
 
   let hash = 1
 
-  let pp ppf { flags ; iterations ; salt ; next_owner_hashed ; types } =
-    Fmt.pf ppf "NSEC3 %s%d iterations, salt: %a, next owner %a types %a"
-      (match flags with
-       | None -> ""
-       | Some `Opt_out -> "opt-out "
-       | Some `Unknown x -> "unknown " ^ string_of_int x ^ " ")
-      iterations Cstruct.hexdump_pp salt
-      Cstruct.hexdump_pp next_owner_hashed
-      Fmt.(list ~sep:(any " ") int) (Bit_map.elements types)
+  let text ?origin:_ () ppf { flags ; iterations ; salt ; next_owner_hashed ; types } =
+    Fmt.pf ppf "NSEC3\t%d\t%d\t%d\t%s\t%s\t%a"
+      hash
+      (flags_to_int flags)
+      iterations
+      (if Cstruct.length salt = 0 then "-" else hex salt)
+      (hex (* TODO base32 *) next_owner_hashed)
+      Bit_map.pp types
+
+  let pp = text ()
 
   let compare a b =
     andThen (compare_flags a.flags b.flags)
@@ -1311,9 +1382,11 @@ module Caa = struct
     value : string list ;
   }
 
-  let pp ppf t =
-    Fmt.pf ppf "CAA critical %b tag %s value %a"
-      t.critical t.tag Fmt.(list ~sep:(any "; ") string) t.value
+  let text ?origin:_ () ppf t =
+    Fmt.pf ppf "CAA\t%d\t%s\t\"%s\"" (if t.critical then 128 else 0) t.tag
+      (String.concat "; " t.value)
+
+  let pp = text ()
 
   let compare a b =
     andThen (compare a.critical b.critical)
@@ -1449,12 +1522,14 @@ module Tlsa = struct
     data : Cstruct.t ;
   }
 
-  let pp ppf tlsa =
-    Fmt.pf ppf "TLSA @[<v>%a %a %a@ %a@]"
-      pp_cert_usage tlsa.cert_usage
-      pp_selector tlsa.selector
-      pp_matching_type tlsa.matching_type
-      Cstruct.hexdump_pp tlsa.data
+  let text ?origin:_ () ppf tlsa =
+    Fmt.pf ppf "TLSA\t%u\t%u\t%u\t%s"
+      (cert_usage_to_int tlsa.cert_usage)
+      (selector_to_int tlsa.selector)
+      (matching_type_to_int tlsa.matching_type)
+      (hex tlsa.data)
+
+  let pp = text ()
 
   let compare t1 t2 =
     andThen (compare t1.cert_usage t2.cert_usage)
@@ -1555,11 +1630,13 @@ module Sshfp = struct
     fingerprint : Cstruct.t ;
   }
 
-  let pp ppf sshfp =
-    Fmt.pf ppf "SSHFP %a %a %a"
-      pp_algorithm sshfp.algorithm
-      pp_typ sshfp.typ
-      Cstruct.hexdump_pp sshfp.fingerprint
+  let text ?origin:_ () ppf sshfp =
+    Fmt.pf ppf "SSHFP\t%u\t%u\t%s"
+      (algorithm_to_int sshfp.algorithm)
+      (typ_to_int sshfp.typ)
+      (hex sshfp.fingerprint)
+
+  let pp = text ()
 
   let compare s1 s2 =
     andThen (compare s1.algorithm s2.algorithm)
@@ -1586,7 +1663,9 @@ end
 module Txt = struct
   type t = string
 
-  let pp ppf txt = Fmt.pf ppf "TXT %s" txt
+  let text ?origin:_ () ppf txt = Fmt.pf ppf "TXT\t\"%s\"" txt
+
+  let pp = text ()
 
   let compare = String.compare
 
@@ -2619,171 +2698,52 @@ module Rr_map = struct
 
   let text : type c. ?origin:'a Domain_name.t -> ?default_ttl:int32 ->
     'b Domain_name.t -> c key -> c -> string = fun ?origin ?default_ttl n t v ->
-    let rec ws_after_56 s =
-      let pos = 56 in
-      let l = String.length s in
-      if l < pos then s
-      else String.sub s 0 pos ^ " " ^ ws_after_56 (String.sub s pos (l - pos))
-    in
-    let hex cs =
-      let buf = Bytes.create (Cstruct.length cs * 2) in
-      for i = 0 to pred (Cstruct.length cs) do
-        let byte = Cstruct.get_uint8 cs i in
-        let up, low = byte lsr 4, byte land 0x0F in
-        let to_hex_char v = char_of_int (if v < 10 then 0x30 + v else 0x37 + v) in
-        Bytes.set buf (i * 2) (to_hex_char up) ;
-        Bytes.set buf (i * 2 + 1) (to_hex_char low)
-      done;
-      Bytes.unsafe_to_string buf |> ws_after_56
-    and b64 cs =
-      Base64.encode_string (Cstruct.to_string cs) |> ws_after_56
-    in
-    let origin = match origin with
-      | None -> None
-      | Some n -> Some (n, Array.length (Domain_name.to_array n))
-    in
-    let name : type a . a Domain_name.t -> string = fun n ->
-      let n = Domain_name.raw n in
-      match origin with
-      | Some (domain, amount) when Domain_name.is_subdomain ~subdomain:n ~domain ->
-        let n' = Domain_name.drop_label_exn ~rev:true ~amount n in
-        if Domain_name.equal n' Domain_name.root then
-          "@"
-        else
-          Domain_name.to_string n'
-      | _ -> Domain_name.to_string ~trailing:true n
-    in
     let ttl_opt ttl = match default_ttl with
       | Some d when Int32.compare ttl d = 0 -> None
       | _ -> Some ttl
     in
     let ttl_fmt = Fmt.(option (append uint32 (any "\t"))) in
-    let str_name = name n in
+    let to_str ttl pp_v v =
+      Fmt.str "%s\t%a%a" (to_name_str ?origin n) ttl_fmt (ttl_opt ttl)
+        (pp_v ?origin ()) v
+    in
     let strs =
       match t, v with
-      | Cname, (ttl, alias) ->
-        [ Fmt.str "%s\t%aCNAME\t%s" str_name ttl_fmt (ttl_opt ttl) (name alias) ]
+      | Cname, (ttl, alias) -> [ to_str ttl Cname.text alias ]
       | Mx, (ttl, mxs) ->
-        Mx_set.fold (fun { preference ; mail_exchange } acc ->
-            Fmt.str "%s\t%aMX\t%u\t%s" str_name ttl_fmt (ttl_opt ttl) preference (name mail_exchange) :: acc)
-          mxs []
+        Mx_set.fold (fun mx acc -> to_str ttl Mx.text mx :: acc) mxs []
       | Ns, (ttl, ns) ->
-        Domain_name.Host_set.fold (fun ns acc ->
-            Fmt.str "%s\t%aNS\t%s" str_name ttl_fmt (ttl_opt ttl) (name ns) :: acc)
-          ns []
-      | Ptr, (ttl, ptr) ->
-        [ Fmt.str "%s\t%aPTR\t%s" str_name ttl_fmt (ttl_opt ttl) (name ptr) ]
-      | Soa, soa ->
-        [ Fmt.str "%s\t%aSOA\t%s\t%s\t%lu\t%lu\t%lu\t%lu\t%lu" str_name
-            ttl_fmt (ttl_opt soa.minimum)
-            (name soa.nameserver)
-            (name soa.hostmaster)
-            soa.serial soa.refresh soa.retry
-            soa.expiry soa.minimum ]
+        Domain_name.Host_set.fold (fun ns acc -> to_str ttl Ns.text ns :: acc) ns []
+      | Ptr, (ttl, ptr) -> [ to_str ttl Ptr.text ptr ]
+      | Soa, soa -> [ to_str soa.minimum Soa.text soa ]
       | Txt, (ttl, txts) ->
-        Txt_set.fold (fun txt acc ->
-            Fmt.str "%s\t%aTXT\t\"%s\"" str_name ttl_fmt (ttl_opt ttl) txt :: acc)
-          txts []
+        Txt_set.fold (fun txt acc -> to_str ttl Txt.text txt :: acc) txts []
       | A, (ttl, a) ->
-        Ipaddr.V4.Set.fold (fun ip acc ->
-          Fmt.str "%s\t%aA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V4.to_string ip) :: acc)
-          a []
+        Ipaddr.V4.Set.fold (fun ip acc -> to_str ttl A.text ip :: acc) a []
       | Aaaa, (ttl, aaaa) ->
-        Ipaddr.V6.Set.fold (fun ip acc ->
-            Fmt.str "%s\t%aAAAA\t%s" str_name ttl_fmt (ttl_opt ttl) (Ipaddr.V6.to_string ip) :: acc)
-          aaaa []
+        Ipaddr.V6.Set.fold (fun ip acc -> to_str ttl Aaaa.text ip :: acc) aaaa []
       | Srv, (ttl, srvs) ->
-        Srv_set.fold (fun srv acc ->
-            Fmt.str "%s\t%aSRV\t%u\t%u\t%u\t%s"
-              str_name ttl_fmt (ttl_opt ttl)
-              srv.priority srv.weight srv.port
-              (name srv.target) :: acc)
-          srvs []
+        Srv_set.fold (fun srv acc -> to_str ttl Srv.text srv :: acc) srvs []
       | Dnskey, (ttl, keys) ->
-        Dnskey_set.fold (fun key acc ->
-            Fmt.str "%s%a\tDNSKEY\t%u\t3\t%d\t%s"
-              str_name ttl_fmt (ttl_opt ttl)
-              (Dnskey.encode_flags key.flags)
-              (Dnskey.algorithm_to_int key.algorithm)
-              (b64 key.key) :: acc)
-          keys []
+        Dnskey_set.fold (fun key acc -> to_str ttl Dnskey.text key :: acc) keys []
       | Caa, (ttl, caas) ->
-        Caa_set.fold (fun caa acc ->
-            Fmt.str "%s\t%aCAA\t%s\t%s\t\"%s\""
-              str_name ttl_fmt (ttl_opt ttl)
-              (if caa.critical then "128" else "0")
-              caa.tag (String.concat ";" caa.value) :: acc)
-          caas []
+        Caa_set.fold (fun caa acc -> to_str ttl Caa.text caa :: acc) caas []
       | Tlsa, (ttl, tlsas) ->
-        Tlsa_set.fold (fun tlsa acc ->
-            Fmt.str "%s\t%aTLSA\t%u\t%u\t%u\t%s"
-              str_name ttl_fmt (ttl_opt ttl)
-              (Tlsa.cert_usage_to_int tlsa.cert_usage)
-              (Tlsa.selector_to_int tlsa.selector)
-              (Tlsa.matching_type_to_int tlsa.matching_type)
-              (hex tlsa.data) :: acc)
-          tlsas []
+        Tlsa_set.fold (fun tlsa acc -> to_str ttl Tlsa.text tlsa :: acc) tlsas []
       | Sshfp, (ttl, sshfps) ->
-        Sshfp_set.fold (fun sshfp acc ->
-            Fmt.str "%s\t%aSSHFP\t%u\t%u\t%s" str_name ttl_fmt (ttl_opt ttl)
-              (Sshfp.algorithm_to_int sshfp.algorithm)
-              (Sshfp.typ_to_int sshfp.typ)
-              (hex sshfp.fingerprint) :: acc)
-          sshfps []
+        Sshfp_set.fold (fun sshfp acc -> to_str ttl Sshfp.text sshfp :: acc) sshfps []
       | Ds, (ttl, ds) ->
-        Ds_set.fold (fun ds acc ->
-            Fmt.str "%s\t%aDS\t%u\t%u\t%u\t%s" str_name ttl_fmt (ttl_opt ttl)
-              ds.Ds.key_tag
-              (Dnskey.algorithm_to_int ds.algorithm)
-              (Ds.digest_type_to_int ds.digest_type)
-              (hex ds.digest) :: acc)
-          ds []
+        Ds_set.fold (fun ds acc -> to_str ttl Ds.text ds :: acc) ds []
       | Rrsig, (ttl, rrs) ->
-        Rrsig_set.fold (fun rrsig acc ->
-            let typ = match of_int rrsig.type_covered with
-              | Ok k -> Fmt.to_to_string ppk k
-              | Error _ -> "TYPE" ^ string_of_int rrsig.type_covered
-            in
-            let pp_ts ppf ts =
-              let (year, month, day), ((hour, minute, second), _) = Ptime.to_date_time ts in
-              Fmt.pf ppf "%04d%02d%02d%02d%02d%02d" year month day hour minute second
-            in
-            Fmt.str "%s\t%aRRSIG\t%s\t%u\t%u\t%lu\t%a\t%a\t%u\t%s\t%s" str_name ttl_fmt (ttl_opt ttl)
-              typ (Dnskey.algorithm_to_int rrsig.algorithm)
-              rrsig.label_count rrsig.original_ttl
-              pp_ts rrsig.signature_expiration pp_ts rrsig.signature_inception
-              rrsig.key_tag (name rrsig.signer_name)
-              (b64 rrsig.signature) :: acc)
-          rrs []
-      | Nsec, (ttl, ns) ->
-        let types =
-          Bit_map.fold (fun i acc ->
-              match of_int i with
-              | Ok k -> k :: acc
-              | Error _ -> assert false)
-            ns.Nsec.types [] |> List.rev
-        in
-        [ Fmt.str "%s\t%aNSEC\t%s\t(%a)" str_name ttl_fmt (ttl_opt ttl)
-            (name ns.Nsec.next_domain) Fmt.(list ~sep:(any " ") ppk) types ]
-      | Nsec3, (ttl, ns) ->
-        let types =
-          Bit_map.fold (fun i acc ->
-              match of_int i with
-              | Ok k -> k :: acc
-              | Error _ -> assert false)
-            ns.Nsec3.types [] |> List.rev
-        in
-        [ Fmt.str "%s\t%aNSEC3\t%d\t%d\t%d\t%s\t%s\t%a" str_name
-            ttl_fmt (ttl_opt ttl) Nsec3.hash (Nsec3.flags_to_int ns.Nsec3.flags)
-            ns.Nsec3.iterations
-            (if Cstruct.length ns.Nsec3.salt = 0 then "-" else hex ns.Nsec3.salt)
-            (hex (* TODO base32 *) ns.Nsec3.next_owner_hashed)
-            Fmt.(list ~sep:(any " ") ppk) types ]
+        Rrsig_set.fold (fun rrsig acc -> to_str ttl Rrsig.text rrsig :: acc) rrs []
+      | Nsec, (ttl, ns) -> [ to_str ttl Nsec.text ns ]
+      | Nsec3, (ttl, ns) -> [ to_str ttl Nsec3.text ns ]
       | Unknown x, (ttl, datas) ->
-        Txt_set.fold (fun data acc ->
-            Fmt.str "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
-              (I.to_int x) (String.length data) (hex (Cstruct.of_string data)) :: acc)
-          datas []
+        let pp_hex x ?origin:_ () ppf data =
+          Fmt.pf ppf "TYPE%d\t\\# %d %s"
+            (I.to_int x) (String.length data) (hex (Cstruct.of_string data))
+        in
+        Txt_set.fold (fun data acc -> to_str ttl (pp_hex x) data :: acc) datas []
     in
     String.concat "\n" strs
 
