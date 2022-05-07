@@ -2129,7 +2129,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "99" ^ (* vertical percision *)
         "8c df e5 ff" ^ (* lat *)
         "73 20 1a 01" ^ (* long *)
-        "80 00 00  00" (* alt *)
+        "80 00 00 00" (* alt *)
     ) in  
     let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 42849672.95 (90000000.00, 90000000.00, 90000000.00) in
     loc_decode_helper data loc
