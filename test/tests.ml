@@ -2384,10 +2384,10 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "loc decode", `Quick, loc_decode ;
     "loc decode min", `Quick, loc_decode_min ;
     "loc decode min negated", `Quick, loc_decode_min_negated ;
-    (* "loc decode max", `Quick, loc_decode_max ; *)
+    "loc decode max", `Quick, loc_decode_max ;
     "loc decode alt signed max under", `Quick, loc_decode_alt_signed_max_under ;
     "loc decode alt signed max", `Quick, loc_decode_alt_signed_max ;
-    (* "loc decode alt signed max over", `Quick, loc_decode_alt_signed_max_over ; *)
+    "loc decode alt signed max over", `Quick, loc_decode_alt_signed_max_over ;
     "loc leftover", `Quick, loc_leftover ;
     "loc leftover inner", `Quick, loc_leftover_inner ;
     "loc fail partial", `Quick, loc_fail_partial ;

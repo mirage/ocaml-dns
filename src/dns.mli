@@ -798,7 +798,7 @@ module Loc : sig
   type t = {
     lat : int32;
     long : int32;
-    alt : int32;
+    alt : int64;
     size : int;
     horiz_pre : int;
     vert_pre : int;
