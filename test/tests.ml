@@ -2079,11 +2079,11 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "13" ^ (* size *)
         "13" ^ (* horizontal percision *)
         "13" ^ (* vertical percision *)
-        "80 00 03 e8" ^ (* lat *)
-        "7f c9 11 80" ^ (* long *)
-        "00 98 9a 68 68" (* alt *)
+        "8b 34 0a c0" ^ (* lat *)
+        "7f fa f3 08" ^ (* long *)
+        "00 98 9f 18" (* alt *) 
     ) in
-    let loc = Loc.parse ((0l, 0l, 1.), true) ((1l, 0l, 0.), false) 10. (10., 10., 10.) in
+    let loc = Loc.parse ((52l, 12l, 40.), true) ((0l, 5l, 31.), false) 22. (10., 10., 10.) in
     loc_decode_helper data loc
   
   let loc_decode_min () =
@@ -2142,11 +2142,11 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "13" ^ (* size *)
         "13" ^ (* horizontal percision *)
         "13" ^ (* vertical percision *)
-        "80 00 03 e8" ^ (* lat *)
-        "7f c9 11 80" ^ (* long *)
-        "00 98 9a 68 68" (* alt *)
+        "8b 34 0a c0" ^ (* lat *)
+        "7f fa f3 08" ^ (* long *)
+        "00 98 9f 18 00" (* alt *) 
     ) in
-    let loc = Loc.parse ((0l, 0l, 1.), true) ((1l, 0l, 0.), false) 10. (10., 10., 10.) in
+    let loc = Loc.parse ((52l, 12l, 40.), true) ((0l, 5l, 31.), false) 22. (10., 10., 10.) in
     loc_decode_helper data loc
 
   let loc_leftover_inner () =
@@ -2181,11 +2181,11 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
           "13" ^ (* size *)
           "13" ^ (* horizontal percision *)
           "13" ^ (* vertical percision *)
-          "80 00 03 e8" ^ (* lat *)
-          "7f c9 11 80" ^ (* long *)
-          "00 98 9a 68 68" (* alt *)
+          "8b 34 0a c0" ^ (* lat *)
+          "7f fa f3 08" ^ (* long *)
+          "00 98 9f 18 00" (* alt *) 
     ) in
-    let loc = Loc.parse ((0l, 0l, 1.), true) ((1l, 0l, 0.), false) 10. (10., 10., 10.) in
+    let loc = Loc.parse ((52l, 12l, 40.), true) ((0l, 5l, 31.), false) 22. (10., 10., 10.) in
     loc_decode_helper data loc
 
   let loc_fail_partial () =
@@ -2197,9 +2197,9 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "13" ^ (* size *)
         "13" ^ (* horizontal percision *)
         "13" ^ (* vertical percision *)
-        "80 00 03 e8" ^ (* lat *)
-        "7f c9 11 80" ^ (* long *)
-        "00 98 9a" (* alt *)
+        "8b 34 0a c0" ^ (* lat *)
+        "7f fa f3 08" ^ (* long *)
+        "00 98 9f" (* alt *) 
     ) in
     Alcotest.(check (result t_ok p_err) "short LOC decodes" (Error `Partial) (decode data))
 
@@ -2235,9 +2235,9 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
           "13" ^ (* size *)
           "13" ^ (* horizontal percision *)
           "13" ^ (* vertical percision *)
-          "80 00 03 e8" ^ (* lat *)
-          "7f c9 11 80" ^ (* long *)
-          "00 98 9a" (* alt *)
+          "8b 34 0a c0" ^ (* lat *)
+          "7f fa f3 08" ^ (* long *)
+          "00 98 9f" (* alt *) 
     ) in
     Alcotest.(check (result t_ok p_err) "A decode failure (rdata partial)" (Error `Partial) (decode data))
               
@@ -2262,7 +2262,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_encode_helper loc
   
   let loc_encode_max () =
-    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 42849672.95 (90000000.00, 90000000.00, 90000000.00) in
+    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 42849672.95 (90000000., 90000000., 90000000.) in
     loc_encode_helper loc
 
   let code_tests = [
@@ -2328,10 +2328,10 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "nsec success", `Quick, nsec_success ;
     "nsec success 2", `Quick, nsec_success2 ;
     "nsec3 success", `Quick, nsec3_success ;
-    "loc success", `Quick, loc_decode ;
-    "loc_decode_min", `Quick, loc_decode_min ;
-    "loc_decode_min_negated", `Quick, loc_decode_min_negated ;
-    "loc_decode_max", `Quick, loc_decode_max ;
+    "loc decode", `Quick, loc_decode ;
+    "loc decode min", `Quick, loc_decode_min ;
+    "loc decode min negated", `Quick, loc_decode_min_negated ;
+    "loc decode max", `Quick, loc_decode_max ;
     "loc leftover", `Quick, loc_leftover ;
     "loc leftover inner", `Quick, loc_leftover_inner ;
     "loc fail partial", `Quick, loc_fail_partial ;
