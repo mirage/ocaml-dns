@@ -1359,7 +1359,7 @@ module Loc = struct
     (deg, min, sec), dir
 
   let alt_print alt =
-    ((Float.of_int (Int64.to_int alt)) /. 100.) -. 100000.
+    (Int64.to_float alt /. 100.) -. 100000.
   
   let precision_print prec =
     let mantissa = ((Int.shift_right prec 4) land 0x0f) mod 10 in
