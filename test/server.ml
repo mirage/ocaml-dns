@@ -1849,26 +1849,68 @@ $TTL 2560
 @	NS	ns
 @	LOC	|} in
     let loc_strs = [
-      ("0 0 0 N 0 0 0 E 0m 0m 0m 0m",
-      Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.)) ;
-      ("0 0 0 S 0 0 0 W 0 0 0 0",
-      Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.)) ;
-      ("0 0 0 N 0 0 0 E 0.m 0.m 0.m 0.m",
-      Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.)) ;
-      ("0 0 0.0 N 0 0 0.0 E 0.00m 0.00m 0.00m 0.00m",
-      Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.)) ;
-      ("00 00 0.00 N 00 00 0.00 E 0.00 0.00 0.00 0.00",
-      Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.)) ;
-      ("52 12 40 N 0 5 31 W 22m 10m 10m 10m",
-      Loc.parse ((52l, 12l, 40.), true) ((0l, 5l, 31.), false) 22. (10., 10., 10.)) ;
-      ("0 0 0 N 0 0 0 E -100000m 0m 0m 0m",
-      Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) ~-.100000.00 (0., 0., 0.)) ;
-      ("0 0 0 S 0 0 0 W -100000 0m 0m 0m",
-      Loc.parse ((0l, 0l, 0.), false) ((0l, 0l, 0.), false) ~-.100000.00 (0., 0., 0.)) ;
-      ("59 59 59.999 N 59 59 59.999 W 42849672.95m 90000000m 90000000m 90000000m",
-      Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 42849672.95 (90000000., 90000000., 90000000.)) ;
+      (
+        "0 0 0 N 0 0 0 E 0m 0m 0m 0m",
+        Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.),
+        "0 0 0. N 0 0 0. E 0.m 0.m 0.m 0.m"
+      ) ;
+      (
+        "0 0 0 S 0 0 0 W 0 0 0 0",
+        Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.),
+        "0 0 0. N 0 0 0. E 0.m 0.m 0.m 0.m"
+      ) ;
+      (
+        "0 0 0 N 0 0 0 E 0.m 0.m 0.m 0.m",
+        Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.),
+        "0 0 0. N 0 0 0. E 0.m 0.m 0.m 0.m"
+      ) ;
+      (
+        "0 0 0.0 N 0 0 0.0 E 0.00m 0.00m 0.00m 0.00m",
+        Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.),
+        "0 0 0. N 0 0 0. E 0.m 0.m 0.m 0.m"
+      ) ;
+      (
+        "00 00 0.00 N 00 00 0.00 E 0.00 0.00 0.00 0.00",
+        Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) 0. (0., 0., 0.),
+        "0 0 0. N 0 0 0. E 0.m 0.m 0.m 0.m"
+      ) ;
+      (
+        "52 12 40 N 0 5 31 W 22m 10m 10m 10m",
+        Loc.parse ((52l, 12l, 40.), true) ((0l, 5l, 31.), false) 22. (10., 10., 10.),
+        "52 12 40. N 0 5 31. W 22.m 10.m 10.m 10.m"
+      ) ;
+      (
+        "0 0 0 N 0 0 0 E -100000m 0m 0m 0m",
+        Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) ~-.100000.00 (0., 0., 0.),
+        "0 0 0. N 0 0 0. E -100000.m 0.m 0.m 0.m"
+      ) ;
+      (
+        "0 0 0 S 0 0 0 W -100000 0m 0m 0m",
+        Loc.parse ((0l, 0l, 0.), false) ((0l, 0l, 0.), false) ~-.100000.00 (0., 0., 0.),
+        "0 0 0. N 0 0 0. E -100000.m 0.m 0.m 0.m"
+      ) ;
+      (
+        "59 59 59.999 N 59 59 59.999 W 21374836.47m 90000000m 90000000m 90000000m",
+        Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 21374836.47 (90000000.00, 90000000.00, 90000000.00),
+        "59 59 59.999 N 59 59 59.999 W 21374836.47m 90000000.m 90000000.m 90000000.m"
+      ) ;
+      (
+        "59 59 59.999 N 59 59 59.999 W 21374836.48m 90000000m 90000000m 90000000m",
+        Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 21374836.48 (90000000.00, 90000000.00, 90000000.00),
+        "59 59 59.999 N 59 59 59.999 W 21374836.48m 90000000.m 90000000.m 90000000.m"
+      ) ;
+      (
+        "59 59 59.999 N 59 59 59.999 W 21374836.49m 90000000m 90000000m 90000000m",
+        Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 21374836.49 (90000000.00, 90000000.00, 90000000.00),
+        "59 59 59.999 N 59 59 59.999 W 21374836.49m 90000000.m 90000000.m 90000000.m"
+      ) ;
+      (* (
+        "59 59 59.999 N 59 59 59.999 W 42849672.95m 90000000m 90000000m 90000000m",
+        Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 42849672.95 (90000000., 90000000., 90000000.),
+        "59 59 59.999 N 59 59 59.999 W 42849672.95m 90000000.m 90000000.m 90000000.m"
+      ) ; *)
     ] in
-    let parse_loc (loc_str, loc) = 
+    let parse_loc (loc_str, loc, loc_printed) = 
       let rrs =
         let z = n_of_s "example" in
         let ns_name = n_of_s "ns.example" in
@@ -1886,7 +1928,16 @@ $TTL 2560
       in
       let _ = Printf.printf "%s" (loc_zone ^ loc_str ^ "\n") in
       Alcotest.(check (result name_map_ok err) "parsing loc zone"
-        (Ok rrs) (Dns_zone.parse (loc_zone ^ loc_str ^ "\n")))
+        (Ok rrs) (Dns_zone.parse (loc_zone ^ loc_str ^ "\n"))) ;
+      let string_ok =
+        let module M = struct
+          type t = string
+          let pp = Format.pp_print_string
+          let equal = String.equal
+        end in
+        (module M: Alcotest.TESTABLE with type t = M.t)
+      in
+      Alcotest.(check string_ok "parsing loc zone" (loc_printed) (Loc.to_string loc)) ;
     in List.iter parse_loc loc_strs
 
   let tests = [

@@ -1346,7 +1346,7 @@ module Loc = struct
   let lat_long_print lat_long =
     let ( * ), (-), (/) = Int32.mul, Int32.sub, Int32.div in
     let lat_long = (Int32.shift_left 1l 31) - lat_long in
-    let dir = lat_long < 0l in
+    let dir = lat_long <= 0l in
     let lat_long = Int32.abs lat_long in
     let modulo divident divisor =
       let quotient = Int32.div divident divisor in

@@ -2068,7 +2068,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       Domain_name.Map.singleton host (Rr_map.singleton Loc (3600l, Rr_map.Loc_set.singleton loc))
     in
     let res = create header q (`Answer (content, Name_rr_map.empty)) in
-    let _ = Format.printf "%a" Cstruct.hexdump_pp (fst @@ encode `Udp res) in
+    let _ = Format.printf "%a\n" Cstruct.hexdump_pp (fst @@ encode `Udp res) in
+    let _ =
+      Format.printf "%a\n" pp (match (decode data) with
+      | Ok t -> t
+      | Error _ -> raise (Failure "Failed to decode data"))
+    in
     Alcotest.(check (result t_ok p_err) "Loc decodes" (Ok res) (decode data))
   
   let loc_decode () =
@@ -2117,7 +2122,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     ) in
     let loc = Loc.parse ((0l, 0l, 0.), false) ((0l, 0l, 0.), false) ~-.100000.00 (0., 0., 0.) in
     loc_decode_helper data loc
-  
+
   let loc_decode_max () =
     let data = Cstruct.of_hex (
       loc_packet_preamble ^
@@ -2129,9 +2134,57 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "99" ^ (* vertical percision *)
         "8c df e5 ff" ^ (* lat *)
         "73 20 1a 01" ^ (* long *)
-        "80 00 00 00" (* alt *)
-    ) in  
+        "ff ff ff ff" (* alt *)
+    ) in
     let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 42849672.95 (90000000.00, 90000000.00, 90000000.00) in
+    loc_decode_helper data loc
+
+  let loc_decode_alt_signed_max_under () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "99" ^ (* size *)
+        "99" ^ (* horizontal percision *)
+        "99" ^ (* vertical percision *)
+        "8c df e5 ff" ^ (* lat *)
+        "73 20 1a 01" ^ (* long *)
+        "7f ff ff ff" (* alt *)
+    ) in
+    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 21374836.47 (90000000.00, 90000000.00, 90000000.00) in
+    loc_decode_helper data loc
+  
+  let loc_decode_alt_signed_max () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "99" ^ (* size *)
+        "99" ^ (* horizontal percision *)
+        "99" ^ (* vertical percision *)
+        "8c df e5 ff" ^ (* lat *)
+        "73 20 1a 01" ^ (* long *)
+        "80 00 00 00" (* alt *)
+    ) in
+    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 21374836.48 (90000000.00, 90000000.00, 90000000.00) in
+    loc_decode_helper data loc
+  
+  let loc_decode_alt_signed_max_over () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "99" ^ (* size *)
+        "99" ^ (* horizontal percision *)
+        "99" ^ (* vertical percision *)
+        "8c df e5 ff" ^ (* lat *)
+        "73 20 1a 01" ^ (* long *)
+        "80 00 00 01" (* alt *)
+    ) in
+    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 21374836.49 (90000000.00, 90000000.00, 90000000.00) in
     loc_decode_helper data loc
   
   let loc_leftover () =
@@ -2237,7 +2290,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
           "13" ^ (* vertical percision *)
           "8b 34 0a c0" ^ (* lat *)
           "7f fa f3 08" ^ (* long *)
-          "00 98 9f" (* alt *) 
+          "00 98 9f" (* alt *)
     ) in
     Alcotest.(check (result t_ok p_err) "A decode failure (rdata partial)" (Error `Partial) (decode data))
               
@@ -2332,6 +2385,9 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "loc decode min", `Quick, loc_decode_min ;
     "loc decode min negated", `Quick, loc_decode_min_negated ;
     "loc decode max", `Quick, loc_decode_max ;
+    "loc decode alt signed max under", `Quick, loc_decode_alt_signed_max_under ;
+    "loc decode alt signed max", `Quick, loc_decode_alt_signed_max ;
+    "loc decode alt signed max over", `Quick, loc_decode_alt_signed_max_over ;
     "loc leftover", `Quick, loc_leftover ;
     "loc leftover inner", `Quick, loc_leftover_inner ;
     "loc fail partial", `Quick, loc_fail_partial ;
