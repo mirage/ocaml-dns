@@ -1841,6 +1841,34 @@ a.b	A	1.2.3.4
         Alcotest.(check string "text (decode_zones z) = z" zone data)
       | Error _ -> Alcotest.fail "failed to encode zone"
 
+    let loc_zone = {|
+$ORIGIN example.
+$TTL 2560
+@	SOA	ns 	root	1	86400	10800	1048576	2560
+@	NS	ns
+a LOC 0 0 0.1 N 59 59 59.999 W -1.00 10. 1.01m 1m
+|}
+
+  let parse_loc_zone () =
+    let rrs =
+      let z = n_of_s "example" in
+      let ns_name = n_of_s "ns.example" in
+      let minimum = 2560l in
+      let ns = 2560l, Domain_name.(Host_set.singleton (host_exn ns_name)) in
+      let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+                  serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                  expiry = 1048576l ; minimum }
+      in
+      let loc = Loc.parse ((0l, 0l, 0.1), true) ((59l, 59l, 59.999), false) ~-.1. (10., 1.01, 1.) in
+      Name_rr_map.(add z Rr_map.Ns ns
+        (add z Rr_map.Soa soa
+          (singleton (n_of_s "a.example") Rr_map.Loc (minimum, Rr_map.Loc_set.singleton  loc))
+        )
+      )
+    in
+    Alcotest.(check (result name_map_ok err) "parsing loc zone"
+                (Ok rrs) (Dns_zone.parse loc_zone))
+
   let tests = [
     "parsing simple zone", `Quick, parse_simple_zone ;
     "parsing wildcard zone", `Quick, parse_wildcard_zone ;
@@ -1848,6 +1876,7 @@ a.b	A	1.2.3.4
     "RFC 4592 questions", `Quick, rfc4592_questions ;
     "parse zone with additional glue", `Quick, parse_zone_with_glue ;
     "parse zone with additional glue and sub", `Quick, parse_zone_with_glue_sub ;
+    "parse loc zone", `Quick, parse_loc_zone ;
   ]
 end
 
