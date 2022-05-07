@@ -223,12 +223,7 @@ generic_type s generic_rdata {
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
      /* RFC 1876 */
  | TYPE_LOC s deg_min_sec LAT_DIR s deg_min_sec LONG_DIR s altitude precision
-     { (* RFC 1876 Appendix A *)
-       let lat = Loc.lat_long_parse ($3, $4 = "N") in
-       let long = Loc.lat_long_parse ($6, $7 = "E") in
-       let alt = Loc.alt_parse $9 in
-       let size, horiz_pre, vert_pre = Loc.precision_parse $10 in
-       let loc = { Loc.lat ; long ; alt ; size ; horiz_pre ; vert_pre} in
+     { let loc = Loc.parse ($3, $4 = "N") ($6, $7 = "E") $9 $10 in
        B (Loc, (0l, Rr_map.Loc_set.singleton loc)) }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
 
