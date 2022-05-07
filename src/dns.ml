@@ -1335,6 +1335,14 @@ module Loc = struct
     in
     (encode size, encode horiz_pre, encode vert_pre)
   
+  (* RFC 1876 Appendix A *)
+  let parse lat_str long_str alt_str prec_str =
+    let lat = lat_long_parse lat_str in
+    let long = lat_long_parse long_str in
+    let alt = alt_parse alt_str in
+    let size, horiz_pre, vert_pre = precision_parse prec_str in
+    { lat ; long ; alt ; size ; horiz_pre ; vert_pre}
+  
   let lat_long_print lat_long =
     let ( * ), (-), (/) = Int32.mul, Int32.sub, Int32.div in
     let lat_long = (Int32.shift_left 1l 31) - lat_long in
@@ -1349,14 +1357,6 @@ module Loc = struct
     let min = modulo (lat_long / (1000l * 60l)) 60l in
     let deg = modulo (lat_long / (1000l * 60l * 60l)) 60l in
     (deg, min, sec), dir
-
-  (* RFC 1876 Appendix A *)
-  let parse lat_str long_str alt_str prec_str =
-    let lat = lat_long_parse lat_str in
-    let long = lat_long_parse long_str in
-    let alt = alt_parse alt_str in
-    let size, horiz_pre, vert_pre = precision_parse prec_str in
-    { lat ; long ; alt ; size ; horiz_pre ; vert_pre}
 
   let alt_print alt =
     ((Float.of_int (Int32.to_int alt)) /. 100.) -. 100000.
