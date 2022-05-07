@@ -1325,10 +1325,10 @@ module Loc = struct
   let precision_parse (size, horiz_pre, vert_pre) =
     let encode = fun p ->
       (* convert from m to cm *)
-      let cm = Float.of_int (Int.of_float (p *. 100.)) in
+      let cm = p *. 100. in
       let exponent = Int.of_float (Float.log10 cm) in
-      let mantissa = 
-        let m = cm /. (10. ** Float.of_int exponent) in
+      let mantissa =
+        let m = cm /. (10. ** (Float.of_int exponent)) in
         if m > 9. then 9 else Int.of_float m
       in
       (Int.shift_left mantissa 4) lor exponent
