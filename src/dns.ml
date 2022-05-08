@@ -1388,12 +1388,14 @@ module Loc = struct
   let pp ppf loc = Fmt.pf ppf "LOC %s" (to_string loc)
 
   let compare a b =
-    andThen (compare a.lat b.lat)
-      (andThen (compare a.long b.long)
-        (andThen (compare a.alt b.alt)
-          (andThen (compare a.size b.size)
-            (andThen (compare a.horiz_pre b.horiz_pre)
-              (compare a.vert_pre b.vert_pre)))))
+    List.fold_right andThen [
+      compare a.lat b.lat ;
+      compare a.long b.long ;
+      compare a.alt b.alt ;
+      compare a.size b.size ;
+      compare a.horiz_pre b.horiz_pre ;
+      compare a.vert_pre b.vert_pre ;
+    ] 0
 
   let decode_exn names buf ~off ~len =
     let lat = Cstruct.BE.get_uint32 buf (off + 4) in
