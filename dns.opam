@@ -21,6 +21,7 @@ depends: [
   "duration" {>= "0.1.2"}
   "metrics"
   "base64" {>= "3.3.0"}
+  "integers"
 ]
 conflicts: [ "result" {< "1.5"} ]
 build: [
