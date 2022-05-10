@@ -825,7 +825,7 @@ module Loc : sig
      [altitude] is the altitude in meters.
 
      [precision] is represented by (size, horizontal precision, vertical percision)
-     in metess.
+     in meters.
     *)
 
   val to_string : t -> string
