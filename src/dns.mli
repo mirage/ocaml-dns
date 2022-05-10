@@ -800,7 +800,7 @@ module Loc : sig
   type t = {
     latitude : int32;
     longitude : int32;
-    altitude : int64;
+    altitude : int32;
     size : int;
     horiz_pre : int;
     vert_pre : int;

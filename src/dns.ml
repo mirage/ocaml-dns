@@ -1307,7 +1307,7 @@ module Loc = struct
   type t = {
     latitude : int32;
     longitude : int32;
-    altitude : int64;
+    altitude : int32;
     size : int;
     horiz_pre : int;
     vert_pre : int;
@@ -1320,7 +1320,7 @@ module Loc = struct
       Int32.of_float (sec *. 1000.)
     ) * if dir then 1l else -1l
 
-  let alt_parse alt = Int64.of_float (10000000. +. alt *. 100.)
+  let alt_parse alt = Unsigned.UInt32.to_int32 (Unsigned.UInt32.of_int64 (Int64.of_float (10000000. +. alt *. 100.)))
 
   let precision_parse (size, horiz_pre, vert_pre) =
     let encode = fun p ->
@@ -1359,7 +1359,7 @@ module Loc = struct
     (deg, min, sec), dir
 
   let alt_print alt =
-    (Int64.to_float alt /. 100.) -. 100000.
+    (Int64.to_float (Unsigned.UInt32.to_int64 (Unsigned.UInt32.of_int32 alt)) /. 100.) -. 100000.
   
   let precision_print prec =
     let mantissa = ((Int.shift_right prec 4) land 0x0f) mod 10 in
@@ -1403,14 +1403,7 @@ module Loc = struct
     let size = Cstruct.get_uint8 buf (off + 1) in
     let horiz_pre = Cstruct.get_uint8 buf (off + 2) in
     let vert_pre = Cstruct.get_uint8 buf (off + 3) in
-
-    (* Horrible hack to deal with encoded altitude > 2**31,
-       as Int32.to_float converts anything > 2**31 to -2**31 *)
-    let altitude = Cstruct.BE.set_uint32 buf (off + 8) 0l;
-      Cstruct.BE.get_uint64 buf (off + 8) ;
-    in
-    Cstruct.BE.set_uint32 buf (off + 8) longitude;
-
+    let altitude = Cstruct.BE.get_uint32 buf (off + 12) in
     Ok ({ latitude ; longitude ; altitude ; size ; horiz_pre; vert_pre }, names, off + len)
 
   let encode loc names buf off =
@@ -1419,9 +1412,8 @@ module Loc = struct
     Cstruct.set_uint8 buf (off + 2) loc.horiz_pre;
     Cstruct.set_uint8 buf (off + 3) loc.vert_pre;
     Cstruct.BE.set_uint32 buf (off + 4) loc.latitude;
-    (* Horrible hack to deal with encoded altitude > 2**31 *)
-    Cstruct.BE.set_uint64 buf (off + 8) loc.altitude;
     Cstruct.BE.set_uint32 buf (off + 8) loc.longitude;
+    Cstruct.BE.set_uint32 buf (off + 12) loc.altitude;
     names, off + 16
 
 end
