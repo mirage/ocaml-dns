@@ -793,23 +793,40 @@ end
 
 (** Loc
 
-    A locator record (LOC) is used to express location information associated with domain. *)
+    A locator record (LOC) is used to express location information associated with domain.
+    
+    See RFC 1876. *)
 module Loc : sig
   type t = {
-    lat : int32;
-    long : int32;
-    alt : int64;
+    latitude : int32;
+    longitude : int32;
+    altitude : int64;
     size : int;
     horiz_pre : int;
     vert_pre : int;
   }
   (** The type of a Loc record. *)
 
-  val parse : ((int32 * int32 * float) * bool)
-    -> ((int32 * int32 * float) * bool)
-    -> float
-    -> (float * float * float)
+  val parse :
+    latitude:((int32 * int32 * float) * bool)
+    -> longitude:((int32 * int32 * float) * bool)
+    -> altitude:float
+    -> precision:(float * float * float)
     -> t
+  (** [parse ~latitude ~longitude ~altitude ~precision] Parse a human-readable format
+     to a Loc record.
+
+     [latitude] is represented by ((degress, mintues, seconds), direction),
+     where direction is true for North and false for South.
+
+     [longitude] is represented by ((degress, mintues, seconds), direction),
+     where direction is true for East and false for West.
+
+     [altitude] is the altitude in meters.
+
+     [precision] is represented by (size, horizontal precision, vertical percision)
+     in metess.
+    *)
 
   val to_string : t -> string
 

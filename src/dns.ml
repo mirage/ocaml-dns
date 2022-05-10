@@ -1305,9 +1305,9 @@ end
 
 module Loc = struct
   type t = {
-    lat : int32;
-    long : int32;
-    alt : int64;
+    latitude : int32;
+    longitude : int32;
+    altitude : int64;
     size : int;
     horiz_pre : int;
     vert_pre : int;
@@ -1336,13 +1336,13 @@ module Loc = struct
     (encode size, encode horiz_pre, encode vert_pre)
   
   (* RFC 1876 Appendix A *)
-  let parse lat_str long_str alt_str prec_str =
-    let lat = lat_long_parse lat_str in
-    let long = lat_long_parse long_str in
-    let alt = alt_parse alt_str in
-    let size, horiz_pre, vert_pre = precision_parse prec_str in
-    { lat ; long ; alt ; size ; horiz_pre ; vert_pre}
-  
+  let parse ~latitude:latitude ~longitude:longitude ~altitude:altitude ~precision:precision =
+    let latitude = lat_long_parse latitude in
+    let longitude = lat_long_parse longitude in
+    let altitude = alt_parse altitude in
+    let size, horiz_pre, vert_pre = precision_parse precision in
+    { latitude ; longitude ; altitude ; size ; horiz_pre ; vert_pre}
+
   let lat_long_print lat_long =
     let ( * ), (-), (/) = Int32.mul, Int32.sub, Int32.div in
     let lat_long = (Int32.shift_left 1l 31) - lat_long in
@@ -1371,16 +1371,16 @@ module Loc = struct
         String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
     in
     let lat_string =
-      let (lat_deg, lat_min, lat_sec), lat_dir = lat_long_print loc.lat in
+      let (lat_deg, lat_min, lat_sec), lat_dir = lat_long_print loc.latitude in
       lat_long_to_string lat_deg lat_min lat_sec (if lat_dir then "N" else "S")
     in
     let long_string =
-      let (long_deg, long_min, long_sec), long_dir = lat_long_print loc.long in
+      let (long_deg, long_min, long_sec), long_dir = lat_long_print loc.longitude in
       lat_long_to_string long_deg long_min long_sec (if long_dir then "E" else "W")
     in
     let meter_values =
       List.map (fun m -> Float.to_string m ^ "m") (
-        [alt_print loc.alt] @ (List.map precision_print [loc.size; loc.horiz_pre; loc.vert_pre])
+        [alt_print loc.altitude] @ (List.map precision_print [loc.size; loc.horiz_pre; loc.vert_pre])
       )
     in
     String.concat " " ([lat_string; long_string;] @ meter_values)
@@ -1389,39 +1389,39 @@ module Loc = struct
 
   let compare a b =
     List.fold_right andThen [
-      compare a.lat b.lat ;
-      compare a.long b.long ;
-      compare a.alt b.alt ;
+      compare a.latitude b.latitude ;
+      compare a.longitude b.longitude ;
+      compare a.altitude b.altitude ;
       compare a.size b.size ;
       compare a.horiz_pre b.horiz_pre ;
       compare a.vert_pre b.vert_pre ;
     ] 0
 
   let decode_exn names buf ~off ~len =
-    let lat = Cstruct.BE.get_uint32 buf (off + 4) in
-    let long = Cstruct.BE.get_uint32 buf (off + 8) in
+    let latitude = Cstruct.BE.get_uint32 buf (off + 4) in
+    let longitude = Cstruct.BE.get_uint32 buf (off + 8) in
     let size = Cstruct.get_uint8 buf (off + 1) in
     let horiz_pre = Cstruct.get_uint8 buf (off + 2) in
     let vert_pre = Cstruct.get_uint8 buf (off + 3) in
 
     (* Horrible hack to deal with encoded altitude > 2**31,
        as Int32.to_float converts anything > 2**31 to -2**31 *)
-    let alt = Cstruct.BE.set_uint32 buf (off + 8) 0l;
+    let altitude = Cstruct.BE.set_uint32 buf (off + 8) 0l;
       Cstruct.BE.get_uint64 buf (off + 8) ;
     in
-    Cstruct.BE.set_uint32 buf (off + 8) long;
+    Cstruct.BE.set_uint32 buf (off + 8) longitude;
 
-    Ok ({ lat ; long ; alt ; size ; horiz_pre; vert_pre }, names, off + len)
+    Ok ({ latitude ; longitude ; altitude ; size ; horiz_pre; vert_pre }, names, off + len)
 
   let encode loc names buf off =
     Cstruct.set_uint8 buf off 0;
     Cstruct.set_uint8 buf (off + 1) loc.size;
     Cstruct.set_uint8 buf (off + 2) loc.horiz_pre;
     Cstruct.set_uint8 buf (off + 3) loc.vert_pre;
-    Cstruct.BE.set_uint32 buf (off + 4) loc.lat;
+    Cstruct.BE.set_uint32 buf (off + 4) loc.latitude;
     (* Horrible hack to deal with encoded altitude > 2**31 *)
-    Cstruct.BE.set_uint64 buf (off + 8) loc.alt;
-    Cstruct.BE.set_uint32 buf (off + 8) loc.long;
+    Cstruct.BE.set_uint64 buf (off + 8) loc.altitude;
+    Cstruct.BE.set_uint32 buf (off + 8) loc.longitude;
     names, off + 16
 
 end

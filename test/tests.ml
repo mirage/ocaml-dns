@@ -2088,7 +2088,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "7f fa f3 08" ^ (* long *)
         "00 98 9f 18" (* alt *) 
     ) in
-    let loc = Loc.parse ((52l, 12l, 40.), true) ((0l, 5l, 31.), false) 22. (10., 10., 10.) in
+    let loc = Loc.parse
+      ~latitude:((52l, 12l, 40.), true)
+      ~longitude:((0l, 5l, 31.), false)
+      ~altitude:22.
+      ~precision:(10., 10., 10.)
+    in
     loc_decode_helper data loc
   
   let loc_decode_min () =
@@ -2104,7 +2109,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "80 00 00 00" ^ (* long *)
         "00 00 00 00" (* alt *)
     ) in
-    let loc = Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) ~-.100000.00 (0., 0., 0.) in
+    let loc = Loc.parse
+      ~latitude:((0l, 0l, 0.), true)
+      ~longitude:((0l, 0l, 0.), true)
+      ~altitude:~-.100000.00
+      ~precision:(0., 0., 0.)
+    in
     loc_decode_helper data loc
   
   let loc_decode_min_negated () =
@@ -2120,7 +2130,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "80 00 00 00" ^ (* long *)
         "00 00 00 00" (* alt *)
     ) in
-    let loc = Loc.parse ((0l, 0l, 0.), false) ((0l, 0l, 0.), false) ~-.100000.00 (0., 0., 0.) in
+    let loc = Loc.parse
+      ~latitude:((0l, 0l, 0.), false)
+      ~longitude:((0l, 0l, 0.), false)
+      ~altitude:~-.100000.00
+      ~precision:(0., 0., 0.)
+    in
     loc_decode_helper data loc
 
   let loc_decode_max () =
@@ -2136,7 +2151,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "73 20 1a 01" ^ (* long *)
         "ff ff ff ff" (* alt *)
     ) in
-    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 42849672.95 (90000000.00, 90000000.00, 90000000.00) in
+    let loc = Loc.parse
+      ~latitude:((59l, 59l, 59.999), true)
+      ~longitude:((59l, 59l, 59.999), false)
+      ~altitude:42849672.95
+      ~precision:(90000000.00, 90000000.00, 90000000.00)
+    in
     loc_decode_helper data loc
 
   let loc_decode_alt_signed_max_under () =
@@ -2152,7 +2172,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "73 20 1a 01" ^ (* long *)
         "7f ff ff ff" (* alt *)
     ) in
-    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 21374836.47 (90000000.00, 90000000.00, 90000000.00) in
+    let loc = Loc.parse
+      ~latitude:((59l, 59l, 59.999), true)
+      ~longitude:((59l, 59l, 59.999), false)
+      ~altitude:21374836.47
+      ~precision:(90000000.00, 90000000.00, 90000000.00)
+    in
     loc_decode_helper data loc
   
   let loc_decode_alt_signed_max () =
@@ -2168,7 +2193,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "73 20 1a 01" ^ (* long *)
         "80 00 00 00" (* alt *)
     ) in
-    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 21374836.48 (90000000.00, 90000000.00, 90000000.00) in
+    let loc = Loc.parse
+      ~latitude:((59l, 59l, 59.999), true)
+      ~longitude:((59l, 59l, 59.999), false)
+      ~altitude:21374836.48
+      ~precision:(90000000.00, 90000000.00, 90000000.00)
+    in
     loc_decode_helper data loc
   
   let loc_decode_alt_signed_max_over () =
@@ -2184,7 +2214,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "73 20 1a 01" ^ (* long *)
         "80 00 00 01" (* alt *)
     ) in
-    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 21374836.49 (90000000.00, 90000000.00, 90000000.00) in
+    let loc = Loc.parse
+      ~latitude:((59l, 59l, 59.999), true)
+      ~longitude:((59l, 59l, 59.999), false)
+      ~altitude:21374836.49
+      ~precision:(90000000.00, 90000000.00, 90000000.00)
+    in
     loc_decode_helper data loc
   
   let loc_leftover () =
@@ -2199,7 +2234,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "7f fa f3 08" ^ (* long *)
         "00 98 9f 18 00" (* alt *) 
     ) in
-    let loc = Loc.parse ((52l, 12l, 40.), true) ((0l, 5l, 31.), false) 22. (10., 10., 10.) in
+    let loc = Loc.parse
+      ~latitude:((52l, 12l, 40.), true)
+      ~longitude:((0l, 5l, 31.), false)
+      ~altitude:22.
+      ~precision:(10., 10., 10.)
+    in
     loc_decode_helper data loc
 
   let loc_leftover_inner () =
@@ -2238,7 +2278,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
           "7f fa f3 08" ^ (* long *)
           "00 98 9f 18 00" (* alt *) 
     ) in
-    let loc = Loc.parse ((52l, 12l, 40.), true) ((0l, 5l, 31.), false) 22. (10., 10., 10.) in
+    let loc = Loc.parse
+      ~latitude:((52l, 12l, 40.), true)
+      ~longitude:((0l, 5l, 31.), false)
+      ~altitude:22.
+      ~precision:(10., 10., 10.)
+    in
     loc_decode_helper data loc
 
   let loc_fail_partial () =
@@ -2307,15 +2352,30 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "Loc encodes" (Ok res) (decode @@ fst @@ encode `Udp res))
   
   let loc_encode_min () =
-    let loc = Loc.parse ((0l, 0l, 0.), true) ((0l, 0l, 0.), true) ~-.100000.00 (0., 0., 0.) in
+    let loc = Loc.parse
+      ~latitude:((0l, 0l, 0.), true)
+      ~longitude:((0l, 0l, 0.), true)
+      ~altitude:~-.100000.00
+      ~precision:(0., 0., 0.)
+    in
     loc_encode_helper loc
   
   let loc_encode_min_negated () =
-    let loc = Loc.parse ((0l, 0l, 0.), false) ((0l, 0l, 0.), false) ~-.100000.00 (0., 0., 0.) in
+    let loc = Loc.parse
+      ~latitude:((0l, 0l, 0.), false)
+      ~longitude:((0l, 0l, 0.), false)
+      ~altitude:~-.100000.00
+      ~precision:(0., 0., 0.)
+    in
     loc_encode_helper loc
   
   let loc_encode_max () =
-    let loc = Loc.parse ((59l, 59l, 59.999), true) ((59l, 59l, 59.999), false) 42849672.95 (90000000., 90000000., 90000000.) in
+    let loc = Loc.parse
+      ~latitude:((59l, 59l, 59.999), true)
+      ~longitude:((59l, 59l, 59.999), false)
+      ~altitude:42849672.95
+      ~precision:(90000000., 90000000., 90000000.)
+    in
     loc_encode_helper loc
 
   let code_tests = [
