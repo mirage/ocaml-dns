@@ -1851,77 +1851,77 @@ $TTL 2560
     let loc_strs = [
       (
         "0 0 0 N 0 0 0 E 0m 0m 0m 0m",
-        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0., 0., 0.),
-        "0 0 0. N 0 0 0. E 0m 0.m 0.m 0.m"
+        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0. N 0 0 0. E 0m 0m 0m 0m"
       ) ;
       (
         "0 0 0 S 0 0 0 W 0 0 0 0",
-        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0., 0., 0.),
-        "0 0 0. N 0 0 0. E 0m 0.m 0.m 0.m"
+        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0. N 0 0 0. E 0m 0m 0m 0m"
       ) ;
       (
-        "0 0 0 N 0 0 0 E 0.m 0.m 0.m 0.m",
-        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0., 0., 0.),
-        "0 0 0. N 0 0 0. E 0m 0.m 0.m 0.m"
+        "0 0 0 N 0 0 0 E 0m 0m 0m 0m",
+        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0. N 0 0 0. E 0m 0m 0m 0m"
       ) ;
       (
         "0 0 0.0 N 0 0 0.0 E 0.00m 0.00m 0.00m 0.00m",
-        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0., 0., 0.),
-        "0 0 0. N 0 0 0. E 0m 0.m 0.m 0.m"
+        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0. N 0 0 0. E 0m 0m 0m 0m"
       ) ;
       (
         "00 00 0.00 N 00 00 0.00 E 0.00 0.00 0.00 0.00",
-        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0., 0., 0.),
-        "0 0 0. N 0 0 0. E 0m 0.m 0.m 0.m"
+        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0. N 0 0 0. E 0m 0m 0m 0m"
       ) ;
       (
         "52 12 40 N 0 5 31 W 22m 10m 10m 10m",
-        Loc.parse ~latitude:((52l, 12l, 40.), true) ~longitude:((0l, 5l, 31.), false) ~altitude:2200L ~precision:(10., 10., 10.),
-        "52 12 40. N 0 5 31. W 22m 10.m 10.m 10.m"
+        Loc.parse ~latitude:((52l, 12l, 40.), true) ~longitude:((0l, 5l, 31.), false) ~altitude:2200L ~precision:(1000L, 1000L, 1000L),
+        "52 12 40. N 0 5 31. W 22m 10m 10m 10m"
       ) ;
       (
         "0 0 0 N 0 0 0 E -100000m 0m 0m 0m",
-        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:(Int64.neg 10000000L) ~precision:(0., 0., 0.),
-        "0 0 0. N 0 0 0. E -100000m 0.m 0.m 0.m"
+        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:(Int64.neg 10000000L) ~precision:(0L, 0L, 0L),
+        "0 0 0. N 0 0 0. E -100000m 0m 0m 0m"
       ) ;
       (
         "0 0 0 S 0 0 0 W -100000 0m 0m 0m",
-        Loc.parse ~latitude:((0l, 0l, 0.), false) ~longitude:((0l, 0l, 0.), false) ~altitude:(Int64.neg 10000000L) ~precision:(0., 0., 0.),
-        "0 0 0. N 0 0 0. E -100000m 0.m 0.m 0.m"
+        Loc.parse ~latitude:((0l, 0l, 0.), false) ~longitude:((0l, 0l, 0.), false) ~altitude:(Int64.neg 10000000L) ~precision:(0L, 0L, 0L),
+        "0 0 0. N 0 0 0. E -100000m 0m 0m 0m"
       ) ;
       (
         "59 59 59.999 N 59 59 59.999 W 21374836.47m 90000000m 90000000m 90000000m",
-        Loc.parse ~latitude:((59l, 59l, 59.999), true) ~longitude:((59l, 59l, 59.999), false) ~altitude:2137483647L ~precision:(90000000.00, 90000000.00, 90000000.00),
-        "59 59 59.999 N 59 59 59.999 W 21374836.47m 90000000.m 90000000.m 90000000.m"
+        Loc.parse ~latitude:((59l, 59l, 59.999), true) ~longitude:((59l, 59l, 59.999), false) ~altitude:2137483647L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "59 59 59.999 N 59 59 59.999 W 21374836.47m 90000000m 90000000m 90000000m"
       ) ;
       (
         "59 59 59.999 N 59 59 59.999 W 21374836.48m 90000000m 90000000m 90000000m",
-        Loc.parse ~latitude:((59l, 59l, 59.999), true) ~longitude:((59l, 59l, 59.999), false) ~altitude:2137483648L ~precision:(90000000.00, 90000000.00, 90000000.00),
-        "59 59 59.999 N 59 59 59.999 W 21374836.48m 90000000.m 90000000.m 90000000.m"
+        Loc.parse ~latitude:((59l, 59l, 59.999), true) ~longitude:((59l, 59l, 59.999), false) ~altitude:2137483648L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "59 59 59.999 N 59 59 59.999 W 21374836.48m 90000000m 90000000m 90000000m"
       ) ;
       (
         "59 59 59.999 N 59 59 59.999 W 21374836.49m 90000000m 90000000m 90000000m",
-        Loc.parse ~latitude:((59l, 59l, 59.999), true) ~longitude:((59l, 59l, 59.999), false) ~altitude:2137483649L ~precision:(90000000.00, 90000000.00, 90000000.00),
-        "59 59 59.999 N 59 59 59.999 W 21374836.49m 90000000.m 90000000.m 90000000.m"
+        Loc.parse ~latitude:((59l, 59l, 59.999), true) ~longitude:((59l, 59l, 59.999), false) ~altitude:2137483649L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "59 59 59.999 N 59 59 59.999 W 21374836.49m 90000000m 90000000m 90000000m"
       ) ;
       (
         "59 59 59.999 N 59 59 59.999 W 42849672.95m 90000000m 90000000m 90000000m",
-        Loc.parse ~latitude:((59l, 59l, 59.999), true) ~longitude:((59l, 59l, 59.999), false) ~altitude:4284967295L ~precision:(90000000., 90000000., 90000000.),
-        "59 59 59.999 N 59 59 59.999 W 42849672.95m 90000000.m 90000000.m 90000000.m"
+        Loc.parse ~latitude:((59l, 59l, 59.999), true) ~longitude:((59l, 59l, 59.999), false) ~altitude:4284967295L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "59 59 59.999 N 59 59 59.999 W 42849672.95m 90000000m 90000000m 90000000m"
       ) ;
       (
         "0 0 0 N 0 0 0 E 0m 0.01m 1.01m 90000000m",
-        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(0.01, 1.01, 90000000.),
-        "0 0 0. N 0 0 0. E 0m 0.01m 1.m 90000000.m"
+        Loc.parse ~latitude:((0l, 0l, 0.), true) ~longitude:((0l, 0l, 0.), true) ~altitude:0L ~precision:(1L, 101L, 9000000000L),
+        "0 0 0. N 0 0 0. E 0m 0.01m 1m 90000000m"
       ) ;
       (
         "52 12 40 N 0 5 31 W 22.1m 10m 10m 10m",
-        Loc.parse ~latitude:((52l, 12l, 40.), true) ~longitude:((0l, 5l, 31.), false) ~altitude:2210L ~precision:(10., 10., 10.),
-        "52 12 40. N 0 5 31. W 22.1m 10.m 10.m 10.m"
+        Loc.parse ~latitude:((52l, 12l, 40.), true) ~longitude:((0l, 5l, 31.), false) ~altitude:2210L ~precision:(1000L, 1000L, 1000L),
+        "52 12 40. N 0 5 31. W 22.1m 10m 10m 10m"
       ) ;(
         "52 12 40 N 0 5 31 W 22.12m 10m 10m 10m",
-        Loc.parse ~latitude:((52l, 12l, 40.), true) ~longitude:((0l, 5l, 31.), false) ~altitude:2212L ~precision:(10., 10., 10.),
-        "52 12 40. N 0 5 31. W 22.12m 10.m 10.m 10.m"
+        Loc.parse ~latitude:((52l, 12l, 40.), true) ~longitude:((0l, 5l, 31.), false) ~altitude:2212L ~precision:(1000L, 1000L, 1000L),
+        "52 12 40. N 0 5 31. W 22.12m 10m 10m 10m"
       ) ;
     ] in
     let parse_loc (loc_str, loc, loc_printed) = 

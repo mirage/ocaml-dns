@@ -1326,11 +1326,11 @@ module Loc = struct
 
   let precision_parse (size, horiz_pre, vert_pre) =
     let encode = fun p ->
-      (* convert from m to cm *)
-      let cm = p *. 100. in
-      let exponent = Int.of_float (Float.log10 cm) in
+      (* TODO remove float calculations *)
+      let p = Int64.to_float p in
+      let exponent = Int.of_float (Float.log10 p) in
       let mantissa =
-        let m = cm /. (10. ** (Float.of_int exponent)) in
+        let m = p /. (10. ** (Float.of_int exponent)) in
         if m > 9. then 9 else Int.of_float m
       in
       (Int.shift_left mantissa 4) lor exponent
@@ -1360,25 +1360,28 @@ module Loc = struct
     let deg = modulo (lat_long / (1000l * 60l * 60l)) 60l in
     (deg, min, sec), dir
 
+  let int64_modulo divident divisor =
+    let (-), (/), ( * ) = Int64.sub, Int64.div, Int64.mul in
+    let quotient = divident / divisor in
+    let remainder = divident - divisor * quotient in
+    remainder
+
   let alt_print alt =
-    let (+), (-), (/), ( * ) = Int64.add, Int64.sub, Int64.div, Int64.mul in
+    let (+), (-), (/) = Int64.add, Int64.sub, Int64.div in
     (* convert a uint32 alt to an int64 *)
     let alt = if alt < 0l then
         Int64.of_int32 alt + Int64.shift_left 1L 32
       else Int64.of_int32 alt
     in
     let alt = alt - 10000000L in
-    let modulo divident divisor =
-      let quotient = divident / divisor in
-      let remainder = divident - divisor * quotient in
-      remainder
-    in
-    (alt / 100L, modulo alt 100L)
+    (alt / 100L, int64_modulo alt 100L)
   
   let precision_print prec =
     let mantissa = ((Int.shift_right prec 4) land 0x0f) mod 10 in
     let exponent = ((Int.shift_right prec 0) land 0x0f) mod 10 in
-    Float.of_int mantissa *. (10. ** Float.of_int exponent) /. 100.
+    let (/), ( * ) = Int64.div, Int64.mul in
+    let p = Int64.of_int mantissa * Int64.of_float (10. ** Float.of_int exponent) in
+    (p / 100L, int64_modulo p 100L)
 
   let to_string loc =
     let lat_long_to_string deg min sec dir =
@@ -1392,19 +1395,25 @@ module Loc = struct
       let (long_deg, long_min, long_sec), long_dir = lat_long_print loc.longitude in
       lat_long_to_string long_deg long_min long_sec (if long_dir then "E" else "W")
     in
-    let altitude_string =
+    let meter_string m =
       let (/), ( * ) = Int64.div, Int64.mul in
-      let integer, decimal = alt_print loc.altitude in
-      (* remove trailing zero from decimal *)
-      let decimal' = if (decimal / 10L) * 10L = decimal then decimal / 10L else decimal in
-      (Int64.to_string integer) ^ (if decimal = 0L then "" else "." ^ Int64.to_string decimal') ^ "m"
+      let integer, decimal = m in
+      let decimal_string = if (decimal / 10L) * 10L = decimal
+        (* remove trailing zero from decimal *)
+        then Int64.to_string (decimal / 10L)
+        (* left pad zeros *)
+        else
+          let decimal = Int64.to_string decimal in
+          String.make (2 - String.length decimal) '0' ^ decimal
+      in
+      (Int64.to_string integer) ^ (if decimal = 0L then "" else "." ^ decimal_string)
     in
     let meter_values =
-      List.map (fun m -> Float.to_string m ^ "m") (
-        (List.map precision_print [loc.size; loc.horiz_pre; loc.vert_pre])
+      List.map (fun m -> meter_string m ^ "m") (
+        [alt_print loc.altitude] @ (List.map precision_print [loc.size; loc.horiz_pre; loc.vert_pre])    
       )
     in
-    String.concat " " ([lat_string; long_string; altitude_string;] @ meter_values)
+    String.concat " " ([lat_string; long_string;] @ meter_values)
 
   let pp ppf loc = Fmt.pf ppf "LOC %s" (to_string loc)
 

@@ -2092,7 +2092,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((52l, 12l, 40.), true)
       ~longitude:((0l, 5l, 31.), false)
       ~altitude:2200L
-      ~precision:(10., 10., 10.)
+      ~precision:(1000L, 1000L, 1000L)
     in
     loc_decode_helper data loc
   
@@ -2113,7 +2113,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((0l, 0l, 0.), true)
       ~longitude:((0l, 0l, 0.), true)
       ~altitude:(Int64.neg 10000000L)
-      ~precision:(0., 0., 0.)
+      ~precision:(0L, 0L, 0L)
     in
     loc_decode_helper data loc
   
@@ -2134,7 +2134,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((0l, 0l, 0.), false)
       ~longitude:((0l, 0l, 0.), false)
       ~altitude:(Int64.neg 10000000L)
-      ~precision:(0., 0., 0.)
+      ~precision:(0L, 0L, 0L)
     in
     loc_decode_helper data loc
 
@@ -2155,7 +2155,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
       ~altitude:4284967295L
-      ~precision:(90000000.00, 90000000.00, 90000000.00)
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
     loc_decode_helper data loc
 
@@ -2176,7 +2176,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
       ~altitude:2137483647L
-      ~precision:(90000000.00, 90000000.00, 90000000.00)
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
     loc_decode_helper data loc
   
@@ -2197,7 +2197,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
       ~altitude:2137483648L
-      ~precision:(90000000.00, 90000000.00, 90000000.00)
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
     loc_decode_helper data loc
   
@@ -2218,7 +2218,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
       ~altitude:2137483649L
-      ~precision:(90000000.00, 90000000.00, 90000000.00)
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
     loc_decode_helper data loc
   
@@ -2238,7 +2238,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((52l, 12l, 40.), true)
       ~longitude:((0l, 5l, 31.), false)
       ~altitude:2200L
-      ~precision:(10., 10., 10.)
+      ~precision:(1000L, 1000L, 1000L)
     in
     loc_decode_helper data loc
 
@@ -2282,7 +2282,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((52l, 12l, 40.), true)
       ~longitude:((0l, 5l, 31.), false)
       ~altitude:2200L
-      ~precision:(10., 10., 10.)
+      ~precision:(1000L, 1000L, 1000L)
     in
     loc_decode_helper data loc
 
@@ -2356,7 +2356,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((0l, 0l, 0.), true)
       ~longitude:((0l, 0l, 0.), true)
       ~altitude:(Int64.neg 10000000L)
-      ~precision:(0., 0., 0.)
+      ~precision:(0L, 0L, 0L)
     in
     loc_encode_helper loc
   
@@ -2365,7 +2365,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((0l, 0l, 0.), false)
       ~longitude:((0l, 0l, 0.), false)
       ~altitude:(Int64.neg 10000000L)
-      ~precision:(0., 0., 0.)
+      ~precision:(0L, 0L, 0L)
     in
     loc_encode_helper loc
   
@@ -2374,7 +2374,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
       ~altitude:4284967295L
-      ~precision:(90000000., 90000000., 90000000.)
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
     loc_encode_helper loc
 

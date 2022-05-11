@@ -811,7 +811,7 @@ module Loc : sig
     latitude:((int32 * int32 * float) * bool)
     -> longitude:((int32 * int32 * float) * bool)
     -> altitude:int64
-    -> precision:(float * float * float)
+    -> precision:(int64 * int64 * int64)
     -> t
   (** [parse ~latitude ~longitude ~altitude ~precision] Parse a human-readable format
      to a Loc record.

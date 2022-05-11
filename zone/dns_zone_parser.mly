@@ -223,18 +223,10 @@ generic_type s generic_rdata {
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
      /* RFC 1876 */
  | TYPE_LOC s deg_min_sec LAT_DIR s deg_min_sec LONG_DIR s altitude precision
-     { let altitude =
-         let integers, decimal = $9 in
-         (* note parsing only allows 2 decimal places,
-            will throw an exception if String.length decimal > 2 *)
-         let decimal = decimal ^ String.make (2 - String.length decimal) '0' in
-         let centimers = integers ^ decimal in
-         Int64.of_string centimers
-       in
-       let loc = Loc.parse
+     { let loc = Loc.parse
         ~latitude:($3, $4 = "N")
         ~longitude:($6, $7 = "E")
-        ~altitude:altitude
+        ~altitude:$9
         ~precision:$10
        in
        B (Loc, (0l, Rr_map.Loc_set.singleton loc)) }
@@ -305,21 +297,12 @@ ufloat:
   | NUMBER DOT            { Float.of_string $1 }
   | NUMBER DOT NUMBER     { Float.of_string (String.concat "." [$1; $3]) }
 
-meters:
-    METERS                { Float.of_string $1 }
-  | NUMBER                { Float.of_string $1 }
-  | NEG_NUMBER            { Float.of_string $1 }
-  | NUMBER DOT            { Float.of_string $1 }
-  | NEG_NUMBER DOT        { Float.of_string $1 }
-  | NUMBER DOT NUMBER     { Float.of_string (String.concat "." [$1; $3]) }
-  | NEG_NUMBER DOT NUMBER { Float.of_string (String.concat "." [$1; $3]) }
-
 deg_min_sec:
     int32 s int32 s ufloat s { $1, $3, $5 }
   | int32 s int32 s          { $1, $3, 0. }
   | int32 s                  { $1, 0l, 0. }
 
-altitude:
+meters:
     METERS {
       match String.split_on_char '.' $1 with
         | [integers ; decimal] -> (integers, decimal)
@@ -333,11 +316,22 @@ altitude:
   | NUMBER DOT NUMBER     { ($1, $3) }
   | NEG_NUMBER DOT NUMBER { ($1, $3) }
 
+centimers: meters
+     { let integers, decimal = $1 in
+       (* note parsing only allows 2 decimal places,
+         will throw an exception if String.length decimal > 2 *)
+       let decimal = decimal ^ String.make (2 - String.length decimal) '0' in
+       let centimers = integers ^ decimal in
+       Int64.of_string centimers
+     }
+
+altitude: centimers { $1 }
+
 precision:
-  |                            { (1., 10000., 10.) }
-  | s meters s meters s meters { ($2, $4, $6) }
-  | s meters s meters          { ($2, $4, 10.) }
-  | s meters                   { ($2, 10000., 10.) }
+                                        { (100L, 1000000L, 1000L) }
+  | s centimers s centimers s centimers { ($2,  $4,        $6   ) }
+  | s centimers s centimers             { ($2,  $4,        1000L) }
+  | s centimers                         { ($2,  1000000L,  1000L) }
 
 /* The owner of an RR is more restricted than a general domain name: it
    can't be a pure number or a type or class.  If we see one of those we
