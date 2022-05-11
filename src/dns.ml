@@ -1320,7 +1320,7 @@ module Loc = struct
       Int32.of_float (sec *. 1000.)
     ) * if dir then 1l else -1l
 
-  let alt_parse alt = Unsigned.UInt32.to_int32 (Unsigned.UInt32.of_int64 (Int64.of_float (10000000. +. alt *. 100.)))
+  let alt_parse alt = Int64.to_int32 (Int64.of_float (10000000. +. alt *. 100.))
 
   let precision_parse (size, horiz_pre, vert_pre) =
     let encode = fun p ->
@@ -1359,7 +1359,13 @@ module Loc = struct
     (deg, min, sec), dir
 
   let alt_print alt =
-    (Int64.to_float (Unsigned.UInt32.to_int64 (Unsigned.UInt32.of_int32 alt)) /. 100.) -. 100000.
+    (* convert a uint32 alt to int64 *)
+    let alt = if alt < 0l then
+        let (+) = Int64.add in
+        Int64.of_int32 alt + Int64.shift_left 1L 32
+      else Int64.of_int32 alt
+    in
+    (Int64.to_float alt /. 100.) -. 100000.
   
   let precision_print prec =
     let mantissa = ((Int.shift_right prec 4) land 0x0f) mod 10 in
