@@ -2091,7 +2091,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((52l, 12l, 40.), true)
       ~longitude:((0l, 5l, 31.), false)
-      ~altitude:22.
+      ~altitude:2200L
       ~precision:(10., 10., 10.)
     in
     loc_decode_helper data loc
@@ -2112,7 +2112,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((0l, 0l, 0.), true)
       ~longitude:((0l, 0l, 0.), true)
-      ~altitude:~-.100000.00
+      ~altitude:(Int64.neg 10000000L)
       ~precision:(0., 0., 0.)
     in
     loc_decode_helper data loc
@@ -2133,7 +2133,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((0l, 0l, 0.), false)
       ~longitude:((0l, 0l, 0.), false)
-      ~altitude:~-.100000.00
+      ~altitude:(Int64.neg 10000000L)
       ~precision:(0., 0., 0.)
     in
     loc_decode_helper data loc
@@ -2154,7 +2154,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
-      ~altitude:42849672.95
+      ~altitude:4284967295L
       ~precision:(90000000.00, 90000000.00, 90000000.00)
     in
     loc_decode_helper data loc
@@ -2175,7 +2175,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
-      ~altitude:21374836.47
+      ~altitude:2137483647L
       ~precision:(90000000.00, 90000000.00, 90000000.00)
     in
     loc_decode_helper data loc
@@ -2196,7 +2196,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
-      ~altitude:21374836.48
+      ~altitude:2137483648L
       ~precision:(90000000.00, 90000000.00, 90000000.00)
     in
     loc_decode_helper data loc
@@ -2217,7 +2217,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
-      ~altitude:21374836.49
+      ~altitude:2137483649L
       ~precision:(90000000.00, 90000000.00, 90000000.00)
     in
     loc_decode_helper data loc
@@ -2237,7 +2237,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((52l, 12l, 40.), true)
       ~longitude:((0l, 5l, 31.), false)
-      ~altitude:22.
+      ~altitude:2200L
       ~precision:(10., 10., 10.)
     in
     loc_decode_helper data loc
@@ -2281,7 +2281,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((52l, 12l, 40.), true)
       ~longitude:((0l, 5l, 31.), false)
-      ~altitude:22.
+      ~altitude:2200L
       ~precision:(10., 10., 10.)
     in
     loc_decode_helper data loc
@@ -2355,7 +2355,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((0l, 0l, 0.), true)
       ~longitude:((0l, 0l, 0.), true)
-      ~altitude:~-.100000.00
+      ~altitude:(Int64.neg 10000000L)
       ~precision:(0., 0., 0.)
     in
     loc_encode_helper loc
@@ -2364,7 +2364,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((0l, 0l, 0.), false)
       ~longitude:((0l, 0l, 0.), false)
-      ~altitude:~-.100000.00
+      ~altitude:(Int64.neg 10000000L)
       ~precision:(0., 0., 0.)
     in
     loc_encode_helper loc
@@ -2373,7 +2373,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let loc = Loc.parse
       ~latitude:((59l, 59l, 59.999), true)
       ~longitude:((59l, 59l, 59.999), false)
-      ~altitude:42849672.95
+      ~altitude:4284967295L
       ~precision:(90000000., 90000000., 90000000.)
     in
     loc_encode_helper loc

@@ -810,7 +810,7 @@ module Loc : sig
   val parse :
     latitude:((int32 * int32 * float) * bool)
     -> longitude:((int32 * int32 * float) * bool)
-    -> altitude:float
+    -> altitude:int64
     -> precision:(float * float * float)
     -> t
   (** [parse ~latitude ~longitude ~altitude ~precision] Parse a human-readable format
@@ -822,7 +822,7 @@ module Loc : sig
      [longitude] is represented by ((degress, mintues, seconds), direction),
      where direction is true for East and false for West.
 
-     [altitude] is the altitude in meters.
+     [altitude] is the altitude in centimeters.
 
      [precision] is represented by (size, horizontal precision, vertical percision)
      in meters.

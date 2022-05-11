@@ -223,10 +223,18 @@ generic_type s generic_rdata {
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
      /* RFC 1876 */
  | TYPE_LOC s deg_min_sec LAT_DIR s deg_min_sec LONG_DIR s altitude precision
-     { let loc = Loc.parse
+     { let altitude =
+         let integers, decimal = $9 in
+         (* note parsing only allows 2 decimal places,
+            will throw an exception if String.length decimal > 2 *)
+         let decimal = decimal ^ String.make (2 - String.length decimal) '0' in
+         let centimers = integers ^ decimal in
+         Int64.of_string centimers
+       in
+       let loc = Loc.parse
         ~latitude:($3, $4 = "N")
         ~longitude:($6, $7 = "E")
-        ~altitude:$9
+        ~altitude:altitude
         ~precision:$10
        in
        B (Loc, (0l, Rr_map.Loc_set.singleton loc)) }
@@ -297,24 +305,33 @@ ufloat:
   | NUMBER DOT            { Float.of_string $1 }
   | NUMBER DOT NUMBER     { Float.of_string (String.concat "." [$1; $3]) }
 
-float:
-    NUMBER                { Float.of_string $1 }
+meters:
+    METERS                { Float.of_string $1 }
+  | NUMBER                { Float.of_string $1 }
   | NEG_NUMBER            { Float.of_string $1 }
   | NUMBER DOT            { Float.of_string $1 }
   | NEG_NUMBER DOT        { Float.of_string $1 }
   | NUMBER DOT NUMBER     { Float.of_string (String.concat "." [$1; $3]) }
   | NEG_NUMBER DOT NUMBER { Float.of_string (String.concat "." [$1; $3]) }
 
-meters:
-    METERS { Float.of_string $1 }
-  | float { $1 }
-
 deg_min_sec:
     int32 s int32 s ufloat s { $1, $3, $5 }
   | int32 s int32 s          { $1, $3, 0. }
   | int32 s                  { $1, 0l, 0. }
 
-altitude: meters { $1 }
+altitude:
+    METERS {
+      match String.split_on_char '.' $1 with
+        | [integers ; decimal] -> (integers, decimal)
+        | [integers] -> (integers, "0")
+        | _ -> parse_error "invalid altitude"
+    }
+  | NUMBER                { ($1, "") }
+  | NEG_NUMBER            { ($1, "") }
+  | NUMBER DOT            { ($1, "") }
+  | NEG_NUMBER DOT        { ($1, "") }
+  | NUMBER DOT NUMBER     { ($1, $3) }
+  | NEG_NUMBER DOT NUMBER { ($1, $3) }
 
 precision:
   |                            { (1., 10000., 10.) }
