@@ -1324,14 +1324,31 @@ module Loc = struct
     let (+) = Int64.add in
     Int64.to_int32 (10000000L + alt)
 
+  let int64_modulo divident divisor =
+    let (-), (/), ( * ) = Int64.sub, Int64.div, Int64.mul in
+    let quotient = divident / divisor in
+    let remainder = divident - divisor * quotient in
+    remainder
+  
+  let rec pow10 e =
+    if e = 0 then 1L else
+    let ( * ) = Int64.mul in
+    pow10 (e - 1) * 10L
+
   let precision_parse (size, horiz_pre, vert_pre) =
     let encode = fun p ->
-      (* TODO remove float calculations *)
-      let p = Int64.to_float p in
-      let exponent = Int.of_float (Float.log10 p) in
+      let exponent =
+        let rec r = fun p e ->
+          if e >= 9 then 9 else
+          if p < (pow10 (e + 1)) then e else
+          r p (e + 1)
+        in
+        r p 0
+      in
       let mantissa =
-        let m = p /. (10. ** (Float.of_int exponent)) in
-        if m > 9. then 9 else Int.of_float m
+        let ( / ) = Int64.div in
+        let m = p / (pow10 exponent) in
+        if m > 9L then 9 else Int64.to_int m
       in
       (Int.shift_left mantissa 4) lor exponent
     in
@@ -1360,12 +1377,6 @@ module Loc = struct
     let deg = modulo (lat_long / (1000l * 60l * 60l)) 60l in
     (deg, min, sec), dir
 
-  let int64_modulo divident divisor =
-    let (-), (/), ( * ) = Int64.sub, Int64.div, Int64.mul in
-    let quotient = divident / divisor in
-    let remainder = divident - divisor * quotient in
-    remainder
-
   let alt_print alt =
     let (+), (-), (/) = Int64.add, Int64.sub, Int64.div in
     (* convert a uint32 alt to an int64 *)
@@ -1380,7 +1391,7 @@ module Loc = struct
     let mantissa = ((Int.shift_right prec 4) land 0x0f) mod 10 in
     let exponent = ((Int.shift_right prec 0) land 0x0f) mod 10 in
     let (/), ( * ) = Int64.div, Int64.mul in
-    let p = Int64.of_int mantissa * Int64.of_float (10. ** Float.of_int exponent) in
+    let p = Int64.of_int mantissa * pow10 exponent in
     (p / 100L, int64_modulo p 100L)
 
   let to_string loc =
