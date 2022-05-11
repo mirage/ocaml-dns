@@ -292,15 +292,22 @@ int32: NUMBER
        with Failure _ ->
 	 parse_error ($1 ^ " is not a 32-bit number") }
 
-ufloat:
-    NUMBER                { Float.of_string $1 }
-  | NUMBER DOT            { Float.of_string $1 }
-  | NUMBER DOT NUMBER     { Float.of_string (String.concat "." [$1; $3]) }
+float:
+    NUMBER                { ($1, "0") }
+  | NUMBER DOT            { ($1, "0") }
+  | NUMBER DOT NUMBER     { ($1, $3) }
+
+secs: float
+     { let integer, decimal = $1 in
+       let decimal = decimal ^ String.make (3 - String.length decimal) '0' in
+       let ( * ), (+) = Int32.mul, Int32.add in
+       (parse_uint32 integer) * 1000l + (parse_uint32 decimal)
+      }
 
 deg_min_sec:
-    int32 s int32 s ufloat s { $1, $3, $5 }
-  | int32 s int32 s          { $1, $3, 0. }
-  | int32 s                  { $1, 0l, 0. }
+    int32 s int32 s secs s   { $1, $3, $5 }
+  | int32 s int32 s          { $1, $3, 0l }
+  | int32 s                  { $1, 0l, 0l }
 
 meters:
     METERS {

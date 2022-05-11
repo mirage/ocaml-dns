@@ -1316,8 +1316,7 @@ module Loc = struct
   let lat_long_parse ((deg, min, sec), dir) =
     let ( * ), (+) = Int32.mul, Int32.add in
     (Int32.shift_left 1l 31) + (
-      (((deg * 60l) + min) * 60l) * 1000l +
-      Int32.of_float (sec *. 1000.)
+      (((deg * 60l) + min) * 60l) * 1000l + sec
     ) * if dir then 1l else -1l
 
   let alt_parse alt =
@@ -1372,7 +1371,12 @@ module Loc = struct
       let remainder = divident - divisor * quotient in
       remainder
     in
-    let sec = Int32.to_float (modulo lat_long (60l * 1000l)) /. 1000. in
+    let sec =
+      let decimal = modulo lat_long (60l * 1000l) in
+      let integer = decimal / 1000l in
+      let decimal = modulo decimal 1000l in
+      (integer, decimal)
+    in
     let min = modulo (lat_long / (1000l * 60l)) 60l in
     let deg = modulo (lat_long / (1000l * 60l * 60l)) 60l in
     (deg, min, sec), dir
@@ -1395,8 +1399,24 @@ module Loc = struct
     (p / 100L, int64_modulo p 100L)
 
   let to_string loc =
+    let decimal_string (integer, decimal) decimal_digits =
+      let (/), ( * ) = Int64.div, Int64.mul in
+      let decimal_string = if (decimal / 10L) * 10L = decimal
+        (* remove trailing zero from decimal *)
+        then Int64.to_string (decimal / 10L)
+        (* left pad zeros *)
+        else
+          let decimal = Int64.to_string decimal in
+          String.make (decimal_digits - String.length decimal) '0' ^ decimal
+      in
+      (Int64.to_string integer) ^ (if decimal = 0L then "" else "." ^ decimal_string)
+    in
     let lat_long_to_string deg min sec dir =
-        String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [Float.to_string sec] @ [dir]) 
+      let sec_string =
+        let integer, decimal = sec in
+        decimal_string (Int64.of_int32 integer, Int64.of_int32 decimal) 3
+      in
+      String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [sec_string ; dir]) 
     in
     let lat_string =
       let (lat_deg, lat_min, lat_sec), lat_dir = lat_long_print loc.latitude in
@@ -1406,21 +1426,8 @@ module Loc = struct
       let (long_deg, long_min, long_sec), long_dir = lat_long_print loc.longitude in
       lat_long_to_string long_deg long_min long_sec (if long_dir then "E" else "W")
     in
-    let meter_string m =
-      let (/), ( * ) = Int64.div, Int64.mul in
-      let integer, decimal = m in
-      let decimal_string = if (decimal / 10L) * 10L = decimal
-        (* remove trailing zero from decimal *)
-        then Int64.to_string (decimal / 10L)
-        (* left pad zeros *)
-        else
-          let decimal = Int64.to_string decimal in
-          String.make (2 - String.length decimal) '0' ^ decimal
-      in
-      (Int64.to_string integer) ^ (if decimal = 0L then "" else "." ^ decimal_string)
-    in
     let meter_values =
-      List.map (fun m -> meter_string m ^ "m") (
+      List.map (fun m -> decimal_string m 2 ^ "m") (
         [alt_print loc.altitude] @ (List.map precision_print [loc.size; loc.horiz_pre; loc.vert_pre])    
       )
     in
