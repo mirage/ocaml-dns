@@ -1322,12 +1322,6 @@ module Loc = struct
   let alt_parse alt =
     let (+) = Int64.add in
     Int64.to_int32 (10000000L + alt)
-
-  let int64_modulo divident divisor =
-    let (-), (/), ( * ) = Int64.sub, Int64.div, Int64.mul in
-    let quotient = divident / divisor in
-    let remainder = divident - divisor * quotient in
-    remainder
   
   let rec pow10 e =
     if e = 0 then 1L else
@@ -1366,19 +1360,14 @@ module Loc = struct
     let lat_long = (Int32.shift_left 1l 31) - lat_long in
     let dir = lat_long <= 0l in
     let lat_long = Int32.abs lat_long in
-    let modulo divident divisor =
-      let quotient = divident / divisor in
-      let remainder = divident - divisor * quotient in
-      remainder
-    in
     let sec =
-      let decimal = modulo lat_long (60l * 1000l) in
+      let decimal = Int32.rem lat_long (60l * 1000l) in
       let integer = decimal / 1000l in
-      let decimal = modulo decimal 1000l in
+      let decimal = Int32.rem decimal 1000l in
       (integer, decimal)
     in
-    let min = modulo (lat_long / (1000l * 60l)) 60l in
-    let deg = modulo (lat_long / (1000l * 60l * 60l)) 60l in
+    let min = Int32.rem (lat_long / (1000l * 60l)) 60l in
+    let deg = Int32.rem (lat_long / (1000l * 60l * 60l)) 60l in
     (deg, min, sec), dir
 
   let alt_print alt =
@@ -1389,14 +1378,14 @@ module Loc = struct
       else Int64.of_int32 alt
     in
     let alt = alt - 10000000L in
-    (alt / 100L, int64_modulo alt 100L)
+    (alt / 100L, Int64.rem alt 100L)
   
   let precision_print prec =
     let mantissa = ((Int.shift_right prec 4) land 0x0f) mod 10 in
     let exponent = ((Int.shift_right prec 0) land 0x0f) mod 10 in
     let (/), ( * ) = Int64.div, Int64.mul in
     let p = Int64.of_int mantissa * pow10 exponent in
-    (p / 100L, int64_modulo p 100L)
+    (p / 100L, Int64.rem p 100L)
 
   let to_string loc =
     let decimal_string (integer, decimal) decimal_digits =
