@@ -1390,15 +1390,24 @@ module Loc = struct
   let to_string loc =
     let decimal_string (integer, decimal) decimal_digits =
       let (/), ( * ) = Int64.div, Int64.mul in
-      let decimal_string = if (decimal / 10L) * 10L = decimal
+      let integer_string = Int64.to_string integer in
+      if decimal = 0L then
+        integer_string
+      else
+      let decimal_string =
+        let rec trim_trailing_zeros decimal num_trimmed =
+          if (decimal / 10L) * 10L = decimal then
+            trim_trailing_zeros (decimal / 10L) (num_trimmed + 1)
+          else
+            decimal, num_trimmed
+        in
         (* remove trailing zero from decimal *)
-        then Int64.to_string (decimal / 10L)
+        let decimal, num_trimmed = trim_trailing_zeros decimal 0 in
         (* left pad zeros *)
-        else
-          let decimal = Int64.to_string decimal in
-          String.make (decimal_digits - String.length decimal) '0' ^ decimal
+        let decimal = Int64.to_string decimal in
+        String.make (decimal_digits - String.length decimal - num_trimmed) '0' ^ decimal
       in
-      (Int64.to_string integer) ^ (if decimal = 0L then "" else "." ^ decimal_string)
+      integer_string ^ "." ^ decimal_string
     in
     let lat_long_to_string deg min sec dir =
       let sec_string =
