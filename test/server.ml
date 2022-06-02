@@ -1843,23 +1843,24 @@ a.b	A	1.2.3.4
 
 let numerical_subdomain_zone = {|
 $ORIGIN example.
-$TTL 2560
-@	SOA	ns 	root	1	86400	10800	1048576	2560
-1.example.net.	A	5.6.7.8
+example.                 3600 IN  SOA   ns.example.com. 	root	1	86400	10800	1048576	2560
+1host.example.           3600     A     192.0.2.1
 |}
 
   let parse_numerical_subdomain_zone () =
     let rrs =
-      let z = n_of_s "example" in
-      let ns_name = n_of_s "ns.example" in
-      let ns = 2560l, Domain_name.(Host_set.singleton (host_exn ns_name)) in
-      let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+      let soa = { Soa.nameserver = n_of_s "ns.example.com" ; hostmaster = n_of_s "root.example" ;
                   serial = 1l ; refresh = 86400l ; retry = 10800l ;
                   expiry = 1048576l ; minimum = 2560l }
       in
-      Name_rr_map.(add z Rr_map.Ns ns (singleton z Rr_map.Soa soa))
+      let z = n_of_s "example" in
+      let host1 = n_of_s "1host.example" in
+      let host1_a = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "192.0.2.1") in
+      let ttl = 3600l in
+      Name_rr_map.(add z Rr_map.Soa soa
+                     (singleton host1 Rr_map.A (ttl, host1_a)))
     in
-    Alcotest.(check (result name_map_ok err) "parsing simple zone"
+    Alcotest.(check (result name_map_ok err) "parsing numerical subdomain zone"
                 (Ok rrs) (Dns_zone.parse numerical_subdomain_zone))
 
   let parse_locs () =
