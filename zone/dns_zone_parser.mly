@@ -63,9 +63,8 @@ let add_to_map name ~ttl (Rr_map.B (k, v)) =
 %token DOT
 %token SPACE
 %token GENERIC
-%token M
-%token MINUS
 %token <string> NUMBER
+%token <string> NEG_NUMBER
 %token <string> CHARSTRING
 
 %token <string> TYPE_A
@@ -90,6 +89,7 @@ let add_to_map name ~ttl (Rr_map.B (k, v)) =
 %token <string> CLASS_CH
 %token <string> CLASS_HS
 
+%token <string> METERS
 %token <string> LAT_DIR
 %token <string> LONG_DIR
 
@@ -310,10 +310,18 @@ deg_min_sec:
   | int32 s                  { $1, 0l, 0l }
 
 meters:
-  | float                    { $1 }
-  | float M                  { $1 }
-  | MINUS float              { let i, d = $2 in ("-" ^ i, d) }
-  | MINUS float M            { let i, d = $2 in ("-" ^ i, d) }
+    METERS {
+      match String.split_on_char '.' $1 with
+        | [integers ; decimal] -> (integers, decimal)
+        | [integers] -> (integers, "0")
+        | _ -> parse_error "invalid altitude"
+    }
+  | NUMBER                { ($1, "") }
+  | NEG_NUMBER            { ($1, "") }
+  | NUMBER DOT            { ($1, "") }
+  | NEG_NUMBER DOT        { ($1, "") }
+  | NUMBER DOT NUMBER     { ($1, $3) }
+  | NEG_NUMBER DOT NUMBER { ($1, $3) }
 
 centimetres: meters
      { let integers, decimal = $1 in
