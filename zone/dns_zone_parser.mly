@@ -323,22 +323,22 @@ meters:
   | NUMBER DOT NUMBER     { ($1, $3) }
   | NEG_NUMBER DOT NUMBER { ($1, $3) }
 
-centimers: meters
+centimetres: meters
      { let integers, decimal = $1 in
        (* note parsing only allows 2 decimal places,
          will throw an exception if String.length decimal > 2 *)
        let decimal = decimal ^ String.make (2 - String.length decimal) '0' in
-       let centimers = integers ^ decimal in
-       Int64.of_string centimers
+       let centimetres = integers ^ decimal in
+       Int64.of_string centimetres
      }
 
-altitude: centimers { $1 }
+altitude: centimetres { $1 }
 
 precision:
                                         { (100L, 1000000L, 1000L) }
-  | s centimers s centimers s centimers { ($2,  $4,        $6   ) }
-  | s centimers s centimers             { ($2,  $4,        1000L) }
-  | s centimers                         { ($2,  1000000L,  1000L) }
+  | s centimetres s centimetres s centimetres { ($2,  $4,        $6   ) }
+  | s centimetres s centimetres             { ($2,  $4,        1000L) }
+  | s centimetres                         { ($2,  1000000L,  1000L) }
 
 /* The owner of an RR is more restricted than a general domain name: it
    can't be a pure number or a type or class.  If we see one of those we
