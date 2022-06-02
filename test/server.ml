@@ -1945,6 +1945,21 @@ $TTL 2560
         Loc.parse ~latitude:((52l, 12l, 40120l), true) ~longitude:((0l, 5l, 31010l), false) ~altitude:2212L ~precision:(1000L, 1000L, 1000L),
         "52 12 40.12 N 0 5 31.01 W 22.12m 10m 10m 10m"
       ) ;
+      (
+        "52 12 40 N 0 5 31 W 22m 10m 10m",
+        Loc.parse ~latitude:((52l, 12l, 40000l), true) ~longitude:((0l, 5l, 31000l), false) ~altitude:2200L ~precision:(1000L, 1000L, 1000L),
+        "52 12 40 N 0 5 31 W 22m 10m 10m 10m"
+      ) ;
+      (
+        "52 12 40 N 0 5 31 W 22m 10m",
+        Loc.parse ~latitude:((52l, 12l, 40000l), true) ~longitude:((0l, 5l, 31000l), false) ~altitude:2200L ~precision:(1000L, 1000000L, 1000L),
+        "52 12 40 N 0 5 31 W 22m 10m 10000m 10m"
+      ) ;
+      (
+        "52 12 40 N 0 5 31 W 22m",
+        Loc.parse ~latitude:((52l, 12l, 40000l), true) ~longitude:((0l, 5l, 31000l), false) ~altitude:2200L ~precision:(100L, 1000000L, 1000L),
+        "52 12 40 N 0 5 31 W 22m 1m 10000m 10m"
+      ) ;
     ] in
     let parse_loc (loc_str, loc, loc_printed) = 
       let rrs =
