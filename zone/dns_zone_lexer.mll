@@ -64,10 +64,8 @@ let eol = [' ''\t']* (';' [^'\n']*)? '\n'
 let octet = '\\' ['0'-'9'] ['0'-'9'] ['0'-'9']
 let escape = '\\' _ (* Strictly \0 is not an escape, but be liberal *)
 let qstring = '"' ((([^'\\''"']|octet|escape)*) as contents) '"'
-let label = (([^'\\'' ''\t''\n''.''('')']|octet|escape)*) as contents
+let label = (([^'\\'' ''\t''\n''.''('')''0'-'9''-']|octet|escape)([^'\\'' ''\t''\n''.''('')']|octet|escape)*) as contents
 let number = (['0'-'9']+) as contents
-let neg_number = ('-' ['0'-'9']+) as contents
-let meters = ('-'? ['0'-'9']+ ('.' ['0'-'9']? ['0'-'9']?)? as contents) 'm'
 let openpar = [' ''\t']* '(' ([' ''\t''\n'] | eol)*
 let closepar = (eol | [' ''\t''\n'])* ')' [' ''\t']*
 let typefoo = (['T''t']['Y''y']['P''p']['E''e'] number) as contents
@@ -80,14 +78,15 @@ rule token = parse
 	          count_linebreaks (lexeme lexbuf); SPACE }
 | closepar eol  { if state.paren > 0 then state.paren <- state.paren - 1;
 	          count_linebreaks (lexeme lexbuf); EOL }
+
 | "\\#"         { GENERIC }
 | "$ORIGIN"     { SORIGIN }
 | "$TTL"        { STTL }
 | '.'           { DOT }
 | '@'           { AT }
+| 'm'           { M }
+| '-'           { MINUS }
 | number        { NUMBER contents }
-| neg_number    { NEG_NUMBER contents }
-| meters        { METERS contents }
 | typefoo       { TYPE_GENERIC contents }
 | qstring       { count_linebreaks contents; CHARSTRING contents }
 | label         { count_linebreaks contents; kw_or_cs contents }
