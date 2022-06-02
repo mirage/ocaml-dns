@@ -1841,6 +1841,27 @@ a.b	A	1.2.3.4
         Alcotest.(check string "text (decode_zones z) = z" zone data)
       | Error _ -> Alcotest.fail "failed to encode zone"
 
+let numerical_subdomain_zone = {|
+$ORIGIN example.
+$TTL 2560
+@	SOA	ns 	root	1	86400	10800	1048576	2560
+1.example.net.	A	5.6.7.8
+|}
+
+  let parse_numerical_subdomain_zone () =
+    let rrs =
+      let z = n_of_s "example" in
+      let ns_name = n_of_s "ns.example" in
+      let ns = 2560l, Domain_name.(Host_set.singleton (host_exn ns_name)) in
+      let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+                  serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                  expiry = 1048576l ; minimum = 2560l }
+      in
+      Name_rr_map.(add z Rr_map.Ns ns (singleton z Rr_map.Soa soa))
+    in
+    Alcotest.(check (result name_map_ok err) "parsing simple zone"
+                (Ok rrs) (Dns_zone.parse numerical_subdomain_zone))
+
   let parse_locs () =
     let loc_zone = {|
 $ORIGIN example.
@@ -1961,6 +1982,7 @@ $TTL 2560
     "RFC 4592 questions", `Quick, rfc4592_questions ;
     "parse zone with additional glue", `Quick, parse_zone_with_glue ;
     "parse zone with additional glue and sub", `Quick, parse_zone_with_glue_sub ;
+    "parsing numerical subdomain zone", `Quick, parse_numerical_subdomain_zone ;
     "parse locs", `Quick, parse_locs ;
   ]
 end
