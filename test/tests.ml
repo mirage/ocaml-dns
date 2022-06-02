@@ -2084,13 +2084,13 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "13" ^ (* size *)
         "13" ^ (* horizontal percision *)
         "13" ^ (* vertical percision *)
-        "8b 34 0a c0" ^ (* lat *)
-        "7f fa f3 08" ^ (* long *)
+        "8b 34 0c 50" ^ (* lat *)
+        "7f fa ef 84" ^ (* long *)
         "00 98 9f 18" (* alt *) 
     ) in
     let loc = Loc.parse
-      ~latitude:((52l, 12l, 40000l), true)
-      ~longitude:((0l, 5l, 31000l), false)
+      ~latitude:((52l, 12l, 40400l), true)
+      ~longitude:((0l, 5l, 31900l), false)
       ~altitude:2200L
       ~precision:(1000L, 1000L, 1000L)
     in
@@ -2230,13 +2230,13 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "13" ^ (* size *)
         "13" ^ (* horizontal percision *)
         "13" ^ (* vertical percision *)
-        "8b 34 0a c0" ^ (* lat *)
-        "7f fa f3 08" ^ (* long *)
+        "8b 34 0c 50" ^ (* lat *)
+        "7f fa ef 84" ^ (* long *)
         "00 98 9f 18 00" (* alt *) 
     ) in
     let loc = Loc.parse
-      ~latitude:((52l, 12l, 40000l), true)
-      ~longitude:((0l, 5l, 31000l), false)
+      ~latitude:((52l, 12l, 40400l), true)
+      ~longitude:((0l, 5l, 31900l), false)
       ~altitude:2200L
       ~precision:(1000L, 1000L, 1000L)
     in
@@ -2274,13 +2274,13 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
           "13" ^ (* size *)
           "13" ^ (* horizontal percision *)
           "13" ^ (* vertical percision *)
-          "8b 34 0a c0" ^ (* lat *)
-          "7f fa f3 08" ^ (* long *)
+          "8b 34 0c 50" ^ (* lat *)
+          "7f fa ef 84" ^ (* long *)
           "00 98 9f 18 00" (* alt *) 
     ) in
     let loc = Loc.parse
-      ~latitude:((52l, 12l, 40000l), true)
-      ~longitude:((0l, 5l, 31000l), false)
+      ~latitude:((52l, 12l, 40400l), true)
+      ~longitude:((0l, 5l, 31900l), false)
       ~altitude:2200L
       ~precision:(1000L, 1000L, 1000L)
     in
@@ -2295,8 +2295,8 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "13" ^ (* size *)
         "13" ^ (* horizontal percision *)
         "13" ^ (* vertical percision *)
-        "8b 34 0a c0" ^ (* lat *)
-        "7f fa f3 08" ^ (* long *)
+        "8b 34 0c 50" ^ (* lat *)
+        "7f fa ef 84" ^ (* long *)
         "00 98 9f" (* alt *) 
     ) in
     Alcotest.(check (result t_ok p_err) "short LOC decodes" (Error `Partial) (decode data))
