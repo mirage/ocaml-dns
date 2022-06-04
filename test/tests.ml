@@ -2147,13 +2147,34 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "99" ^ (* size *)
         "99" ^ (* horizontal percision *)
         "99" ^ (* vertical percision *)
-        "8c df e5 ff" ^ (* lat *)
-        "73 20 1a 01" ^ (* long *)
+        "93 4f d9 00" ^ (* lat *)
+        "a6 9f b2 00" ^ (* long *)
         "ff ff ff ff" (* alt *)
     ) in
     let loc = Loc.parse
-      ~latitude:((59l, 59l, 59999l), true)
-      ~longitude:((59l, 59l, 59999l), false)
+      ~latitude:((90l, 0l, 0l), true)
+      ~longitude:((180l, 0l, 0l), true)
+      ~altitude:4284967295L
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
+    in
+    loc_decode_helper data loc
+
+  let loc_decode_max_inverted () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "99" ^ (* size *)
+        "99" ^ (* horizontal percision *)
+        "99" ^ (* vertical percision *)
+        "6c b0 27 00" ^ (* lat *)
+        "59 60 4e 00" ^ (* long *)
+        "ff ff ff ff" (* alt *)
+    ) in
+    let loc = Loc.parse
+      ~latitude:((90l, 0l, 0l), false)
+      ~longitude:((180l, 0l, 0l), false)
       ~altitude:4284967295L
       ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
@@ -2168,13 +2189,13 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "99" ^ (* size *)
         "99" ^ (* horizontal percision *)
         "99" ^ (* vertical percision *)
-        "8c df e5 ff" ^ (* lat *)
-        "73 20 1a 01" ^ (* long *)
+        "93 4f d9 00" ^ (* lat *)
+        "a6 9f b2 00" ^ (* long *)
         "7f ff ff ff" (* alt *)
     ) in
     let loc = Loc.parse
-      ~latitude:((59l, 59l, 59999l), true)
-      ~longitude:((59l, 59l, 59999l), false)
+      ~latitude:((90l, 0l, 0l), true)
+      ~longitude:((180l, 0l, 0l), true)
       ~altitude:2137483647L
       ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
@@ -2189,13 +2210,13 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "99" ^ (* size *)
         "99" ^ (* horizontal percision *)
         "99" ^ (* vertical percision *)
-        "8c df e5 ff" ^ (* lat *)
-        "73 20 1a 01" ^ (* long *)
+        "93 4f d9 00" ^ (* lat *)
+        "a6 9f b2 00" ^ (* long *)
         "80 00 00 00" (* alt *)
     ) in
     let loc = Loc.parse
-      ~latitude:((59l, 59l, 59999l), true)
-      ~longitude:((59l, 59l, 59999l), false)
+      ~latitude:((90l, 0l, 0l), true)
+      ~longitude:((180l, 0l, 0l), true)
       ~altitude:2137483648L
       ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
@@ -2210,13 +2231,13 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "99" ^ (* size *)
         "99" ^ (* horizontal percision *)
         "99" ^ (* vertical percision *)
-        "8c df e5 ff" ^ (* lat *)
-        "73 20 1a 01" ^ (* long *)
+        "93 4f d9 00" ^ (* lat *)
+        "a6 9f b2 00" ^ (* long *)
         "80 00 00 01" (* alt *)
     ) in
     let loc = Loc.parse
-      ~latitude:((59l, 59l, 59999l), true)
-      ~longitude:((59l, 59l, 59999l), false)
+      ~latitude:((90l, 0l, 0l), true)
+      ~longitude:((180l, 0l, 0l), true)
       ~altitude:2137483649L
       ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
@@ -2371,8 +2392,17 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
   
   let loc_encode_max () =
     let loc = Loc.parse
-      ~latitude:((59l, 59l, 59999l), true)
-      ~longitude:((59l, 59l, 59999l), false)
+      ~latitude:((90l, 0l, 0l), true)
+      ~longitude:((180l, 0l, 0l), true)
+      ~altitude:4284967295L
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
+    in
+    loc_encode_helper loc
+  
+  let loc_encode_max_inverted () =
+    let loc = Loc.parse
+      ~latitude:((90l, 0l, 0l), false)
+      ~longitude:((180l, 0l, 0l), false)
       ~altitude:4284967295L
       ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
@@ -2445,6 +2475,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "loc decode min", `Quick, loc_decode_min ;
     "loc decode min negated", `Quick, loc_decode_min_negated ;
     "loc decode max", `Quick, loc_decode_max ;
+    "loc decode max inverted", `Quick, loc_decode_max_inverted ;
     "loc decode alt signed max under", `Quick, loc_decode_alt_signed_max_under ;
     "loc decode alt signed max", `Quick, loc_decode_alt_signed_max ;
     "loc decode alt signed max over", `Quick, loc_decode_alt_signed_max_over ;
@@ -2455,6 +2486,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "loc encode min" , `Quick, loc_encode_min ;
     "loc encode min negated", `Quick, loc_encode_min_negated ;
     "loc encode max", `Quick, loc_encode_max ;
+    "loc encode max inverted", `Quick, loc_encode_max_inverted ;
   ]
 end
 

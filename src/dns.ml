@@ -1367,7 +1367,7 @@ module Loc = struct
       (integer, decimal)
     in
     let min = Int32.rem (lat_long / (1000l * 60l)) 60l in
-    let deg = Int32.rem (lat_long / (1000l * 60l * 60l)) 60l in
+    let deg = lat_long / (1000l * 60l * 60l) in
     (deg, min, sec), dir
 
   let alt_print alt =
