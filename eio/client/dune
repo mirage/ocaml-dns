@@ -1,0 +1,23 @@
+(library
+ (name        dns_client_eio)
+ (modules     dns_client_eio)
+ (public_name dns-client-eio)
+ (libraries
+  cstruct
+  duration
+  ipaddr
+  dns-client
+  dns-client.resolvconf
+  happy-eyeballs
+  mtime
+  mtime.clock.os
+  mirage-crypto-rng
+  mirage-crypto-rng-eio))
+
+(executable
+ (name        ohost)
+ (modules     ohost)
+ (public_name dns-client-eio.ohost)
+ (package     dns-client-eio)
+ (libraries   dns-client-eio mtime.clock.os eio_main domain-name fmt
+              cmdliner fmt.cli logs.cli logs.fmt fmt.tty))
