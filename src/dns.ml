@@ -1313,9 +1313,6 @@ module Loc = struct
     vert_pre : int;
   }
 
-  type latitude_direction = North | South
-  type longitude_direction = East | West
-
   let arcsecs_parse (deg, min, sec) =
     let ( * ), (+) = Int32.mul, Int32.add in
     (Int32.shift_left 1l 31) + (
@@ -1324,11 +1321,11 @@ module Loc = struct
 
   let lat_parse (arcsecs, dir) =
     let ( * ) = Int32.mul in
-    if dir == North then arcsecs_parse arcsecs else -1l * (arcsecs_parse arcsecs)
+    if dir == `North then arcsecs_parse arcsecs else -1l * (arcsecs_parse arcsecs)
   
   let long_parse (arcsecs, dir) =
     let ( * ) = Int32.mul in
-    if dir = East then arcsecs_parse arcsecs else -1l * (arcsecs_parse arcsecs)
+    if dir = `East then arcsecs_parse arcsecs else -1l * (arcsecs_parse arcsecs)
 
   let alt_parse alt =
     let (+) = Int64.add in
@@ -1383,12 +1380,12 @@ module Loc = struct
 
   let lat_print lat =
     let arcsecs, dir = arcsecs_print lat in
-    let dir = if dir then North else South in
+    let dir = if dir then `North else `South in
     (arcsecs, dir)
 
   let long_print long =
     let arcsecs, dir = arcsecs_print long in
-    let dir = if dir then East else West in
+    let dir = if dir then `East else `West in
     (arcsecs, dir)
 
   let alt_print alt =
@@ -1439,11 +1436,11 @@ module Loc = struct
     in
     let lat_string =
       let (lat_deg, lat_min, lat_sec), lat_dir = lat_print loc.latitude in
-      lat_long_to_string lat_deg lat_min lat_sec (if lat_dir = North then "N" else "S")
+      lat_long_to_string lat_deg lat_min lat_sec (if lat_dir = `North then "N" else "S")
     in
     let long_string =
       let (long_deg, long_min, long_sec), long_dir = long_print loc.longitude in
-      lat_long_to_string long_deg long_min long_sec (if long_dir = East then "E" else "W")
+      lat_long_to_string long_deg long_min long_sec (if long_dir = `East then "E" else "W")
     in
     let meter_values =
       List.map (fun m -> decimal_string m 2 ^ "m") (
@@ -3759,7 +3756,7 @@ module Packet = struct
       *)
       let* () =
         guard (ancount >= 1)
-          (`Malformed (6, Fmt.str "AXFR needs at least one RRs in answer %d" ancount))
+          (`Malformed (6, Fmt.str "AXFR needs at l`east one RRs in answer %d" ancount))
       in
       let* name, B (k, v), names, off = decode_rr names buf off in
       if ancount = 1 then
@@ -3919,7 +3916,7 @@ module Packet = struct
       let* () = guard (not (Flags.mem `Truncation flags)) `Partial in
       let* () =
         guard (ancount >= 1)
-          (`Malformed (6, Fmt.str "IXFR needs at least one RRs in answer %d" ancount))
+          (`Malformed (6, Fmt.str "IXFR needs at l`east one RRs in answer %d" ancount))
       in
       let* name, b, names, off = decode_rr names buf off in
       match ensure_soa b with

@@ -807,25 +807,17 @@ module Loc : sig
   }
   (** The type of a Loc record. *)
 
-  type latitude_direction = North | South
-  type longitude_direction = East | West
-
   val parse :
-    latitude:((int32 * int32 * int32) * latitude_direction)
-    -> longitude:((int32 * int32 * int32) * longitude_direction)
+    latitude:((int32 * int32 * int32) * [ `North | `South ])
+    -> longitude:((int32 * int32 * int32) * [ `East | `West ])
     -> altitude:int64
     -> precision:(int64 * int64 * int64)
     -> t
   (** [parse ~latitude ~longitude ~altitude ~precision] Parse a human-readable format
      to a Loc record.
 
-     [latitude] is represented by
-       ((degress, mintues, seconds), direction),
-     where direction is true for North and false for South.
-     Note seconds is given to 3 decimal places.
-
-     [longitude] is represented as [latitude], but instead direction is true for East
-     and false for West.
+     [latitude] and [longitude] are represented by
+     ((degress, mintues, seconds), direction)
 
      [altitude] is the altitude in centimeters.
 
