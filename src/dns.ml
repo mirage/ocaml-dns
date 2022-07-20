@@ -1313,11 +1313,22 @@ module Loc = struct
     vert_pre : int;
   }
 
-  let lat_long_parse ((deg, min, sec), dir) =
+  type latitude_direction = North | South
+  type longitude_direction = East | West
+
+  let arcsecs_parse (deg, min, sec) =
     let ( * ), (+) = Int32.mul, Int32.add in
     (Int32.shift_left 1l 31) + (
       (((deg * 60l) + min) * 60l) * 1000l + sec
-    ) * if dir then 1l else -1l
+    )
+
+  let lat_parse (arcsecs, dir) =
+    let ( * ) = Int32.mul in
+    if dir == North then arcsecs_parse arcsecs else -1l * (arcsecs_parse arcsecs)
+  
+  let long_parse (arcsecs, dir) =
+    let ( * ) = Int32.mul in
+    if dir = East then arcsecs_parse arcsecs else -1l * (arcsecs_parse arcsecs)
 
   let alt_parse alt =
     let (+) = Int64.add in
@@ -1349,13 +1360,13 @@ module Loc = struct
   
   (* RFC 1876 Appendix A *)
   let parse ~latitude:latitude ~longitude:longitude ~altitude:altitude ~precision:precision =
-    let latitude = lat_long_parse latitude in
-    let longitude = lat_long_parse longitude in
+    let latitude = lat_parse latitude in
+    let longitude = long_parse longitude in
     let altitude = alt_parse altitude in
     let size, horiz_pre, vert_pre = precision_parse precision in
     { latitude ; longitude ; altitude ; size ; horiz_pre ; vert_pre}
 
-  let lat_long_print lat_long =
+  let arcsecs_print lat_long =
     let ( * ), (-), (/) = Int32.mul, Int32.sub, Int32.div in
     let lat_long = (Int32.shift_left 1l 31) - lat_long in
     let dir = lat_long <= 0l in
@@ -1369,6 +1380,16 @@ module Loc = struct
     let min = Int32.rem (lat_long / (1000l * 60l)) 60l in
     let deg = lat_long / (1000l * 60l * 60l) in
     (deg, min, sec), dir
+
+  let lat_print lat =
+    let arcsecs, dir = arcsecs_print lat in
+    let dir = if dir then North else South in
+    (arcsecs, dir)
+
+  let long_print long =
+    let arcsecs, dir = arcsecs_print long in
+    let dir = if dir then East else West in
+    (arcsecs, dir)
 
   let alt_print alt =
     let (+), (-), (/) = Int64.add, Int64.sub, Int64.div in
@@ -1417,12 +1438,12 @@ module Loc = struct
       String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [sec_string ; dir]) 
     in
     let lat_string =
-      let (lat_deg, lat_min, lat_sec), lat_dir = lat_long_print loc.latitude in
-      lat_long_to_string lat_deg lat_min lat_sec (if lat_dir then "N" else "S")
+      let (lat_deg, lat_min, lat_sec), lat_dir = lat_print loc.latitude in
+      lat_long_to_string lat_deg lat_min lat_sec (if lat_dir = North then "N" else "S")
     in
     let long_string =
-      let (long_deg, long_min, long_sec), long_dir = lat_long_print loc.longitude in
-      lat_long_to_string long_deg long_min long_sec (if long_dir then "E" else "W")
+      let (long_deg, long_min, long_sec), long_dir = long_print loc.longitude in
+      lat_long_to_string long_deg long_min long_sec (if long_dir = East then "E" else "W")
     in
     let meter_values =
       List.map (fun m -> decimal_string m 2 ^ "m") (

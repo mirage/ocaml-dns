@@ -224,8 +224,8 @@ generic_type s generic_rdata {
      /* RFC 1876 */
  | TYPE_LOC s deg_min_sec LAT_DIR s deg_min_sec LONG_DIR s altitude precision
      { let loc = Loc.parse
-        ~latitude:($3, $4 = "N")
-        ~longitude:($6, $7 = "E")
+        ~latitude:($3, if $4 = "N" then Loc.North else Loc.South )
+        ~longitude:($6, if $4 = "E" then Loc.East else Loc.West )
         ~altitude:$9
         ~precision:$10
        in

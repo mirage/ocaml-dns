@@ -807,9 +807,12 @@ module Loc : sig
   }
   (** The type of a Loc record. *)
 
+  type latitude_direction = North | South
+  type longitude_direction = East | West
+
   val parse :
-    latitude:((int32 * int32 * int32) * bool)
-    -> longitude:((int32 * int32 * int32) * bool)
+    latitude:((int32 * int32 * int32) * latitude_direction)
+    -> longitude:((int32 * int32 * int32) * longitude_direction)
     -> altitude:int64
     -> precision:(int64 * int64 * int64)
     -> t
