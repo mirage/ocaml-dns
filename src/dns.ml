@@ -30,9 +30,6 @@ let opt_eq f a b = match a, b with
   | None, None -> true
   | _ -> false
 
-let int_compare (a : int) (b : int) = compare a b
-let int32_compare (a : int32) (b : int32) = Int32.compare a b
-
 let guard p err = if p then Ok () else Error err
 
 let src = Logs.Src.create "dns" ~doc:"DNS core"
@@ -94,7 +91,7 @@ module Class = struct
     | NONE -> 254
     | ANY_CLASS -> 255
 
-  let _compare a b = int_compare (to_int a) (to_int b)
+  let _compare a b = Int.compare (to_int a) (to_int b)
 
   let of_int ?(off = 0) = function
     | 1 -> Ok IN
@@ -132,7 +129,7 @@ module Opcode = struct
     | Notify -> 4
     | Update -> 5
 
-  let compare a b = int_compare (to_int a) (to_int b)
+  let compare a b = Int.compare (to_int a) (to_int b)
 
   let of_int ?(off = 0) = function
     | 0 -> Ok Query
@@ -188,7 +185,7 @@ module Rcode = struct
     | NXRRSet -> 8 | NotAuth -> 9 | NotZone -> 10 | BadVersOrSig -> 16
     | BadKey -> 17 | BadTime -> 18 | BadMode -> 19 | BadName -> 20
     | BadAlg -> 21 | BadTrunc -> 22 | BadCookie -> 23
-  let compare a b = int_compare (to_int a) (to_int b)
+  let compare a b = Int.compare (to_int a) (to_int b)
 
   let of_int ?(off = 0) = function
     | 0 -> Ok NoError | 1 -> Ok FormErr | 2 -> Ok ServFail
@@ -222,7 +219,7 @@ let ( let* ) = Result.bind
 module Name = struct
   module Int_map = Map.Make(struct
       type t = int
-      let compare = int_compare
+      let compare = Int.compare
     end)
   type name_offset_map = int Domain_name.Map.t
 
@@ -527,13 +524,13 @@ module Soa = struct
       soa.serial soa.refresh soa.retry soa.expiry soa.minimum
 
   let compare soa soa' =
-    andThen (int32_compare soa.serial soa'.serial)
+    andThen (Int32.compare soa.serial soa'.serial)
       (andThen (Domain_name.compare soa.nameserver soa'.nameserver)
          (andThen (Domain_name.compare soa.hostmaster soa'.hostmaster)
-            (andThen (int32_compare soa.refresh soa'.refresh)
-               (andThen (int32_compare soa.retry soa'.retry)
-                  (andThen (int32_compare soa.expiry soa'.expiry)
-                     (int32_compare soa.minimum soa'.minimum))))))
+            (andThen (Int32.compare soa.refresh soa'.refresh)
+               (andThen (Int32.compare soa.retry soa'.retry)
+                  (andThen (Int32.compare soa.expiry soa'.expiry)
+                     (Int32.compare soa.minimum soa'.minimum))))))
 
   let newer ~old soa = Int32.sub soa.serial old.serial > 0l
 
@@ -593,7 +590,7 @@ module Mx = struct
     Fmt.pf ppf "MX %u %a" preference Domain_name.pp mail_exchange
 
   let compare mx mx' =
-    andThen (int_compare mx.preference mx'.preference)
+    andThen (Int.compare mx.preference mx'.preference)
       (Domain_name.compare mx.mail_exchange mx'.mail_exchange)
 
   let decode_exn names buf ~off ~len:_ =
@@ -698,9 +695,9 @@ module Srv = struct
       t.priority t.weight t.port Domain_name.pp t.target
 
   let compare a b =
-    andThen (int_compare a.priority b.priority)
-      (andThen (int_compare a.weight b.weight)
-         (andThen (int_compare a.port b.port)
+    andThen (Int.compare a.priority b.priority)
+      (andThen (Int.compare a.weight b.weight)
+         (andThen (Int.compare a.port b.port)
             (Domain_name.compare a.target b.target)))
 
   let decode_exn names buf ~off ~len:_ =
@@ -798,6 +795,9 @@ module Dnskey = struct
 
   let pp_algorithm ppf k = Fmt.string ppf (algorithm_to_string k)
 
+  let compare_algorithm a b =
+    Int.compare (algorithm_to_int a) (algorithm_to_int b)
+
   type flag = [ `Zone | `Revoke | `Secure_entry_point ]
 
   let bit = function
@@ -836,9 +836,9 @@ module Dnskey = struct
   }
 
   let compare a b =
-    andThen (F.compare b.flags a.flags)
-      (andThen (compare b.algorithm a.algorithm)
-         (Cstruct.compare b.key a.key))
+    andThen (F.compare a.flags b.flags)
+      (andThen (compare_algorithm a.algorithm b.algorithm)
+         (Cstruct.compare a.key b.key))
 
   let decode_exn names buf ~off ~len =
     let flags = Cstruct.BE.get_uint16 buf off
@@ -943,13 +943,13 @@ module Rrsig = struct
       Cstruct.hexdump_pp t.signature
 
   let compare a b =
-    andThen (compare a.type_covered b.type_covered)
-      (andThen (compare a.algorithm b.algorithm)
-         (andThen (compare a.label_count b.label_count)
-            (andThen (compare a.original_ttl b.original_ttl)
+    andThen (Int.compare a.type_covered b.type_covered)
+      (andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
+         (andThen (Int.compare a.label_count b.label_count)
+            (andThen (Int32.compare a.original_ttl b.original_ttl)
                (andThen (Ptime.compare a.signature_expiration b.signature_expiration)
                   (andThen (Ptime.compare a.signature_inception b.signature_inception)
-                     (andThen (compare a.key_tag b.key_tag)
+                     (andThen (Int.compare a.key_tag b.key_tag)
                         (andThen (Domain_name.compare a.signer_name b.signer_name)
                            (Cstruct.compare a.signature b.signature))))))))
 
@@ -1053,6 +1053,9 @@ module Ds = struct
 
   let pp_digest_type ppf k = Fmt.string ppf (digest_type_to_string k)
 
+  let compare_digest_type a b =
+    Int.compare (digest_type_to_int a) (digest_type_to_int b)
+
   type t = {
     key_tag : int ;
     algorithm : Dnskey.algorithm ;
@@ -1068,9 +1071,9 @@ module Ds = struct
       Cstruct.hexdump_pp t.digest
 
   let compare a b =
-    andThen (compare a.key_tag b.key_tag)
-      (andThen (compare a.algorithm b.algorithm)
-         (andThen (compare a.digest_type b.digest_type)
+    andThen (Int.compare a.key_tag b.key_tag)
+      (andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
+         (andThen (compare_digest_type a.digest_type b.digest_type)
             (Cstruct.compare a.digest b.digest)))
 
   let decode_exn names buf ~off ~len =
@@ -1094,7 +1097,7 @@ end
 
 module Bit_map = struct
   include Set.Make
-        (struct type t = int let compare (a : int) (b : int) = compare a b end)
+        (struct type t = int let compare = Int.compare end)
 
   let byte_to_bits byte =
     let rec more v =
@@ -1225,7 +1228,7 @@ module Nsec3 = struct
     | None, None | Some `Opt_out, Some `Opt_out -> 0
     | _, Some `Opt_out -> -1
     | Some `Opt_out, _ -> 1
-    | Some `Unknown a, Some `Unknown b -> int_compare a b
+    | Some `Unknown a, Some `Unknown b -> Int.compare a b
     | None, Some `Unknown _ -> -1
     | Some `Unknown _, None -> 1
 
@@ -1265,7 +1268,7 @@ module Nsec3 = struct
 
   let compare a b =
     andThen (compare_flags a.flags b.flags)
-      (andThen (int_compare a.iterations b.iterations)
+      (andThen (Int.compare a.iterations b.iterations)
          (andThen (Cstruct.compare a.salt b.salt)
             (andThen (Cstruct.compare a.next_owner_hashed b.next_owner_hashed)
                (Bit_map.compare a.types b.types))))
@@ -1316,7 +1319,7 @@ module Caa = struct
       t.critical t.tag Fmt.(list ~sep:(any "; ") string) t.value
 
   let compare a b =
-    andThen (compare a.critical b.critical)
+    andThen (Bool.compare a.critical b.critical)
       (andThen (String.compare a.tag b.tag)
          (List.fold_left2
             (fun r a b -> match r with 0 -> String.compare a b | x -> x)
@@ -1384,6 +1387,9 @@ module Tlsa = struct
 
   let pp_cert_usage ppf k = Fmt.string ppf (cert_usage_to_string k)
 
+  let compare_cert_usage a b =
+    Int.compare (cert_usage_to_int a) (cert_usage_to_int b)
+
   (* 8 bit *)
   type selector =
     | Full_certificate
@@ -1412,6 +1418,9 @@ module Tlsa = struct
     | Unknown x -> "unknown " ^ string_of_int x
 
   let pp_selector ppf k = Fmt.string ppf (selector_to_string k)
+
+  let compare_selector a b =
+    Int.compare (selector_to_int a) (selector_to_int b)
 
   (* 8 bit *)
   type matching_type =
@@ -1442,6 +1451,9 @@ module Tlsa = struct
 
   let pp_matching_type ppf k = Fmt.string ppf (matching_type_to_string k)
 
+  let compare_matching_type a b =
+    Int.compare (matching_type_to_int a) (matching_type_to_int b)
+
   type t = {
     cert_usage : cert_usage ;
     selector : selector ;
@@ -1457,9 +1469,9 @@ module Tlsa = struct
       Cstruct.hexdump_pp tlsa.data
 
   let compare t1 t2 =
-    andThen (compare t1.cert_usage t2.cert_usage)
-      (andThen (compare t1.selector t2.selector)
-         (andThen (compare t1.matching_type t2.matching_type)
+    andThen (compare_cert_usage t1.cert_usage t2.cert_usage)
+      (andThen (compare_selector t1.selector t2.selector)
+         (andThen (compare_matching_type t1.matching_type t2.matching_type)
             (Cstruct.compare t1.data t2.data)))
 
   let decode_exn names buf ~off ~len =
@@ -1522,6 +1534,9 @@ module Sshfp = struct
 
   let pp_algorithm ppf k = Fmt.string ppf (algorithm_to_string k)
 
+  let compare_algorithm a b =
+    Int.compare (algorithm_to_int a) (algorithm_to_int b)
+
   (* 8 bit *)
   type typ =
     | SHA1
@@ -1549,6 +1564,9 @@ module Sshfp = struct
 
   let pp_typ ppf k = Fmt.string ppf (typ_to_string k)
 
+  let compare_typ a b =
+    Int.compare (typ_to_int a) (typ_to_int b)
+
   type t = {
     algorithm : algorithm ;
     typ : typ ;
@@ -1562,8 +1580,8 @@ module Sshfp = struct
       Cstruct.hexdump_pp sshfp.fingerprint
 
   let compare s1 s2 =
-    andThen (compare s1.algorithm s2.algorithm)
-      (andThen (compare s1.typ s2.typ)
+    andThen (compare_algorithm s1.algorithm s2.algorithm)
+      (andThen (compare_typ s1.typ s2.typ)
          (Cstruct.compare s1.fingerprint s2.fingerprint))
 
   let decode_exn names buf ~off ~len =
@@ -1922,13 +1940,13 @@ module Edns = struct
         | None, None -> 0
         | None, Some _ -> -1
         | Some _, None -> 1
-        | Some a, Some b -> int_compare a b
+        | Some a, Some b -> Int.compare a b
       end
     | Tcp_keepalive _, _ -> 1 | _, Tcp_keepalive _ -> -1
-    | Padding a, Padding b -> int_compare a b
+    | Padding a, Padding b -> Int.compare a b
     | Padding _, _ -> 1 | _, Padding _ -> -1
     | Extension (t, v), Extension (t', v') ->
-      andThen (int_compare t t') (Cstruct.compare v v')
+      andThen (Int.compare t t') (Cstruct.compare v v')
 
   (* tag is 16 bit, we don't support many *)
   let extension_to_int = function
@@ -2013,13 +2031,13 @@ module Edns = struct
       Some payload_size, Some (create ~payload_size ())
 
   let compare a b =
-    andThen (int_compare a.extended_rcode b.extended_rcode)
-      (andThen (int_compare a.version b.version)
-         (andThen (compare a.dnssec_ok b.dnssec_ok)
-            (andThen (int_compare a.payload_size b.payload_size)
+    andThen (Int.compare a.extended_rcode b.extended_rcode)
+      (andThen (Int.compare a.version b.version)
+         (andThen (Bool.compare a.dnssec_ok b.dnssec_ok)
+            (andThen (Int.compare a.payload_size b.payload_size)
                (List.fold_left2
                   (fun r a b -> if r = 0 then compare_extension a b else r)
-                  (compare (List.length a.extensions) (List.length b.extensions))
+                  (Int.compare (List.length a.extensions) (List.length b.extensions))
                   a.extensions b.extensions))))
 
   let pp ppf opt =
@@ -2115,7 +2133,7 @@ module Rr_map = struct
         Error (`Malformed (off, "reserved and supported RTYPE not Unknown"))
       | x -> if x >= 0 && x < 1 lsl 16 then Ok x else Error (`Malformed (off, "RTYPE exceeds 16 bit"))
     let to_int t = t
-    let compare = int_compare
+    let compare = Int.compare
   end
 
   type 'a with_ttl = int32 * 'a
@@ -2473,7 +2491,7 @@ module Rr_map = struct
       else if cs_l = idx then 1
       else if cs'_l = idx then -1
       else
-        match compare (Cstruct.get_uint8 cs idx) (Cstruct.get_uint8 cs' idx) with
+        match Int.compare (Cstruct.get_uint8 cs idx) (Cstruct.get_uint8 cs' idx) with
         | 0 -> c (succ idx)
         | x -> x
     in
@@ -3151,10 +3169,10 @@ module Packet = struct
 
     type t = int * Flags.t
 
-    let compare_id (id, _) (id', _) = int_compare id id'
+    let compare_id (id, _) (id', _) = Int.compare id id'
 
     let compare (id, flags) (id', flags') =
-      andThen (int_compare id id') (Flags.compare flags flags')
+      andThen (Int.compare id id') (Flags.compare flags flags')
 
     let pp ppf ((id, flags), query, operation, rcode) =
       Fmt.pf ppf "%04X (%s) operation %a rcode @[%a@] flags: @[%a@]"
