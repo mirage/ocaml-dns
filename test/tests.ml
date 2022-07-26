@@ -2033,6 +2033,381 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "nsec3 decodes"
                 (Ok res) (decode data))
 
+  let loc_packet_preamble =
+    (* RFC1035 section 4.1 *)
+    (* header *)
+    "11 11 81 80 00 01 00 01 00 00 00 00" ^
+    (* question *)
+      (* example.com *)
+        "07 65 78 61 6d 70 6c 65" ^ (* example *)
+        "03" ^ (* dot *)
+        "63 6f 6d" ^ (* com *)
+        "00" ^ (* \0 - null terminated *)
+      (* QTYPE = 29 = LOC *)
+      "00 1d" ^
+      (* QCLASS = IN `*)
+      "00 01" ^
+    (* answer *)
+      "c0 0c" ^
+        (* binary: 11000000 00001100
+        first 2 11's indicate a pointer
+        000000 00001100 = 12
+        this gives the size of the header as an offer, pointing to the domain in the query
+        *)
+      "00 1d" ^ (* TYPE = LOC *)
+      "00 01" ^ (* CLASS = IN *)
+      "00 00 0e 10" ^ (* TTL = 3600s *)
+      "00 10" (* RDLENGTH = 16 *)
+
+  let loc_decode_helper data loc =
+    let host = n_of_s "example.com" in
+    let header = 0x1111, Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and q = Question.create host Loc
+    in
+    let content =
+      Domain_name.Map.singleton host (Rr_map.singleton Loc (3600l, Rr_map.Loc_set.singleton loc))
+    in
+    let res = create header q (`Answer (content, Name_rr_map.empty)) in
+    let _ = Format.printf "%a\n" Cstruct.hexdump_pp (fst @@ encode `Udp res) in
+    let _ =
+      Format.printf "%a\n" pp (match (decode data) with
+      | Ok t -> t
+      | Error _ -> raise (Failure "Failed to decode data"))
+    in
+    Alcotest.(check (result t_ok p_err) "Loc decodes" (Ok res) (decode data))
+  
+  let loc_decode () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+        (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "13" ^ (* size *)
+        "13" ^ (* horizontal percision *)
+        "13" ^ (* vertical percision *)
+        "8b 34 0c 50" ^ (* lat *)
+        "7f fa ef 84" ^ (* long *)
+        "00 98 9f 18" (* alt *) 
+    ) in
+    let loc = Loc.parse
+      ~latitude:((52l, 12l, 40400l), `North)
+      ~longitude:((0l, 5l, 31900l), `West)
+      ~altitude:2200L
+      ~precision:(1000L, 1000L, 1000L)
+    in
+    loc_decode_helper data loc
+  
+  let loc_decode_min () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "00" ^ (* size *)
+        "00" ^ (* horizontal percision *)
+        "00" ^ (* vertical percision *)
+        "80 00 00 00" ^ (* lat *)
+        "80 00 00 00" ^ (* long *)
+        "00 00 00 00" (* alt *)
+    ) in
+    let loc = Loc.parse
+      ~latitude:((0l, 0l, 0l), `North)
+      ~longitude:((0l, 0l, 0l), `East)
+      ~altitude:(Int64.neg 10000000L)
+      ~precision:(0L, 0L, 0L)
+    in
+    loc_decode_helper data loc
+  
+  let loc_decode_min_negated () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "00" ^ (* size *)
+        "00" ^ (* horizontal percision *)
+        "00" ^ (* vertical percision *)
+        "80 00 00 00" ^ (* lat *)
+        "80 00 00 00" ^ (* long *)
+        "00 00 00 00" (* alt *)
+    ) in
+    let loc = Loc.parse
+      ~latitude:((0l, 0l, 0l), `South)
+      ~longitude:((0l, 0l, 0l), `West)
+      ~altitude:(Int64.neg 10000000L)
+      ~precision:(0L, 0L, 0L)
+    in
+    loc_decode_helper data loc
+
+  let loc_decode_max () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "99" ^ (* size *)
+        "99" ^ (* horizontal percision *)
+        "99" ^ (* vertical percision *)
+        "93 4f d9 00" ^ (* lat *)
+        "a6 9f b2 00" ^ (* long *)
+        "ff ff ff ff" (* alt *)
+    ) in
+    let loc = Loc.parse
+      ~latitude:((90l, 0l, 0l), `North)
+      ~longitude:((180l, 0l, 0l), `East)
+      ~altitude:4284967295L
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
+    in
+    loc_decode_helper data loc
+
+  let loc_decode_max_inverted () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "99" ^ (* size *)
+        "99" ^ (* horizontal percision *)
+        "99" ^ (* vertical percision *)
+        "6c b0 27 00" ^ (* lat *)
+        "59 60 4e 00" ^ (* long *)
+        "ff ff ff ff" (* alt *)
+    ) in
+    let loc = Loc.parse
+      ~latitude:((90l, 0l, 0l), `South)
+      ~longitude:((180l, 0l, 0l), `West)
+      ~altitude:4284967295L
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
+    in
+    loc_decode_helper data loc
+
+  let loc_decode_alt_signed_max_under () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "99" ^ (* size *)
+        "99" ^ (* horizontal percision *)
+        "99" ^ (* vertical percision *)
+        "93 4f d9 00" ^ (* lat *)
+        "a6 9f b2 00" ^ (* long *)
+        "7f ff ff ff" (* alt *)
+    ) in
+    let loc = Loc.parse
+      ~latitude:((90l, 0l, 0l), `North)
+      ~longitude:((180l, 0l, 0l), `East)
+      ~altitude:2137483647L
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
+    in
+    loc_decode_helper data loc
+  
+  let loc_decode_alt_signed_max () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "99" ^ (* size *)
+        "99" ^ (* horizontal percision *)
+        "99" ^ (* vertical percision *)
+        "93 4f d9 00" ^ (* lat *)
+        "a6 9f b2 00" ^ (* long *)
+        "80 00 00 00" (* alt *)
+    ) in
+    let loc = Loc.parse
+      ~latitude:((90l, 0l, 0l), `North)
+      ~longitude:((180l, 0l, 0l), `East)
+      ~altitude:2137483648L
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
+    in
+    loc_decode_helper data loc
+  
+  let loc_decode_alt_signed_max_over () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "99" ^ (* size *)
+        "99" ^ (* horizontal percision *)
+        "99" ^ (* vertical percision *)
+        "93 4f d9 00" ^ (* lat *)
+        "a6 9f b2 00" ^ (* long *)
+        "80 00 00 01" (* alt *)
+    ) in
+    let loc = Loc.parse
+      ~latitude:((90l, 0l, 0l), `North)
+      ~longitude:((180l, 0l, 0l), `East)
+      ~altitude:2137483649L
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
+    in
+    loc_decode_helper data loc
+  
+  let loc_leftover () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+        (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "13" ^ (* size *)
+        "13" ^ (* horizontal percision *)
+        "13" ^ (* vertical percision *)
+        "8b 34 0c 50" ^ (* lat *)
+        "7f fa ef 84" ^ (* long *)
+        "00 98 9f 18 00" (* alt *) 
+    ) in
+    let loc = Loc.parse
+      ~latitude:((52l, 12l, 40400l), `North)
+      ~longitude:((0l, 5l, 31900l), `West)
+      ~altitude:2200L
+      ~precision:(1000L, 1000L, 1000L)
+    in
+    loc_decode_helper data loc
+
+  let loc_leftover_inner () =
+    let data = Cstruct.of_hex (
+      (* RFC1035 section 4.1 *)
+      (* header *)
+      "11 11 81 80 00 01 00 01 00 00 00 00" ^
+      (* question *)
+        (* example.com *)
+          "07 65 78 61 6d 70 6c 65" ^ (* example *)
+          "03" ^ (* dot *)
+          "63 6f 6d" ^ (* com *)
+          "00" ^ (* \0 - null terminated *)
+        (* QTYPE = 29 = LOC *)
+        "00 1d" ^
+        (* QCLASS = IN `*)
+        "00 01" ^
+      (* answer *)
+        "c0 0c" ^
+          (* binary: 11000000 00001100
+          first 2 11's indicate a pointer
+          000000 00001100 = 12
+          this gives the size of the header as an offer, pointing to the domain in the query
+          *)
+        "00 1d" ^ (* TYPE = LOC *)
+        "00 01" ^ (* CLASS = IN *)
+        "00 00 0e 10" ^ (* TTL = 3600s *)
+        "00 11" ^ (* RDLENGTH = 17 *)
+        (* RDATA *)
+        (* RFC1876 section 2 *)
+          "00" ^ (* version *)
+          "13" ^ (* size *)
+          "13" ^ (* horizontal percision *)
+          "13" ^ (* vertical percision *)
+          "8b 34 0c 50" ^ (* lat *)
+          "7f fa ef 84" ^ (* long *)
+          "00 98 9f 18 00" (* alt *) 
+    ) in
+    let loc = Loc.parse
+      ~latitude:((52l, 12l, 40400l), `North)
+      ~longitude:((0l, 5l, 31900l), `West)
+      ~altitude:2200L
+      ~precision:(1000L, 1000L, 1000L)
+    in
+    loc_decode_helper data loc
+
+  let loc_fail_partial () =
+    let data = Cstruct.of_hex (
+      loc_packet_preamble ^
+      (* RDATA *)
+      (* RFC1876 section 2 *)
+        "00" ^ (* version *)
+        "13" ^ (* size *)
+        "13" ^ (* horizontal percision *)
+        "13" ^ (* vertical percision *)
+        "8b 34 0c 50" ^ (* lat *)
+        "7f fa ef 84" ^ (* long *)
+        "00 98 9f" (* alt *) 
+    ) in
+    Alcotest.(check (result t_ok p_err) "short LOC decodes" (Error `Partial) (decode data))
+
+  let loc_fail_partial_inner () =
+    let data = Cstruct.of_hex (
+      (* RFC1035 section 4.1 *)
+      (* header *)
+      "11 11 81 80 00 01 00 01 00 00 00 00" ^
+      (* question *)
+        (* example.com *)
+          "07 65 78 61 6d 70 6c 65" ^ (* example *)
+          "03" ^ (* dot *)
+          "63 6f 6d" ^ (* com *)
+          "00" ^ (* \0 - null terminated *)
+        (* QTYPE = 29 = LOC *)
+        "00 1d" ^
+        (* QCLASS = IN `*)
+        "00 01" ^
+      (* answer *)
+        "c0 0c" ^
+          (* binary: 11000000 00001100
+          first 2 11's indicate a pointer
+          000000 00001100 = 12
+          this gives the size of the header as an offer, pointing to the domain in the query
+          *)
+        "00 1d" ^ (* TYPE = LOC *)
+        "00 01" ^ (* CLASS = IN *)
+        "00 00 0e 10" ^ (* TTL = 3600s *)
+        "00 0f" ^ (* RDLENGTH = 15 *)
+        (* RDATA *)
+        (* RFC1876 section 2 *)
+          "00" ^ (* version *)
+          "13" ^ (* size *)
+          "13" ^ (* horizontal percision *)
+          "13" ^ (* vertical percision *)
+          "8b 34 0a c0" ^ (* lat *)
+          "7f fa f3 08" ^ (* long *)
+          "00 98 9f" (* alt *)
+    ) in
+    Alcotest.(check (result t_ok p_err) "A decode failure (rdata partial)" (Error `Partial) (decode data))
+              
+  let loc_encode_helper loc =
+    let host = n_of_s "example.com" in
+    let header = 0x1111, Flags.(add `Recursion_desired (singleton `Recursion_available))
+    and q = Question.create host Loc
+    in
+    let content =
+      Domain_name.Map.singleton host (Rr_map.singleton Loc (3600l, Rr_map.Loc_set.singleton loc))
+    in
+    let res = create header q (`Answer (content, Name_rr_map.empty)) in
+    let _ = Format.printf "%a" Cstruct.hexdump_pp (fst @@ encode `Udp res) in
+    Alcotest.(check (result t_ok p_err) "Loc encodes" (Ok res) (decode @@ fst @@ encode `Udp res))
+  
+  let loc_encode_min () =
+    let loc = Loc.parse
+      ~latitude:((0l, 0l, 0l), `North)
+      ~longitude:((0l, 0l, 0l), `East)
+      ~altitude:(Int64.neg 10000000L)
+      ~precision:(0L, 0L, 0L)
+    in
+    loc_encode_helper loc
+  
+  let loc_encode_min_negated () =
+    let loc = Loc.parse
+      ~latitude:((0l, 0l, 0l), `South)
+      ~longitude:((0l, 0l, 0l), `West)
+      ~altitude:(Int64.neg 10000000L)
+      ~precision:(0L, 0L, 0L)
+    in
+    loc_encode_helper loc
+  
+  let loc_encode_max () =
+    let loc = Loc.parse
+      ~latitude:((90l, 0l, 0l), `North)
+      ~longitude:((180l, 0l, 0l), `East)
+      ~altitude:4284967295L
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
+    in
+    loc_encode_helper loc
+  
+  let loc_encode_max_inverted () =
+    let loc = Loc.parse
+      ~latitude:((90l, 0l, 0l), `South)
+      ~longitude:((180l, 0l, 0l), `West)
+      ~altitude:4284967295L
+      ~precision:(9000000000L, 9000000000L, 9000000000L)
+    in
+    loc_encode_helper loc
+
   let code_tests = [
     "bad query", `Quick, bad_query ;
     "regression0", `Quick, regression0 ;
@@ -2096,6 +2471,22 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "nsec success", `Quick, nsec_success ;
     "nsec success 2", `Quick, nsec_success2 ;
     "nsec3 success", `Quick, nsec3_success ;
+    "loc decode", `Quick, loc_decode ;
+    "loc decode min", `Quick, loc_decode_min ;
+    "loc decode min negated", `Quick, loc_decode_min_negated ;
+    "loc decode max", `Quick, loc_decode_max ;
+    "loc decode max inverted", `Quick, loc_decode_max_inverted ;
+    "loc decode alt signed max under", `Quick, loc_decode_alt_signed_max_under ;
+    "loc decode alt signed max", `Quick, loc_decode_alt_signed_max ;
+    "loc decode alt signed max over", `Quick, loc_decode_alt_signed_max_over ;
+    "loc leftover", `Quick, loc_leftover ;
+    "loc leftover inner", `Quick, loc_leftover_inner ;
+    "loc fail partial", `Quick, loc_fail_partial ;
+    "loc fail partial inner", `Quick, loc_fail_partial_inner ;
+    "loc encode min" , `Quick, loc_encode_min ;
+    "loc encode min negated", `Quick, loc_encode_min_negated ;
+    "loc encode max", `Quick, loc_encode_max ;
+    "loc encode max inverted", `Quick, loc_encode_max_inverted ;
   ]
 end
 

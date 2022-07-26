@@ -791,6 +791,49 @@ module Edns : sig
       buffer. *)
 end
 
+(** Loc
+
+    A locator record (LOC) is used to express location information associated with domain.
+    
+    See RFC 1876. *)
+module Loc : sig
+  type t = {
+    latitude : int32;
+    longitude : int32;
+    altitude : int32;
+    size : int;
+    horiz_pre : int;
+    vert_pre : int;
+  }
+  (** The type of a Loc record. *)
+
+  val parse :
+    latitude:((int32 * int32 * int32) * [ `North | `South ])
+    -> longitude:((int32 * int32 * int32) * [ `East | `West ])
+    -> altitude:int64
+    -> precision:(int64 * int64 * int64)
+    -> t
+  (** [parse ~latitude ~longitude ~altitude ~precision] Parse a human-readable format
+     to a Loc record.
+
+     [latitude] and [longitude] are represented by
+     ((degress, mintues, seconds), direction)
+
+     [altitude] is the altitude in centimeters.
+
+     [precision] is represented by (size, horizontal precision, vertical percision)
+     in meters.
+    *)
+
+  val to_string : t -> string
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the Loc record [t] on [ppf]. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the Loc record [a] with [b]. *)
+end
+
  (** A map whose keys are record types and their values are the time-to-live and
     the record set. The relation between key and value type is restricted by the
     below defined GADT. *)
@@ -805,6 +848,7 @@ module Rr_map : sig
   module Sshfp_set : Set.S with type elt = Sshfp.t
   module Ds_set : Set.S with type elt = Ds.t
   module Rrsig_set : Set.S with type elt = Rrsig.t
+  module Loc_set : Set.S with type elt = Loc.t
 
   module I : sig
     type t
@@ -834,6 +878,7 @@ module Rr_map : sig
     | Rrsig : Rrsig_set.t with_ttl rr
     | Nsec : Nsec.t with_ttl rr
     | Nsec3 : Nsec3.t with_ttl rr
+    | Loc : Loc_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
   (** The type of resource record sets, as GADT: the value depends on the
      specific constructor. There may only be a single SOA and Cname and Ptr

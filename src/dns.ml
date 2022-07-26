@@ -1306,6 +1306,180 @@ module Nsec3 = struct
     names, off
 end
 
+module Loc = struct
+  type t = {
+    latitude : int32;
+    longitude : int32;
+    altitude : int32;
+    size : int;
+    horiz_pre : int;
+    vert_pre : int;
+  }
+
+  let lat_long_parse ((deg, min, sec), dir) =
+    let ( * ), (+) = Int32.mul, Int32.add in
+    let arcsecs = (Int32.shift_left 1l 31) + (
+      (((deg * 60l) + min) * 60l) * 1000l + sec
+    ) in
+    match dir with
+      | `North | `East -> arcsecs
+      | `South | `West -> -1l * arcsecs
+
+  let alt_parse alt =
+    let (+) = Int64.add in
+    Int64.to_int32 (10000000L + alt)
+  
+  let rec pow10 e =
+    if e = 0 then 1L else
+    let ( * ) = Int64.mul in
+    pow10 (e - 1) * 10L
+
+  let precision_parse (size, horiz_pre, vert_pre) =
+    let encode = fun p ->
+      let exponent =
+        let rec r = fun p e ->
+          if e >= 9 then 9 else
+          if p < (pow10 (e + 1)) then e else
+          r p (e + 1)
+        in
+        r p 0
+      in
+      let mantissa =
+        let ( / ) = Int64.div in
+        let m = p / (pow10 exponent) in
+        if m > 9L then 9 else Int64.to_int m
+      in
+      (Int.shift_left mantissa 4) lor exponent
+    in
+    (encode size, encode horiz_pre, encode vert_pre)
+  
+  (* RFC 1876 Appendix A *)
+  let parse ~latitude ~longitude ~altitude ~precision =
+    let latitude = lat_long_parse latitude in
+    let longitude = lat_long_parse longitude in
+    let altitude = alt_parse altitude in
+    let size, horiz_pre, vert_pre = precision_parse precision in
+    { latitude ; longitude ; altitude ; size ; horiz_pre ; vert_pre}
+
+  let arcsecs_print lat_long =
+    let ( * ), (-), (/) = Int32.mul, Int32.sub, Int32.div in
+    let lat_long = (Int32.shift_left 1l 31) - lat_long in
+    let dir = lat_long <= 0l in
+    let lat_long = Int32.abs lat_long in
+    let sec =
+      let decimal = Int32.rem lat_long (60l * 1000l) in
+      let integer = decimal / 1000l in
+      let decimal = Int32.rem decimal 1000l in
+      (integer, decimal)
+    in
+    let min = Int32.rem (lat_long / (1000l * 60l)) 60l in
+    let deg = lat_long / (1000l * 60l * 60l) in
+    (deg, min, sec), dir
+
+  let lat_print lat =
+    let arcsecs, dir = arcsecs_print lat in
+    let dir = if dir then "N" else "S" in
+    (arcsecs, dir)
+
+  let long_print long =
+    let arcsecs, dir = arcsecs_print long in
+    let dir = if dir then "E" else "W" in
+    (arcsecs, dir)
+
+  let alt_print alt =
+    let (+), (-), (/) = Int64.add, Int64.sub, Int64.div in
+    (* convert a uint32 alt to an int64 *)
+    let alt = if alt < 0l then
+        Int64.of_int32 alt + Int64.shift_left 1L 32
+      else Int64.of_int32 alt
+    in
+    let alt = alt - 10000000L in
+    (alt / 100L, Int64.rem alt 100L)
+  
+  let precision_print prec =
+    let mantissa = ((Int.shift_right prec 4) land 0x0f) mod 10 in
+    let exponent = ((Int.shift_right prec 0) land 0x0f) mod 10 in
+    let (/), ( * ) = Int64.div, Int64.mul in
+    let p = Int64.of_int mantissa * pow10 exponent in
+    (p / 100L, Int64.rem p 100L)
+
+  let to_string loc =
+    let decimal_string (integer, decimal) decimal_digits =
+      let (/), ( * ) = Int64.div, Int64.mul in
+      let integer_string = Int64.to_string integer in
+      if decimal = 0L then
+        integer_string
+      else
+      let decimal_string =
+        let rec trim_trailing_zeros decimal num_trimmed =
+          if (decimal / 10L) * 10L = decimal then
+            trim_trailing_zeros (decimal / 10L) (num_trimmed + 1)
+          else
+            decimal, num_trimmed
+        in
+        (* remove trailing zero from decimal *)
+        let decimal, num_trimmed = trim_trailing_zeros decimal 0 in
+        (* left pad zeros *)
+        let decimal = Int64.to_string decimal in
+        String.make (decimal_digits - String.length decimal - num_trimmed) '0' ^ decimal
+      in
+      integer_string ^ "." ^ decimal_string
+    in
+    let lat_long_to_string deg min sec dir =
+      let sec_string =
+        let integer, decimal = sec in
+        decimal_string (Int64.of_int32 integer, Int64.of_int32 decimal) 3
+      in
+      String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [sec_string ; dir]) 
+    in
+    let lat_string =
+      let (lat_deg, lat_min, lat_sec), lat_dir = lat_print loc.latitude in
+      lat_long_to_string lat_deg lat_min lat_sec lat_dir
+    in
+    let long_string =
+      let (long_deg, long_min, long_sec), long_dir = long_print loc.longitude in
+      lat_long_to_string long_deg long_min long_sec long_dir
+    in
+    let meter_values =
+      List.map (fun m -> decimal_string m 2 ^ "m") (
+        [alt_print loc.altitude] @ (List.map precision_print [loc.size; loc.horiz_pre; loc.vert_pre])    
+      )
+    in
+    String.concat " " ([lat_string; long_string;] @ meter_values)
+
+  let pp ppf loc = Fmt.pf ppf "LOC %s" (to_string loc)
+
+  let compare a b =
+    List.fold_right andThen [
+      Int32.compare a.latitude b.latitude ;
+      Int32.compare a.longitude b.longitude ;
+      Int32.compare a.altitude b.altitude ;
+      Int.compare a.size b.size ;
+      Int.compare a.horiz_pre b.horiz_pre ;
+      Int.compare a.vert_pre b.vert_pre ;
+    ] 0
+
+  let decode_exn names buf ~off ~len =
+    let latitude = Cstruct.BE.get_uint32 buf (off + 4) in
+    let longitude = Cstruct.BE.get_uint32 buf (off + 8) in
+    let size = Cstruct.get_uint8 buf (off + 1) in
+    let horiz_pre = Cstruct.get_uint8 buf (off + 2) in
+    let vert_pre = Cstruct.get_uint8 buf (off + 3) in
+    let altitude = Cstruct.BE.get_uint32 buf (off + 12) in
+    Ok ({ latitude ; longitude ; altitude ; size ; horiz_pre; vert_pre }, names, off + len)
+
+  let encode loc names buf off =
+    Cstruct.set_uint8 buf off 0;
+    Cstruct.set_uint8 buf (off + 1) loc.size;
+    Cstruct.set_uint8 buf (off + 2) loc.horiz_pre;
+    Cstruct.set_uint8 buf (off + 3) loc.vert_pre;
+    Cstruct.BE.set_uint32 buf (off + 4) loc.latitude;
+    Cstruct.BE.set_uint32 buf (off + 8) loc.longitude;
+    Cstruct.BE.set_uint32 buf (off + 12) loc.altitude;
+    names, off + 16
+
+end
+
 (* certificate authority authorization *)
 module Caa = struct
   type t = {
@@ -2120,6 +2294,7 @@ module Rr_map = struct
   module Sshfp_set = Set.Make(Sshfp)
   module Ds_set = Set.Make(Ds)
   module Rrsig_set = Set.Make(Rrsig)
+  module Loc_set = Set.Make(Loc)
 
   module I : sig
     type t
@@ -2156,6 +2331,7 @@ module Rr_map = struct
     | Rrsig : Rrsig_set.t with_ttl rr
     | Nsec : Nsec.t with_ttl rr
     | Nsec3 : Nsec3.t with_ttl rr
+    | Loc : Loc_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
 
   module K = struct
@@ -2181,6 +2357,7 @@ module Rr_map = struct
       | Rrsig, Rrsig -> Eq | Rrsig, _ -> Lt | _, Rrsig -> Gt
       | Nsec, Nsec -> Eq | Nsec, _ -> Lt | _, Nsec -> Gt
       | Nsec3, Nsec3 -> Eq | Nsec3, _ -> Lt | _, Nsec3 -> Gt
+      | Loc, Loc -> Eq | Loc, _ -> Lt | _, Loc -> Gt
       | Unknown a, Unknown b ->
         let r = I.compare a b in
         if r = 0 then Eq else if r < 0 then Lt else Gt
@@ -2212,6 +2389,7 @@ module Rr_map = struct
     | Rrsig, (_, rrs), (_, rrs') -> Rrsig_set.equal rrs rrs'
     | Nsec, (_, ns), (_, ns') -> Nsec.compare ns ns' = 0
     | Nsec3, (_, ns), (_, ns') -> Nsec3.compare ns ns' = 0
+    | Loc, (_, loc), (_, loc') -> Loc_set.equal loc loc'
     | Unknown _, (_, data), (_, data') -> Txt_set.equal data data'
 
   let equalb (B (k, v)) (B (k', v')) = match K.compare k k' with
@@ -2220,8 +2398,8 @@ module Rr_map = struct
 
   let to_int : type a. a key -> int = function
     | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Ptr -> 12 | Mx -> 15
-    | Txt -> 16 | Aaaa -> 28 | Srv -> 33 | Ds -> 43 | Sshfp -> 44
-    | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Nsec3 -> 50
+    | Txt -> 16 | Aaaa -> 28  | Loc -> 29 | Srv -> 33 | Ds -> 43
+    | Sshfp -> 44 | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Nsec3 -> 50
     | Tlsa -> 52 | Caa -> 257
     | Unknown x -> I.to_int x
 
@@ -2230,9 +2408,9 @@ module Rr_map = struct
   let of_int ?(off = 0) = function
     | 1 -> Ok (K A) | 2 -> Ok (K Ns) | 5 -> Ok (K Cname) | 6 -> Ok (K Soa)
     | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
-    | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
+    | 29 -> Ok (K Loc) | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
     | 46 -> Ok (K Rrsig) | 47 -> Ok (K Nsec) | 48 -> Ok (K Dnskey)
-    | 50 -> Ok (K Nsec3) |  52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
+    | 50 -> Ok (K Nsec3) | 52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
     | x ->
       let* i = I.of_int ~off x in
       Ok (K (Unknown i))
@@ -2255,6 +2433,7 @@ module Rr_map = struct
     | Rrsig -> Fmt.string ppf "RRSIG"
     | Nsec -> Fmt.string ppf "NSEC"
     | Nsec3 -> Fmt.string ppf "NSEC3"
+    | Loc -> Fmt.string ppf "LOC"
     | Unknown x -> Fmt.pf ppf "TYPE%d" (I.to_int x)
 
   let of_string = function
@@ -2275,6 +2454,7 @@ module Rr_map = struct
     | "RRSIG" -> Ok (K Rrsig)
     | "NSEC" -> Ok (K Nsec)
     | "NSEC3" -> Ok (K Nsec3)
+    | "LOC" -> Ok (K Loc)
     | x when String.length x > 4 && String.(equal "TYPE" (sub x 0 4)) ->
       Result.map_error
         (function `Malformed (_, m) -> `Msg m | `Msg m -> `Msg m)
@@ -2379,6 +2559,10 @@ module Rr_map = struct
       rr names (Nsec.encode nsec) off ttl, 1
     | Nsec3, (ttl, nsec) ->
       rr names (Nsec3.encode nsec) off ttl, 1
+    | Loc, (ttl, locs) ->
+      Loc_set.fold (fun loc ((names, off), count) ->
+          rr names (Loc.encode loc) off ttl, succ count)
+        locs ((names, off), 0)
     | Unknown _, (ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -2460,6 +2644,10 @@ module Rr_map = struct
       [ rr (Nsec.encode ns) ]
     | Nsec3, (_ttl, ns) ->
       [ rr (Nsec3.encode ns) ]
+    | Loc, (_ttl, locs) ->
+      Loc_set.fold (fun loc acc ->
+          rr (Loc.encode loc) :: acc)
+        locs []
     | Unknown _, (_ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
@@ -2555,6 +2743,7 @@ module Rr_map = struct
     | Rrsig, (_, rrs), (ttl, rrs') -> (ttl, Rrsig_set.union rrs rrs')
     | Nsec, _, nsec -> nsec
     | Nsec3, _, nsec -> nsec
+    | Loc, _, loc -> loc
     | Unknown _, (_, data), (ttl, data') -> (ttl, Txt_set.union data data')
 
   let unionee : type a. a key -> a -> a -> a option =
@@ -2608,6 +2797,9 @@ module Rr_map = struct
       if Rrsig_set.is_empty s then None else Some (ttl, s)
     | Nsec, _, _ -> None
     | Nsec3, _, _ -> None
+    | Loc, (ttl, locs), (_, rm) ->
+      let s = Loc_set.diff locs rm in
+      if Loc_set.is_empty s then None else Some (ttl, s)
     | Unknown _, (ttl, datas), (_, rm) ->
       let data = Txt_set.diff datas rm in
       if Txt_set.is_empty data then None else Some (ttl, data)
@@ -2797,6 +2989,10 @@ module Rr_map = struct
             (if Cstruct.length ns.Nsec3.salt = 0 then "-" else hex ns.Nsec3.salt)
             (hex (* TODO base32 *) ns.Nsec3.next_owner_hashed)
             Fmt.(list ~sep:(any " ") ppk) types ]
+      | Loc, (ttl, locs) ->
+        Loc_set.fold (fun loc acc ->
+            Fmt.str "%s\t%aLOC\t%s" str_name ttl_fmt (ttl_opt ttl) (Loc.to_string loc) :: acc)
+          locs []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
             Fmt.str "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
@@ -2824,6 +3020,7 @@ module Rr_map = struct
     | Rrsig, (ttl, _) -> ttl
     | Nsec, (ttl, _) -> ttl
     | Nsec3, (ttl, _) -> ttl
+    | Loc, (ttl, _) -> ttl
     | Unknown _, (ttl, _) -> ttl
 
   let with_ttl : type a. a key -> a -> int32 -> a = fun k v ttl ->
@@ -2845,6 +3042,7 @@ module Rr_map = struct
     | Rrsig, (_, rrs) -> ttl, rrs
     | Nsec, (_, ns) -> ttl, ns
     | Nsec3, (_, ns) -> ttl, ns
+    | Loc, (_, loc) -> ttl, loc
     | Unknown _, (_, datas) -> ttl, datas
 
   let split : type a. a key -> a -> a * a option = fun k v ->
@@ -2939,6 +3137,13 @@ module Rr_map = struct
       (ttl, Rrsig_set.singleton one), rest'
     | Nsec, (ttl, rr) -> (ttl, rr), None
     | Nsec3, (ttl, rr) -> (ttl, rr), None
+    | Loc, (ttl, locs) ->
+      let one = Loc_set.choose locs in
+      let rest = Loc_set.remove one locs in
+      let rest' =
+        if Loc_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Loc_set.singleton one), rest'
     | Unknown _, (ttl, datas) ->
       let one = Txt_set.choose datas in
       let rest = Txt_set.remove one datas in
@@ -3040,6 +3245,9 @@ module Rr_map = struct
           | Nsec3 ->
             let* rr, names, off = Nsec3.decode_exn names buf ~off ~len in
             Ok (B (Nsec3, (ttl, rr)), names, off)
+          | Loc ->
+            let* loc, names, off = Loc.decode_exn names buf ~off ~len in
+            Ok (B (Loc, (ttl, Loc_set.singleton loc)), names, off)
           | Unknown x ->
             let data = Cstruct.sub buf off len in
             Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)

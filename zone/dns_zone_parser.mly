@@ -52,6 +52,7 @@ let parse_ipv6 s =
 let add_to_map name ~ttl (Rr_map.B (k, v)) =
   let v = Rr_map.with_ttl k v ttl in
   Name_rr_map.add name k v
+
 %}
 
 %token EOF
@@ -63,6 +64,7 @@ let add_to_map name ~ttl (Rr_map.B (k, v)) =
 %token SPACE
 %token GENERIC
 %token <string> NUMBER
+%token <string> NEG_NUMBER
 %token <string> CHARSTRING
 
 %token <string> TYPE_A
@@ -79,12 +81,17 @@ let add_to_map name ~ttl (Rr_map.B (k, v)) =
 %token <string> TYPE_TLSA
 %token <string> TYPE_SSHFP
 %token <string> TYPE_DS
+%token <string> TYPE_LOC
 %token <string> TYPE_GENERIC
 
 %token <string> CLASS_IN
 %token <string> CLASS_CS
 %token <string> CLASS_CH
 %token <string> CLASS_HS
+
+%token <string> METERS
+%token <string> LAT_DIR
+%token <string> LONG_DIR
 
 %start zfile
 %type <Dns.Name_rr_map.t> zfile
@@ -214,6 +221,15 @@ generic_type s generic_rdata {
          parse_error "CAA exceeds maximum rdata size";
        let caa = { Caa.critical ; tag = $5 ; value = $7 } in
        B (Caa, (0l, Rr_map.Caa_set.singleton caa)) }
+     /* RFC 1876 */
+ | TYPE_LOC s deg_min_sec LAT_DIR s deg_min_sec LONG_DIR s altitude precision
+     { let loc = Loc.parse
+        ~latitude:($3, if $4 = "N" then `North else `South )
+        ~longitude:($6, if $7 = "E" then `East else `West )
+        ~altitude:$9
+        ~precision:$10
+       in
+       B (Loc, (0l, Rr_map.Loc_set.singleton loc)) }
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
 
 single_hex: charstring
@@ -276,6 +292,54 @@ int32: NUMBER
        with Failure _ ->
 	 parse_error ($1 ^ " is not a 32-bit number") }
 
+float:
+    NUMBER                { ($1, "0") }
+  | NUMBER DOT            { ($1, "0") }
+  | NUMBER DOT NUMBER     { ($1, $3) }
+
+secs: float
+     { let integer, decimal = $1 in
+       let decimal = decimal ^ String.make (3 - String.length decimal) '0' in
+       let ( * ), (+) = Int32.mul, Int32.add in
+       (parse_uint32 integer) * 1000l + (parse_uint32 decimal)
+      }
+
+deg_min_sec:
+    int32 s int32 s secs s   { $1, $3, $5 }
+  | int32 s int32 s          { $1, $3, 0l }
+  | int32 s                  { $1, 0l, 0l }
+
+meters:
+    METERS {
+      match String.split_on_char '.' $1 with
+        | [integers ; decimal] -> (integers, decimal)
+        | [integers] -> (integers, "0")
+        | _ -> parse_error "invalid altitude"
+    }
+  | NUMBER                { ($1, "") }
+  | NEG_NUMBER            { ($1, "") }
+  | NUMBER DOT            { ($1, "") }
+  | NEG_NUMBER DOT        { ($1, "") }
+  | NUMBER DOT NUMBER     { ($1, $3) }
+  | NEG_NUMBER DOT NUMBER { ($1, $3) }
+
+centimetres: meters
+     { let integers, decimal = $1 in
+       (* note parsing only allows 2 decimal places,
+         will throw an exception if String.length decimal > 2 *)
+       let decimal = decimal ^ String.make (2 - String.length decimal) '0' in
+       let centimetres = integers ^ decimal in
+       Int64.of_string centimetres
+     }
+
+altitude: centimetres { $1 }
+
+precision:
+                                              { (100L, 1000000L, 1000L) }
+  | s centimetres s centimetres s centimetres { ($2,  $4,        $6   ) }
+  | s centimetres s centimetres               { ($2,  $4,        1000L) }
+  | s centimetres                             { ($2,  1000000L,  1000L) }
+
 /* The owner of an RR is more restricted than a general domain name: it
    can't be a pure number or a type or class.  If we see one of those we
    assume the owner field was omitted */
@@ -328,6 +392,7 @@ keyword_or_number:
  | TYPE_DNSKEY { $1 }
  | TYPE_TLSA { $1 }
  | TYPE_SSHFP { $1 }
+ | TYPE_LOC { $1 }
  | CLASS_IN { $1 }
  | CLASS_CS { $1 }
  | CLASS_CH { $1 }

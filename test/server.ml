@@ -1841,6 +1841,171 @@ a.b	A	1.2.3.4
         Alcotest.(check string "text (decode_zones z) = z" zone data)
       | Error _ -> Alcotest.fail "failed to encode zone"
 
+let numerical_subdomain_zone = {|
+$ORIGIN example.
+example.                 3600 IN  SOA   ns.example.com. 	root	1	86400	10800	1048576	2560
+1host.example.           3600     A     192.0.2.1
+|}
+
+  let parse_numerical_subdomain_zone () =
+    let rrs =
+      let soa = { Soa.nameserver = n_of_s "ns.example.com" ; hostmaster = n_of_s "root.example" ;
+                  serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                  expiry = 1048576l ; minimum = 2560l }
+      in
+      let z = n_of_s "example" in
+      let host1 = n_of_s "1host.example" in
+      let host1_a = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "192.0.2.1") in
+      let ttl = 3600l in
+      Name_rr_map.(add z Rr_map.Soa soa
+                     (singleton host1 Rr_map.A (ttl, host1_a)))
+    in
+    Alcotest.(check (result name_map_ok err) "parsing numerical subdomain zone"
+                (Ok rrs) (Dns_zone.parse numerical_subdomain_zone))
+
+  let parse_locs () =
+    let loc_zone = {|
+$ORIGIN example.
+$TTL 2560
+@	SOA	ns 	root	1	86400	10800	1048576	2560
+@	NS	ns
+@	LOC	|} in
+    let loc_strs = [
+      (
+        "0 0 0 N 0 0 0 E 0m 0m 0m 0m",
+        Loc.parse ~latitude:((0l, 0l, 0l), `North) ~longitude:((0l, 0l, 0l), `East) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0 N 0 0 0 E 0m 0m 0m 0m"
+      ) ;
+      (
+        "0 0 0 S 0 0 0 W 0 0 0 0",
+        Loc.parse ~latitude:((0l, 0l, 0l), `North) ~longitude:((0l, 0l, 0l), `East) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0 N 0 0 0 E 0m 0m 0m 0m"
+      ) ;
+      (
+        "0 0 0 N 0 0 0 E 0m 0m 0m 0m",
+        Loc.parse ~latitude:((0l, 0l, 0l), `North) ~longitude:((0l, 0l, 0l), `East) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0 N 0 0 0 E 0m 0m 0m 0m"
+      ) ;
+      (
+        "0 0 0.0 N 0 0 0.0 E 0.00m 0.00m 0.00m 0.00m",
+        Loc.parse ~latitude:((0l, 0l, 0l), `North) ~longitude:((0l, 0l, 0l), `East) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0 N 0 0 0 E 0m 0m 0m 0m"
+      ) ;
+      (
+        "00 00 0.00 N 00 00 0.00 E 0.00 0.00 0.00 0.00",
+        Loc.parse ~latitude:((0l, 0l, 0l), `North) ~longitude:((0l, 0l, 0l), `East) ~altitude:0L ~precision:(0L, 0L, 0L),
+        "0 0 0 N 0 0 0 E 0m 0m 0m 0m"
+      ) ;
+      (
+        "52 12 40.4 N 0 5 31.9 E 22m 10m 10m 10m",
+        Loc.parse ~latitude:((52l, 12l, 40400l), `North) ~longitude:((0l, 5l, 31900l), `East) ~altitude:2200L ~precision:(1000L, 1000L, 1000L),
+        "52 12 40.4 N 0 5 31.9 E 22m 10m 10m 10m"
+      ) ;
+      (
+        "0 0 0 N 0 0 0 E -100000m 0m 0m 0m",
+        Loc.parse ~latitude:((0l, 0l, 0l), `North) ~longitude:((0l, 0l, 0l), `East) ~altitude:(Int64.neg 10000000L) ~precision:(0L, 0L, 0L),
+        "0 0 0 N 0 0 0 E -100000m 0m 0m 0m"
+      ) ;
+      (
+        "0 0 0 S 0 0 0 W -100000 0m 0m 0m",
+        Loc.parse ~latitude:((0l, 0l, 0l), `South) ~longitude:((0l, 0l, 0l), `West) ~altitude:(Int64.neg 10000000L) ~precision:(0L, 0L, 0L),
+        "0 0 0 N 0 0 0 E -100000m 0m 0m 0m"
+      ) ;
+      (
+        "89 59 59.999 N 179 59 59.999 E 21374836.47m 90000000m 90000000m 90000000m",
+        Loc.parse ~latitude:((89l, 59l, (59999l)), `North) ~longitude:((179l, 59l, (59999l)), `East) ~altitude:2137483647L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "89 59 59.999 N 179 59 59.999 E 21374836.47m 90000000m 90000000m 90000000m"
+      ) ;
+      (
+        "89 59 59.999 S 179 59 59.999 W 21374836.47m 90000000m 90000000m 90000000m",
+        Loc.parse ~latitude:((89l, 59l, (59999l)), `South) ~longitude:((179l, 59l, (59999l)), `West) ~altitude:2137483647L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "89 59 59.999 S 179 59 59.999 W 21374836.47m 90000000m 90000000m 90000000m"
+      ) ;
+      (
+        "90 0 0 N 180 0 0 E 21374836.47m 90000000m 90000000m 90000000m",
+        Loc.parse ~latitude:((90l, 0l, (0l)), `North) ~longitude:((180l, 0l, (0l)), `East) ~altitude:2137483647L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "90 0 0 N 180 0 0 E 21374836.47m 90000000m 90000000m 90000000m"
+      ) ;
+      (
+        "90 0 0 S 180 0 0 W 21374836.47m 90000000m 90000000m 90000000m",
+        Loc.parse ~latitude:((90l, 0l, (0l)), `South) ~longitude:((180l, 0l, (0l)), `West) ~altitude:2137483647L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "90 0 0 S 180 0 0 W 21374836.47m 90000000m 90000000m 90000000m"
+      ) ;
+      (
+        "90 0 0 N 180 0 0 E 21374836.48m 90000000m 90000000m 90000000m",
+        Loc.parse ~latitude:((90l, 0l, (0l)), `North) ~longitude:((180l, 0l, (0l)), `East) ~altitude:2137483648L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "90 0 0 N 180 0 0 E 21374836.48m 90000000m 90000000m 90000000m"
+      ) ;
+      (
+        "90 0 0 N 180 0 0 E 21374836.49m 90000000m 90000000m 90000000m",
+        Loc.parse ~latitude:((90l, 0l, (0l)), `North) ~longitude:((180l, 0l, (0l)), `East) ~altitude:2137483649L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "90 0 0 N 180 0 0 E 21374836.49m 90000000m 90000000m 90000000m"
+      ) ;
+      (
+        "90 0 0 N 180 0 0 E 42849672.95m 90000000m 90000000m 90000000m",
+        Loc.parse ~latitude:((90l, 0l, (0l)), `North) ~longitude:((180l, 0l, (0l)), `East) ~altitude:4284967295L ~precision:(9000000000L, 9000000000L, 9000000000L),
+        "90 0 0 N 180 0 0 E 42849672.95m 90000000m 90000000m 90000000m"
+      ) ;
+      (
+        "0 0 0 N 0 0 0 E 0m 0.01m 1.01m 90000000m",
+        Loc.parse ~latitude:((0l, 0l, 0l), `North) ~longitude:((0l, 0l, 0l), `East) ~altitude:0L ~precision:(1L, 101L, 9000000000L),
+        "0 0 0 N 0 0 0 E 0m 0.01m 1m 90000000m"
+      ) ;
+      (
+        "52 12 40 N 0 5 31 W 22.1m 10m 10m 10m",
+        Loc.parse ~latitude:((52l, 12l, 40000l), `North) ~longitude:((0l, 5l, 31000l), `West) ~altitude:2210L ~precision:(1000L, 1000L, 1000L),
+        "52 12 40 N 0 5 31 W 22.1m 10m 10m 10m"
+      ) ;(
+        "52 12 40.42 N 0 5 31.91 E 22.12m 10m 10m 10m",
+        Loc.parse ~latitude:((52l, 12l, 40420l), `North) ~longitude:((0l, 5l, 31910l), `East) ~altitude:2212L ~precision:(1000L, 1000L, 1000L),
+        "52 12 40.42 N 0 5 31.91 E 22.12m 10m 10m 10m"
+      ) ;
+      (
+        "52 12 40.4 N 0 5 31.9 E 22m 10m 10m",
+        Loc.parse ~latitude:((52l, 12l, 40400l), `North) ~longitude:((0l, 5l, 31900l), `East) ~altitude:2200L ~precision:(1000L, 1000L, 1000L),
+        "52 12 40.4 N 0 5 31.9 E 22m 10m 10m 10m"
+      ) ;
+      (
+        "52 12 40.4 N 0 5 31.9 E 22m 10m",
+        Loc.parse ~latitude:((52l, 12l, 40400l), `North) ~longitude:((0l, 5l, 31900l), `East) ~altitude:2200L ~precision:(1000L, 1000000L, 1000L),
+        "52 12 40.4 N 0 5 31.9 E 22m 10m 10000m 10m"
+      ) ;
+      (
+        "52 12 40.4 N 0 5 31.9 E 22m",
+        Loc.parse ~latitude:((52l, 12l, 40400l), `North) ~longitude:((0l, 5l, 31900l), `East) ~altitude:2200L ~precision:(100L, 1000000L, 1000L),
+        "52 12 40.4 N 0 5 31.9 E 22m 1m 10000m 10m"
+      ) ;
+    ] in
+    let parse_loc (loc_str, loc, loc_printed) = 
+      let rrs =
+        let z = n_of_s "example" in
+        let ns_name = n_of_s "ns.example" in
+        let minimum = 2560l in
+        let ns = 2560l, Domain_name.(Host_set.singleton (host_exn ns_name)) in
+        let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+                    serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                    expiry = 1048576l ; minimum }
+        in
+        Name_rr_map.(add z Rr_map.Ns ns
+          (add z Rr_map.Soa soa
+            (singleton (n_of_s "example") Rr_map.Loc (minimum, Rr_map.Loc_set.singleton loc))
+          )
+        )
+      in
+      let _ = Printf.printf "%s" (loc_zone ^ loc_str ^ "\n") in
+      Alcotest.(check (result name_map_ok err) "parsing loc zone"
+        (Ok rrs) (Dns_zone.parse (loc_zone ^ loc_str ^ "\n"))) ;
+      let string_ok =
+        let module M = struct
+          type t = string
+          let pp = Format.pp_print_string
+          let equal = String.equal
+        end in
+        (module M: Alcotest.TESTABLE with type t = M.t)
+      in
+      Alcotest.(check string_ok "parsing loc zone" (loc_printed) (Loc.to_string loc)) ;
+    in List.iter parse_loc loc_strs
+
   let tests = [
     "parsing simple zone", `Quick, parse_simple_zone ;
     "parsing wildcard zone", `Quick, parse_wildcard_zone ;
@@ -1848,6 +2013,8 @@ a.b	A	1.2.3.4
     "RFC 4592 questions", `Quick, rfc4592_questions ;
     "parse zone with additional glue", `Quick, parse_zone_with_glue ;
     "parse zone with additional glue and sub", `Quick, parse_zone_with_glue_sub ;
+    "parsing numerical subdomain zone", `Quick, parse_numerical_subdomain_zone ;
+    "parse locs", `Quick, parse_locs ;
   ]
 end
 
