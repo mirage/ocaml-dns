@@ -1351,7 +1351,7 @@ module Loc = struct
     (encode size, encode horiz_pre, encode vert_pre)
   
   (* RFC 1876 Appendix A *)
-  let parse ~latitude:latitude ~longitude:longitude ~altitude:altitude ~precision:precision =
+  let parse ~latitude ~longitude ~altitude ~precision =
     let latitude = lat_long_parse latitude in
     let longitude = lat_long_parse longitude in
     let altitude = alt_parse altitude in
@@ -1448,12 +1448,12 @@ module Loc = struct
 
   let compare a b =
     List.fold_right andThen [
-      compare a.latitude b.latitude ;
-      compare a.longitude b.longitude ;
-      compare a.altitude b.altitude ;
-      compare a.size b.size ;
-      compare a.horiz_pre b.horiz_pre ;
-      compare a.vert_pre b.vert_pre ;
+      int32_compare a.latitude b.latitude ;
+      int32_compare a.longitude b.longitude ;
+      int32_compare a.altitude b.altitude ;
+      int_compare a.size b.size ;
+      int_compare a.horiz_pre b.horiz_pre ;
+      int_compare a.vert_pre b.vert_pre ;
     ] 0
 
   let decode_exn names buf ~off ~len =
@@ -2392,8 +2392,7 @@ module Rr_map = struct
     | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
     | 29 -> Ok (K Loc) | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
     | 46 -> Ok (K Rrsig) | 47 -> Ok (K Nsec) | 48 -> Ok (K Dnskey)
-    | 50 -> Ok (K Nsec3) | 52 -> Ok (K Tlsa)
-    | 257 -> Ok (K Caa)
+    | 50 -> Ok (K Nsec3) | 52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
     | x ->
       let* i = I.of_int ~off x in
       Ok (K (Unknown i))
@@ -3751,7 +3750,7 @@ module Packet = struct
       *)
       let* () =
         guard (ancount >= 1)
-          (`Malformed (6, Fmt.str "AXFR needs at l`east one RRs in answer %d" ancount))
+          (`Malformed (6, Fmt.str "AXFR needs at least one RRs in answer %d" ancount))
       in
       let* name, B (k, v), names, off = decode_rr names buf off in
       if ancount = 1 then
@@ -3911,7 +3910,7 @@ module Packet = struct
       let* () = guard (not (Flags.mem `Truncation flags)) `Partial in
       let* () =
         guard (ancount >= 1)
-          (`Malformed (6, Fmt.str "IXFR needs at l`east one RRs in answer %d" ancount))
+          (`Malformed (6, Fmt.str "IXFR needs at least one RRs in answer %d" ancount))
       in
       let* name, b, names, off = decode_rr names buf off in
       match ensure_soa b with
