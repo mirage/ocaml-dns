@@ -1448,12 +1448,12 @@ module Loc = struct
 
   let compare a b =
     List.fold_right andThen [
-      int32_compare a.latitude b.latitude ;
-      int32_compare a.longitude b.longitude ;
-      int32_compare a.altitude b.altitude ;
-      int_compare a.size b.size ;
-      int_compare a.horiz_pre b.horiz_pre ;
-      int_compare a.vert_pre b.vert_pre ;
+      Int32.compare a.latitude b.latitude ;
+      Int32.compare a.longitude b.longitude ;
+      Int32.compare a.altitude b.altitude ;
+      Int.compare a.size b.size ;
+      Int.compare a.horiz_pre b.horiz_pre ;
+      Int.compare a.vert_pre b.vert_pre ;
     ] 0
 
   let decode_exn names buf ~off ~len =
