@@ -1,3 +1,14 @@
+### v6.3.0 (2022-07-26)
+
+* dns-server: demote log level for various messages (#309 @hannesm)
+* dns-zone: add additional glue: only add if authoritative for nameserver domain
+  (#309 @hannesm)
+* BUGFIX: dns-trie: fix lookup when delegations are present, add tests
+  (#309 @hannesm)
+* ozone: be more explicit when showing errors (#311 @psafont)
+* dns: avoid polymorphic comparison (#314 @hannesm, reported by @RyanGibb)
+* FEATURE: dns: add LOC resource records (RFC 1876) (#310 @RyanGibb)
+
 ### v6.2.2 (2022-04-08)
 
 * BUGFIX dns-trie: the collect_entries function jumped over zone boundaries.

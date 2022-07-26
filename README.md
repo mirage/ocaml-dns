@@ -31,6 +31,7 @@ This library is published under the 2 clause BSD license.
 
 * [RFC 1034](https://tools.ietf.org/html/rfc1034) Domain Names - Concepts and Facilities
 * [RFC 1035](https://tools.ietf.org/html/rfc1035) Domain Names - Implementation and Specification
+* [RFC 1876](https://tools.ietf.org/html/rfc1876) A Means for Expressing Location Information in the Domain Name System
 * [RFC 1912](https://tools.ietf.org/html/rfc1912) Common DNS Operational and Configuration Errors
 * [RFC 1995](https://tools.ietf.org/html/rfc1995) Incremental Zone Transfer in DNS
 * [RFC 1996](https://tools.ietf.org/html/rfc1996) A Mechanism for Prompt Notification of Zone Changes (DNS NOTIFY)
