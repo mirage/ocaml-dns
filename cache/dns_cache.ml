@@ -242,10 +242,10 @@ let get_any cache ts name =
 
 let get_or_cname : type a . t -> int64 -> [`raw] Domain_name.t -> a Rr_map.key ->
   t * ([ a entry | `Alias of int32 * [`raw] Domain_name.t] * rank,
-       [ `Cache_drop | `Cache_miss ]) result =
+       [> `Cache_drop | `Cache_miss ]) result =
   fun cache ts name query_type ->
   metrics cache `Lookup;
-  let map_result : _ -> t * ([ a entry | `Alias of int32 * [`raw] Domain_name.t] * rank, [ `Cache_drop | `Cache_miss ]) result = function
+  let map_result : _ -> t * ([ a entry | `Alias of int32 * [`raw] Domain_name.t] * rank, [> `Cache_drop | `Cache_miss ]) result = function
     | Error e -> metrics cache `Miss; cache, Error e
     | Ok ((created, rank), entry) ->
       match update_ttl query_type entry ~created ~now:ts with

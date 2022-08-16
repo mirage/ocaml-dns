@@ -24,7 +24,7 @@ val pp_s : s Fmt.t
 (** [pp_s ppf s] pretty-prints [s] on [ppf]. *)
 
 val encode_and_sign : ?proto:proto -> ?mac:Cstruct.t -> Packet.t -> Ptime.t ->
-  Dns.Dnskey.t -> 'a Domain_name.t -> (Cstruct.t * Cstruct.t, s) result
+  Dns.Dnskey.t -> 'a Domain_name.t -> (Cstruct.t * Cstruct.t, [> s]) result
 (** [encode_and_sign ~proto ~mac t now dnskey name] signs and encodes the DNS
     packet. If a reply to a request is signed, the [mac] argument should be the
     message authentication code from the request (needed to sign the reply).
@@ -45,7 +45,7 @@ val pp_e : e Fmt.t
 
 val decode_and_verify : Ptime.t -> Dnskey.t -> 'a Domain_name.t ->
   ?mac:Cstruct.t -> Cstruct.t ->
-  (Packet.t * Tsig.t * Cstruct.t, e) result
+  (Packet.t * Tsig.t * Cstruct.t, [> e]) result
 (** [decode_and_verify now dnskey name ~mac buffer] decodes and verifies the
    given buffer using the key material, resulting in a DNS packet, a signature,
    and the [mac], or a failure. The optional [mac] argument should be provided

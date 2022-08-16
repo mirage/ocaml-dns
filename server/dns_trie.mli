@@ -84,7 +84,7 @@ type zone_check = [ `Missing_soa of [ `raw ] Domain_name.t
 val pp_zone_check : zone_check Fmt.t
 (** [pp_err ppf err] pretty prints the error [err]. *)
 
-val check : t -> (unit, zone_check) result
+val check : t -> (unit, [> zone_check]) result
 (** [check t] checks all invariants. *)
 
 
@@ -100,20 +100,20 @@ val pp_e : e Fmt.t
 (** [pp_e ppf e] pretty-prints [e] on [ppf]. *)
 
 val zone : 'a Domain_name.t -> t ->
-  ([ `raw ] Domain_name.t * Soa.t, e) result
+  ([ `raw ] Domain_name.t * Soa.t, [> e]) result
 (** [zone k t] returns either the zone and soa for [k] in [t], or an error. *)
 
 val lookup_with_cname : 'a Domain_name.t -> 'b Rr_map.key -> t ->
-  (Rr_map.b * ([ `raw ] Domain_name.t * int32 * Domain_name.Host_set.t), e) result
+  (Rr_map.b * ([ `raw ] Domain_name.t * int32 * Domain_name.Host_set.t), [> e]) result
 (** [lookup_with_cname k ty t] finds [k, ty] in [t]. It either returns the found
     resource record set and authority information, a cname alias and authority
     information, or an error. *)
 
-val lookup : 'a Domain_name.t -> 'b Rr_map.key -> t -> ('b, e) result
+val lookup : 'a Domain_name.t -> 'b Rr_map.key -> t -> ('b, [> e]) result
 (** [lookup k ty t] finds [k, ty] in [t], which may lead to an error. *)
 
 val lookup_any : 'a Domain_name.t -> t ->
-  (Rr_map.t * ([ `raw ] Domain_name.t * int32 * Domain_name.Host_set.t), e) result
+  (Rr_map.t * ([ `raw ] Domain_name.t * int32 * Domain_name.Host_set.t), [> e]) result
 (** [lookup_any k t] looks up all resource records of [k] in [t], and returns
     that and the authority information. *)
 
@@ -123,7 +123,7 @@ val lookup_glue : 'a Domain_name.t -> t ->
     potential DNS invariants, e.g. that there is no surrounding zone. *)
 
 val entries : 'a Domain_name.t -> t ->
-  (Dns.Soa.t * Rr_map.t Domain_name.Map.t, e) result
+  (Dns.Soa.t * Rr_map.t Domain_name.Map.t, [> e]) result
 (** [entries name t] returns either the SOA and all entries for the requested
     [name], or an error. *)
 

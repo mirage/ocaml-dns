@@ -1273,7 +1273,7 @@ module Packet : sig
   val pp_err : err Fmt.t
   (** [pp_err ppf err] pretty-prints the decode error [err] on [ppf]. *)
 
-  val decode : Cstruct.t -> (t, err) result
+  val decode : Cstruct.t -> (t, [> err]) result
   (** [decode cs] decode the binary data [cs] to a DNS packet [t] or an error. *)
 
   type mismatch = [ `Not_a_reply of request
@@ -1286,7 +1286,7 @@ module Packet : sig
   val pp_mismatch : mismatch Fmt.t
   (** [pp_mismatch ppf m] pretty-prints the mismatch [m] on [ppf]. *)
 
-  val reply_matches_request : request:t -> t -> (reply, mismatch) result
+  val reply_matches_request : request:t -> t -> (reply, [> mismatch]) result
   (** [reply_matches_request ~request reply] validates
       that the [reply] match the [request], and returns either
       [Ok data] or an [Error]. The following basic checks are

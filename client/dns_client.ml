@@ -158,7 +158,7 @@ module Pure = struct
         | `Partial
         | `No_data of [`raw] Domain_name.t * Soa.t
         | `No_domain of [`raw] Domain_name.t * Soa.t ],
-        [`Msg of string]) result =
+        [> `Msg of string]) result =
     fun state buf ->
     match parse_response state buf with
     | Error `Partial -> Ok `Partial

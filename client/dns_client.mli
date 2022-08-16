@@ -153,7 +153,7 @@ module Pure : sig
       and [query_state] is the information required to validate the response. *)
 
   val parse_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
-    (Dns.Packet.reply, [ `Partial | `Msg of string]) result
+    (Dns.Packet.reply, [> `Partial | `Msg of string]) result
   (** [parse_response query_state response] is the information contained in
       [response] parsed using [query_state] when the query was successful, or
       an [`Msg message] if the [response] did not match the [query_state]
@@ -173,7 +173,7 @@ module Pure : sig
       | `Partial
       | `No_data of [`raw] Domain_name.t * Dns.Soa.t
       | `No_domain of [`raw] Domain_name.t * Dns.Soa.t ],
-      [`Msg of string]) result
+      [> `Msg of string]) result
   (** [handle_response query_state response] is the information contained in
       [response] parsed using [query_state] when the query was successful, or
       an [`Msg message] if the [response] did not match the [query_state]
