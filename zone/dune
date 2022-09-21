@@ -5,5 +5,6 @@
  (libraries dns dns-server logs)
  (wrapped false))
 
-(ocamlyacc dns_zone_parser)
+(menhir
+ (modules dns_zone_parser))
 (ocamllex dns_zone_lexer)
