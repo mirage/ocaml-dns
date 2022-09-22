@@ -139,7 +139,7 @@ module Pure = struct
     | Error err ->
       Error (`Msg (Fmt.str "Error parsing response: %a" Packet.pp_err err))
     | Ok t ->
-      Log.info (fun m -> m "received %a" Dns.Packet.pp t);
+      Log.debug (fun m -> m "received %a" Dns.Packet.pp t);
       to_msg t (Packet.reply_matches_request ~request:state.query t)
 
   let parse_response (type requested)
