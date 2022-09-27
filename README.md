@@ -1,7 +1,5 @@
 # ocaml-dns - a Domain Name System (DNS) library
 
-[![Build Status](https://travis-ci.org/mirage/ocaml-dns.svg?branch=master)](https://travis-ci.org/mirage/ocaml-dns)
-
 (c) 2017-2019 Hannes Mehnert (robur.io, Center for the Cultivation of Technology)
 
 %%VERSION%%
