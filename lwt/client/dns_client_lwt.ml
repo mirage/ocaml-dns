@@ -153,10 +153,7 @@ module Transport : Dns_client.S
     let authenticator = authenticator () in
     let peer_name = Dns_client.default_resolver_hostname in
     let tls_config = Tls.Config.client ~authenticator ~peer_name () in
-    List.flatten
-      (List.map (fun ip -> [
-             `Tls (tls_config, ip, 853); `Plaintext (ip, 53)
-           ]) Dns_client.default_resolvers)
+    List.map (fun ip -> `Tls (tls_config, ip, 853)) Dns_client.default_resolvers
 
   let maybe_resolv_conf t =
     match t.nameservers with
