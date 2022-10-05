@@ -138,10 +138,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
             let peer_name = Dns_client.default_resolver_hostname in
             Tls.Config.client ~authenticator ~peer_name ()
           in
-          List.flatten
-            (List.map
-               (fun ip -> [ `Tls (tls_cfg, ip, 853) ; `Plaintext (ip, 53) ])
-               Dns_client.default_resolvers)
+          List.map (fun ip -> `Tls (tls_cfg, ip, 853))
+            Dns_client.default_resolvers
         | Some (`Udp, _) -> invalid_arg "UDP is not supported"
         | Some (`Tcp, ns) -> ns
       in

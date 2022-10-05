@@ -46,8 +46,7 @@ module Transport : Dns_client.S
     | Ok ips -> Ok ips
     | Error _ as e -> e
 
-  let default_resolvers () =
-    List.map (fun ip -> ip, 53) Dns_client.default_resolvers
+  let default_resolvers () = [ Ipaddr.of_string_exn "1.1.1.1", 53 ]
 
   let maybe_resolv_conf t =
     match t.nameservers with
