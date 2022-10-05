@@ -35,13 +35,20 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         let* authenticator = CA.authenticator () in
         let tls = Tls.Config.client ~authenticator () in
         Ok (`Tls (tls, ipaddr, port))
-      | nameserver :: authenticator ->
+      | nameserver :: opt_hostname :: authenticator ->
         let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
-        let authenticator = String.concat "!" authenticator in
-        let* authenticator = X509.Authenticator.of_string authenticator in
+        let peer_name, data =
+          match
+            let* dn = Domain_name.of_string opt_hostname in
+            Domain_name.host dn
+          with
+          | Ok hostname -> Some hostname, String.concat "!" authenticator
+          | Error _ -> None, String.concat "!" (opt_hostname :: authenticator)
+        in
+        let* authenticator = X509.Authenticator.of_string data in
         let time () = Some (Ptime.v (P.now_d_ps ())) in
         let authenticator = authenticator time in
-        let tls = Tls.Config.client ~authenticator () in
+        let tls = Tls.Config.client ~authenticator ?peer_name () in
         Ok (`Tls (tls, ipaddr, port))
       | [] -> assert false )
     | "tcp" :: nameserver ->
