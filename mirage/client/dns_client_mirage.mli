@@ -25,6 +25,8 @@ module type S = sig
     *)
 
   val connect :
+    ?size:int ->
+    ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
     Transport.stack -> t Lwt.t

@@ -19,6 +19,8 @@ module type S = sig
     (Dns.proto * Transport.io_addr, [> `Msg of string ]) result
 
   val connect :
+    ?size:int ->
+    ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
     Transport.stack -> t Lwt.t
@@ -409,7 +411,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
 
   include Dns_client.Make(Transport)
 
-  let connect ?(nameservers= []) ?timeout stack =
+  let connect ?size ?edns ?(nameservers= []) ?timeout stack =
     let nameservers =
       List.map
         (fun nameserver -> match nameserver_of_string nameserver with
@@ -429,5 +431,5 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
       | [], _::_ -> Some (`Udp, udp)
       | _::_, _ -> Some (`Tcp, tcp)
     in
-    Lwt.return (create ?nameservers ?timeout stack)
+    Lwt.return (create ?size ?edns ?nameservers ?timeout stack)
 end

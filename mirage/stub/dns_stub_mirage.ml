@@ -232,12 +232,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         | Some data -> metrics `Reserved_answers ; Lwt.return (Some data)
         | None -> resolve t packet.Packet.question packet.Packet.data build_reply
 
-  let create ?nameservers ?(size = 10000) ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
-    let nameservers = match nameservers with
-      | None -> None
-      | Some ns -> Some (`Tcp, ns)
-    in
-    let client = Client.create ~size ?nameservers stack in
+  let create ?(size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
+    Client.connect ~size ?edns ?nameservers ?timeout stack >|= fun client ->
     let server = Dns_server.Primary.server primary in
     let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in
     let t = { client ; reserved ; server ; on_update } in
