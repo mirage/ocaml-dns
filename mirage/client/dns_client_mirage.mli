@@ -5,16 +5,18 @@ module type S = sig
 
   include module type of Dns_client.Make(Transport)
 
-  val nameserver_of_string : string -> (Transport.io_addr, [> `Msg of string ]) result
+  val nameserver_of_string : string ->
+    (Transport.io_addr, [> `Msg of string ]) result
   (** [nameserver_of_string authenticators str] returns a {!Transport.io_addr}
       from the given string. The format is:
       - [tcp:<ipaddr>(:port)?] for a simple nameserver and we will communicate
         with it {i via} the TCP/IP protocol
-      - [tls:<ipaddr>(:port)?(!authenticator)?] for a nameserver and we will
-        communicate with it {i via} the TCP/IP protocol plus the TLS encrypted
-        layer. The user can verify the nameserver {i via} an {i authenticator}
-        (see {!X509.Authenticator.of_string} for the format of it). By default,
-        {!Ca_certs_nss.authenticator} is used.
+      - [tls:<ipaddr>(:port)?((!hostname)?!authenticator)?] for a nameserver and
+        we will communicate with it {i via} the TCP/IP protocol plus the TLS
+        encrypted layer. The user can verify the nameserver {i via} an
+        {i authenticator} (see {!X509.Authenticator.of_string} for the format
+        of it). The {i hostname} can be provided to be used as peer name by the
+        authenticator. By default, {!Ca_certs_nss.authenticator} is used.
     *)
 
   val connect :
