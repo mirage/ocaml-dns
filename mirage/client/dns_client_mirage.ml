@@ -321,13 +321,13 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
 
     let rec connect t =
       match t.flow, t.connected_condition with
-      | Some _, _ -> Lwt.return (Ok t)
+      | Some _, _ -> Lwt.return (Ok (`Tcp, t))
       | None, Some w ->
         Lwt_condition.wait w >>= fun () ->
         connect t
       | None, None ->
         connect_ns t t.nameservers >|= function
-        | Ok () -> Ok t
+        | Ok () -> Ok (`Tcp, t)
         | Error `Msg msg -> Error (`Msg msg)
 
     let close _f =

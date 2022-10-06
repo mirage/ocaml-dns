@@ -131,7 +131,7 @@ module Transport : Dns_client.S
              try
                with_timeout ctx (fun fd ->
                    Unix.connect fd addr;
-                   Ok ctx)
+                   Ok (proto, ctx))
              with e ->
                close ctx;
                Error (`Msg (Printexc.to_string e)))
