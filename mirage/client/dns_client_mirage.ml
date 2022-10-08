@@ -81,11 +81,18 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         | `Tls of Tls.Config.client * Ipaddr.t * int
       ]
     type +'a io = 'a Lwt.t
+    module IS =
+      Set.Make(struct
+        type t = int
+        let compare (a : int) (b : int) = compare a b
+      end)
     type t = {
       nameservers : io_addr list ;
       proto : Dns.proto ;
       timeout_ns : int64 ;
       stack : stack ;
+      last_udp_port : int ;
+      mutable udp_ports : IS.t ;
       mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
       mutable connected_condition : unit Lwt_condition.t option ;
       mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
@@ -151,15 +158,33 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
       Lwt_condition.wait t.timer_condition >>= fun () ->
       loop ()
 
-    let udp_port = 12345
-
-    let read_udp t ~src:_ ~dst:_ ~src_port:_ data =
-      (* TODO verify src_port, src, dst *)
-      let id = Cstruct.BE.get_uint16 data 0 in
-      (match IM.find_opt id t.requests with
-       | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
-       | Some (_, cond) -> Lwt_condition.broadcast cond (Ok data));
+    let read_udp t port ip ~src ~dst:_ ~src_port data =
+      (* TODO: compare dst being us *)
+      if (port = src_port && Ipaddr.compare ip src = 0) ||
+         (src_port = t.last_udp_port && Ipaddr.(compare ip (V4 V4.any) = 0))
+      then
+        (let id = Cstruct.BE.get_uint16 data 0 in
+         (match IM.find_opt id t.requests with
+          | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
+          | Some (_, cond) -> Lwt_condition.broadcast cond (Ok data));
+         if port <> t.last_udp_port then
+           S.UDP.unlisten (S.udp t.stack) ~port;
+         t.udp_ports <- IS.remove port t.udp_ports);
       Lwt.return_unit
+
+    let generate_udp_port t =
+      let rec go retries =
+        if retries = 0 then
+          t.last_udp_port
+        else
+          let port = 1024 + ((Cstruct.BE.get_uint16 (R.generate 2) 0) mod (65536 - 1024)) in
+          if IS.mem port t.udp_ports || port = t.last_udp_port then
+            go (retries - 1)
+          else
+            (t.udp_ports <- IS.add port t.udp_ports;
+             port)
+      in
+      go 10
 
     let create ?nameservers ~timeout stack =
       let proto, nameservers = match nameservers with
@@ -184,6 +209,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         proto ;
         timeout_ns = timeout ;
         stack ;
+        last_udp_port = 0 ;
+        udp_ports = IS.empty ;
         flow = None ;
         connected_condition = None ;
         requests = IM.empty ;
@@ -191,10 +218,14 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         waiters = Happy_eyeballs.Waiter_map.empty ;
         timer_condition = Lwt_condition.create () ;
       } in
-      (match proto with
-       | `Tcp -> Lwt.async (fun () -> he_timer t)
-       | `Udp -> S.UDP.listen (S.udp stack) ~port:udp_port (read_udp t));
-      t
+      match proto with
+      | `Tcp -> Lwt.async (fun () -> he_timer t); t
+      | `Udp ->
+        let last_udp_port = generate_udp_port t in
+        let t = { t with last_udp_port } in
+        S.UDP.listen (S.udp stack) ~port:last_udp_port
+          (read_udp t last_udp_port Ipaddr.(V4 V4.any));
+        t
 
     let nameservers { proto ; nameservers ; _ } = proto, nameservers
     let rng = R.generate ?g:None
@@ -380,6 +411,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
           with_timeout t.timeout_ns
             (let open Lwt_result.Infix in
              (let open Lwt.Infix in
+              let udp_port = generate_udp_port t in
+              S.UDP.listen (S.udp t.stack) ~port:udp_port (read_udp t udp_port dst);
               S.UDP.write ~src_port:udp_port ~dst ~dst_port (S.udp t.stack) tx
               >|= function
               | Error e -> Error (`Msg (Fmt.to_to_string S.UDP.pp_error e))
