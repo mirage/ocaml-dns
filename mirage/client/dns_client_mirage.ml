@@ -30,9 +30,42 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
   module TLS = Tls_mirage.Make(S.TCP)
   module CA = Ca_certs_nss.Make(P)
 
+  let auth_err = match X509.Authenticator.of_string "" with
+    | Ok _ -> "should not happen"
+    | Error `Msg m -> m
+
+  let format = {|
+The format of an IP address and optional port is:
+- '[::1]:port' for an IPv6 address, or
+- '127.0.0.1:port' for an IPv4 address.
+
+The format of a nameserver is:
+- 'udp:IP' where the first element is the string "udp" and the [IP] as described
+  above (port defaults to 53): UDP packets to the provided IP address will be
+  sent from a random source port;
+- 'tcp:IP' where the first element is the string "tcp" and the [IP] as described
+  above (port defaults to 53): a TCP connection to the provided IP address will
+  be established;
+- 'tls:IP' where the first element is the string "tls", the [IP] as described
+  above (port defaults to 853): a TCP connection will be established, on top of
+  which a TLS handshake with the authenticator
+  (https://github.com/mirage/ca-certs-nss) will be done (which checks for the
+  IP address being in the certificate as SubjectAlternativeName);
+- 'tls:IP!hostname' where the first element is the string "tls",
+  the [IP] as described above (port defaults to 853), the [hostname] a host name
+  used for the TLS authentication: a TCP connection will be established, on top
+  of which a TLS handshake with the authenticator
+  (https://github.com/mirage/ca-certs-nss) will be done;
+- 'tls:IP!hostname!authenticator' where the first element is the string "tls",
+  the [IP] as described above (port defaults to 853), the [hostname] a host name
+  used for the TLS authentication, and the [authenticator] an X509
+  authenticator: a TCP connection will be established, on top of which a TLS
+  handshake with the authenticator will be done.
+|} ^ auth_err
+
   let nameserver_of_string str =
     let ( let* ) = Result.bind in
-    match String.split_on_char ':' str with
+    begin match String.split_on_char ':' str with
     | "tls" :: rest ->
       let str = String.concat ":" rest in
       ( match String.split_on_char '!' str with
@@ -51,9 +84,13 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
           | Ok hostname -> Some hostname, String.concat "!" authenticator
           | Error _ -> None, String.concat "!" (opt_hostname :: authenticator)
         in
-        let* authenticator = X509.Authenticator.of_string data in
-        let time () = Some (Ptime.v (P.now_d_ps ())) in
-        let authenticator = authenticator time in
+        let* authenticator =
+          if data = "" then
+            CA.authenticator ()
+          else
+            let* a = X509.Authenticator.of_string data in
+            Ok (a (fun () -> Some (Ptime.v (P.now_d_ps ()))))
+        in
         let tls = Tls.Config.client ~authenticator ?peer_name () in
         Ok (`Tcp, `Tls (tls, ipaddr, port))
       | [] -> assert false )
@@ -67,6 +104,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
       Ok (`Udp, `Plain (ipaddr, port))
     | _ ->
       Error (`Msg ("Unable to decode nameserver " ^ str))
+  end |> Result.map_error (function `Msg e -> `Msg (e ^ format))
 
   module Transport : Dns_client.S
     with type stack = S.t
