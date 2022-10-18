@@ -122,7 +122,7 @@ The format of a nameserver is:
     module IS =
       Set.Make(struct
         type t = int
-        let compare (a : int) (b : int) = compare a b
+        let compare (a : int) (b : int) = Int.compare a b
       end)
     type t = {
       nameservers : io_addr list ;
