@@ -390,7 +390,7 @@ The format of a nameserver is:
                 connect_ns t t.nameservers >|= function
                 | Error `Msg msg ->
                   Log.err (fun m -> m "error while connecting to resolver: %s" msg)
-                | Ok _ -> ()
+                | Ok () -> ()
               else
                 Lwt.return_unit);
           Lwt_condition.broadcast connected_condition ();
