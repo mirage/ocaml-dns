@@ -204,10 +204,7 @@ The format of a nameserver is:
         (let id = Cstruct.BE.get_uint16 data 0 in
          (match IM.find_opt id t.requests with
           | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
-          | Some (_, cond) -> Lwt_condition.broadcast cond (Ok data));
-         if port <> t.last_udp_port then
-           S.UDP.unlisten (S.udp t.stack) ~port;
-         t.udp_ports <- IS.remove port t.udp_ports);
+          | Some (_, cond) -> Lwt_condition.broadcast cond (Ok data)));
       Lwt.return_unit
 
     let generate_udp_port t =
@@ -446,10 +443,10 @@ The format of a nameserver is:
             | _ -> assert false
           in
           let id = Cstruct.BE.get_uint16 tx 0 in
+          let udp_port = generate_udp_port t in
           with_timeout t.timeout_ns
             (let open Lwt_result.Infix in
              (let open Lwt.Infix in
-              let udp_port = generate_udp_port t in
               S.UDP.listen (S.udp t.stack) ~port:udp_port (read_udp t udp_port dst);
               S.UDP.write ~src_port:udp_port ~dst ~dst_port (S.udp t.stack) tx
               >|= function
@@ -460,6 +457,9 @@ The format of a nameserver is:
              let open Lwt.Infix in
              Lwt_condition.wait cond >|= fun data ->
              match data with Ok _ | Error `Msg _ as r -> r) >|= fun r ->
+          if udp_port <> t.last_udp_port then
+            S.UDP.unlisten (S.udp t.stack) ~port:udp_port;
+          t.udp_ports <- IS.remove udp_port t.udp_ports;
           t.requests <- IM.remove id t.requests;
           r
         | `Tcp, None -> Lwt.return (Error (`Msg "no connection to resolver"))
