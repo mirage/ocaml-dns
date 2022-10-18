@@ -199,7 +199,8 @@ The format of a nameserver is:
     let read_udp t port ip ~src ~dst:_ ~src_port data =
       (* TODO: compare dst being us *)
       if (port = src_port && Ipaddr.compare ip src = 0) ||
-         (src_port = t.last_udp_port && Ipaddr.(compare ip (V4 V4.any) = 0))
+         (src_port = t.last_udp_port && Ipaddr.(compare ip (V4 V4.any) = 0)) &&
+         Cstruct.length data > 12 (* minimum DNS length (header length) *)
       then
         (let id = Cstruct.BE.get_uint16 data 0 in
          (match IM.find_opt id t.requests with
