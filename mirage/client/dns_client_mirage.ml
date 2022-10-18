@@ -19,7 +19,7 @@ module type S = sig
     (Dns.proto * Transport.io_addr, [> `Msg of string ]) result
 
   val connect :
-    ?size:int ->
+    ?cache_size:int ->
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
@@ -482,7 +482,7 @@ The format of a nameserver is:
 
   include Dns_client.Make(Transport)
 
-  let connect ?size ?edns ?(nameservers= []) ?timeout stack =
+  let connect ?cache_size ?edns ?(nameservers= []) ?timeout stack =
     let nameservers =
       List.map
         (fun nameserver -> match nameserver_of_string nameserver with
@@ -502,5 +502,5 @@ The format of a nameserver is:
       | [], _::_ -> Some (`Udp, udp)
       | _::_, _ -> Some (`Tcp, tcp)
     in
-    Lwt.return (create ?size ?edns ?nameservers ?timeout stack)
+    Lwt.return (create ?cache_size ?edns ?nameservers ?timeout stack)
 end

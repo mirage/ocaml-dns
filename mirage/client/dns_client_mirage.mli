@@ -25,13 +25,16 @@ module type S = sig
     *)
 
   val connect :
-    ?size:int ->
+    ?cache_size:int ->
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
     Transport.stack -> t Lwt.t
-  (** [connect ?nameservers ?timeout stack] creates a DNS entity which
-      is able to resolve domain-name. It expects few optional arguments:
+  (** [connect ?cache_size ?edns ?nameservers ?timeout stack] creates a DNS
+      entity which is able to resolve domain-name. It expects few optional
+      arguments:
+      - [cache_size] the size of the LRU cache
+      - [edns] the behaviour of whether or not to send edns in queries
       - [nameservers] a list of {i nameservers} used to resolve domain-names
       - [timeout] (in nanoseconds), passed to {create}
 
