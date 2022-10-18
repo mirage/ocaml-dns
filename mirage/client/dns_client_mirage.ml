@@ -119,11 +119,7 @@ The format of a nameserver is:
         | `Tls of Tls.Config.client * Ipaddr.t * int
       ]
     type +'a io = 'a Lwt.t
-    module IS =
-      Set.Make(struct
-        type t = int
-        let compare (a : int) (b : int) = Int.compare a b
-      end)
+    module IS = Set.Make(Int)
     type t = {
       nameservers : io_addr list ;
       proto : Dns.proto ;
