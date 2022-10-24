@@ -191,9 +191,9 @@ The format of a nameserver is:
       Lwt_condition.wait t.timer_condition >>= fun () ->
       loop ()
 
-    let read_udp t ip ~src ~dst:_ ~src_port:_ data =
-      (* TODO: compare dst being us *)
-      if Ipaddr.compare ip src = 0 && Cstruct.length data > 12 (* minimum DNS length (header length) *)
+    let read_udp t ip ip_us ~src ~dst ~src_port:_ data =
+      if Ipaddr.compare ip_us dst = 0 && Ipaddr.compare ip src = 0 &&
+         Cstruct.length data > 12 (* minimum DNS length (header length) *)
       then
         (let id = Cstruct.BE.get_uint16 data 0 in
          (match IM.find_opt id t.requests with
@@ -431,10 +431,11 @@ The format of a nameserver is:
             | `Plain (ip, port) :: _ -> ip, port
             | _ -> assert false
           in
+          let src = S.IP.src (S.ip t.stack) ~dst in
           let id = Cstruct.BE.get_uint16 tx 0 in
           Lwt.return (generate_udp_port t) >>>= fun udp_port ->
           with_timeout t.timeout_ns
-            (S.UDP.listen (S.udp t.stack) ~port:udp_port (read_udp t dst);
+            (S.UDP.listen (S.udp t.stack) ~port:udp_port (read_udp t dst src);
              (S.UDP.write ~src_port:udp_port ~dst ~dst_port (S.udp t.stack) tx >|= function
                | Error e -> Error (`Msg (Fmt.to_to_string S.UDP.pp_error e))
                | Ok () -> Ok ()) >>>= fun () ->
