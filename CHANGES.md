@@ -1,3 +1,16 @@
+### v6.4.0 (2022-10-24)
+
+* dns-client: demote log level of response to debug (#317 @hannesm)
+* dns-client: use DNS-over-TLS for uncensoreddns.org only (#320 @hannesm)
+* API: dns-client: connect returns the protocol (UDP/TCP), allowing mixed UDP
+  and TCP namerservers being used (#322 @hannesm)
+* dns-client-mirage: allow hostname in authenticator, improve error message and
+  documentation (#319 #322 @hannesm)
+* dns-client-mirage: support UDP nameservers as "udp:<IP>" in
+  nameserver_of_string (#322 @reynir @hannesm)
+* API: dns-client, dns-stub, dns-resolver: ?size is now ?cache_size (#322
+  @hannesm, suggested by @reynir)
+
 ### v6.3.0 (2022-07-26)
 
 * dns-server: demote log level for various messages (#309 @hannesm)
