@@ -125,7 +125,6 @@ The format of a nameserver is:
       proto : Dns.proto ;
       timeout_ns : int64 ;
       stack : stack ;
-      last_udp_port : int ;
       mutable udp_ports : IS.t ;
       mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
       mutable connected_condition : unit Lwt_condition.t option ;
@@ -192,11 +191,9 @@ The format of a nameserver is:
       Lwt_condition.wait t.timer_condition >>= fun () ->
       loop ()
 
-    let read_udp t port ip ~src ~dst:_ ~src_port:_ data =
+    let read_udp t ip ~src ~dst:_ ~src_port:_ data =
       (* TODO: compare dst being us *)
-      if (Ipaddr.compare ip src = 0 ||
-          (port = t.last_udp_port && Ipaddr.(compare ip (V4 V4.any) = 0))) &&
-         Cstruct.length data > 12 (* minimum DNS length (header length) *)
+      if Ipaddr.compare ip src = 0 && Cstruct.length data > 12 (* minimum DNS length (header length) *)
       then
         (let id = Cstruct.BE.get_uint16 data 0 in
          (match IM.find_opt id t.requests with
@@ -207,16 +204,16 @@ The format of a nameserver is:
     let generate_udp_port t =
       let rec go retries =
         if retries = 0 then
-          t.last_udp_port
+          Error (`Msg "couldn't find a free UDP port")
         else
           let port = 1024 + ((Cstruct.BE.get_uint16 (R.generate 2) 0) mod (65536 - 1024)) in
-          if IS.mem port t.udp_ports || port = t.last_udp_port then
+          if IS.mem port t.udp_ports then
             go (retries - 1)
           else
             (t.udp_ports <- IS.add port t.udp_ports;
-             port)
+             Ok port)
       in
-      go 10
+      go 32
 
     let create ?nameservers ~timeout stack =
       let proto, nameservers = match nameservers with
@@ -241,7 +238,6 @@ The format of a nameserver is:
         proto ;
         timeout_ns = timeout ;
         stack ;
-        last_udp_port = 0 ;
         udp_ports = IS.empty ;
         flow = None ;
         connected_condition = None ;
@@ -252,12 +248,7 @@ The format of a nameserver is:
       } in
       match proto with
       | `Tcp -> Lwt.async (fun () -> he_timer t); t
-      | `Udp ->
-        let last_udp_port = generate_udp_port t in
-        let t = { t with last_udp_port } in
-        S.UDP.listen (S.udp stack) ~port:last_udp_port
-          (read_udp t last_udp_port Ipaddr.(V4 V4.any));
-        t
+      | `Udp -> t
 
     let nameservers { proto ; nameservers ; _ } = proto, nameservers
     let rng = R.generate ?g:None
@@ -432,6 +423,7 @@ The format of a nameserver is:
       Lwt.return_unit
 
     let send_recv t tx =
+      let ( >>>= ) = Lwt_result.bind in
       if Cstruct.length tx > 4 then
         match t.proto, t.flow with
         | `Udp, _ ->
@@ -440,22 +432,18 @@ The format of a nameserver is:
             | _ -> assert false
           in
           let id = Cstruct.BE.get_uint16 tx 0 in
-          let udp_port = generate_udp_port t in
+          Lwt.return (generate_udp_port t) >>>= fun udp_port ->
           with_timeout t.timeout_ns
-            (let open Lwt_result.Infix in
-             (let open Lwt.Infix in
-              S.UDP.listen (S.udp t.stack) ~port:udp_port (read_udp t udp_port dst);
-              S.UDP.write ~src_port:udp_port ~dst ~dst_port (S.udp t.stack) tx
-              >|= function
-              | Error e -> Error (`Msg (Fmt.to_to_string S.UDP.pp_error e))
-              | Ok () -> Ok () ) >>= fun () ->
+            (S.UDP.listen (S.udp t.stack) ~port:udp_port (read_udp t dst);
+             (S.UDP.write ~src_port:udp_port ~dst ~dst_port (S.udp t.stack) tx >|= function
+               | Error e -> Error (`Msg (Fmt.to_to_string S.UDP.pp_error e))
+               | Ok () -> Ok ()) >>>= fun () ->
              let cond = Lwt_condition.create () in
              t.requests <- IM.add id (tx, cond) t.requests;
              let open Lwt.Infix in
              Lwt_condition.wait cond >|= fun data ->
              match data with Ok _ | Error `Msg _ as r -> r) >|= fun r ->
-          if udp_port <> t.last_udp_port then
-            S.UDP.unlisten (S.udp t.stack) ~port:udp_port;
+          S.UDP.unlisten (S.udp t.stack) ~port:udp_port;
           t.udp_ports <- IS.remove udp_port t.udp_ports;
           t.requests <- IM.remove id t.requests;
           r
