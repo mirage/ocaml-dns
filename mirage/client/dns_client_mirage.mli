@@ -1,7 +1,7 @@
 module type S = sig
   module Transport : Dns_client.S
     with type io_addr = [
-        | `Plain of Ipaddr.t * int
+        | `Plaintext of Ipaddr.t * int
         | `Tls of Tls.Config.client * Ipaddr.t * int
       ]
      and type +'a io = 'a Lwt.t

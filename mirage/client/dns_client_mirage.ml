@@ -8,7 +8,7 @@ module IM = Map.Make(Int)
 module type S = sig
   module Transport : Dns_client.S
     with type io_addr = [
-        | `Plain of Ipaddr.t * int
+        | `Plaintext of Ipaddr.t * int
         | `Tls of Tls.Config.client * Ipaddr.t * int
       ]
      and type +'a io = 'a Lwt.t
@@ -97,11 +97,11 @@ The format of a nameserver is:
     | "tcp" :: nameserver ->
       let str = String.concat ":" nameserver in
       let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
-      Ok (`Tcp, `Plain (ipaddr, port))
+      Ok (`Tcp, `Plaintext (ipaddr, port))
     | "udp" :: nameserver ->
       let str = String.concat ":" nameserver in
       let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
-      Ok (`Udp, `Plain (ipaddr, port))
+      Ok (`Udp, `Plaintext (ipaddr, port))
     | _ ->
       Error (`Msg ("Unable to decode nameserver " ^ str))
   end |> Result.map_error (function `Msg e -> `Msg (e ^ format))
@@ -110,12 +110,12 @@ The format of a nameserver is:
     with type stack = S.t
      and type +'a io = 'a Lwt.t
      and type io_addr = [
-        | `Plain of Ipaddr.t * int
+        | `Plaintext of Ipaddr.t * int
         | `Tls of Tls.Config.client * Ipaddr.t * int
       ] = struct
     type stack = S.t
     type io_addr = [
-        | `Plain of Ipaddr.t * int
+        | `Plaintext of Ipaddr.t * int
         | `Tls of Tls.Config.client * Ipaddr.t * int
       ]
     type +'a io = 'a Lwt.t
@@ -342,10 +342,11 @@ The format of a nameserver is:
         t.requests (Lwt.return (Ok ()))
 
     let to_pairs =
-      List.map (function `Plain (ip, port) | `Tls (_, ip, port) -> (ip, port))
+      List.map (function `Plaintext (ip, port)
+                       | `Tls (_, ip, port) -> (ip, port))
 
     let find_ns ns (addr, port) =
-      List.find (function `Plain (ip, p) | `Tls (_, ip, p) ->
+      List.find (function `Plaintext (ip, p) | `Tls (_, ip, p) ->
           Ipaddr.compare ip addr = 0 && p = port)
         ns
 
@@ -384,7 +385,7 @@ The format of a nameserver is:
         in
         let config = find_ns t.nameservers addr in
         match config with
-        | `Plain _ -> continue (`Plain flow)
+        | `Plaintext _ -> continue (`Plain flow)
         | `Tls (tls_cfg, _ip, _port) ->
           TLS.client_of_flow tls_cfg flow >>= function
           | Ok tls -> continue (`Tls tls)
@@ -428,7 +429,7 @@ The format of a nameserver is:
         match t.proto, t.flow with
         | `Udp, _ ->
           let dst, dst_port = match t.nameservers with
-            | `Plain (ip, port) :: _ -> ip, port
+            | `Plaintext (ip, port) :: _ -> ip, port
             | _ -> assert false
           in
           let src = S.IP.src (S.ip t.stack) ~dst in
