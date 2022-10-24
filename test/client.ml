@@ -107,7 +107,7 @@ module Transport (*: Dns_client.S
 
   let close _ = ()
 
-  let connect _ = Ok default_debug_info
+  let connect a = Ok (a, default_debug_info)
 
   let send_recv (mock_responses : context) _ =
     match !mock_responses with

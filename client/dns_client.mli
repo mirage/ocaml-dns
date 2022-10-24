@@ -46,8 +46,8 @@ module type S = sig
   val clock : unit -> int64
   (** [clock t] is the monotonic clock. *)
 
-  val connect : t -> (context, [> `Msg of string ]) result io
-  (** [connect addr] is a new connection ([context]) to [addr], or an error. *)
+  val connect : t -> (Dns.proto * context, [> `Msg of string ]) result io
+  (** [connect t] is a new connection ([context]) to [t], or an error. *)
 
   val send_recv : context -> Cstruct.t -> (Cstruct.t, [> `Msg of string ]) result io
   (** [send_recv context buffer] sends [buffer] to the [context] upstream, and
@@ -67,12 +67,13 @@ sig
 
   type t
 
-  val create : ?size:int -> ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
+  val create : ?cache_size:int ->
+    ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:(Dns.proto * T.io_addr list) -> ?timeout:int64 ->
     T.stack -> t
-  (** [create ~size ~edns ~nameservers ~timeout stack] creates the state of the
-      DNS client. We use [timeout] (ns, default 5s) as a time budget for connect
-      and request timeouts. To specify a timeout, use
+  (** [create ~cache_size ~edns ~nameservers ~timeout stack] creates the state
+      of the DNS client. We use [timeout] (ns, default 5s) as a time budget for
+      connect and request timeouts. To specify a timeout, use
       [create ~timeout:(Duration.of_sec 3)]. Whether or not to use
       {{:https://tools.ietf.org/html/rfc6891}EDNS} in queries is controlled
       by [~edns] (defaults to [`None]): if [None], no EDNS will be present,

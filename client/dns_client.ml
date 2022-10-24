@@ -186,7 +186,7 @@ module type S = sig
   val rng : int -> Cstruct.t
   val clock : unit -> int64
 
-  val connect : t -> (context, [> `Msg of string ]) result io
+  val connect : t -> (Dns.proto * context, [> `Msg of string ]) result io
   val send_recv : context -> Cstruct.t -> (Cstruct.t, [> `Msg of string ]) result io
   val close : context -> unit io
 
@@ -222,8 +222,8 @@ struct
   }
 
   (* TODO eventually use Auto, and retry without on FormErr *)
-  let create ?(size = 32) ?(edns = `None) ?nameservers ?(timeout = Duration.of_sec 5) stack =
-    { cache = Dns_cache.empty size ;
+  let create ?(cache_size = 32) ?(edns = `None) ?nameservers ?(timeout = Duration.of_sec 5) stack =
+    { cache = Dns_cache.empty cache_size ;
       transport = Transport.create ?nameservers ~timeout stack ;
       edns ;
     }
@@ -254,12 +254,11 @@ struct
       | Error _ -> Error (`Msg "")
 
   let get_raw_reply t query_type name =
-    let proto, _ = Transport.nameservers t.transport in
+    Transport.connect t.transport >>| fun (proto, socket) ->
+    Log.debug (fun m -> m "Connected to NS.");
     let tx, state =
       Pure.make_query Transport.rng proto ~dnssec:true t.edns name query_type
     in
-    Transport.connect t.transport >>| fun socket ->
-    Log.debug (fun m -> m "Connected to NS.");
     (Transport.send_recv socket tx >>| fun recv_buffer ->
      Log.debug (fun m -> m "Read @[<v>%d bytes@]"
                     (Cstruct.length recv_buffer)) ;
@@ -285,12 +284,11 @@ struct
       | Ok _ as ok -> Transport.lift ok
       | Error ((`No_data _ | `No_domain _) as nod) -> Error nod |> Transport.lift
       | Error `Msg _ ->
-        let proto, _ = Transport.nameservers t.transport in
+        Transport.connect t.transport >>| fun (proto, socket) ->
+        Log.debug (fun m -> m "Connected to NS.");
         let tx, state =
           Pure.make_query Transport.rng proto t.edns name query_type
         in
-        Transport.connect t.transport >>| fun socket ->
-        Log.debug (fun m -> m "Connected to NS.");
         (Transport.send_recv socket tx >>| fun recv_buffer ->
          Log.debug (fun m -> m "Read @[<v>%d bytes@]"
                         (Cstruct.length recv_buffer)) ;

@@ -395,7 +395,7 @@ module Transport : Dns_client.S
 
   let connect t =
     connect_via_tcp_to_ns t >|= function
-    | Ok () -> Ok t
+    | Ok () -> Ok (`Tcp, t)
     | Error `Msg msg -> Error (`Msg msg)
 end
 

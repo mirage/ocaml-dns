@@ -41,8 +41,8 @@ type t = {
   queried : awaiting list QM.t ;
 }
 
-let create ?(size = 10000) ?(ip_protocol = `Both) now rng primary =
-  let cache = Dns_cache.empty size in
+let create ?(cache_size = 10000) ?(ip_protocol = `Both) now rng primary =
+  let cache = Dns_cache.empty cache_size in
   let cache =
     List.fold_left (fun cache (name, b) ->
         Dns_cache.set cache now

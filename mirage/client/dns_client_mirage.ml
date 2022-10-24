@@ -7,14 +7,20 @@ module IM = Map.Make(Int)
 
 module type S = sig
   module Transport : Dns_client.S
-    with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
+    with type io_addr = [
+        | `Plain of Ipaddr.t * int
+        | `Tls of Tls.Config.client * Ipaddr.t * int
+      ]
      and type +'a io = 'a Lwt.t
 
   include module type of Dns_client.Make(Transport)
 
-  val nameserver_of_string : string -> (Transport.io_addr, [> `Msg of string ]) result
+  val nameserver_of_string : string ->
+    (Dns.proto * Transport.io_addr, [> `Msg of string ]) result
 
   val connect :
+    ?cache_size:int ->
+    ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
     Transport.stack -> t Lwt.t
@@ -24,9 +30,42 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
   module TLS = Tls_mirage.Make(S.TCP)
   module CA = Ca_certs_nss.Make(P)
 
+  let auth_err = match X509.Authenticator.of_string "" with
+    | Ok _ -> "should not happen"
+    | Error `Msg m -> m
+
+  let format = {|
+The format of an IP address and optional port is:
+- '[::1]:port' for an IPv6 address, or
+- '127.0.0.1:port' for an IPv4 address.
+
+The format of a nameserver is:
+- 'udp:IP' where the first element is the string "udp" and the [IP] as described
+  above (port defaults to 53): UDP packets to the provided IP address will be
+  sent from a random source port;
+- 'tcp:IP' where the first element is the string "tcp" and the [IP] as described
+  above (port defaults to 53): a TCP connection to the provided IP address will
+  be established;
+- 'tls:IP' where the first element is the string "tls", the [IP] as described
+  above (port defaults to 853): a TCP connection will be established, on top of
+  which a TLS handshake with the authenticator
+  (https://github.com/mirage/ca-certs-nss) will be done (which checks for the
+  IP address being in the certificate as SubjectAlternativeName);
+- 'tls:IP!hostname' where the first element is the string "tls",
+  the [IP] as described above (port defaults to 853), the [hostname] a host name
+  used for the TLS authentication: a TCP connection will be established, on top
+  of which a TLS handshake with the authenticator
+  (https://github.com/mirage/ca-certs-nss) will be done;
+- 'tls:IP!hostname!authenticator' where the first element is the string "tls",
+  the [IP] as described above (port defaults to 853), the [hostname] a host name
+  used for the TLS authentication, and the [authenticator] an X509
+  authenticator: a TCP connection will be established, on top of which a TLS
+  handshake with the authenticator will be done.
+|} ^ auth_err
+
   let nameserver_of_string str =
     let ( let* ) = Result.bind in
-    match String.split_on_char ':' str with
+    begin match String.split_on_char ':' str with
     | "tls" :: rest ->
       let str = String.concat ":" rest in
       ( match String.split_on_char '!' str with
@@ -34,7 +73,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
         let* authenticator = CA.authenticator () in
         let tls = Tls.Config.client ~authenticator () in
-        Ok (`Tls (tls, ipaddr, port))
+        Ok (`Tcp, `Tls (tls, ipaddr, port))
       | nameserver :: opt_hostname :: authenticator ->
         let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
         let peer_name, data =
@@ -45,30 +84,48 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
           | Ok hostname -> Some hostname, String.concat "!" authenticator
           | Error _ -> None, String.concat "!" (opt_hostname :: authenticator)
         in
-        let* authenticator = X509.Authenticator.of_string data in
-        let time () = Some (Ptime.v (P.now_d_ps ())) in
-        let authenticator = authenticator time in
+        let* authenticator =
+          if data = "" then
+            CA.authenticator ()
+          else
+            let* a = X509.Authenticator.of_string data in
+            Ok (a (fun () -> Some (Ptime.v (P.now_d_ps ()))))
+        in
         let tls = Tls.Config.client ~authenticator ?peer_name () in
-        Ok (`Tls (tls, ipaddr, port))
+        Ok (`Tcp, `Tls (tls, ipaddr, port))
       | [] -> assert false )
     | "tcp" :: nameserver ->
       let str = String.concat ":" nameserver in
       let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
-      Ok (`Plaintext (ipaddr, port))
+      Ok (`Tcp, `Plain (ipaddr, port))
+    | "udp" :: nameserver ->
+      let str = String.concat ":" nameserver in
+      let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
+      Ok (`Udp, `Plain (ipaddr, port))
     | _ ->
       Error (`Msg ("Unable to decode nameserver " ^ str))
+  end |> Result.map_error (function `Msg e -> `Msg (e ^ format))
 
   module Transport : Dns_client.S
     with type stack = S.t
      and type +'a io = 'a Lwt.t
-     and type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ] = struct
+     and type io_addr = [
+        | `Plain of Ipaddr.t * int
+        | `Tls of Tls.Config.client * Ipaddr.t * int
+      ] = struct
     type stack = S.t
-    type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
+    type io_addr = [
+        | `Plain of Ipaddr.t * int
+        | `Tls of Tls.Config.client * Ipaddr.t * int
+      ]
     type +'a io = 'a Lwt.t
+    module IS = Set.Make(Int)
     type t = {
       nameservers : io_addr list ;
+      proto : Dns.proto ;
       timeout_ns : int64 ;
       stack : stack ;
+      mutable udp_ports : IS.t ;
       mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
       mutable connected_condition : unit Lwt_condition.t option ;
       mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
@@ -134,9 +191,33 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
       Lwt_condition.wait t.timer_condition >>= fun () ->
       loop ()
 
+    let read_udp t ip ip_us ~src ~dst ~src_port:_ data =
+      if Ipaddr.compare ip_us dst = 0 && Ipaddr.compare ip src = 0 &&
+         Cstruct.length data > 12 (* minimum DNS length (header length) *)
+      then
+        (let id = Cstruct.BE.get_uint16 data 0 in
+         (match IM.find_opt id t.requests with
+          | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
+          | Some (_, cond) -> Lwt_condition.broadcast cond (Ok data)));
+      Lwt.return_unit
+
+    let generate_udp_port t =
+      let rec go retries =
+        if retries = 0 then
+          Error (`Msg "couldn't find a free UDP port")
+        else
+          let port = 1024 + ((Cstruct.BE.get_uint16 (R.generate 2) 0) mod (65536 - 1024)) in
+          if IS.mem port t.udp_ports then
+            go (retries - 1)
+          else
+            (t.udp_ports <- IS.add port t.udp_ports;
+             Ok port)
+      in
+      go 32
+
     let create ?nameservers ~timeout stack =
-      let nameservers = match nameservers with
-        | None | Some (`Tcp, []) ->
+      let proto, nameservers = match nameservers with
+        | None ->
           let authenticator = match CA.authenticator () with
             | Ok a -> a
             | Error `Msg m -> invalid_arg ("bad CA certificates " ^ m)
@@ -145,15 +226,19 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
             let peer_name = Dns_client.default_resolver_hostname in
             Tls.Config.client ~authenticator ~peer_name ()
           in
-          List.map (fun ip -> `Tls (tls_cfg, ip, 853))
-            Dns_client.default_resolvers
-        | Some (`Udp, _) -> invalid_arg "UDP is not supported"
-        | Some (`Tcp, ns) -> ns
+          let ns =
+            List.map (fun ip -> `Tls (tls_cfg, ip, 853))
+              Dns_client.default_resolvers
+          in
+          `Tcp, ns
+        | Some (a, ns) -> a, ns
       in
       let t = {
         nameservers ;
+        proto ;
         timeout_ns = timeout ;
         stack ;
+        udp_ports = IS.empty ;
         flow = None ;
         connected_condition = None ;
         requests = IM.empty ;
@@ -161,10 +246,11 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         waiters = Happy_eyeballs.Waiter_map.empty ;
         timer_condition = Lwt_condition.create () ;
       } in
-      Lwt.async (fun () -> he_timer t);
-      t
+      match proto with
+      | `Tcp -> Lwt.async (fun () -> he_timer t); t
+      | `Udp -> t
 
-    let nameservers { nameservers ; _ } = `Tcp, nameservers
+    let nameservers { proto ; nameservers ; _ } = proto, nameservers
     let rng = R.generate ?g:None
 
     let with_timeout time_left f =
@@ -256,10 +342,10 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         t.requests (Lwt.return (Ok ()))
 
     let to_pairs =
-      List.map (function `Plaintext (ip, port) | `Tls (_, ip, port) -> ip, port)
+      List.map (function `Plain (ip, port) | `Tls (_, ip, port) -> (ip, port))
 
     let find_ns ns (addr, port) =
-      List.find (function `Plaintext (ip, p) | `Tls (_, ip, p) ->
+      List.find (function `Plain (ip, p) | `Tls (_, ip, p) ->
           Ipaddr.compare ip addr = 0 && p = port)
         ns
 
@@ -298,7 +384,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
         in
         let config = find_ns t.nameservers addr in
         match config with
-        | `Plaintext _ -> continue (`Plain flow)
+        | `Plain _ -> continue (`Plain flow)
         | `Tls (tls_cfg, _ip, _port) ->
           TLS.client_of_flow tls_cfg flow >>= function
           | Ok tls -> continue (`Tls tls)
@@ -320,25 +406,50 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
               connect_ns t ns'
 
     let rec connect t =
-      match t.flow, t.connected_condition with
-      | Some _, _ -> Lwt.return (Ok t)
-      | None, Some w ->
-        Lwt_condition.wait w >>= fun () ->
-        connect t
-      | None, None ->
-        connect_ns t t.nameservers >|= function
-        | Ok () -> Ok t
-        | Error `Msg msg -> Error (`Msg msg)
+      match t.proto with
+      | `Udp -> Lwt.return (Ok (`Udp, t))
+      | `Tcp -> match t.flow, t.connected_condition with
+        | Some _, _ -> Lwt.return (Ok (`Tcp, t))
+        | None, Some w ->
+          Lwt_condition.wait w >>= fun () ->
+          connect t
+        | None, None ->
+          connect_ns t t.nameservers >|= function
+          | Ok () -> Ok (`Tcp, t)
+          | Error `Msg msg -> Error (`Msg msg)
 
     let close _f =
       (* ignoring this here *)
       Lwt.return_unit
 
     let send_recv t tx =
+      let ( >>>= ) = Lwt_result.bind in
       if Cstruct.length tx > 4 then
-        match t.flow with
-        | None -> Lwt.return (Error (`Msg "no connection to resolver"))
-        | Some flow ->
+        match t.proto, t.flow with
+        | `Udp, _ ->
+          let dst, dst_port = match t.nameservers with
+            | `Plain (ip, port) :: _ -> ip, port
+            | _ -> assert false
+          in
+          let src = S.IP.src (S.ip t.stack) ~dst in
+          let id = Cstruct.BE.get_uint16 tx 0 in
+          Lwt.return (generate_udp_port t) >>>= fun udp_port ->
+          with_timeout t.timeout_ns
+            (S.UDP.listen (S.udp t.stack) ~port:udp_port (read_udp t dst src);
+             (S.UDP.write ~src_port:udp_port ~dst ~dst_port (S.udp t.stack) tx >|= function
+               | Error e -> Error (`Msg (Fmt.to_to_string S.UDP.pp_error e))
+               | Ok () -> Ok ()) >>>= fun () ->
+             let cond = Lwt_condition.create () in
+             t.requests <- IM.add id (tx, cond) t.requests;
+             let open Lwt.Infix in
+             Lwt_condition.wait cond >|= fun data ->
+             match data with Ok _ | Error `Msg _ as r -> r) >|= fun r ->
+          S.UDP.unlisten (S.udp t.stack) ~port:udp_port;
+          t.udp_ports <- IS.remove udp_port t.udp_ports;
+          t.requests <- IM.remove id t.requests;
+          r
+        | `Tcp, None -> Lwt.return (Error (`Msg "no connection to resolver"))
+        | `Tcp, Some flow ->
           let id = Cstruct.BE.get_uint16 tx 2 in
           with_timeout t.timeout_ns
             (let open Lwt_result.Infix in
@@ -357,7 +468,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
 
   include Dns_client.Make(Transport)
 
-  let connect ?(nameservers= []) ?timeout stack =
+  let connect ?cache_size ?edns ?(nameservers= []) ?timeout stack =
     let nameservers =
       List.map
         (fun nameserver -> match nameserver_of_string nameserver with
@@ -365,9 +476,17 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) 
            | Error (`Msg err) -> invalid_arg err)
         nameservers
     in
-    match nameservers with
-    | [] ->
-      Lwt.return (create ?timeout stack)
-    | _ ->
-      Lwt.return (create ~nameservers:(`Tcp, nameservers) ?timeout stack)
+    let tcp, udp =
+      List.fold_left (fun (tcp, udp) -> function
+          | `Tcp, a -> a :: tcp, udp
+          | `Udp, a -> tcp, a :: udp)
+        ([], []) nameservers
+    in
+    let nameservers =
+      match tcp, udp with
+      | [], [] -> None
+      | [], _::_ -> Some (`Udp, udp)
+      | _::_, _ -> Some (`Tcp, tcp)
+    in
+    Lwt.return (create ?cache_size ?edns ?nameservers ?timeout stack)
 end
