@@ -910,7 +910,7 @@ let handle_query_with_cname () =
   in
   Alcotest.check handle_query_res "..."
     (`Query (name "reynir.dk", (name "reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
-    (Dns_resolver_cache.handle_query cache ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K A)))
+    (Dns_resolver_cache.handle_query cache ~dnssec:true ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K A)))
 
 let handle_query_tests = [
   "cname", `Quick, handle_query_with_cname ;

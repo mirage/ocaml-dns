@@ -52,7 +52,7 @@ let nsec3_covering t ts name =
   in
   up name
 
-let find_nearest_ns rng ip_proto ts t name =
+let find_nearest_ns rng ip_proto dnssec ts t name =
   let pick = function
     | [] -> None
     | [ x ] -> Some x
@@ -91,7 +91,7 @@ let find_nearest_ns rng ip_proto ts t name =
     | `Ipv6_only -> ip6s
   in
   let have_ip_or_dnskey name ip =
-    if not (find_dnskey name) then
+    if dnssec && not (find_dnskey name) then
       `NeedDnskey (name, ip)
     else
       `HaveIP (name, ip)
@@ -110,7 +110,7 @@ let find_nearest_ns rng ip_proto ts t name =
     | None ->
       (* Logs.warn (fun m -> m "go no NS for %a" Domain_name.pp nam); *)
       or_root go nam
-    | Some _ when not (need_to_query_for_ds nam) ->
+    | Some _ when dnssec && not (need_to_query_for_ds nam) ->
       or_root go nam
     | Some ns ->
       let host = Domain_name.raw ns in
@@ -134,7 +134,7 @@ let find_nearest_ns rng ip_proto ts t name =
   in
   go name
 
-let resolve t ~rng ip_proto ts name typ =
+let resolve t ~dnssec ~rng ip_proto ts name typ =
   (* the standard recursive algorithm *)
   let addresses = match ip_proto with
     | `Both -> [`K (Rr_map.K A); `K (Rr_map.K Aaaa)]
@@ -152,7 +152,7 @@ let resolve t ~rng ip_proto ts name typ =
   *)
   let rec go t types name =
     Logs.debug (fun m -> m "go %a" Domain_name.pp name) ;
-    match find_nearest_ns rng ip_proto ts t (Domain_name.raw name) with
+    match find_nearest_ns rng ip_proto dnssec ts t (Domain_name.raw name) with
     | `NeedAddress ns -> go t addresses ns
     | `NeedDnskey (zone, ip) -> zone, zone, [`K (Rr_map.K Dnskey)], ip, t
     | `HaveIP (zone, ip) -> zone, name, types, ip, t
@@ -269,7 +269,7 @@ let answer t ts name typ =
       let data = Name_rr_map.singleton name ty v in
       `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
 
-let handle_query t ~rng ip_proto ts (qname, qtype) =
+let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
   Logs.info (fun m -> m "handle query %a (%a)"
                 Domain_name.pp qname Packet.Question.pp_qtype qtype);
   match answer t ts qname qtype with
@@ -286,7 +286,7 @@ let handle_query t ~rng ip_proto ts (qname, qtype) =
       else
         name, Fun.id
     in
-    let zone, name'', types, ip, t = resolve t ~rng ip_proto ts name' qtype in
+    let zone, name'', types, ip, t = resolve t ~dnssec ~rng ip_proto ts name' qtype in
     let name'' = recover name'' in
     Logs.info (fun m -> m "resolve returned zone %a query %a (%a), ip %a"
                    Domain_name.pp zone Domain_name.pp name''

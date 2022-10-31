@@ -34,6 +34,7 @@ let retry_interval = Duration.of_ms 500
 
 type t = {
   ip_protocol : [ `Both | `Ipv4_only | `Ipv6_only ];
+  dnssec : bool ;
   rng : int -> Cstruct.t ;
   primary : Dns_server.Primary.s ;
   cache : Dns_cache.t ;
@@ -41,7 +42,7 @@ type t = {
   queried : awaiting list QM.t ;
 }
 
-let create ?(cache_size = 10000) ?(ip_protocol = `Both) now rng primary =
+let create ?(cache_size = 10000) ?(ip_protocol = `Both) ?(dnssec = true) now rng primary =
   let cache = Dns_cache.empty cache_size in
   let cache =
     List.fold_left (fun cache (name, b) ->
@@ -63,11 +64,14 @@ let create ?(cache_size = 10000) ?(ip_protocol = `Both) now rng primary =
       (`Entry Dns_resolver_root.ns_records)
   in
   let cache =
-    Dns_cache.set cache now
-      Domain_name.root Ds Dns_cache.Additional
-      (`Entry (Int32.max_int, Dnssec.root_ds))
+    if dnssec then
+      Dns_cache.set cache now
+        Domain_name.root Ds Dns_cache.Additional
+        (`Entry (Int32.max_int, Dnssec.root_ds))
+    else
+      cache
   in
-  { ip_protocol ; rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty }
+  { ip_protocol ; dnssec ; rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty }
 
 let pick rng = function
   | [] -> None
@@ -104,7 +108,7 @@ let maybe_query ?recursion_desired t ts await retry ip name typ =
     None, t
   else
     (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
-    let edns = Some (Edns.create ~dnssec_ok:true ()) in
+    let edns = Some (Edns.create ~dnssec_ok:t.dnssec ()) in
     let t, packet = build_query ?recursion_desired t ts `Udp k retry await.zone edns ip in
     let t = { t with queried = QM.add k [await] t.queried } in
     Logs.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip pp_key k) ;
@@ -138,7 +142,7 @@ let handle_query ?(retry = 0) t ts awaiting =
                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
     `Nothing, t
   end else
-    let r, cache = Dns_resolver_cache.handle_query t.cache ~rng:t.rng t.ip_protocol ts awaiting.question in
+    let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec:t.dnssec ~rng:t.rng t.ip_protocol ts awaiting.question in
     let t = { t with cache } in
     match r with
     | `Query _ when awaiting.retry >= 30 ->
@@ -255,13 +259,13 @@ let resolve t ts proto sender sport req =
     let awaiting = { ts; retry = 0; proto; zone = Domain_name.root ; edns = req.edns; ip = sender; port = sport; question = (fst req.question, q_type); id = fst req.header; } in
     begin match handle_query t ts awaiting with
       | `Answer pkt, t ->
-        Logs.info (fun m -> m "answer %a" Packet.Question.pp req.question) ;
+        Logs.debug (fun m -> m "answer %a" Packet.Question.pp req.question) ;
         t, [ (proto, sender, sport, pkt) ], []
       | `Nothing, t ->
-        Logs.info (fun m -> m "nothing %a" Packet.Question.pp req.question) ;
+        Logs.debug (fun m -> m "nothing %a" Packet.Question.pp req.question) ;
         t, [], [] (* TODO: send a reply!? *)
       | `Query pkts, t ->
-        Logs.info (fun m -> m "query %d %a" (List.length pkts) Packet.Question.pp req.question) ;
+        Logs.debug (fun m -> m "query %d %a" (List.length pkts) Packet.Question.pp req.question) ;
         t, [], List.map (fun (packet, dst) -> `Udp, dst, packet) pkts
     end
   | _ ->
@@ -279,7 +283,7 @@ let handle_reply t now ts proto sender packet reply =
   | `Rcode_error (Rcode.NXDomain, Opcode.Query, _), Some qtype
   | `Rcode_error (Rcode.ServFail, Opcode.Query, _), Some qtype ->
     begin
-      Logs.info (fun m -> m "handling reply to %a" Packet.Question.pp packet.question);
+      Logs.debug (fun m -> m "handling reply to %a" Packet.Question.pp packet.question);
       (* (a) first check whether frame was in transit! *)
       let key = fst packet.question, qtype in
       let r, transit = was_in_transit t.transit key (fst packet.header) sender in
@@ -288,65 +292,71 @@ let handle_reply t now ts proto sender packet reply =
       | None -> Ok (t, [], [])
       | Some (zone, edns) ->
         (* (b) DNSSec verification of RRs *)
-        let t, dnskeys =
-          match qtype with
-          | `K K Rr_map.Dnskey ->
-            let cache, ds = Dns_cache.get t.cache ts zone Rr_map.Ds in
-            { t with cache },
-            begin match ds with
-              | Ok (`Entry (_, ds_set), _) ->
-                let keys = match packet.data with
-                  | `Answer (a, _) -> Name_rr_map.find zone Rr_map.Dnskey a
-                  | _ -> None
-                in
-                let ds_set =
-                  (* RFC 4509 - drop SHA1 DS if SHA2 DS are present *)
-                  if Rr_map.Ds_set.exists (fun ds ->
-                      match ds.Ds.digest_type with
-                      | Ds.SHA256 | Ds.SHA384 -> true | _ -> false)
-                      ds_set
-                  then
-                    Rr_map.Ds_set.filter
-                      (fun ds -> not (ds.Ds.digest_type = SHA1))
-                      ds_set
-                  else
-                    ds_set
-                in
-                Option.map (fun (_, dnskeys) ->
-                    Rr_map.Ds_set.fold (fun ds acc ->
-                        match Dnssec.validate_ds zone dnskeys ds with
-                        | Ok key -> Rr_map.Dnskey_set.add key acc
-                        | Error `Msg msg ->
-                          Logs.warn (fun m -> m "couldn't validate DS (for %a): %s"
-                                        Domain_name.pp zone msg);
-                          acc)
-                      ds_set Rr_map.Dnskey_set.empty)
-                  keys
+        let* t, packet, signed =
+          if t.dnssec then
+            let t, dnskeys =
+              match qtype with
+              | `K K Rr_map.Dnskey ->
+                let cache, ds = Dns_cache.get t.cache ts zone Rr_map.Ds in
+                { t with cache },
+                begin match ds with
+                  | Ok (`Entry (_, ds_set), _) ->
+                    let keys = match packet.data with
+                      | `Answer (a, _) -> Name_rr_map.find zone Rr_map.Dnskey a
+                      | _ -> None
+                    in
+                    let ds_set =
+                      (* RFC 4509 - drop SHA1 DS if SHA2 DS are present *)
+                      if Rr_map.Ds_set.exists (fun ds ->
+                          match ds.Ds.digest_type with
+                          | Ds.SHA256 | Ds.SHA384 -> true | _ -> false)
+                          ds_set
+                      then
+                        Rr_map.Ds_set.filter
+                          (fun ds -> not (ds.Ds.digest_type = SHA1))
+                          ds_set
+                      else
+                        ds_set
+                    in
+                    Option.map (fun (_, dnskeys) ->
+                        Rr_map.Ds_set.fold (fun ds acc ->
+                            match Dnssec.validate_ds zone dnskeys ds with
+                            | Ok key -> Rr_map.Dnskey_set.add key acc
+                            | Error `Msg msg ->
+                              Logs.warn (fun m -> m "couldn't validate DS (for %a): %s"
+                                            Domain_name.pp zone msg);
+                              acc)
+                          ds_set Rr_map.Dnskey_set.empty)
+                      keys
+                  | _ ->
+                    Logs.warn (fun m -> m "no DS in cache for %a" Domain_name.pp zone);
+                    None
+                end
               | _ ->
-                Logs.warn (fun m -> m "no DS in cache for %a" Domain_name.pp zone);
-                None
-            end
-          | _ ->
-            let cache, dnskeys = Dns_cache.get t.cache ts zone Rr_map.Dnskey in
-            { t with cache },
-            match dnskeys with
-            | Ok (`Entry (_, dnskey_set), _) -> Some dnskey_set
-            | _ ->
-              Logs.warn (fun m -> m "no DNSKEYS in cache for %a" Domain_name.pp zone);
-              None
-        in
-        let* packet, signed =
-          Option.fold
-            ~none:(Ok (packet, false))
-            ~some:(fun dnskeys ->
-                let* packet =
-                  Result.map_error (fun (`Msg msg) ->
-                      Logs.err (fun m -> m "error %s verifying reply %a"
-                                   msg Packet.pp_reply reply))
-                    (Dnssec.verify_packet now dnskeys packet)
-                in
-                Ok (packet, true))
-            dnskeys
+                let cache, dnskeys = Dns_cache.get t.cache ts zone Rr_map.Dnskey in
+                { t with cache },
+                match dnskeys with
+                | Ok (`Entry (_, dnskey_set), _) -> Some dnskey_set
+                | _ ->
+                  Logs.warn (fun m -> m "no DNSKEYS in cache for %a" Domain_name.pp zone);
+                  None
+            in
+            let* packet, signed =
+              Option.fold
+                ~none:(Ok (packet, false))
+                ~some:(fun dnskeys ->
+                    let* packet =
+                      Result.map_error (fun (`Msg msg) ->
+                          Logs.err (fun m -> m "error %s verifying reply %a"
+                                       msg Packet.pp_reply reply))
+                        (Dnssec.verify_packet now dnskeys packet)
+                    in
+                    Ok (packet, true))
+                dnskeys
+            in
+            Ok (t, packet, signed)
+          else
+            Ok (t, packet, false)
         in
         (* (c) now we scrub and either *)
         match scrub_it t.cache proto zone edns ts ~signed qtype packet with
@@ -464,14 +474,14 @@ let handle_buf t now ts query proto sender sport buf =
     in
     t, answer, []
   | Ok res ->
-    Logs.info (fun m -> m "reacting to packet from %a:%d"
-                  Ipaddr.pp sender sport) ;
+    Logs.debug (fun m -> m "reacting to packet from %a:%d"
+                   Ipaddr.pp sender sport) ;
     match res.Packet.data with
     | #Packet.reply as reply ->
       begin
         match handle_reply t now ts proto sender res reply with
         | Ok a ->
-          Logs.info (fun m -> m "handled reply %a:%d"
+          Logs.debug (fun m -> m "handled reply %a:%d"
                         Ipaddr.pp sender sport) ;
           a
         | Error () -> t, [], []
@@ -480,10 +490,10 @@ let handle_buf t now ts query proto sender sport buf =
       begin
         match handle_primary t.primary now ts proto sender sport res req buf with
         | `Reply (primary, pkt) ->
-          Logs.info (fun m -> m "handled primary %a:%d" Ipaddr.pp sender sport) ;
+          Logs.debug (fun m -> m "handled primary %a:%d" Ipaddr.pp sender sport) ;
           { t with primary }, [ proto, sender, sport, pkt ], []
         | `Delegation dele ->
-          Logs.info (fun m -> m "handled delegation %a:%d" Ipaddr.pp sender sport) ;
+          Logs.debug (fun m -> m "handled delegation %a:%d" Ipaddr.pp sender sport) ;
           handle_delegation t ts proto sender sport res dele
         | `None ->
           Logs.info (fun m -> m "resolving %a:%d" Ipaddr.pp sender sport) ;
