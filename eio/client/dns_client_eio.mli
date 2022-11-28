@@ -8,7 +8,7 @@ type 'a env = <
 > as 'a
 
 module Transport : Dns_client.S
-  with type io_addr = Ipaddr.t * int
+  with type io_addr = [`Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int]
    and type +'a io  = 'a
 
 include module type of Dns_client.Make(Transport)

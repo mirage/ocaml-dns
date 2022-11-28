@@ -12,7 +12,11 @@
   mtime
   mtime.clock.os
   mirage-crypto-rng
-  mirage-crypto-rng-eio))
+  mirage-crypto-rng-eio
+  domain-name
+  ca-certs
+  eio
+  tls-eio))
 
 (executable
  (name        ohost)

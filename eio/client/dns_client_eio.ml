@@ -7,7 +7,7 @@ type 'a env = <
   ..
 > as 'a
 
-type io_addr = Ipaddr.t * int
+type io_addr = [`Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int]
 type stack = {
   sw            : Eio.Switch.t;
   mono_clock    : Eio.Time.Mono.t;
@@ -40,7 +40,7 @@ module Transport : Dns_client.S
   and context =
     { t : t
     ; mutable requests : Cstruct.t Eio.Promise.u IM.t
-    ; mutable ns_connection: <Eio.Net.stream_socket; Eio.Flow.close>
+    ; mutable ns_connection: <Eio.Flow.two_way>
     ; mutable buf : Cstruct.t
     }
 
@@ -64,16 +64,35 @@ module Transport : Dns_client.S
   let ( let* ) = Result.bind
   let ( let+ ) r f = Result.map f r
 
+  let authenticator =
+    let authenticator_ref = ref None in
+    fun () ->
+      match !authenticator_ref with
+      | Some x -> x
+      | None -> match Ca_certs.authenticator () with
+        | Ok a -> authenticator_ref := Some a ; a
+        | Error `Msg m -> invalid_arg ("failed to load trust anchors: " ^ m)
+
   let decode_resolv_conf data =
     let* ips = Dns_resolvconf.parse data in
+    let authenticator = authenticator () in
     match ips with
     | [] -> Error (`Msg "empty nameservers from resolv.conf")
-    | ips -> Ok (List.map (function `Nameserver ip -> (ip, 53)) ips)
+    | ips ->
+      List.map
+        (function `Nameserver ip ->
+          let tls_config = Tls.Config.client ~authenticator ~ip () in
+          [`Plaintext (ip, 53); `Tls (tls_config, ip, 853)]
+        )
+        ips
+      |> List.flatten
+      |> Result.ok
 
-  let default_resolvers =
-    List.(map
-      (fun ip -> (ip, 53))
-      ((::) (Ipaddr.of_string_exn "1.1.1.1", Dns_client.default_resolvers)))
+  let default_resolvers () =
+    let authenticator = authenticator () in
+    let peer_name = Dns_client.default_resolver_hostname in
+    let tls_config = Tls.Config.client ~authenticator ~peer_name () in
+    List.map (fun ip -> `Tls (tls_config, ip, 853)) Dns_client.default_resolvers
 
   let rng = Mirage_crypto_rng.generate ?g:None
   let clock = Mtime_clock.elapsed_ns
@@ -82,14 +101,14 @@ module Transport : Dns_client.S
     { nameservers =
         (match nameservers with
         | Some (`Udp,_) -> invalid_arg "UDP is not supported"
-        | Some (`Tcp, []) -> Static default_resolvers
+        | Some (`Tcp, []) -> Static (default_resolvers ())
         | Some (`Tcp, ns) -> Static ns
         | None ->
           (let* data = read_file stack.resolv_conf in
           let+ ips = decode_resolv_conf data in
           (ips, Some (Digest.string data)))
           |> function
-          | Error _ -> Resolv_conf { ips = default_resolvers; digest = None}
+          | Error _ -> Resolv_conf { ips = default_resolvers (); digest = None}
           | Ok(ips, digest) -> Resolv_conf {ips; digest})
     ; stack
     ; timeout = Eio.Time.Timeout.v stack.mono_clock @@ Mtime.Span.of_uint64_ns timeout
@@ -112,7 +131,7 @@ module Transport : Dns_client.S
         resolv_conf.ips <- ips;
       | Error _ ->
         resolv_conf.digest <- None;
-        resolv_conf.ips <- default_resolvers
+        resolv_conf.ips <- default_resolvers ()
     in
     match t.nameservers with
     | Static _ -> ()
@@ -125,9 +144,16 @@ module Transport : Dns_client.S
       | Error _, None -> ()
       | Error _, Some _ ->
         resolv_conf.digest <- None;
-        resolv_conf.ips <- default_resolvers)
+        resolv_conf.ips <- default_resolvers ())
 
-  let rec he_handle_actions t he actions =
+  let find_ns t (ip, port) =
+    List.find
+      (function `Plaintext (ip', p)
+      | `Tls (_, ip', p) -> Ipaddr.compare ip ip' = 0 && p = port
+      )
+      (nameserver_ips t)
+
+  let rec he_handle_actions t he actions : #Eio.Flow.two_way option =
     let fiber_of_action = function
       | Happy_eyeballs.Connect (host, id, (ip, port)) ->
         fun () ->
@@ -144,6 +170,11 @@ module Transport : Dns_client.S
               let flow = Eio.Net.connect ~sw:t.stack.sw t.stack.net stream in
               Log.debug (fun m -> m "he_handle_actions: connected to nameserver (%a)"
                 Fmt.(pair ~sep:comma Ipaddr.pp int) (ip, port));
+              let flow =
+                match find_ns t (ip, port) with
+                | `Plaintext _ -> (flow :> Eio.Flow.two_way)
+                | `Tls (config, _,_) -> (Tls_eio.client_of_flow config flow :> Eio.Flow.two_way)
+              in
               Some flow)
           with Eio.Time.Timeout ->
             Log.debug (fun m -> m "he_handle_actions: connection to nameserver (%a) timed out"
@@ -163,6 +194,9 @@ module Transport : Dns_client.S
     in
     Eio.Fiber.any (List.map fiber_of_action actions)
 
+  let to_ip_port =
+    List.map (function `Plaintext (ip, port) -> (ip, port) | `Tls (_, ip, port) -> (ip, port))
+
   let rec connect t =
     Log.debug (fun m -> m "connect : establishing connection to nameservers");
     match t.ctx, t.ns_connection_condition with
@@ -174,15 +208,15 @@ module Transport : Dns_client.S
       let ns_connection_condition = Eio.Condition.create () in
       t.ns_connection_condition <- Some ns_connection_condition;
       maybe_update_nameservers t;
-      let ns = nameserver_ips t in
+      let ns = to_ip_port @@ nameserver_ips t in
       let he = Happy_eyeballs.create (clock ()) in
       let he, actions = Happy_eyeballs.connect_ip he (clock ()) ~id:1 ns in
       begin match he_handle_actions t he actions with
-      | Some ns_connection ->
+      | Some conn ->
         let context =
           { t = t
           ; requests = IM.empty
-          ; ns_connection
+          ; ns_connection = conn
           ; buf = Cstruct.empty
           }
         in
@@ -195,21 +229,20 @@ module Transport : Dns_client.S
         let error_msg =
           Fmt.str "unable to connect to nameservers %a"
             Fmt.(list ~sep:(any ", ") (pair ~sep:(any ":") Ipaddr.pp int))
-            (nameserver_ips t)
+            (to_ip_port @@ nameserver_ips t)
         in
         Logs.debug (fun m -> m "connect : %s" error_msg);
         Error (`Msg error_msg)
       end
 
-  let rec recv_data ?(min=2) t fd id : unit =
+  let rec recv_data t flow id : unit =
     let buf = Cstruct.create 512 in
     Logs.debug (fun m -> m "recv_data (%d): t.buf.len %d" id (Cstruct.length t.buf));
-    let got = Eio.Flow.single_read fd buf in
+    let got = Eio.Flow.single_read flow buf in
     Logs.debug (fun m -> m "recv_data (%d): got %d" id got);
     let buf = Cstruct.sub buf 0 got in
     t.buf <- if Cstruct.length t.buf = 0 then buf else Cstruct.append t.buf buf;
-    Logs.debug (fun m -> m "recv_data (%d): t.buf.len %d" id (Cstruct.length t.buf));
-    if got < min then recv_data ~min t fd id
+    Logs.debug (fun m -> m "recv_data (%d): t.buf.len %d" id (Cstruct.length t.buf))
 
   let rec recv_packet t ns_connection request_id =
     Logs.debug (fun m -> m "recv_packet (%d): recv_packet" request_id);
@@ -235,7 +268,7 @@ module Transport : Dns_client.S
           recv_packet t ns_connection request_id
         end
       else begin
-        recv_data ~min:packet_len t ns_connection request_id;
+        recv_data t ns_connection request_id;
         recv_packet t ns_connection request_id
       end
     )
@@ -249,7 +282,7 @@ module Transport : Dns_client.S
     Error (`Msg "Invalid DNS query packet (data length <= 4)")
 
   let send_recv ctx packet =
-    let* () = validate_query_packet packet in 
+    let* () = validate_query_packet packet in
     try
       let request_id = Cstruct.BE.get_uint16 packet 2 in
       Eio.Time.Timeout.run_exn ctx.t.timeout (fun () ->
