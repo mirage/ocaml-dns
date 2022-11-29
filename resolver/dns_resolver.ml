@@ -64,12 +64,9 @@ let create ?(cache_size = 10000) ?(ip_protocol = `Both) ?(dnssec = true) now rng
       (`Entry Dns_resolver_root.ns_records)
   in
   let cache =
-    if dnssec then
-      Dns_cache.set cache now
-        Domain_name.root Ds Dns_cache.Additional
-        (`Entry (Int32.max_int, Dnssec.root_ds))
-    else
-      cache
+    Dns_cache.set cache now
+      Domain_name.root Ds Dns_cache.Additional
+      (`Entry (Int32.max_int, Dnssec.root_ds))
   in
   { ip_protocol ; dnssec ; rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty }
 
