@@ -14,7 +14,7 @@ module Transport : Dns_client.S
 include module type of Dns_client.Make(Transport)
 
 val run :
-  ?resolv_conf:string
+   ?resolv_conf:string
   -> _ env
   -> (Transport.stack -> 'a)
   -> 'a
@@ -22,8 +22,8 @@ val run :
     [Dns_client.S].
 
     @param resolv_conf is the local path to [resolv_conf] file. It is by default set to
-                        [/etc/resolv.conf]. 
-    
+                        [/etc/resolv.conf].
+
     Example:
     {[
       let () =

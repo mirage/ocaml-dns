@@ -9,10 +9,11 @@ type 'a env = <
 
 type io_addr = [`Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int]
 type stack = {
-  sw            : Eio.Switch.t;
-  mono_clock    : Eio.Time.Mono.t;
-  net           : Eio.Net.t;
-  resolv_conf   : Eio.Fs.dir Eio.Path.t
+  fs          : Eio.Fs.dir Eio.Path.t;
+  sw          : Eio.Switch.t;
+  mono_clock  : Eio.Time.Mono.t;
+  net         : Eio.Net.t;
+  resolv_conf : string;
 }
 
 module IM = Map.Make(Int)
@@ -30,7 +31,7 @@ module Transport : Dns_client.S
   type +'a io = 'a
 
   type t =
-    { nameservers : nameservers
+    { nameservers : Dns.proto * nameservers
     ; stack : stack
     ; timeout : Eio.Time.Timeout.t
     ; mutable ns_connection_condition : Eio.Condition.t option
@@ -55,11 +56,11 @@ module Transport : Dns_client.S
     mutable digest : Digest.t option ;
   }
 
-  let read_file file =
-    match Eio.Path.load file with
+  let read_resolv_conf stack =
+    match Eio.Path.(stack.fs / stack.resolv_conf) |> Eio.Path.load with
     | content -> Ok content
     | exception e ->
-      Fmt.error_msg "Error while reading file %a: %a" Eio.Path.pp file Fmt.exn e
+      Fmt.error_msg "Error while reading file %s: %a" stack.resolv_conf Fmt.exn e
 
   let ( let* ) = Result.bind
   let ( let+ ) r f = Result.map f r
@@ -101,15 +102,17 @@ module Transport : Dns_client.S
     { nameservers =
         (match nameservers with
         | Some (`Udp,_) -> invalid_arg "UDP is not supported"
-        | Some (`Tcp, []) -> Static (default_resolvers ())
-        | Some (`Tcp, ns) -> Static ns
+        | Some (proto, []) -> proto, Static (default_resolvers ())
+        | Some (`Tcp, ns) -> `Tcp, Static ns
         | None ->
-          (let* data = read_file stack.resolv_conf in
+          (let* data = read_resolv_conf stack in
           let+ ips = decode_resolv_conf data in
           (ips, Some (Digest.string data)))
           |> function
-          | Error _ -> Resolv_conf { ips = default_resolvers (); digest = None}
-          | Ok(ips, digest) -> Resolv_conf {ips; digest})
+          | Error (`Msg e) ->
+            Log.warn (fun m -> m "failed to decode %s - %s" stack.resolv_conf e);
+            (`Tcp, Resolv_conf { ips = default_resolvers (); digest = None})
+          | Ok(ips, digest) -> `Tcp, Resolv_conf {ips; digest})
     ; stack
     ; timeout = Eio.Time.Timeout.v stack.mono_clock @@ Mtime.Span.of_uint64_ns timeout
     ; ns_connection_condition = None
@@ -118,8 +121,8 @@ module Transport : Dns_client.S
 
   let nameserver_ips t =
     match t.nameservers with
-    | Static ips -> ips
-    | Resolv_conf{ ips;_ } -> ips
+    | _, Static ips -> ips
+    | _, Resolv_conf{ ips;_ } -> ips
 
   let nameservers t = (`Tcp, nameserver_ips t)
 
@@ -134,9 +137,9 @@ module Transport : Dns_client.S
         resolv_conf.ips <- default_resolvers ()
     in
     match t.nameservers with
-    | Static _ -> ()
-    | Resolv_conf resolv_conf ->
-      (match read_file t.stack.resolv_conf, resolv_conf.digest with
+    | _, Static _ -> ()
+    | _, Resolv_conf resolv_conf ->
+      (match read_resolv_conf t.stack, resolv_conf.digest with
       | Ok data, Some d ->
         let digest = Digest.string data in
         if Digest.equal digest d then () else update_resolv_conf resolv_conf data digest
@@ -235,7 +238,7 @@ module Transport : Dns_client.S
         Error (`Msg error_msg)
       end
 
-  let rec recv_data t flow id : unit =
+  let recv_data t flow id : unit =
     let buf = Cstruct.create 512 in
     Logs.debug (fun m -> m "recv_data (%d): t.buf.len %d" id (Cstruct.length t.buf));
     let got = Eio.Flow.single_read flow buf in
@@ -312,11 +315,13 @@ include Dns_client.Make(Transport)
 let run ?(resolv_conf = "/etc/resolv.conf") (env: _ env) f =
   Mirage_crypto_rng_eio.run (module Mirage_crypto_rng.Fortuna) env (fun () ->
     Eio.Switch.run (fun sw ->
-      let stack = {
-        sw;
-        mono_clock = env#mono_clock;
-        net = env#net;
-        resolv_conf = Eio.Path.(env#fs / resolv_conf) }
+      let stack =
+        { sw
+        ; mono_clock = env#mono_clock
+        ; net = env#net
+        ; resolv_conf
+        ; fs = env#fs
+        }
       in
       f stack
     )
