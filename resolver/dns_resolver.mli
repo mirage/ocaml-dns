@@ -5,12 +5,15 @@ type t
 
 val create : ?cache_size:int ->
   ?ip_protocol:[ `Both | `Ipv4_only | `Ipv6_only ] ->
+  ?dnssec:bool ->
   int64 -> (int -> Cstruct.t) -> Dns_server.Primary.s -> t
-(** [create ~cache_size ~ip_protocol now rng primary] creates the value of a
-    resolver, pre-filled with root NS and their IP addresses. If [ip_protocol]
-    is provided, and set to [`V4_only], only IPv4 packets will be emitted. If
-    [`V6_only] is set, only IPv6 packets will be emitted. If [`Both] (the
-    default), either IPv4 and IPv6 packets are emitted. *)
+(** [create ~cache_size ~ip_protocol ~dnssec now rng primary] creates the value
+    of a resolver, pre-filled with root NS and their IP addresses. If
+    [ip_protocol] is provided, and set to [`V4_only], only IPv4 packets will be
+    emitted. If [`V6_only] is set, only IPv6 packets will be emitted. If [`Both]
+    (the default), either IPv4 and IPv6 packets are emitted. If [dnssec] is
+    provided and [false] (defaults to [true]), DNSSec validation will be
+    disabled. *)
 
 val handle_buf : t -> Ptime.t -> int64 -> bool -> Dns.proto -> Ipaddr.t ->
   int -> Cstruct.t ->
