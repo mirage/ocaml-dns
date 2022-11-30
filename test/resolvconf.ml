@@ -95,12 +95,20 @@ nameserver fe80::c2d7:aaff:fe96:8d82$wlp3s0
 options edns0
 |}
 
+let ns_zoneindex =
+  {|
+; nameserver with zone index
+nameserver fe80::c2d7:aaff:fe96:8d82%wlp3s0
+|}
+
+
 let tests = [
   "linux", `Quick, test_one "linux" (linux, ok_result (v6_ns @ v4_ns)) ;
   "macos", `Quick, test_one "macos" (macos, ok_result (v6_ns @ v4_ns)) ;
   "openbsd", `Quick, test_one "openbsd" (openbsd, ok_result v4_ns) ;
   "simple", `Quick, test_one "simple" (simple, ok_result v4_ns) ;
   "error", `Quick, test_one "error" (lex_error, Error (`Msg "lexing: Illegal character '$' at line: 5, col: 37")); 
+  "zone index", `Quick, test_one "zone index" (ns_zoneindex, ok_result ["fe80::c2d7:aaff:fe96:8d82"]);
 ]
 
 let () = Alcotest.run "DNS resolvconf tests" [ "resolvconf tests", tests ]

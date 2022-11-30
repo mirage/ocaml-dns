@@ -24,5 +24,6 @@ rule lex = parse
   | ':' { COLON }
   | [' ' '\t']* ('#' [^'\n']*)? '\n' { Lexing.new_line lexbuf; EOL }
   | [' ' '\t']* (';' [^'\n']*)? '\n' { Lexing.new_line lexbuf; EOL }
+  | ('%' [^'\n']*) '\n' { Lexing.new_line lexbuf; EOL } (* Discard IPv6 zone index information. *)
   | eof { EOF }
   | (_ as c ) { raise @@ Illegal_character (c, Lexing.lexeme_end_p lexbuf) }
