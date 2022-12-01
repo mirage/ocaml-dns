@@ -66,58 +66,58 @@ The format of a nameserver is:
   let nameserver_of_string str =
     let ( let* ) = Result.bind in
     begin match String.split_on_char ':' str with
-    | "tls" :: rest ->
-      let str = String.concat ":" rest in
-      ( match String.split_on_char '!' str with
-      | [ nameserver ] ->
-        let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
-        let* authenticator = CA.authenticator () in
-        let tls = Tls.Config.client ~authenticator () in
-        Ok (`Tcp, `Tls (tls, ipaddr, port))
-      | nameserver :: opt_hostname :: authenticator ->
-        let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
-        let peer_name, data =
-          match
-            let* dn = Domain_name.of_string opt_hostname in
-            Domain_name.host dn
-          with
-          | Ok hostname -> Some hostname, String.concat "!" authenticator
-          | Error _ -> None, String.concat "!" (opt_hostname :: authenticator)
-        in
-        let* authenticator =
-          if data = "" then
-            CA.authenticator ()
-          else
-            let* a = X509.Authenticator.of_string data in
-            Ok (a (fun () -> Some (Ptime.v (P.now_d_ps ()))))
-        in
-        let tls = Tls.Config.client ~authenticator ?peer_name () in
-        Ok (`Tcp, `Tls (tls, ipaddr, port))
-      | [] -> assert false )
-    | "tcp" :: nameserver ->
-      let str = String.concat ":" nameserver in
-      let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
-      Ok (`Tcp, `Plaintext (ipaddr, port))
-    | "udp" :: nameserver ->
-      let str = String.concat ":" nameserver in
-      let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
-      Ok (`Udp, `Plaintext (ipaddr, port))
-    | _ ->
-      Error (`Msg ("Unable to decode nameserver " ^ str))
-  end |> Result.map_error (function `Msg e -> `Msg (e ^ format))
+      | "tls" :: rest ->
+        let str = String.concat ":" rest in
+        ( match String.split_on_char '!' str with
+          | [ nameserver ] ->
+            let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
+            let* authenticator = CA.authenticator () in
+            let tls = Tls.Config.client ~authenticator () in
+            Ok (`Tcp, `Tls (tls, ipaddr, port))
+          | nameserver :: opt_hostname :: authenticator ->
+            let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
+            let peer_name, data =
+              match
+                let* dn = Domain_name.of_string opt_hostname in
+                Domain_name.host dn
+              with
+              | Ok hostname -> Some hostname, String.concat "!" authenticator
+              | Error _ -> None, String.concat "!" (opt_hostname :: authenticator)
+            in
+            let* authenticator =
+              if data = "" then
+                CA.authenticator ()
+              else
+                let* a = X509.Authenticator.of_string data in
+                Ok (a (fun () -> Some (Ptime.v (P.now_d_ps ()))))
+            in
+            let tls = Tls.Config.client ~authenticator ?peer_name () in
+            Ok (`Tcp, `Tls (tls, ipaddr, port))
+          | [] -> assert false )
+      | "tcp" :: nameserver ->
+        let str = String.concat ":" nameserver in
+        let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
+        Ok (`Tcp, `Plaintext (ipaddr, port))
+      | "udp" :: nameserver ->
+        let str = String.concat ":" nameserver in
+        let* ipaddr, port = Ipaddr.with_port_of_string ~default:53 str in
+        Ok (`Udp, `Plaintext (ipaddr, port))
+      | _ ->
+        Error (`Msg ("Unable to decode nameserver " ^ str))
+    end |> Result.map_error (function `Msg e -> `Msg (e ^ format))
 
   module Transport : Dns_client.S
     with type stack = S.t
      and type +'a io = 'a Lwt.t
      and type io_addr = [
-        | `Plaintext of Ipaddr.t * int
-        | `Tls of Tls.Config.client * Ipaddr.t * int
-      ] = struct
+         | `Plaintext of Ipaddr.t * int
+         | `Tls of Tls.Config.client * Ipaddr.t * int
+       ] = struct
     type stack = S.t
     type io_addr = [
-        | `Plaintext of Ipaddr.t * int
-        | `Tls of Tls.Config.client * Ipaddr.t * int
-      ]
+      | `Plaintext of Ipaddr.t * int
+      | `Tls of Tls.Config.client * Ipaddr.t * int
+    ]
     type +'a io = 'a Lwt.t
     module IS = Set.Make(Int)
     type t = {
@@ -144,34 +144,42 @@ The format of a nameserver is:
          begin
            S.TCP.create_connection (S.tcp t.stack) addr >>= function
            | Error e ->
-             Log.err (fun m -> m "error connecting to nameserver %a: %a"
-                         Ipaddr.pp (fst addr) S.TCP.pp_error e) ;
-             Lwt.return (Some (Happy_eyeballs.Connection_failed (host, id, addr)))
+             let err =
+               Fmt.str "error connecting to nameserver %a: %a"
+                 Ipaddr.pp (fst addr) S.TCP.pp_error e
+             in
+             Lwt.return (Some (Happy_eyeballs.Connection_failed (host, id, addr, err)))
            | Ok flow ->
              let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
              t.waiters <- waiters;
              begin match r with
-               | Some waiter -> Lwt.wakeup_later waiter (Ok (addr, flow)); Lwt.return_unit
+               | Some waiter ->
+                 Lwt.wakeup_later waiter (Ok (addr, flow));
+                 Lwt.return_unit
                | None -> S.TCP.close flow
              end >|= fun () ->
              Some (Happy_eyeballs.Connected (host, id, addr))
          end
-       | Connect_failed (_host, id) ->
+       | Connect_failed (host, id, reason) ->
          let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
          t.waiters <- waiters;
          begin match r with
-           | Some waiter -> Lwt.wakeup_later waiter (Error (`Msg "connection failed"))
+           | Some waiter ->
+             let err =
+               Fmt.str "connection to %a failed: %s" Domain_name.pp host reason
+             in
+             Lwt.wakeup_later waiter (Error (`Msg err))
            | None -> ()
          end;
          Lwt.return None
        | a ->
          Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
          Lwt.return None) >>= function
-       | None -> Lwt.return_unit
-       | Some event ->
-         let he, actions = Happy_eyeballs.event t.he (clock ()) event in
-         t.he <- he;
-         Lwt_list.iter_p (handle_action t) actions
+      | None -> Lwt.return_unit
+      | Some event ->
+        let he, actions = Happy_eyeballs.event t.he (clock ()) event in
+        t.he <- he;
+        Lwt_list.iter_p (handle_action t) actions
 
     let handle_timer_actions t actions =
       Lwt.async (fun () -> Lwt_list.iter_p (fun a -> handle_action t a) actions)
