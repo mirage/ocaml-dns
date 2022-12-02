@@ -27,7 +27,7 @@ module Transport : Dns_client.S
     mutable connected_condition : unit Lwt_condition.t option ;
     mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
     mutable he : Happy_eyeballs.t ;
-    mutable connecting : Happy_eyeballs.event Lwt.t Happy_eyeballs.Waiter_map.t;
+    mutable cancel_connecting : unit Lwt.u Happy_eyeballs.Waiter_map.t;
     mutable waiters : ((Ipaddr.t * int) * Lwt_unix.file_descr, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
     timer_condition : unit Lwt_condition.t ;
   }
@@ -58,37 +58,42 @@ module Transport : Dns_client.S
 
   let handle_one_action t = function
     | Happy_eyeballs.Connect (host, id, (ip, port)) ->
-      let th =
-        Lwt_unix.(getprotobyname "tcp" >|= fun x -> x.p_proto) >>= fun proto_number ->
-        let fam =
-          Ipaddr.(Lwt_unix.(match ip with V4 _ -> PF_INET | V6 _ -> PF_INET6))
-        in
-        let socket = Lwt_unix.socket fam Lwt_unix.SOCK_STREAM proto_number in
-        let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr ip, port) in
-        Lwt.catch (fun () ->
-            Lwt_unix.connect socket addr >>= fun () ->
-            let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
-            t.waiters <- waiters;
-            begin match r with
-              | Some waiter ->
-                Lwt.wakeup_later waiter (Ok ((ip, port), socket));
-                Lwt.return_unit
-              | None -> close_socket socket
-            end >|= fun () ->
-            Happy_eyeballs.Connected (host, id, (ip, port)))
+      let cancelled, cancel = Lwt.task () in
+      t.cancel_connecting <- Happy_eyeballs.Waiter_map.add id cancel t.cancel_connecting;
+      Lwt_unix.(getprotobyname "tcp" >|= fun x -> x.p_proto) >>= fun proto_number ->
+      let fam =
+        Ipaddr.(Lwt_unix.(match ip with V4 _ -> PF_INET | V6 _ -> PF_INET6))
+      in
+      let socket = Lwt_unix.socket fam Lwt_unix.SOCK_STREAM proto_number in
+      let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr ip, port) in
+      Lwt.pick [
+        Lwt.try_bind
+          (fun () -> Lwt_unix.connect socket addr)
+          Lwt.return_ok
           (fun e ->
              let err =
                Fmt.str "error %s connecting to nameserver %a:%d"
                  (Printexc.to_string e) Ipaddr.pp ip port
              in
-             close_socket socket >|= fun () ->
-             Happy_eyeballs.Connection_failed (host, id, (ip, port), err))
-      in
-      t.connecting <- Happy_eyeballs.Waiter_map.add id th t.connecting;
-      (* XXX: use Lwt.catch? *)
-      th >|= fun evt ->
-      t.connecting <- Happy_eyeballs.Waiter_map.remove id t.connecting;
-      Some evt
+             Lwt.return (Error (`Msg err)));
+        (cancelled >|= fun () -> Error (`Msg "cancelled"));
+      ] >>= fun r ->
+      t.cancel_connecting <- Happy_eyeballs.Waiter_map.remove id t.cancel_connecting;
+      begin match r with
+        | Ok () ->
+          let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
+          t.waiters <- waiters;
+          begin match r with
+            | Some waiter ->
+              Lwt.wakeup_later waiter (Ok ((ip, port), socket));
+              Lwt.return_unit
+            | None -> close_socket socket
+          end >|= fun () ->
+          Some (Happy_eyeballs.Connected (host, id, (ip, port)))
+        | Error `Msg err ->
+          close_socket socket >|= fun () ->
+          Some (Happy_eyeballs.Connection_failed (host, id, (ip, port), err))
+      end
     | Connect_failed (host, id, reason) ->
       let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
       t.waiters <- waiters;
@@ -102,9 +107,9 @@ module Transport : Dns_client.S
       end;
       Lwt.return None
     | Connect_cancelled (_host, id) ->
-      (match Happy_eyeballs.Waiter_map.find_opt id t.connecting with
+      (match Happy_eyeballs.Waiter_map.find_opt id t.cancel_connecting with
        | None -> Lwt.return_none
-       | Some th -> Lwt.cancel th; Lwt.return_none)
+       | Some cancel -> Lwt.wakeup cancel (); Lwt.return_none)
     | Resolve_a _ | Resolve_aaaa _ as a ->
       Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
       Lwt.return None
@@ -230,7 +235,7 @@ module Transport : Dns_client.S
       connected_condition = None ;
       requests = IM.empty ;
       he = Happy_eyeballs.create (clock ()) ;
-      connecting = Happy_eyeballs.Waiter_map.empty ;
+      cancel_connecting = Happy_eyeballs.Waiter_map.empty ;
       waiters = Happy_eyeballs.Waiter_map.empty ;
       timer_condition = Lwt_condition.create () ;
     } in
