@@ -1,3 +1,10 @@
+### v6.4.1 (2022-12-02)
+
+* dns-client: adapt to happy eyeballs 0.4.0 (#329 @reynir @hannesm)
+* dns-resolver: dnssec validation is optional via a labeled parameter ~dnssec
+  passed to Dns_resolver.create (#325 @hannesm)
+* upgrade to dune 2 (#327 @reynir)
+
 ### v6.4.0 (2022-10-24)
 
 * dns-client: demote log level of response to debug (#317 @hannesm)
