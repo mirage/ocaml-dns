@@ -17,6 +17,7 @@
   <span><span>| `Packet</span> of <span class="xref-unresolved">Dns</span>.Packet.Flags.t * <a href="../../dns/Dns/Packet/index.html#type-reply">Dns.Packet.reply</a></span> ]</span>
   * <a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a></span></code></div></div><div class="odoc-spec"><div class="spec value" id="val-resolve" class="anchored"><a href="#val-resolve" class="anchor"></a><code><span><span class="keyword">val</span> resolve : 
   <span><a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a> <span class="arrow">&#45;&gt;</span></span>
+  <span>dnssec:bool <span class="arrow">&#45;&gt;</span></span>
   <span>rng:<span>( <span>int <span class="arrow">&#45;&gt;</span></span> <span class="xref-unresolved">Cstruct</span>.t )</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span>[ `Both <span>| `Ipv4_only</span> <span>| `Ipv6_only</span> ]</span> <span class="arrow">&#45;&gt;</span></span>
   <span>int64 <span class="arrow">&#45;&gt;</span></span>
@@ -28,6 +29,7 @@
   * <span class="xref-unresolved">Ipaddr</span>.t
   * <a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a></span></code></div></div><div class="odoc-spec"><div class="spec value" id="val-handle_query" class="anchored"><a href="#val-handle_query" class="anchor"></a><code><span><span class="keyword">val</span> handle_query : 
   <span><a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a> <span class="arrow">&#45;&gt;</span></span>
+  <span>dnssec:bool <span class="arrow">&#45;&gt;</span></span>
   <span>rng:<span>( <span>int <span class="arrow">&#45;&gt;</span></span> <span class="xref-unresolved">Cstruct</span>.t )</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span>[ `Both <span>| `Ipv4_only</span> <span>| `Ipv6_only</span> ]</span> <span class="arrow">&#45;&gt;</span></span>
   <span>int64 <span class="arrow">&#45;&gt;</span></span>
