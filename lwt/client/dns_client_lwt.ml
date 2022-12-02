@@ -27,6 +27,7 @@ module Transport : Dns_client.S
     mutable connected_condition : unit Lwt_condition.t option ;
     mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
     mutable he : Happy_eyeballs.t ;
+    mutable connecting : Happy_eyeballs.event Lwt.t Happy_eyeballs.Waiter_map.t;
     mutable waiters : ((Ipaddr.t * int) * Lwt_unix.file_descr, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
     timer_condition : unit Lwt_condition.t ;
   }
@@ -55,48 +56,61 @@ module Transport : Dns_client.S
   let close_socket fd =
     Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
 
+  let handle_one_action t = function
+    | Happy_eyeballs.Connect (host, id, (ip, port)) ->
+      let th =
+        Lwt_unix.(getprotobyname "tcp" >|= fun x -> x.p_proto) >>= fun proto_number ->
+        let fam =
+          Ipaddr.(Lwt_unix.(match ip with V4 _ -> PF_INET | V6 _ -> PF_INET6))
+        in
+        let socket = Lwt_unix.socket fam Lwt_unix.SOCK_STREAM proto_number in
+        let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr ip, port) in
+        Lwt.catch (fun () ->
+            Lwt_unix.connect socket addr >>= fun () ->
+            let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
+            t.waiters <- waiters;
+            begin match r with
+              | Some waiter ->
+                Lwt.wakeup_later waiter (Ok ((ip, port), socket));
+                Lwt.return_unit
+              | None -> close_socket socket
+            end >|= fun () ->
+            Happy_eyeballs.Connected (host, id, (ip, port)))
+          (fun e ->
+             let err =
+               Fmt.str "error %s connecting to nameserver %a:%d"
+                 (Printexc.to_string e) Ipaddr.pp ip port
+             in
+             close_socket socket >|= fun () ->
+             Happy_eyeballs.Connection_failed (host, id, (ip, port), err))
+      in
+      t.connecting <- Happy_eyeballs.Waiter_map.add id th t.connecting;
+      (* XXX: use Lwt.catch? *)
+      th >|= fun evt ->
+      t.connecting <- Happy_eyeballs.Waiter_map.remove id t.connecting;
+      Some evt
+    | Connect_failed (host, id, reason) ->
+      let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
+      t.waiters <- waiters;
+      begin match r with
+        | Some waiter ->
+          let err =
+            Fmt.str "connection to %a failed: %s" Domain_name.pp host reason
+          in
+          Lwt.wakeup_later waiter (Error (`Msg err))
+        | None -> ()
+      end;
+      Lwt.return None
+    | Connect_cancelled (_host, id) ->
+      (match Happy_eyeballs.Waiter_map.find_opt id t.connecting with
+       | None -> Lwt.return_none
+       | Some th -> Lwt.cancel th; Lwt.return_none)
+    | Resolve_a _ | Resolve_aaaa _ as a ->
+      Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
+      Lwt.return None
+
   let rec handle_action t action =
-    (match action with
-     | Happy_eyeballs.Connect (host, id, (ip, port)) ->
-       Lwt_unix.(getprotobyname "tcp" >|= fun x -> x.p_proto) >>= fun proto_number ->
-       let fam =
-         Ipaddr.(Lwt_unix.(match ip with V4 _ -> PF_INET | V6 _ -> PF_INET6))
-       in
-       let socket = Lwt_unix.socket fam Lwt_unix.SOCK_STREAM proto_number in
-       let addr = Lwt_unix.ADDR_INET (Ipaddr_unix.to_inet_addr ip, port) in
-       Lwt.catch (fun () ->
-           Lwt_unix.connect socket addr >>= fun () ->
-           let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
-           t.waiters <- waiters;
-           begin match r with
-             | Some waiter ->
-               Lwt.wakeup_later waiter (Ok ((ip, port), socket));
-               Lwt.return_unit
-             | None -> close_socket socket
-           end >|= fun () ->
-           Some (Happy_eyeballs.Connected (host, id, (ip, port))))
-         (fun e ->
-            let err =
-              Fmt.str "error %s connecting to nameserver %a:%d"
-                (Printexc.to_string e) Ipaddr.pp ip port
-            in
-            close_socket socket >|= fun () ->
-            Some (Happy_eyeballs.Connection_failed (host, id, (ip, port), err)))
-     | Connect_failed (host, id, reason) ->
-       let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
-       t.waiters <- waiters;
-       begin match r with
-         | Some waiter ->
-           let err =
-             Fmt.str "connection to %a failed: %s" Domain_name.pp host reason
-           in
-           Lwt.wakeup_later waiter (Error (`Msg err))
-         | None -> ()
-       end;
-       Lwt.return None
-     | a ->
-       Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
-       Lwt.return None) >>= function
+    handle_one_action t action  >>= function
     | None -> Lwt.return_unit
     | Some event ->
       let he, actions = Happy_eyeballs.event t.he (clock ()) event in
@@ -216,6 +230,7 @@ module Transport : Dns_client.S
       connected_condition = None ;
       requests = IM.empty ;
       he = Happy_eyeballs.create (clock ()) ;
+      connecting = Happy_eyeballs.Waiter_map.empty ;
       waiters = Happy_eyeballs.Waiter_map.empty ;
       timer_condition = Lwt_condition.create () ;
     } in
