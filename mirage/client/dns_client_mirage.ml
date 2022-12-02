@@ -139,59 +139,61 @@ The format of a nameserver is:
     let clock = M.elapsed_ns
     let he_timer_interval = Duration.of_ms 500
 
-    let rec handle_action t action =
-      (match action with
-       | Happy_eyeballs.Connect (host, id, addr) ->
-         let th =
-           S.TCP.create_connection (S.tcp t.stack) addr >>= function
-           | Error e ->
-             let err =
-               Fmt.str "error connecting to nameserver %a: %a"
-                 Ipaddr.pp (fst addr) S.TCP.pp_error e
-             in
-             Lwt.return (Happy_eyeballs.Connection_failed (host, id, addr, err))
-           | Ok flow ->
-             let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
-             t.waiters <- waiters;
-             begin match r with
-               | Some waiter ->
-                 Lwt.wakeup_later waiter (Ok (addr, flow));
-                 Lwt.return_unit
-               | None -> S.TCP.close flow
-             end >|= fun () ->
-             Happy_eyeballs.Connected (host, id, addr)
-         in
-         t.connecting <- Happy_eyeballs.Waiter_map.add id th t.connecting;
-         Lwt.catch
-           (fun () ->
-              th >|= fun evt ->
+    let handle_one_action t = function
+      | Happy_eyeballs.Connect (host, id, addr) ->
+        let th =
+          S.TCP.create_connection (S.tcp t.stack) addr >>= function
+          | Error e ->
+            let err =
+              Fmt.str "error connecting to nameserver %a: %a"
+                Ipaddr.pp (fst addr) S.TCP.pp_error e
+            in
+            Lwt.return (Happy_eyeballs.Connection_failed (host, id, addr, err))
+          | Ok flow ->
+            let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
+            t.waiters <- waiters;
+            begin match r with
+              | Some waiter ->
+                Lwt.wakeup_later waiter (Ok (addr, flow));
+                Lwt.return_unit
+              | None -> S.TCP.close flow
+            end >|= fun () ->
+            Happy_eyeballs.Connected (host, id, addr)
+        in
+        t.connecting <- Happy_eyeballs.Waiter_map.add id th t.connecting;
+        Lwt.catch
+          (fun () ->
+             th >|= fun evt ->
+             t.connecting <- Happy_eyeballs.Waiter_map.remove id t.connecting;
+             Some evt)
+          (function
+            | Lwt.Canceled ->
               t.connecting <- Happy_eyeballs.Waiter_map.remove id t.connecting;
-              Some evt)
-           (function
-             | Lwt.Canceled ->
-               t.connecting <- Happy_eyeballs.Waiter_map.remove id t.connecting;
-               Lwt.return_some (Happy_eyeballs.Connection_failed (host, id, addr, "cancelled"))
-             | e ->
-               (* TODO: Lwt.reraise e *) raise e)
-       | Connect_failed (host, id, reason) ->
-         let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
-         t.waiters <- waiters;
-         begin match r with
-           | Some waiter ->
-             let err =
-               Fmt.str "connection to %a failed: %s" Domain_name.pp host reason
-             in
-             Lwt.wakeup_later waiter (Error (`Msg err))
-           | None -> ()
-         end;
-         Lwt.return None
-       | Connect_cancelled (_host, id) ->
-         (match Happy_eyeballs.Waiter_map.find_opt id t.connecting with
-          | None -> Lwt.return_none
-          | Some th -> Lwt.cancel th; Lwt.return_none)
-       | Resolve_a _ | Resolve_aaaa _ as a ->
-         Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
-         Lwt.return None) >>= function
+              Lwt.return_some (Happy_eyeballs.Connection_failed (host, id, addr, "cancelled"))
+            | e ->
+              (* TODO: Lwt.reraise e *) raise e)
+      | Connect_failed (host, id, reason) ->
+        let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
+        t.waiters <- waiters;
+        begin match r with
+          | Some waiter ->
+            let err =
+              Fmt.str "connection to %a failed: %s" Domain_name.pp host reason
+            in
+            Lwt.wakeup_later waiter (Error (`Msg err))
+          | None -> ()
+        end;
+        Lwt.return None
+      | Connect_cancelled (_host, id) ->
+        (match Happy_eyeballs.Waiter_map.find_opt id t.connecting with
+         | None -> Lwt.return_none
+         | Some th -> Lwt.cancel th; Lwt.return_none)
+      | Resolve_a _ | Resolve_aaaa _ as a ->
+        Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
+        Lwt.return None
+
+    let rec handle_action t action =
+      handle_one_action t action >>= function
       | None -> Lwt.return_unit
       | Some event ->
         let he, actions = Happy_eyeballs.event t.he (clock ()) event in
