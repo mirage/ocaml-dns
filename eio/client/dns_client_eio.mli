@@ -8,13 +8,13 @@ type 'a env = <
 > as 'a
 
 module Transport : Dns_client.S
-  with type io_addr = [`Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int]
+  with type io_addr = [`Plaintext of Ipaddr.t * int | `Tls of Ipaddr.t * int]
    and type +'a io  = 'a
 
 include module type of Dns_client.Make(Transport)
 
 val run :
-   ?resolv_conf:string
+  ?resolv_conf:string
   -> _ env
   -> (Transport.stack -> 'a)
   -> 'a
