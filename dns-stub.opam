@@ -12,7 +12,7 @@ depends: [
   "ocaml" {>= "4.08.0"}
   "cstruct" {>= "6.0.0"}
   "dns" {= version}
-  "dns-client" {= version}
+  "dns-client-mirage" {= version}
   "dns-mirage" {= version}
   "dns-resolver" {= version}
   "dns-tsig" {= version}

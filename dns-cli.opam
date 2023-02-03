@@ -14,7 +14,7 @@ depends: [
   "dns" {= version}
   "dnssec" {= version}
   "dns-tsig" {= version}
-  "dns-client" {= version}
+  "dns-client-lwt" {= version}
   "dns-server" {= version}
   "dns-certify" {= version}
   "bos" {>= "0.2.0"}
