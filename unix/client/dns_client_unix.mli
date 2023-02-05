@@ -1,7 +1,8 @@
 (** [Unix] helper module for {!Dns_client}.
     For more information see the {!Dns_client.Make} functor.
 
-    It initializes the RNG (using Mirage_crypto_rng_unix.initialize ()).
+    It initializes the RNG (using
+    [Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna)]).
 *)
 
 
