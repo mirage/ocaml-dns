@@ -86,17 +86,15 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
       invalid_arg "hostname not a subdomain of zone provided by dns_key"
     else
       let key =
-        match key_data with
-        | None ->
-          let seed = match key_seed with None -> None | Some x -> Some (Cstruct.of_string x) in
-          X509.Private_key.generate ?seed ?bits key_type
-        | Some x ->
-          match Base64.decode x with
-          | Error `Msg m -> invalid_arg ("base64 decoding failed: " ^ m)
-          | Ok data ->
-            match X509.Private_key.of_cstruct (Cstruct.of_string data) key_type with
-            | Error `Msg m -> invalid_arg ("decoding of key failed: " ^ m)
-            | Ok key -> key
+        let seed_or_data, data = match key_data, key_seed with
+          | None, None -> invalid_arg "neither key_data nor key_seed is supplied"
+          | Some data, _ -> Some `Data, data
+          | None, Some seed -> Some `Seed, seed
+        in
+        Result.fold
+          ~ok:Fun.id
+          ~error:(function `Msg msg -> invalid_arg ("key generation failed: " ^ msg))
+          (X509.Private_key.of_string ?seed_or_data ?bits key_type data)
       in
       match
         let more_hostnames = additional_hostnames in
