@@ -21,7 +21,9 @@
 let parse buf =
   Dns_zone_state.reset ();
   try
-    (* TODO end-of-file handling? insert a newline at the end before lexing? *)
+    let buf =
+      if String.(get buf (pred (length buf))) = '\n' then buf else buf ^ "\n"
+    in
     let lexbuf = Lexing.from_string buf in
     Ok (Dns_zone_parser.zfile Dns_zone_lexer.token lexbuf)
   with
