@@ -326,7 +326,8 @@ The format of a nameserver is:
             Lwt.return_unit
           | Ok `Eof ->
             t.flow <- None;
-            Log.info (fun m -> m "end of file reading from resolver");
+            if not (IM.is_empty t.requests) then
+              Log.info (fun m -> m "end of file reading from resolver");
             Lwt.return_unit
           | Ok (`Data cs) ->
             process cs
@@ -340,7 +341,8 @@ The format of a nameserver is:
             Lwt.return_unit
           | Ok `Eof ->
             t.flow <- None;
-            Log.info (fun m -> m "end of file reading from resolver");
+            if not (IM.is_empty t.requests) then
+              Log.info (fun m -> m "end of file reading from resolver");
             Lwt.return_unit
           | Ok (`Data cs) ->
             process cs
