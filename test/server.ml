@@ -1615,6 +1615,26 @@ $TTL 2560
     Alcotest.(check (result name_map_ok err) "parsing simple zone"
                 (Ok rrs) (Dns_zone.parse simple_zone))
 
+  let simple_zone_no_nl = {|
+$ORIGIN example.
+$TTL 2560
+@	SOA	ns 	root	1	86400	10800	1048576	2560
+@	NS	ns|}
+
+  let parse_simple_zone_without_nl () =
+    let rrs =
+      let z = n_of_s "example" in
+      let ns_name = n_of_s "ns.example" in
+      let ns = 2560l, Domain_name.(Host_set.singleton (host_exn ns_name)) in
+      let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+                  serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                  expiry = 1048576l ; minimum = 2560l }
+      in
+      Name_rr_map.(add z Rr_map.Ns ns (singleton z Rr_map.Soa soa))
+    in
+    Alcotest.(check (result name_map_ok err) "parsing simple zone without newline"
+                (Ok rrs) (Dns_zone.parse simple_zone_no_nl))
+
   let wildcard_zone = {|
 $ORIGIN example.
 $TTL 2560
@@ -2008,6 +2028,7 @@ $TTL 2560
 
   let tests = [
     "parsing simple zone", `Quick, parse_simple_zone ;
+    "parsing simple zone without final newline", `Quick, parse_simple_zone_without_nl ;
     "parsing wildcard zone", `Quick, parse_wildcard_zone ;
     "parsing RFC 4592 zone", `Quick, parse_rfc4592_zone ;
     "RFC 4592 questions", `Quick, rfc4592_questions ;
