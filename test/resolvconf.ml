@@ -87,11 +87,31 @@ nameserver 8.8.8.8
 nameserver 8.8.4.4
 |}
 
+let nixos =
+  {|
+nameserver fe80::c2d7:aaff:fe96:8d82%wlp3s0
+|}
+
+let nixos2 =
+  {|
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+nameserver fe80::c2d7:aaff:fe96:8d82%wlp3s0
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+|}
+
+let local_ns = [ "fe80::c2d7:aaff:fe96:8d82" ]
+
 let tests = [
   "linux", `Quick, test_one "linux" (linux, ok_result (v6_ns @ v4_ns)) ;
   "macos", `Quick, test_one "macos" (macos, ok_result (v6_ns @ v4_ns)) ;
   "openbsd", `Quick, test_one "openbsd" (openbsd, ok_result v4_ns) ;
   "simple", `Quick, test_one "simple" (simple, ok_result v4_ns) ;
+  "nixos", `Quick, test_one "nixos (with zone index)"
+    (nixos, ok_result local_ns) ;
+  "nixos 2", `Quick, test_one "nixos 2 (with zone index)"
+    (nixos2, ok_result (v4_ns @ local_ns @ v4_ns)) ;
 ]
 
 let () = Alcotest.run "DNS resolvconf tests" [ "resolvconf tests", tests ]
