@@ -310,7 +310,8 @@ module Transport : Dns_client.S
        | `Plain fd -> close_socket fd
        | `Tls fd -> Tls_lwt.Unix.close fd) >|= fun () ->
        t.fd <- None;
-       Log.info (fun m -> m "end of file reading from resolver")
+       if not (IM.is_empty t.requests) then
+         Log.info (fun m -> m "end of file reading from resolver")
      | (read_len, cs) ->
        let rec handle_data data =
          let cs_len = Cstruct.length data in
