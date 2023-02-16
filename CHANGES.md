@@ -1,3 +1,23 @@
+### v7.0.0 (2023-02-16)
+
+* BREAKING: dns-client is split into 3 packages: dns-client-lwt,
+  dns-client-mirage. If your dune file contains dns-client.lwt, use
+  dns-client-lwt now. If your dune file contains dns-client.mirage, use
+  dns-client-mirage now (#331 @hannesm)
+* update to mirage-crypto 0.11.0 API changes and tls 0.16.0 packaging changes
+  (#331 @hannesm)
+* dns-client.resolvconf: add line number to parser (#334 @hannesm, inspired by
+  #328 @bikallem)
+* dns-client.resolvconf: allow zone idx (RFC 4007) for IPv6 entries
+  (#334 @hannesm, inspired by #328 @bikallem)
+* dns-server.zone: allow zone files without final newline (add a newline to the
+  buffer if the last character is not \n) (#333 @hannesm)
+* dns-client-{lwt,mirage}: do not log when the resolver closed the connection,
+  but there are no pending requests (#332 @reynir)
+* dns-certify: in Dns_certify_mirage use X509.Private_key.of_string, the
+  behaviour when both key_data and key_seed is provided changed, and leads to
+  an exception now (#330 @hannesm)
+
 ### v6.4.1 (2022-12-02)
 
 * dns-client: adapt to happy eyeballs 0.4.0 (#329 @reynir @hannesm)
