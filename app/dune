@@ -38,7 +38,7 @@
   (public_name  odns)
   (modules      odns)
   (package      dns-cli)
-  (libraries    dns dns-client.lwt dns-cli cmdliner mtime.clock.os
+  (libraries    dns dns-client-lwt dns-cli cmdliner mtime.clock.os
                 lwt.unix hex bos))
 
 (executable
@@ -46,5 +46,5 @@
   (public_name  odnssec)
   (modules      odnssec)
   (package      dns-cli)
-  (libraries    dns dns-client.lwt dns-cli cmdliner mtime.clock.os
+  (libraries    dns dns-client-lwt dns-cli cmdliner mtime.clock.os
                 lwt.unix dnssec))

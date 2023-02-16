@@ -170,4 +170,4 @@ end
 include Dns_client.Make(Transport)
 
 (* initialize the RNG *)
-let () = Mirage_crypto_rng_unix.initialize ()
+let () = Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna)

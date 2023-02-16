@@ -15,12 +15,20 @@ build: [
 depends: [
   "dune" {>="2.0.0"}
   "ocaml" {>= "4.08.0"}
-  "dns" {= version}
-  "randomconv" {>= "0.1.2"}
+  "dns-client" {= version}
   "domain-name" {>= "0.4.0"}
-  "alcotest" {with-test}
+  "ipaddr" {>= "5.3.0"}
+  "lwt" {>= "4.2.1"}
+  "tcpip" {>= "7.0.0"}
+  "mirage-random" {>= "2.0.0"}
+  "mirage-time" {>= "2.0.0"}
+  "mirage-clock" {>= "3.0.0"}
+  "happy-eyeballs" {>= "0.4.0"}
+  "tls-mirage" {>= "0.16.0"}
+  "x509" {>= "0.16.0"}
+  "ca-certs-nss"
 ]
-synopsis: "DNS client API"
+synopsis: "DNS client API for MirageOS"
 description: """
-A client implementation using uDNS.
+A client implementation using uDNS using MirageOS.
 """

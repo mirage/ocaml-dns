@@ -18,7 +18,7 @@ let create_update zone hostname ip_address =
   Packet.create header zone (`Update update)
 
 let jump _ serverip port (keyname, zone, dnskey) hostname ip_address =
-  Mirage_crypto_rng_unix.initialize ();
+  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
   let now = Ptime_clock.now () in
   Logs.app (fun m -> m "updating to %a:%d zone %a A 600 %a %a"
                Ipaddr.pp serverip port

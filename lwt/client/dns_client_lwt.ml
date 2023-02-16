@@ -433,4 +433,4 @@ end
 include Dns_client.Make(Transport)
 
 (* initialize the RNG *)
-let () = Mirage_crypto_rng_lwt.initialize ()
+let () = Mirage_crypto_rng_lwt.initialize (module Mirage_crypto_rng.Fortuna)

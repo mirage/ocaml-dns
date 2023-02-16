@@ -14,7 +14,7 @@ depends: [
   "dns" {= version}
   "dnssec" {= version}
   "dns-tsig" {= version}
-  "dns-client" {= version}
+  "dns-client-lwt" {= version}
   "dns-server" {= version}
   "dns-certify" {= version}
   "bos" {>= "0.2.0"}
@@ -23,7 +23,7 @@ depends: [
   "x509" {>= "0.13.0"}
   "mirage-crypto" {>= "0.8.0"}
   "mirage-crypto-pk" {>= "0.8.0"}
-  "mirage-crypto-rng" {>= "0.8.0"}
+  "mirage-crypto-rng" {>= "0.11.0"}
   "hex" {>= "1.4.0"}
   "ptime" {>= "0.8.5"}
   "mtime" {>= "1.2.0"}
