@@ -18,6 +18,7 @@ depends: [
   "dns" {= version}
   "randomconv" {>= "0.1.2"}
   "domain-name" {>= "0.4.0"}
+  "mtime" {>= "1.2.0"}
   "alcotest" {with-test}
 ]
 synopsis: "DNS client API"
