@@ -380,6 +380,8 @@ label: label_except_at { $1 } | AT { "@" }
 
 keyword_or_number:
    NUMBER { $1 }
+ | NEG_NUMBER { $1 }
+ | TYPE_GENERIC { $1 }
  | TYPE_A { $1 }
  | TYPE_NS { $1 }
  | TYPE_CNAME { $1 }
@@ -390,12 +392,17 @@ keyword_or_number:
  | TYPE_AAAA { $1 }
  | TYPE_SRV { $1 }
  | TYPE_DNSKEY { $1 }
+ | TYPE_CAA { $1 }
  | TYPE_TLSA { $1 }
  | TYPE_SSHFP { $1 }
+ | TYPE_DS { $1 }
  | TYPE_LOC { $1 }
  | CLASS_IN { $1 }
  | CLASS_CS { $1 }
  | CLASS_CH { $1 }
  | CLASS_HS { $1 }
+ | LAT_DIR { $1 }
+ | LONG_DIR { $1 }
+ | METERS { $1 ^ "m" }
 
 %%

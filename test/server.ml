@@ -1615,6 +1615,115 @@ $TTL 2560
     Alcotest.(check (result name_map_ok err) "parsing simple zone"
                 (Ok rrs) (Dns_zone.parse simple_zone))
 
+  let simple_zone_2 = {|
+$ORIGIN example.
+$TTL 2560
+@	SOA	ns 	root	1	86400	10800	1048576	2560
+@	NS	ns
+a	A	1.2.3.4
+e	A	1.2.3.4
+2m	A	1.2.3.4
+2	A	1.2.3.4
+-2	A	1.2.3.4
+TYPE23	A	1.2.3.4
+|}
+
+  let parse_simple_zone_2 () =
+    let rrs =
+      let z = n_of_s "example" in
+      let ns_name = n_of_s "ns.example" in
+      let ns = 2560l, Domain_name.(Host_set.singleton (host_exn ns_name)) in
+      let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+                  serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                  expiry = 1048576l ; minimum = 2560l }
+      in
+      let a = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "1.2.3.4") in
+      let hs = List.map (fun lbl -> n_of_s (lbl ^ ".example"))
+          [ "a" ; "e" ; "2m" ; "2" ; "-2" ; "TYPE23" ]
+      in
+      List.fold_left (fun rrs dn ->
+          Name_rr_map.(add dn Rr_map.A (2560l, a) rrs))
+        Name_rr_map.(add z Rr_map.Ns ns (singleton z Rr_map.Soa soa))
+        hs
+    in
+    Alcotest.(check (result name_map_ok err) "parsing simple zone 2"
+                (Ok rrs) (Dns_zone.parse simple_zone_2))
+
+  let simple_zone_3 = {|
+$ORIGIN example.
+$TTL 2560
+@	SOA	ns 	root	1	86400	10800	1048576	2560
+@	NS	ns
+A	A	1.2.3.4
+NS	A	1.2.3.4
+CNAME	A	1.2.3.4
+SOA	A	1.2.3.4
+PTR	A	1.2.3.4
+MX	A	1.2.3.4
+TXT	A	1.2.3.4
+AAAA	A	1.2.3.4
+SRV	A	1.2.3.4
+DNSKEY	A	1.2.3.4
+CAA	A	1.2.3.4
+TLSA	A	1.2.3.4
+SSHFP	A	1.2.3.4
+DS	A	1.2.3.4
+LOC	A	1.2.3.4
+IN	A	1.2.3.4
+CS	A	1.2.3.4
+CH	A	1.2.3.4
+HS	A	1.2.3.4
+N	A	1.2.3.4
+S	A	1.2.3.4
+E	A	1.2.3.4
+W	A	1.2.3.4
+|}
+
+  let parse_simple_zone_3 () =
+    let rrs =
+      let z = n_of_s "example" in
+      let ns_name = n_of_s "ns.example" in
+      let ns = 2560l, Domain_name.(Host_set.singleton (host_exn ns_name)) in
+      let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+                  serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                  expiry = 1048576l ; minimum = 2560l }
+      in
+      let a = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "1.2.3.4") in
+      let hs =
+        List.map (fun lbl -> n_of_s (lbl ^ ".example")) [
+    "A"
+  ; "NS"
+  ; "CNAME"
+  ; "SOA"
+  ; "PTR"
+  ; "MX"
+  ; "TXT"
+  ; "AAAA"
+  ; "SRV"
+  ; "DNSKEY"
+  ; "CAA"
+  ; "TLSA"
+  ; "SSHFP"
+  ; "DS"
+  ; "LOC"
+  ; "IN"
+  ; "CS"
+  ; "CH"
+  ; "HS"
+  ; "N"
+  ; "S"
+  ; "E"
+  ; "W"
+  ]
+      in
+      List.fold_left (fun rr_map dn ->
+          Name_rr_map.(add dn Rr_map.A (2560l, a) rr_map))
+        Name_rr_map.(add z Rr_map.Ns ns (singleton z Rr_map.Soa soa))
+        hs
+    in
+    Alcotest.(check (result name_map_ok err) "parsing simple zone 3"
+                (Ok rrs) (Dns_zone.parse simple_zone_3))
+
   let simple_zone_no_nl = {|
 $ORIGIN example.
 $TTL 2560
@@ -2028,6 +2137,8 @@ $TTL 2560
 
   let tests = [
     "parsing simple zone", `Quick, parse_simple_zone ;
+    "parsing simple zone 2", `Quick, parse_simple_zone_2 ;
+    "parsing simple zone 3", `Quick, parse_simple_zone_3 ;
     "parsing simple zone without final newline", `Quick, parse_simple_zone_without_nl ;
     "parsing wildcard zone", `Quick, parse_wildcard_zone ;
     "parsing RFC 4592 zone", `Quick, parse_rfc4592_zone ;
