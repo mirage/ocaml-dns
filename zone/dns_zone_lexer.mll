@@ -27,7 +27,8 @@ open Dns_zone_state
 open Dns_zone_parser
 open Lexing
 
-(* Disambiguate keywords and generic character strings *)
+(* Disambiguate keywords and generic character strings -- when updating this,
+   please ensure to update the keyword_or_number rule in dns_zone_parser.mly *)
 let kw_or_cs s = match (String.uppercase_ascii s) with
     "A" -> TYPE_A s
   | "NS" -> TYPE_NS s
