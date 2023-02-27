@@ -1621,7 +1621,10 @@ $TTL 2560
 @	SOA	ns 	root	1	86400	10800	1048576	2560
 @	NS	ns
 a	A	1.2.3.4
-e	A	1.2.3.5
+e	A	1.2.3.4
+2m	A	1.2.3.4
+2	A	1.2.3.4
+-2	A	1.2.3.4
 |}
 
   let parse_simple_zone_2 () =
@@ -1633,12 +1636,14 @@ e	A	1.2.3.5
                   serial = 1l ; refresh = 86400l ; retry = 10800l ;
                   expiry = 1048576l ; minimum = 2560l }
       in
-      let a1 = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "1.2.3.4") in
-      let a2 = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "1.2.3.5") in
-      let h1 = n_of_s "a.example" and h2 = n_of_s "e.example" in
-      Name_rr_map.(add h1 Rr_map.A (2560l, a1)
-                     (add h2 Rr_map.A (2560l, a2)
-                        (add z Rr_map.Ns ns (singleton z Rr_map.Soa soa))))
+      let a = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "1.2.3.4") in
+      let hs = List.map (fun lbl -> n_of_s (lbl ^ ".example"))
+          [ "a" ; "e" ; "2m" ; "2" ; "-2" ]
+      in
+      List.fold_left (fun rrs dn ->
+          Name_rr_map.(add dn Rr_map.A (2560l, a) rrs))
+        Name_rr_map.(add z Rr_map.Ns ns (singleton z Rr_map.Soa soa))
+        hs
     in
     Alcotest.(check (result name_map_ok err) "parsing simple zone 2"
                 (Ok rrs) (Dns_zone.parse simple_zone_2))
