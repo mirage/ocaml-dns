@@ -397,5 +397,7 @@ keyword_or_number:
  | CLASS_CS { $1 }
  | CLASS_CH { $1 }
  | CLASS_HS { $1 }
+ | LAT_DIR { $1 }
+ | LONG_DIR { $1 }
 
 %%
