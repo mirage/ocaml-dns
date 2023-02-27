@@ -1,3 +1,13 @@
+### v7.0.1 (2023-02-27)
+
+* dns-server.zone: fix parsing of zone files that contain tokens such as
+  `N` `S` `E` `W` `-<number>` `<number>m` `DS` `CAA` `TYPE<number>`.
+  There was an inconsistency in the Dns_zone_parser.keyword_or_number rule.
+  Test cases have been added, a comment has been added to the
+  Dns_zone_lexer.kw_or_cs function. Discovered while updating the primary NS
+  with an entry of "e.ns", fixed in #336 @hannesm
+  Broken since the early days of this development
+
 ### v7.0.0 (2023-02-16)
 
 * BREAKING: dns-client is split into 3 packages: dns-client-lwt,
