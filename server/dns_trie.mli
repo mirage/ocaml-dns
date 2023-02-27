@@ -1,9 +1,9 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 (** Prefix tree data structure for domain names
 
-    The key is a {!Dns_name}, whereas the value may be any resource record.  The
-    representation is a tree, where the edges are domain name labels, and the
-    nodes carry a {{!Dns_map.t}resource map}.
+    The key is a {!Domain_name}, whereas the value may be any resource record.
+    The representation is a tree, where the edges are domain name labels, and
+    the nodes carry a {{!Dns.Rr_map.t}resource map}.
     Some special treatment is applied for zones, which must have a start of
     authority entry and a set of name servers.  End of authority, also known as
     delegation, is supported.  Aliases (canonical names, CNAME records) are also
@@ -37,7 +37,7 @@ val equal : t -> t -> bool
 
 val insert_map : Rr_map.t Domain_name.Map.t -> t -> t
 (** [insert_map m t] inserts all elements of the domain name map [m] into
-    [t], potentially existing are unioned with {!Rr_map.unionee}. *)
+    [t], potentially existing are unioned with {!Dns.Rr_map.unionee}. *)
 
 val replace_map : Rr_map.t Domain_name.Map.t -> t -> t
 (** [replace_map m t] replaces in the trie [t] all existing bindings of the
@@ -49,7 +49,7 @@ val remove_map : Rr_map.t Domain_name.Map.t -> t -> t
 
 val insert : 'a Domain_name.t -> 'b Rr_map.key -> 'b -> t -> t
 (** [insert n k v t] inserts [k, v] under [n] in [t].  Existing entries are
-    unioneed with {!Rr_map.union_rr}. *)
+    unioneed with {!Dns.Rr_map.union_rr}. *)
 
 val replace : 'a Domain_name.t -> 'b Rr_map.key -> 'b -> t -> t
 (** [replace n k v t] inserts [k, v] under [n] in [t].  Existing entries are

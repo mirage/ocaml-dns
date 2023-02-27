@@ -55,7 +55,7 @@
     {- {!Dns_resolver} implements a recursive resolver}}
 
     These core libraries are pure, i.e. it is independent of network
-   communnication, uses immutable values, and errors are explicit as {!result}
+   communication, uses immutable values, and errors are explicit as result
    type. Timestamps are passed in to the main handle functions. Some components,
    such as a secondary server, which needs to check freshness of its data in
    regular intervals. The logic is implemented and exposed as function, which
@@ -63,8 +63,8 @@
 
     For the client library, several side-effecting layers are implemented:
    [dns-client.unix] uses the blocking [Unix] API (distributed with the OCaml
-   runtime), [dns-client.lwt] uses the non-blocking [Lwt] API, and
-   [dns-client.mirage] using MirageOS interfaces. Unix command line utilities
+   runtime), [dns-client-lwt] uses the non-blocking [Lwt] API, and
+   [dns-client-mirage] using MirageOS interfaces. Unix command line utilities
    are provided in the [dns-cli] package.
 
     For the server and resolver components, side-effecting implementations

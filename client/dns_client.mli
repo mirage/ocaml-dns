@@ -12,7 +12,7 @@ val default_resolvers : Ipaddr.t list
 
 module type S = sig
   type context
-  (** A context is a network connection initialized by {!T.connect} *)
+  (** A context is a network connection initialized by {!connect} *)
 
   type +'a io
   (** [io] is the type of an effect. ['err] is a polymorphic variant. *)
@@ -137,10 +137,10 @@ module Pure : sig
   type 'key query_state constraint 'key = 'a Dns.Rr_map.key
   (** [query_state] is parameterized over the query type, so the type of the
       representation of the answer depends on what the name server was asked to
-      provide. See {!Dns_map.k} for a list of response types. The first element
-      (the [int32]) in most of the tuples is the Time-To-Live (TTL) field
-      returned from the server, which you can use to calculate when you should
-      request fresh information in case you are writing a long-running
+      provide. See {!Dns.Rr_map.k} for a list of response types. The first
+      element (the [int32]) in most of the tuples is the Time-To-Live (TTL)
+      field returned from the server, which you can use to calculate when you
+      should request fresh information in case you are writing a long-running
       application. *)
 
   val make_query :
