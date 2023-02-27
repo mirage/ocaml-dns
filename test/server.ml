@@ -1625,6 +1625,7 @@ e	A	1.2.3.4
 2m	A	1.2.3.4
 2	A	1.2.3.4
 -2	A	1.2.3.4
+TYPE23	A	1.2.3.4
 |}
 
   let parse_simple_zone_2 () =
@@ -1638,7 +1639,7 @@ e	A	1.2.3.4
       in
       let a = Ipaddr.V4.Set.singleton (Ipaddr.V4.of_string_exn "1.2.3.4") in
       let hs = List.map (fun lbl -> n_of_s (lbl ^ ".example"))
-          [ "a" ; "e" ; "2m" ; "2" ; "-2" ]
+          [ "a" ; "e" ; "2m" ; "2" ; "-2" ; "TYPE23" ]
       in
       List.fold_left (fun rrs dn ->
           Name_rr_map.(add dn Rr_map.A (2560l, a) rrs))

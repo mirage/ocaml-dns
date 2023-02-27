@@ -381,6 +381,7 @@ label: label_except_at { $1 } | AT { "@" }
 keyword_or_number:
    NUMBER { $1 }
  | NEG_NUMBER { $1 }
+ | TYPE_GENERIC { $1 }
  | TYPE_A { $1 }
  | TYPE_NS { $1 }
  | TYPE_CNAME { $1 }
