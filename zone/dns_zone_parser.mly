@@ -390,8 +390,10 @@ keyword_or_number:
  | TYPE_AAAA { $1 }
  | TYPE_SRV { $1 }
  | TYPE_DNSKEY { $1 }
+ | TYPE_CAA { $1 }
  | TYPE_TLSA { $1 }
  | TYPE_SSHFP { $1 }
+ | TYPE_DS { $1 }
  | TYPE_LOC { $1 }
  | CLASS_IN { $1 }
  | CLASS_CS { $1 }
