@@ -15,7 +15,7 @@ build: [
 depends: [
   "dune" {>="2.0.0"}
   "ocaml" {>= "4.08.0"}
-  "dns-client" {>= version}
+  "dns-client" {= version}
   "dns" {= version}
   "ipaddr" {>= "5.3.0"}
   "lwt" {>= "4.2.1"}
