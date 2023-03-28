@@ -1328,7 +1328,7 @@ module Loc = struct
   let alt_parse alt =
     let (+) = Int64.add in
     Int64.to_int32 (10000000L + alt)
-  
+
   let rec pow10 e =
     if e = 0 then 1L else
     let ( * ) = Int64.mul in
@@ -1352,7 +1352,7 @@ module Loc = struct
       (Int.shift_left mantissa 4) lor exponent
     in
     (encode size, encode horiz_pre, encode vert_pre)
-  
+
   (* RFC 1876 Appendix A *)
   let parse ~latitude ~longitude ~altitude ~precision =
     let latitude = lat_long_parse latitude in
@@ -1395,7 +1395,7 @@ module Loc = struct
     in
     let alt = alt - 10000000L in
     (alt / 100L, Int64.rem alt 100L)
-  
+
   let precision_print prec =
     let mantissa = ((Int.shift_right prec 4) land 0x0f) mod 10 in
     let exponent = ((Int.shift_right prec 0) land 0x0f) mod 10 in
@@ -1430,7 +1430,7 @@ module Loc = struct
         let integer, decimal = sec in
         decimal_string (Int64.of_int32 integer, Int64.of_int32 decimal) 3
       in
-      String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [sec_string ; dir]) 
+      String.concat " " ((List.map (Int32.to_string) [deg; min]) @ [sec_string ; dir])
     in
     let lat_string =
       let (lat_deg, lat_min, lat_sec), lat_dir = lat_print loc.latitude in
@@ -1442,7 +1442,7 @@ module Loc = struct
     in
     let meter_values =
       List.map (fun m -> decimal_string m 2 ^ "m") (
-        [alt_print loc.altitude] @ (List.map precision_print [loc.size; loc.horiz_pre; loc.vert_pre])    
+        [alt_print loc.altitude] @ (List.map precision_print [loc.size; loc.horiz_pre; loc.vert_pre])
       )
     in
     String.concat " " ([lat_string; long_string;] @ meter_values)
