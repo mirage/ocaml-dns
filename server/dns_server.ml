@@ -94,7 +94,7 @@ module Authentication = struct
     let is_zone z zone = Domain_name.(equal z zone) in
     let find_zone_ips zone name =
         match find_zone_ips name with
-          | Some (z, _, Some sec) when is_zone z zone -> Some (name, sec)
+          | Some (z, prim, _) when is_zone z zone -> Some (name, prim)
           | _ -> None
     in
     match
