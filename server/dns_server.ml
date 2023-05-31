@@ -90,7 +90,25 @@ module Authentication = struct
 
   let secondaries t zone = find_ns `S t zone
 
-  let primaries t zone = find_ns `P t zone
+  let primaries t zone =
+    let is_zone z zone = Domain_name.(equal z zone) in
+    let find_zone_ips zone name =
+        match find_zone_ips name with
+          | Some (z, _, Some sec) when is_zone z zone -> Some (name, sec)
+          | _ -> None
+    in
+    match
+      Dns_trie.fold Rr_map.Dnskey t (fun name _ acc ->
+          match find_zone_ips zone name with
+          | None -> acc
+          | Some sec -> Some sec) None
+    with
+    | None ->
+      Dns_trie.fold Rr_map.Dnskey t (fun name _ acc ->
+          match find_zone_ips Domain_name.root name with
+          | None -> acc
+          | Some sec -> Some sec) None
+    | Some x -> Some x
 
   let zone_and_operation name =
     let is_op lbl =
@@ -1202,7 +1220,7 @@ module Secondary = struct
           zones
         | Ok zone ->
           match Authentication.primaries auth name with
-          | [] -> begin match primary with
+          | None -> begin match primary with
               | None ->
                 Log.warn (fun m -> m "no nameserver found for %a"
                              Domain_name.pp name);
@@ -1226,13 +1244,11 @@ module Secondary = struct
                       zones
                     end) zones keylist
             end
-          | primaries ->
-            List.fold_left (fun zones (keyname, ip) ->
-                Log.app (fun m -> m "adding transfer key %a for zone %a"
-                            Domain_name.pp keyname Domain_name.pp name);
-                let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, keyname in
-                Domain_name.Host_map.add zone v zones)
-              zones primaries
+          | Some (keyname, ip) ->
+            Log.app (fun m -> m "adding transfer key %a for zone %a (ip %a)"
+                        Domain_name.pp keyname Domain_name.pp name Ipaddr.pp ip);
+            let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, keyname in
+            Domain_name.Host_map.add zone v zones
       in
       Dns_trie.fold Rr_map.Soa auth f Domain_name.Host_map.empty
     in
