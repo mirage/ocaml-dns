@@ -1,3 +1,7 @@
+### UNRELEASED
+
+* dns-server: for secondary servers use the right zone transfers and keys, fixed in #339 by @hannesm
+
 ### v7.0.1 (2023-02-27)
 
 * dns-server.zone: fix parsing of zone files that contain tokens such as
