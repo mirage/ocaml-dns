@@ -250,18 +250,19 @@ module Getaddrinfo_tests = struct
       let make_mx_record (preference, domain_name) =
         Dns.Mx.{
           preference;
-          mail_exchange = Domain_name.host_exn @@ Domain_name.of_string_exn domain_name
+          mail_exchange = Domain_name.host_exn (Domain_name.of_string_exn domain_name)
         } in
 
       (* assert this is Google MX *)
-      Alcotest.(check bool __LOC__ true @@ Dns.Rr_map.Mx_set.equal mx_set @@ Dns.Rr_map.Mx_set.of_list @@
-        List.map make_mx_record [
-          (10, "aspmx.l.google.com");
-          (20, "alt1.aspmx.l.google.com");
-          (30, "alt2.aspmx.l.google.com");
-          (40, "alt3.aspmx.l.google.com");
-          (50, "alt4.aspmx.l.google.com")
-        ])
+      Alcotest.(check bool __LOC__ true (Dns.Rr_map.Mx_set.equal mx_set
+                                           (Dns.Rr_map.Mx_set.of_list
+                                              (List.map make_mx_record [
+                                                  (10, "aspmx.l.google.com");
+                                                  (20, "alt1.aspmx.l.google.com");
+                                                  (30, "alt2.aspmx.l.google.com");
+                                                  (40, "alt3.aspmx.l.google.com");
+                                                  (50, "alt4.aspmx.l.google.com")
+                                                ]))))
     | Error _ -> failwith "foo.com should have been returned"
 
   let fails_on_partial_udp_packet () =

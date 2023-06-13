@@ -23,7 +23,7 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Dns.Tlsa.t)) =
       let hlen = String.length hex in
       let rec loop acc = function
         | n when n + 56 >= hlen ->
-          String.concat " " (List.rev @@ String.sub hex n (hlen-n)::acc)
+          String.concat " " (List.rev (String.sub hex n (hlen-n)::acc))
           |> String.uppercase_ascii
         | n -> loop ((String.sub hex n 56)::acc) (n+56)
       in loop [] 0)

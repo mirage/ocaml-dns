@@ -447,10 +447,10 @@ module Packet = struct
     and zone = Question.create (n_of_s "example.com") Soa
     in
     let res = create header zone (`Update update) in
-    let encoded = fst @@ encode `Udp res in
+    let encoded = fst (encode `Udp res) in
     (* encode followed by decode should lead to same data *)
     Alcotest.(check (result t_ok p_err) "regression 7 decode encode works"
-                (Ok res) (decode @@ encoded))
+                (Ok res) (decode encoded))
 
   let regression8 () =
     (* encoding a exists_data in an update frame lead to wrong rdlength (off by 2) *)
@@ -466,7 +466,7 @@ module Packet = struct
     let res = create header zone (`Update prereq) in
     (* encode followed by decode should lead to same data *)
     Alcotest.(check (result t_ok p_err) "regression 8 decode encode works"
-                (Ok res) (decode @@ fst @@ encode `Udp res))
+                (Ok res) (decode (fst (encode `Udp res))))
 
   let regression9 () =
     (* from ednscomp.isc.org *)
@@ -673,7 +673,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
 51 41 42 00 00 29 20 00 00 00 00 00 00 00
 |} in
     Alcotest.(check p_cs "regression 11 encode works"
-                data' (fst @@ encode `Tcp res));
+                data' (fst (encode `Tcp res)));
     Alcotest.(check (result t_ok p_err) "regression 11 encoded decodes well"
                 (Ok res) (decode data'))
 
@@ -2068,14 +2068,14 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       Domain_name.Map.singleton host (Rr_map.singleton Loc (3600l, Rr_map.Loc_set.singleton loc))
     in
     let res = create header q (`Answer (content, Name_rr_map.empty)) in
-    let _ = Format.printf "%a\n" Cstruct.hexdump_pp (fst @@ encode `Udp res) in
+    let _ = Format.printf "%a\n" Cstruct.hexdump_pp (fst (encode `Udp res)) in
     let _ =
       Format.printf "%a\n" pp (match (decode data) with
       | Ok t -> t
       | Error _ -> raise (Failure "Failed to decode data"))
     in
     Alcotest.(check (result t_ok p_err) "Loc decodes" (Ok res) (decode data))
-  
+
   let loc_decode () =
     let data = Cstruct.of_hex (
       loc_packet_preamble ^
@@ -2086,7 +2086,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "13" ^ (* vertical percision *)
         "8b 34 0c 50" ^ (* lat *)
         "7f fa ef 84" ^ (* long *)
-        "00 98 9f 18" (* alt *) 
+        "00 98 9f 18" (* alt *)
     ) in
     let loc = Loc.parse
       ~latitude:((52l, 12l, 40400l), `North)
@@ -2095,7 +2095,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~precision:(1000L, 1000L, 1000L)
     in
     loc_decode_helper data loc
-  
+
   let loc_decode_min () =
     let data = Cstruct.of_hex (
       loc_packet_preamble ^
@@ -2116,7 +2116,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~precision:(0L, 0L, 0L)
     in
     loc_decode_helper data loc
-  
+
   let loc_decode_min_negated () =
     let data = Cstruct.of_hex (
       loc_packet_preamble ^
@@ -2200,7 +2200,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
     loc_decode_helper data loc
-  
+
   let loc_decode_alt_signed_max () =
     let data = Cstruct.of_hex (
       loc_packet_preamble ^
@@ -2221,7 +2221,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
     loc_decode_helper data loc
-  
+
   let loc_decode_alt_signed_max_over () =
     let data = Cstruct.of_hex (
       loc_packet_preamble ^
@@ -2242,7 +2242,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
     loc_decode_helper data loc
-  
+
   let loc_leftover () =
     let data = Cstruct.of_hex (
       loc_packet_preamble ^
@@ -2253,7 +2253,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "13" ^ (* vertical percision *)
         "8b 34 0c 50" ^ (* lat *)
         "7f fa ef 84" ^ (* long *)
-        "00 98 9f 18 00" (* alt *) 
+        "00 98 9f 18 00" (* alt *)
     ) in
     let loc = Loc.parse
       ~latitude:((52l, 12l, 40400l), `North)
@@ -2297,7 +2297,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
           "13" ^ (* vertical percision *)
           "8b 34 0c 50" ^ (* lat *)
           "7f fa ef 84" ^ (* long *)
-          "00 98 9f 18 00" (* alt *) 
+          "00 98 9f 18 00" (* alt *)
     ) in
     let loc = Loc.parse
       ~latitude:((52l, 12l, 40400l), `North)
@@ -2318,7 +2318,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         "13" ^ (* vertical percision *)
         "8b 34 0c 50" ^ (* lat *)
         "7f fa ef 84" ^ (* long *)
-        "00 98 9f" (* alt *) 
+        "00 98 9f" (* alt *)
     ) in
     Alcotest.(check (result t_ok p_err) "short LOC decodes" (Error `Partial) (decode data))
 
@@ -2359,7 +2359,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
           "00 98 9f" (* alt *)
     ) in
     Alcotest.(check (result t_ok p_err) "A decode failure (rdata partial)" (Error `Partial) (decode data))
-              
+
   let loc_encode_helper loc =
     let host = n_of_s "example.com" in
     let header = 0x1111, Flags.(add `Recursion_desired (singleton `Recursion_available))
@@ -2369,9 +2369,9 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       Domain_name.Map.singleton host (Rr_map.singleton Loc (3600l, Rr_map.Loc_set.singleton loc))
     in
     let res = create header q (`Answer (content, Name_rr_map.empty)) in
-    let _ = Format.printf "%a" Cstruct.hexdump_pp (fst @@ encode `Udp res) in
-    Alcotest.(check (result t_ok p_err) "Loc encodes" (Ok res) (decode @@ fst @@ encode `Udp res))
-  
+    let _ = Format.printf "%a" Cstruct.hexdump_pp (fst (encode `Udp res)) in
+    Alcotest.(check (result t_ok p_err) "Loc encodes" (Ok res) (decode (fst (encode `Udp res))))
+
   let loc_encode_min () =
     let loc = Loc.parse
       ~latitude:((0l, 0l, 0l), `North)
@@ -2380,7 +2380,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~precision:(0L, 0L, 0L)
     in
     loc_encode_helper loc
-  
+
   let loc_encode_min_negated () =
     let loc = Loc.parse
       ~latitude:((0l, 0l, 0l), `South)
@@ -2389,7 +2389,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~precision:(0L, 0L, 0L)
     in
     loc_encode_helper loc
-  
+
   let loc_encode_max () =
     let loc = Loc.parse
       ~latitude:((90l, 0l, 0l), `North)
@@ -2398,7 +2398,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       ~precision:(9000000000L, 9000000000L, 9000000000L)
     in
     loc_encode_helper loc
-  
+
   let loc_encode_max_inverted () =
     let loc = Loc.parse
       ~latitude:((90l, 0l, 0l), `South)
