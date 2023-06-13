@@ -15,7 +15,7 @@ needs a fully-fledged authoritative nameserver as well (for overriding various
 zones such as `.localhost` and reverse lookups of RFC 1918 IP ranges).
 
 Legacy resource record types are not dealt with, and there is no plan to support
-`ISDN`, `MAILA`, `MAILB`, `WKS`, `MB`, `NULL`, `HINFO`, ... .  `AXFR`, `IXFR`,
+`ISDN`, `MAILA`, `MAILB`, `WKS`, `MB`, `HINFO`, ... .  `AXFR`, `IXFR`,
 and `UPDATE` is only handled via TCP connections.  The only resource class
 supported is `IN` (the Internet).  Truncated hmac in `TSIG` are not supported
 (always the full length of the hash algorithm is used).

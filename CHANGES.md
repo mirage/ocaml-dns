@@ -1,6 +1,8 @@
-### UNRELEASED
+### v7.0.2 (2023-06-13)
 
-* dns-server: for secondary servers use the right zone transfers and keys, fixed in #339 by @hannesm
+* dns-server: for secondary servers use the right zone transfers and keys, fixed
+  in #339 by @hannesm
+* dns: add support for null record (arbitrary binary data) (#338 @RyanGibb)
 
 ### v7.0.1 (2023-02-27)
 

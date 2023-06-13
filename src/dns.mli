@@ -834,7 +834,7 @@ module Loc : sig
   (** [compare a b] compares the Loc record [a] with [b]. *)
 end
 
-(** Text records *)
+(** Null records *)
 module Null : sig
   type t = Cstruct.t
   (** The type of a Null record. *)
