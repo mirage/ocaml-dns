@@ -373,6 +373,11 @@ let check trie =
             else if Rr_map.Loc_set.is_empty locs then
               Error (`Empty (name, Rr_map.K Loc))
             else Ok ()
+          | B (Null, (ttl, nulls)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Null_set.is_empty nulls then
+              Error (`Empty (name, Rr_map.K Null))
+            else Ok ()
           | B (Unknown x, (ttl, datas)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Txt_set.is_empty datas then

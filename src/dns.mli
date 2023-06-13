@@ -834,6 +834,19 @@ module Loc : sig
   (** [compare a b] compares the Loc record [a] with [b]. *)
 end
 
+(** Text records *)
+module Null : sig
+  type t = Cstruct.t
+  (** The type of a Null record. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the Null record [t] as hexidecimal on [ppf]. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the Null record [a] with [b] (using
+     [Bytes.compare]). *)
+end
+
  (** A map whose keys are record types and their values are the time-to-live and
     the record set. The relation between key and value type is restricted by the
     below defined GADT. *)
@@ -849,6 +862,7 @@ module Rr_map : sig
   module Ds_set : Set.S with type elt = Ds.t
   module Rrsig_set : Set.S with type elt = Rrsig.t
   module Loc_set : Set.S with type elt = Loc.t
+  module Null_set : Set.S with type elt = Null.t
 
   module I : sig
     type t
@@ -879,6 +893,7 @@ module Rr_map : sig
     | Nsec : Nsec.t with_ttl rr
     | Nsec3 : Nsec3.t with_ttl rr
     | Loc : Loc_set.t with_ttl rr
+    | Null : Null_set.t with_ttl rr
     | Unknown : I.t -> Txt_set.t with_ttl rr
   (** The type of resource record sets, as GADT: the value depends on the
      specific constructor. There may only be a single SOA and Cname and Ptr
