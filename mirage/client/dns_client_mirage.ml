@@ -130,37 +130,38 @@ The format of a nameserver is:
       mutable connected_condition : unit Lwt_condition.t option ;
       mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
       mutable he : Happy_eyeballs.t ;
-      mutable cancel_connecting : unit Lwt.u Happy_eyeballs.Waiter_map.t ;
+      mutable cancel_connecting : (int * unit Lwt.u) list Happy_eyeballs.Waiter_map.t ;
       mutable waiters : ((Ipaddr.t * int) * S.TCP.flow, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
       timer_condition : unit Lwt_condition.t ;
     }
     type context = t
 
     let clock = M.elapsed_ns
-    let he_timer_interval = Duration.of_ms 500
+    let he_timer_interval = Duration.of_ms 10
+
+    let try_connect stack addr =
+      let open Lwt.Infix in
+      S.TCP.create_connection (S.tcp stack) addr >|=
+      Result.map_error
+        (fun err -> `Msg (Fmt.str "error connecting to nameserver %a:%u: %a"
+                            Ipaddr.pp (fst addr) (snd addr) S.TCP.pp_error err))
 
     let handle_one_action t = function
-      | Happy_eyeballs.Connect (host, id, addr) ->
+      | Happy_eyeballs.Connect (host, id, attempt, addr) ->
         let cancelled, cancel = Lwt.task () in
-        t.cancel_connecting <- Happy_eyeballs.Waiter_map.add id cancel t.cancel_connecting;
-        Lwt.pick [
-          begin
-            S.TCP.create_connection (S.tcp t.stack) addr >>= function
-            | Error e ->
-              let err =
-                Fmt.str "error connecting to nameserver %a: %a"
-                  Ipaddr.pp (fst addr) S.TCP.pp_error e
-              in
-              Lwt.return_error (`Msg err)
+        let entry = attempt, cancel in
+        t.cancel_connecting <-
+          Happy_eyeballs.Waiter_map.update id
+            (function None -> Some [ entry ] | Some c -> Some (entry :: c))
+            t.cancel_connecting;
+        let conn =
+          try_connect t.stack addr >>= function
           | Ok flow ->
-            Lwt.return_ok flow
-          end;
-          begin
-            cancelled >|= fun () -> Error (`Msg "cancelled")
-          end;
-        ] >>= fun r ->
-        begin match r with
-          | Ok flow ->
+            let cancel_connecting, others =
+              Happy_eyeballs.Waiter_map.find_and_remove id t.cancel_connecting
+            in
+            t.cancel_connecting <- cancel_connecting;
+            List.iter (fun (_, u) -> Lwt.wakeup_later u ()) (Option.value ~default:[] others);
             let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
             t.waiters <- waiters;
             begin match r with
@@ -170,9 +171,17 @@ The format of a nameserver is:
               | None -> S.TCP.close flow
             end >|= fun () ->
             Some (Happy_eyeballs.Connected (host, id, addr))
-          | Error `Msg err ->
-            Lwt.return (Some (Happy_eyeballs.Connection_failed (host, id, addr, err)))
-        end
+          | Error `Msg msg ->
+            t.cancel_connecting <-
+              Happy_eyeballs.Waiter_map.update id
+                (function None -> None | Some c ->
+                  match List.filter (fun (att, _) -> not (att = attempt)) c with
+                  | [] -> None
+                  | c -> Some c)
+                t.cancel_connecting;
+            Lwt.return (Some (Happy_eyeballs.Connection_failed (host, id, addr, msg)))
+        in
+        Lwt.pick [ conn ; (cancelled >|= fun () -> None) ]
       | Connect_failed (host, id, reason) ->
         let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
         t.waiters <- waiters;
@@ -185,10 +194,6 @@ The format of a nameserver is:
           | None -> ()
         end;
         Lwt.return None
-      | Connect_cancelled (_host, id) ->
-        (match Happy_eyeballs.Waiter_map.find_opt id t.cancel_connecting with
-         | None -> Lwt.return_none
-         | Some cancel -> Lwt.wakeup cancel (); Lwt.return_none)
       | Resolve_a _ | Resolve_aaaa _ as a ->
         Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
         Lwt.return None
