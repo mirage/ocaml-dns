@@ -280,7 +280,7 @@ The format of a nameserver is:
         flow = None ;
         connected_condition = None ;
         requests = IM.empty ;
-        he = Happy_eyeballs.create (clock ()) ;
+        he = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) ;
         cancel_connecting = Happy_eyeballs.Waiter_map.empty ;
         waiters = Happy_eyeballs.Waiter_map.empty ;
         timer_condition = Lwt_condition.create () ;
