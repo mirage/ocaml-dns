@@ -90,7 +90,8 @@ module Transport : Dns_client.S
             Happy_eyeballs.Waiter_map.find_and_remove id t.cancel_connecting
           in
           t.cancel_connecting <- cancel_connecting;
-          List.iter (fun (_, w) -> Lwt.wakeup_later w ()) (Option.value ~default:[] others);
+          List.iter (fun (att, w) -> if att <> attempt then Lwt.wakeup_later w ())
+            (Option.value ~default:[] others);
           let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
           t.waiters <- waiters;
           begin match r with
