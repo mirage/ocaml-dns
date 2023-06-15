@@ -1,3 +1,8 @@
+### v7.0.3 (2023-06-15)
+
+* dns-client-lwt, dns-client-mirage: adapt to happy-eyeballs 0.6 changes,
+  also avoid unnecessary recursion (#340 @hannesm, @reynir)
+
 ### v7.0.2 (2023-06-13)
 
 * dns-server: for secondary servers use the right zone transfers and keys, fixed
