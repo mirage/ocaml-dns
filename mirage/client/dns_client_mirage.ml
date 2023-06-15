@@ -127,40 +127,42 @@ The format of a nameserver is:
       stack : stack ;
       mutable udp_ports : IS.t ;
       mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
-      mutable connected_condition : unit Lwt_condition.t option ;
+      mutable connected_condition : (unit, [ `Msg of string ]) result Lwt_condition.t option ;
       mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
       mutable he : Happy_eyeballs.t ;
-      mutable cancel_connecting : unit Lwt.u Happy_eyeballs.Waiter_map.t ;
+      mutable cancel_connecting : (int * unit Lwt.u) list Happy_eyeballs.Waiter_map.t ;
       mutable waiters : ((Ipaddr.t * int) * S.TCP.flow, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
       timer_condition : unit Lwt_condition.t ;
     }
     type context = t
 
     let clock = M.elapsed_ns
-    let he_timer_interval = Duration.of_ms 500
+    let he_timer_interval = Duration.of_ms 10
+
+    let try_connect stack addr =
+      let open Lwt.Infix in
+      S.TCP.create_connection (S.tcp stack) addr >|=
+      Result.map_error
+        (fun err -> `Msg (Fmt.str "error connecting to nameserver %a:%u: %a"
+                            Ipaddr.pp (fst addr) (snd addr) S.TCP.pp_error err))
 
     let handle_one_action t = function
-      | Happy_eyeballs.Connect (host, id, addr) ->
+      | Happy_eyeballs.Connect (host, id, attempt, addr) ->
         let cancelled, cancel = Lwt.task () in
-        t.cancel_connecting <- Happy_eyeballs.Waiter_map.add id cancel t.cancel_connecting;
-        Lwt.pick [
-          begin
-            S.TCP.create_connection (S.tcp t.stack) addr >>= function
-            | Error e ->
-              let err =
-                Fmt.str "error connecting to nameserver %a: %a"
-                  Ipaddr.pp (fst addr) S.TCP.pp_error e
-              in
-              Lwt.return_error (`Msg err)
+        let entry = attempt, cancel in
+        t.cancel_connecting <-
+          Happy_eyeballs.Waiter_map.update id
+            (function None -> Some [ entry ] | Some c -> Some (entry :: c))
+            t.cancel_connecting;
+        let conn =
+          try_connect t.stack addr >>= function
           | Ok flow ->
-            Lwt.return_ok flow
-          end;
-          begin
-            cancelled >|= fun () -> Error (`Msg "cancelled")
-          end;
-        ] >>= fun r ->
-        begin match r with
-          | Ok flow ->
+            let cancel_connecting, others =
+              Happy_eyeballs.Waiter_map.find_and_remove id t.cancel_connecting
+            in
+            t.cancel_connecting <- cancel_connecting;
+            List.iter (fun (att, u) -> if att <> attempt then Lwt.wakeup_later u ())
+              (Option.value ~default:[] others);
             let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
             t.waiters <- waiters;
             begin match r with
@@ -170,10 +172,23 @@ The format of a nameserver is:
               | None -> S.TCP.close flow
             end >|= fun () ->
             Some (Happy_eyeballs.Connected (host, id, addr))
-          | Error `Msg err ->
-            Lwt.return (Some (Happy_eyeballs.Connection_failed (host, id, addr, err)))
-        end
+          | Error `Msg msg ->
+            t.cancel_connecting <-
+              Happy_eyeballs.Waiter_map.update id
+                (function None -> None | Some c ->
+                  match List.filter (fun (att, _) -> not (att = attempt)) c with
+                  | [] -> None
+                  | c -> Some c)
+                t.cancel_connecting;
+            Lwt.return (Some (Happy_eyeballs.Connection_failed (host, id, addr, msg)))
+        in
+        Lwt.pick [ conn ; (cancelled >|= fun () -> None) ]
       | Connect_failed (host, id, reason) ->
+        let cancel_connecting, others =
+          Happy_eyeballs.Waiter_map.find_and_remove id t.cancel_connecting
+        in
+        t.cancel_connecting <- cancel_connecting;
+        List.iter (fun (_, u) -> Lwt.wakeup_later u ()) (Option.value ~default:[] others);
         let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
         t.waiters <- waiters;
         begin match r with
@@ -185,10 +200,6 @@ The format of a nameserver is:
           | None -> ()
         end;
         Lwt.return None
-      | Connect_cancelled (_host, id) ->
-        (match Happy_eyeballs.Waiter_map.find_opt id t.cancel_connecting with
-         | None -> Lwt.return_none
-         | Some cancel -> Lwt.wakeup cancel (); Lwt.return_none)
       | Resolve_a _ | Resolve_aaaa _ as a ->
         Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
         Lwt.return None
@@ -270,7 +281,7 @@ The format of a nameserver is:
         flow = None ;
         connected_condition = None ;
         requests = IM.empty ;
-        he = Happy_eyeballs.create (clock ()) ;
+        he = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) ;
         cancel_connecting = Happy_eyeballs.Waiter_map.empty ;
         waiters = Happy_eyeballs.Waiter_map.empty ;
         timer_condition = Lwt_condition.create () ;
@@ -394,10 +405,15 @@ The format of a nameserver is:
       Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
       waiter >>= function
       | Error `Msg msg ->
-        Lwt_condition.broadcast connected_condition ();
+        let err = Error (`Msg (Fmt.str "error %s connecting to resolver %a"
+                                 msg
+                                 Fmt.(list ~sep:(any ", ") (pair ~sep:(any ":") Ipaddr.pp int))
+                                 (to_pairs t.nameservers)))
+        in
+        Lwt_condition.broadcast connected_condition err;
         t.connected_condition <- None;
         Log.err (fun m -> m "error connecting to resolver %s" msg);
-        Lwt.return (Error (`Msg "connect failure"))
+        Lwt.return err
       | Ok (addr, flow) ->
         let continue flow =
           t.flow <- Some flow;
@@ -410,7 +426,7 @@ The format of a nameserver is:
                 | Ok () -> ()
               else
                 Lwt.return_unit);
-          Lwt_condition.broadcast connected_condition ();
+          Lwt_condition.broadcast connected_condition (Ok ());
           t.connected_condition <- None;
           req_all flow t
         in
@@ -423,8 +439,6 @@ The format of a nameserver is:
           | Error e ->
             Log.warn (fun m -> m "error establishing TLS connection to %a:%d: %a"
                          Ipaddr.pp (fst addr) (snd addr) TLS.pp_write_error e);
-            Lwt_condition.broadcast connected_condition ();
-            t.connected_condition <- None;
             let ns' =
               List.filter (function
                   | `Tls (_, ip, port) ->
@@ -432,23 +446,25 @@ The format of a nameserver is:
                   | _ -> true)
                 nameservers
             in
-            if ns' = [] then
-              Lwt.return (Error (`Msg "no further nameservers configured"))
-            else
+            if ns' = [] then begin
+              let err = Error (`Msg "no further nameservers configured") in
+              Lwt_condition.broadcast connected_condition err;
+              t.connected_condition <- None;
+              Lwt.return err
+            end else
               connect_ns t ns'
 
-    let rec connect t =
+    let connect t =
+      let to_tcp = function
+        | Ok () -> Ok (`Tcp, t)
+        | Error `Msg msg -> Error (`Msg msg)
+      in
       match t.proto with
       | `Udp -> Lwt.return (Ok (`Udp, t))
       | `Tcp -> match t.flow, t.connected_condition with
         | Some _, _ -> Lwt.return (Ok (`Tcp, t))
-        | None, Some w ->
-          Lwt_condition.wait w >>= fun () ->
-          connect t
-        | None, None ->
-          connect_ns t t.nameservers >|= function
-          | Ok () -> Ok (`Tcp, t)
-          | Error `Msg msg -> Error (`Msg msg)
+        | None, Some w -> Lwt_condition.wait w >|= to_tcp
+        | None, None -> connect_ns t t.nameservers >|= to_tcp
 
     let close _f =
       (* ignoring this here *)
