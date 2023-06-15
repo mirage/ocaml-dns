@@ -24,7 +24,7 @@ module Transport : Dns_client.S
     timeout_ns : int64 ;
     (* TODO: avoid race, use a mvar instead of condition *)
     mutable fd : [ `Plain of Lwt_unix.file_descr | `Tls of Tls_lwt.Unix.t ] option ;
-    mutable connected_condition : unit Lwt_condition.t option ;
+    mutable connected_condition : (unit, [ `Msg of string ]) result Lwt_condition.t option ;
     mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
     mutable he : Happy_eyeballs.t ;
     mutable cancel_connecting : (int * unit Lwt.u) list Happy_eyeballs.Waiter_map.t;
@@ -112,12 +112,22 @@ module Transport : Dns_client.S
       in
       Lwt.pick [ conn ; (cancelled >|= fun () -> None); ]
     | Connect_failed (host, id, reason) ->
+      let cancel_connecting, others =
+        Happy_eyeballs.Waiter_map.find_and_remove id t.cancel_connecting
+      in
+      t.cancel_connecting <- cancel_connecting;
+      List.iter (fun (_, w) -> Lwt.wakeup_later w ()) (Option.value ~default:[] others);
       let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
       t.waiters <- waiters;
       begin match r with
         | Some waiter ->
+          let host_or_ip v =
+            match Ipaddr.of_domain_name v with
+            | None -> Domain_name.to_string v
+            | Some ip -> Ipaddr.to_string ip
+          in
           let err =
-            Fmt.str "connection to %a failed: %s" Domain_name.pp host reason
+            Fmt.str "connection to %s failed: %s" (host_or_ip host) reason
           in
           Lwt.wakeup_later waiter (Error (`Msg err))
         | None -> ()
@@ -376,12 +386,15 @@ module Transport : Dns_client.S
     Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
     waiter >>= function
     | Error `Msg msg ->
-      Lwt_condition.broadcast connected_condition ();
+      let err =
+        Error (`Msg (Fmt.str "error %s connecting to resolver %a"
+                       msg
+                       Fmt.(list ~sep:(any ", ") (pair ~sep:(any ":") Ipaddr.pp int))
+                       (to_pairs (nameserver_ips t.nameservers))))
+      in
+      Lwt_condition.broadcast connected_condition err;
       t.connected_condition <- None;
-      Lwt.return
-        (Error (`Msg (Fmt.str "error %s connecting to resolver %a"
-                        msg Fmt.(list ~sep:(any ",") (pair ~sep:(any ":") Ipaddr.pp int))
-                        (to_pairs (nameserver_ips t.nameservers)))))
+      Lwt.return err
     | Ok (addr, socket) ->
       let continue socket =
         t.fd <- Some socket;
@@ -394,7 +407,7 @@ module Transport : Dns_client.S
               | Error (`Msg msg) ->
                 Log.err (fun m -> m "error while connecting to resolver: %s"  msg)
               | Ok () -> ());
-        Lwt_condition.broadcast connected_condition ();
+        Lwt_condition.broadcast connected_condition (Ok ());
         t.connected_condition <- None;
         req_all socket t
       in
@@ -417,18 +430,17 @@ module Transport : Dns_client.S
                  nameservers
              in
              if ns' = [] then begin
-               Lwt_condition.broadcast connected_condition ();
+               let err = Error (`Msg "no further nameservers configured") in
+               Lwt_condition.broadcast connected_condition err;
                t.connected_condition <- None;
-               Lwt.return (Error (`Msg "no further nameservers configured"))
+               Lwt.return err
              end else
                connect_to_ns_list t connected_condition ns')
 
   and connect_via_tcp_to_ns (t : t) =
     match t.fd, t.connected_condition with
     | Some _, _ -> Lwt.return (Ok ())
-    | None, Some w ->
-      Lwt_condition.wait w >>= fun () ->
-      connect_via_tcp_to_ns t
+    | None, Some w -> Lwt_condition.wait w
     | None, None ->
       let connected_condition = Lwt_condition.create () in
       t.connected_condition <- Some connected_condition ;

@@ -127,7 +127,7 @@ The format of a nameserver is:
       stack : stack ;
       mutable udp_ports : IS.t ;
       mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
-      mutable connected_condition : unit Lwt_condition.t option ;
+      mutable connected_condition : (unit, [ `Msg of string ]) result Lwt_condition.t option ;
       mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
       mutable he : Happy_eyeballs.t ;
       mutable cancel_connecting : (int * unit Lwt.u) list Happy_eyeballs.Waiter_map.t ;
@@ -183,6 +183,11 @@ The format of a nameserver is:
         in
         Lwt.pick [ conn ; (cancelled >|= fun () -> None) ]
       | Connect_failed (host, id, reason) ->
+        let cancel_connecting, others =
+          Happy_eyeballs.Waiter_map.find_and_remove id t.cancel_connecting
+        in
+        t.cancel_connecting <- cancel_connecting;
+        List.iter (fun (_, u) -> Lwt.wakeup_later u ()) (Option.value ~default:[] others);
         let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
         t.waiters <- waiters;
         begin match r with
@@ -399,10 +404,15 @@ The format of a nameserver is:
       Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
       waiter >>= function
       | Error `Msg msg ->
-        Lwt_condition.broadcast connected_condition ();
+        let err = Error (`Msg (Fmt.str "error %s connecting to resolver %a"
+                                 msg
+                                 Fmt.(list ~sep:(any ", ") (pair ~sep:(any ":") Ipaddr.pp int))
+                                 (to_pairs t.nameservers)))
+        in
+        Lwt_condition.broadcast connected_condition err;
         t.connected_condition <- None;
         Log.err (fun m -> m "error connecting to resolver %s" msg);
-        Lwt.return (Error (`Msg "connect failure"))
+        Lwt.return err
       | Ok (addr, flow) ->
         let continue flow =
           t.flow <- Some flow;
@@ -415,7 +425,7 @@ The format of a nameserver is:
                 | Ok () -> ()
               else
                 Lwt.return_unit);
-          Lwt_condition.broadcast connected_condition ();
+          Lwt_condition.broadcast connected_condition (Ok ());
           t.connected_condition <- None;
           req_all flow t
         in
@@ -428,8 +438,6 @@ The format of a nameserver is:
           | Error e ->
             Log.warn (fun m -> m "error establishing TLS connection to %a:%d: %a"
                          Ipaddr.pp (fst addr) (snd addr) TLS.pp_write_error e);
-            Lwt_condition.broadcast connected_condition ();
-            t.connected_condition <- None;
             let ns' =
               List.filter (function
                   | `Tls (_, ip, port) ->
@@ -437,23 +445,25 @@ The format of a nameserver is:
                   | _ -> true)
                 nameservers
             in
-            if ns' = [] then
-              Lwt.return (Error (`Msg "no further nameservers configured"))
-            else
+            if ns' = [] then begin
+              let err = Error (`Msg "no further nameservers configured") in
+              Lwt_condition.broadcast connected_condition err;
+              t.connected_condition <- None;
+              Lwt.return err
+            end else
               connect_ns t ns'
 
-    let rec connect t =
+    let connect t =
+      let to_tcp = function
+        | Ok () -> Ok (`Tcp, t)
+        | Error `Msg msg -> Error (`Msg msg)
+      in
       match t.proto with
       | `Udp -> Lwt.return (Ok (`Udp, t))
       | `Tcp -> match t.flow, t.connected_condition with
         | Some _, _ -> Lwt.return (Ok (`Tcp, t))
-        | None, Some w ->
-          Lwt_condition.wait w >>= fun () ->
-          connect t
-        | None, None ->
-          connect_ns t t.nameservers >|= function
-          | Ok () -> Ok (`Tcp, t)
-          | Error `Msg msg -> Error (`Msg msg)
+        | None, Some w -> Lwt_condition.wait w >|= to_tcp
+        | None, None -> connect_ns t t.nameservers >|= to_tcp
 
     let close _f =
       (* ignoring this here *)
