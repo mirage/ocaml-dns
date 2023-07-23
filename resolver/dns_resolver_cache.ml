@@ -4,6 +4,9 @@ open Dns
 
 module N = Domain_name.Set
 
+let src = Logs.Src.create "dns-resolver-cache" ~doc:"DNS resolver cache"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 let _pp_err ppf = function
   | `Cache_miss -> Fmt.string ppf "cache miss"
   | `Cache_drop -> Fmt.string ppf "cache drop"
@@ -105,10 +108,10 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
       f (Domain_name.drop_label_exn nam)
   in
   let rec go nam =
-    (* Logs.warn (fun m -> m "go %a" Domain_name.pp nam); *)
+    (* Log.warn (fun m -> m "go %a" Domain_name.pp nam); *)
     match pick (find_ns nam) with
     | None ->
-      (* Logs.warn (fun m -> m "go no NS for %a" Domain_name.pp nam); *)
+      (* Log.warn (fun m -> m "go no NS for %a" Domain_name.pp nam); *)
       or_root go nam
     | Some _ when dnssec && not (need_to_query_for_ds nam) ->
       or_root go nam
@@ -116,7 +119,7 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
       let host = Domain_name.raw ns in
       match pick (find_address host) with
       | None ->
-        (* Logs.warn (fun m -> m "go no address for NS %a (for %a)"
+        (* Log.warn (fun m -> m "go no address for NS %a (for %a)"
                       Domain_name.pp host
                       Domain_name.pp nam); *)
         if Domain_name.is_subdomain ~subdomain:ns ~domain:nam then
@@ -125,7 +128,7 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
         else
           `NeedAddress host
       | Some ip ->
-        (* Logs.warn (fun m -> m "go address for NS %a (for %a): %a (dnskey %B)"
+        (* Log.warn (fun m -> m "go address for NS %a (for %a): %a (dnskey %B)"
                       Domain_name.pp host
                       Domain_name.pp nam
                       Ipaddr.pp ip
@@ -151,7 +154,7 @@ let resolve t ~dnssec ~rng ip_proto ts name typ =
      ---> we may have unsigned glue, and need to go down for signed A/AAAA
   *)
   let rec go t types name =
-    Logs.debug (fun m -> m "go %a" Domain_name.pp name) ;
+    Log.debug (fun m -> m "go %a" Domain_name.pp name) ;
     match find_nearest_ns rng ip_proto dnssec ts t (Domain_name.raw name) with
     | `NeedAddress ns -> go t addresses ns
     | `NeedDnskey (zone, ip) -> zone, zone, [`K (Rr_map.K Dnskey)], ip, t
@@ -171,31 +174,31 @@ let follow_cname t ts typ ~name ttl ~alias =
     let t, r = Dns_cache.get_or_cname t ts name typ in
     match r with
     | Error _ ->
-      Logs.debug (fun m -> m "follow_cname: cache miss, need to query %a"
+      Log.debug (fun m -> m "follow_cname: cache miss, need to query %a"
                      Domain_name.pp name);
       `Query name, t
     | Ok (`Alias (_, alias), r) ->
       let acc' = Domain_name.Map.add name (Rr_map.singleton Cname (ttl, alias)) acc in
       if Domain_name.Map.mem alias acc then begin
-        Logs.warn (fun m -> m "follow_cname: cycle detected") ;
+        Log.warn (fun m -> m "follow_cname: cycle detected") ;
         `Out (Rcode.NoError, is_signed r, acc', Name_rr_map.empty), t
       end else begin
-        Logs.debug (fun m -> m "follow_cname: alias to %a, follow again"
+        Log.debug (fun m -> m "follow_cname: alias to %a, follow again"
                        Domain_name.pp alias);
         follow t acc' alias
       end
     | Ok (`Entry v, r) ->
       let acc' = Domain_name.Map.add name Rr_map.(singleton typ v) acc in
-      Logs.debug (fun m -> m "follow_cname: entry found, returning");
+      Log.debug (fun m -> m "follow_cname: entry found, returning");
       `Out (Rcode.NoError, is_signed r, acc', Name_rr_map.empty), t
     | Ok (`No_domain res, r) ->
-      Logs.debug (fun m -> m "follow_cname: nodom");
+      Log.debug (fun m -> m "follow_cname: nodom");
       `Out (Rcode.NXDomain, is_signed r, acc, to_map res), t
     | Ok (`No_data res, r) ->
-      Logs.debug (fun m -> m "follow_cname: nodata");
+      Log.debug (fun m -> m "follow_cname: nodata");
       `Out (Rcode.NoError, is_signed r, acc, to_map res), t
     | Ok (`Serv_fail res, r) ->
-      Logs.debug (fun m -> m "follow_cname: servfail") ;
+      Log.debug (fun m -> m "follow_cname: servfail") ;
       `Out (Rcode.ServFail, is_signed r, acc, to_map res), t
   in
   let initial = Name_rr_map.singleton name Cname (ttl, alias) in
@@ -225,14 +228,14 @@ let answer t ts name typ =
     let t, r = Dns_cache.get_any t ts name in
     begin match r with
       | Error _e ->
-        (* Logs.warn (fun m -> m "error %a while looking up %a, query"
+        (* Log.warn (fun m -> m "error %a while looking up %a, query"
                       pp_err e pp_question (name, typ)); *)
         `Query name, t
       | Ok (`No_domain res, r) ->
-        Logs.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
+        Log.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
         `Packet (packet t false Rcode.NXDomain ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t
       | Ok (`Entries rr_map, r) ->
-        Logs.debug (fun m -> m "entries while looking up %a" pp_question (name, typ));
+        Log.debug (fun m -> m "entries while looking up %a" pp_question (name, typ));
         let data = Domain_name.Map.singleton name rr_map in
         `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
     end
@@ -240,21 +243,21 @@ let answer t ts name typ =
     let t, r = Dns_cache.get_or_cname t ts name ty in
     match r with
     | Error _e ->
-      (* Logs.warn (fun m -> m "error %a while looking up %a, query"
+      (* Log.warn (fun m -> m "error %a while looking up %a, query"
                     pp_err e pp_question (name, typ)); *)
       `Query name, t
     | Ok (`No_domain res, r) ->
-      Logs.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
+      Log.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
       `Packet (packet t false Rcode.NXDomain ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t
     | Ok (`No_data res, r) ->
-      Logs.debug (fun m -> m "no data while looking up %a" pp_question (name, typ));
+      Log.debug (fun m -> m "no data while looking up %a" pp_question (name, typ));
       `Packet (packet t false Rcode.NoError ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t
     | Ok (`Serv_fail res, _) ->
-      Logs.debug (fun m -> m "serv fail while looking up %a" pp_question (name, typ));
+      Log.debug (fun m -> m "serv fail while looking up %a" pp_question (name, typ));
       `Packet (packet t false Rcode.ServFail ~signed:false Domain_name.Map.empty (to_map res)), t
     | Ok (`Alias (ttl, alias), r) ->
       begin
-        Logs.debug (fun m -> m "alias while looking up %a" pp_question (name, typ));
+        Log.debug (fun m -> m "alias while looking up %a" pp_question (name, typ));
         match ty with
         | Cname ->
           let data = Name_rr_map.singleton name Cname (ttl, alias) in
@@ -265,19 +268,19 @@ let answer t ts name typ =
           | `Query n, t -> `Query n, t
       end
     | Ok (`Entry v, r) ->
-      Logs.debug (fun m -> m "entry while looking up %a" pp_question (name, typ));
+      Log.debug (fun m -> m "entry while looking up %a" pp_question (name, typ));
       let data = Name_rr_map.singleton name ty v in
       `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
 
 let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
-  Logs.info (fun m -> m "handle query %a (%a)"
+  Log.info (fun m -> m "handle query %a (%a)"
                 Domain_name.pp qname Packet.Question.pp_qtype qtype);
   match answer t ts qname qtype with
   | `Packet (flags, data), t ->
-    Logs.info (fun m -> m "reply for %a (%a)" Domain_name.pp qname Packet.Question.pp_qtype qtype);
+    Log.info (fun m -> m "reply for %a (%a)" Domain_name.pp qname Packet.Question.pp_qtype qtype);
     `Reply (flags, data), t
   | `Query name, t ->
-    Logs.info (fun m -> m "query for %a (%a): %a" Domain_name.pp qname Packet.Question.pp_qtype qtype Domain_name.pp name);
+    Log.info (fun m -> m "query for %a (%a): %a" Domain_name.pp qname Packet.Question.pp_qtype qtype Domain_name.pp name);
     (* DS should be requested at the parent *)
     let name', recover =
       if Domain_name.count_labels name > 1 && qtype = `K (Rr_map.K Ds) then
@@ -288,7 +291,7 @@ let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
     in
     let zone, name'', types, ip, t = resolve t ~dnssec ~rng ip_proto ts name' qtype in
     let name'' = recover name'' in
-    Logs.info (fun m -> m "resolve returned zone %a query %a (%a), ip %a"
+    Log.info (fun m -> m "resolve returned zone %a query %a (%a), ip %a"
                    Domain_name.pp zone Domain_name.pp name''
                    Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) types
                    Ipaddr.pp ip);

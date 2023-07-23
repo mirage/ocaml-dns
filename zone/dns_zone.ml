@@ -97,7 +97,7 @@ let add_additional_glue trie (zone, other_rrs) =
           | Some v4, None -> Dns_trie.insert ns Dns.Rr_map.A v4 trie
           | None, Some v6 -> Dns_trie.insert ns Dns.Rr_map.Aaaa v6 trie
           | None, None ->
-            Logs.info (fun m -> m "unknown IP for NS %a (used in zone %a)"
+            Log.info (fun m -> m "unknown IP for NS %a (used in zone %a)"
                           Domain_name.pp ns Domain_name.pp zone);
             trie)
         need_glue trie
