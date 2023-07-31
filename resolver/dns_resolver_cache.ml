@@ -4,7 +4,7 @@ open Dns
 
 module N = Domain_name.Set
 
-let src = Logs.Src.create "dns-resolver-cache" ~doc:"DNS resolver cache"
+let src = Logs.Src.create "dns_resolver_cache" ~doc:"DNS resolver cache"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 let _pp_err ppf = function
