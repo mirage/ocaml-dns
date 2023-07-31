@@ -3,6 +3,9 @@
 open Dns
 open Dns_resolver_cache
 
+let src = Logs.Src.create "dns_resolver_util" ~doc:"DNS resolver util"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 type e = E : 'a Rr_map.key * 'a Dns_cache.entry -> e
 
 let invalid_soa name =
@@ -58,7 +61,7 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
         (* this is wrong for the normal iterative algorithm:
             it asks for foo.com @root, and get .com NS in AU and A in AD
         | [] when not (Packet.Header.FS.mem `Truncation flags) ->
-          Logs.warn (fun m -> m "noerror answer, but nothing in authority whose sub is %a in %a, invalid_soa!"
+          Log.warn (fun m -> m "noerror answer, but nothing in authority whose sub is %a in %a, invalid_soa!"
                         pp_question (q_name, q_type) Name_rr_map.pp authority) ;
           [ q_type, q_name, Additional, `No_data (q_name, invalid_soa q_name) ] *)
           end
@@ -88,7 +91,7 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
                         (Rr_map.names Cname v) Domain_name.Set.empty
           | None ->
             (* case no cname *)
-            Logs.warn (fun m -> m "noerror answer with right name, but no cname in %a, invalid soa for %a"
+            Log.warn (fun m -> m "noerror answer with right name, but no cname in %a, invalid soa for %a"
                           Name_rr_map.pp answer pp_question (q_name, q_type));
             [ q_name, E (Cname, `No_data (q_name, invalid_soa q_name)), rank ],
             Domain_name.Set.empty
@@ -102,7 +105,7 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
         | None -> match Rr_map.find Cname rr_map with
           | None ->
             (* case neither TYP nor cname *)
-            Logs.warn (fun m -> m "noerror answer with right name, but not TYP nor cname in %a, invalid soa for %a"
+            Log.warn (fun m -> m "noerror answer with right name, but not TYP nor cname in %a, invalid soa for %a"
                           Name_rr_map.pp answer pp_question (q_name, q_type));
             [ q_name, E (k, `No_data (q_name, invalid_soa q_name)), rank ],
             Domain_name.Set.empty
@@ -191,12 +194,12 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
   match answers, ns with
   | [], [] when not answer_complete && Packet.Flags.mem `Truncation flags ->
     (* special handling for truncated replies.. better not add anything *)
-    Logs.warn (fun m -> m "truncated reply for %a, ignoring completely"
+    Log.warn (fun m -> m "truncated reply for %a, ignoring completely"
                   pp_question (q_name, q_type));
     []
   | [], [] ->
     (* not sure if this can happen, maybe discard everything? *)
-    Logs.warn (fun m -> m "reply without answers or ns invalid so for %a"
+    Log.warn (fun m -> m "reply without answers or ns invalid so for %a"
                   pp_question (q_name, q_type));
     begin match q_type with
       | `Any -> []
@@ -259,7 +262,7 @@ let nxdomain (_, flags) ~signed name data =
   List.map (fun (name, res) -> name, res, rank) entries
 
 let scrub zone ~signed qtype p =
-  Logs.debug (fun m -> m "scrubbing (bailiwick %a) data %a"
+  Log.debug (fun m -> m "scrubbing (bailiwick %a) data %a"
                  Domain_name.pp zone Packet.pp p);
   let qname = fst p.question in
   match p.Packet.data with
