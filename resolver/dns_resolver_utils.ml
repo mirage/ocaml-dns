@@ -3,7 +3,7 @@
 open Dns
 open Dns_resolver_cache
 
-let src = Logs.Src.create "dns-resolver-util" ~doc:"DNS resolver util"
+let src = Logs.Src.create "dns_resolver_util" ~doc:"DNS resolver util"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 type e = E : 'a Rr_map.key * 'a Dns_cache.entry -> e
