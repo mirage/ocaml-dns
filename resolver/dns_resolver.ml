@@ -8,7 +8,7 @@ type key = [ `raw ] Domain_name.t * Packet.Question.qtype
 
 let pp_key = Dns_resolver_cache.pp_question
 
-let src = Logs.Src.create "dns-resolver" ~doc:"DNS resolver"
+let src = Logs.Src.create "dns_resolver" ~doc:"DNS resolver"
 module Log = (val Logs.src_log src : Logs.LOG)
 
 (* The cache (a Map!?) for answers: once a specific type/name comes in, we know
