@@ -30,6 +30,6 @@ description: """
 A client implementation using uDNS and lwt for side effects.
 """
 pin-depends: [
-  [ "happy-eyeballs-lwt.dev" "git+https://github.com/dinosaure/happy-eyeballs.git#c6bbca167eb036ba2d4d8888da250ab6c04b6b79" ]
-  [ "happy-eyeballs.dev" "git+https://github.com/dinosaure/happy-eyeballs.git#c6bbca167eb036ba2d4d8888da250ab6c04b6b79" ]
+  [ "happy-eyeballs-lwt.dev" "git+https://github.com/dinosaure/happy-eyeballs.git#a0ae36741eebfc425faf95c7fb4f7e03463e213c" ]
+  [ "happy-eyeballs.dev" "git+https://github.com/dinosaure/happy-eyeballs.git#a0ae36741eebfc425faf95c7fb4f7e03463e213c" ]
 ]

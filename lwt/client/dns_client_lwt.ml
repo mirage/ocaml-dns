@@ -334,5 +334,19 @@ end
    that goes on top of it: *)
 include Dns_client.Make(Transport)
 
+let create_happy_eyeballs ?cache_size ?edns ?nameservers ?timeout happy_eyeballs =
+  let dns = create ?cache_size ?edns ?nameservers ?timeout happy_eyeballs in
+  let getaddrinfo record domain_name =
+    let open Lwt_result.Infix in
+    match record with
+    | `A -> getaddrinfo dns Dns.Rr_map.A domain_name >|= fun (_ttl, set) ->
+        Ipaddr.V4.Set.fold (fun ipv4 -> Ipaddr.Set.add (Ipaddr.V4 ipv4))
+          set Ipaddr.Set.empty
+    | `AAAA -> getaddrinfo dns Dns.Rr_map.Aaaa domain_name >|= fun (_ttl, set) ->
+        Ipaddr.V6.Set.fold (fun ipv6 -> Ipaddr.Set.add (Ipaddr.V6 ipv6))
+          set Ipaddr.Set.empty in
+  Happy_eyeballs_lwt.inject getaddrinfo happy_eyeballs;
+  dns, happy_eyeballs
+
 (* initialize the RNG *)
 let () = Mirage_crypto_rng_lwt.initialize (module Mirage_crypto_rng.Fortuna)
