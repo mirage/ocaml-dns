@@ -48,8 +48,6 @@ module Transport : Dns_client.S
 
   let clock = Mtime_clock.elapsed_ns
 
-  let he_timer_interval = Duration.of_ms 10
-
   let close_socket fd =
     Lwt.catch (fun () -> Lwt_unix.close fd) (fun _ -> Lwt.return_unit)
 
