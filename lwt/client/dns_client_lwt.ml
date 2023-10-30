@@ -8,11 +8,11 @@ module Log = (val Logs.src_log src : Logs.LOG)
 module Transport : Dns_client.S
  with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
  and type +'a io = 'a Lwt.t
- and type stack = Happy_eyeballs_lwt.t
+ and type stack = unit
 = struct
   type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
   type +'a io = 'a Lwt.t
-  type stack = Happy_eyeballs_lwt.t
+  type stack = unit
   type nameservers =
     | Static of io_addr list
     | Resolv_conf of {
@@ -129,7 +129,7 @@ module Transport : Dns_client.S
           resolv_conf.digest <- None;
           resolv_conf.nameservers <- default_resolver ()
 
-  let create ?nameservers ~timeout he =
+  let create ?nameservers ~timeout () =
     let nameservers =
       match nameservers with
       | Some (`Udp, _) -> invalid_arg "UDP is not supported"
@@ -138,6 +138,10 @@ module Transport : Dns_client.S
         match resolv_conf () with
         | Error _ -> Resolv_conf { nameservers = default_resolver (); digest = None }
         | Ok (ips, digest) -> Resolv_conf { nameservers = ips; digest = Some digest }
+    in
+    let he =
+      let happy_eyeballs = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) in
+      Happy_eyeballs_lwt.create ~happy_eyeballs ()
     in
     let t = {
       nameservers ;
@@ -334,19 +338,20 @@ end
    that goes on top of it: *)
 include Dns_client.Make(Transport)
 
-let create_happy_eyeballs ?cache_size ?edns ?nameservers ?timeout happy_eyeballs =
-  let dns = create ?cache_size ?edns ?nameservers ?timeout happy_eyeballs in
+let create_happy_eyeballs ?happy_eyeballs ?timer_interval dns =
   let getaddrinfo record domain_name =
     let open Lwt_result.Infix in
     match record with
-    | `A -> getaddrinfo dns Dns.Rr_map.A domain_name >|= fun (_ttl, set) ->
-        Ipaddr.V4.Set.fold (fun ipv4 -> Ipaddr.Set.add (Ipaddr.V4 ipv4))
-          set Ipaddr.Set.empty
-    | `AAAA -> getaddrinfo dns Dns.Rr_map.Aaaa domain_name >|= fun (_ttl, set) ->
-        Ipaddr.V6.Set.fold (fun ipv6 -> Ipaddr.Set.add (Ipaddr.V6 ipv6))
-          set Ipaddr.Set.empty in
-  Happy_eyeballs_lwt.inject getaddrinfo happy_eyeballs;
-  dns, happy_eyeballs
+    | `A ->
+      getaddrinfo dns Dns.Rr_map.A domain_name >|= fun (_ttl, set) ->
+      Ipaddr.V4.Set.fold (fun ipv4 -> Ipaddr.Set.add (Ipaddr.V4 ipv4))
+        set Ipaddr.Set.empty
+    | `AAAA ->
+      getaddrinfo dns Dns.Rr_map.Aaaa domain_name >|= fun (_ttl, set) ->
+      Ipaddr.V6.Set.fold (fun ipv6 -> Ipaddr.Set.add (Ipaddr.V6 ipv6))
+        set Ipaddr.Set.empty
+  in
+  Happy_eyeballs_lwt.create ?happy_eyeballs ~getaddrinfo ?timer_interval ()
 
 (* initialize the RNG *)
 let () = Mirage_crypto_rng_lwt.initialize (module Mirage_crypto_rng.Fortuna)

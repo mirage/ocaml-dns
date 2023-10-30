@@ -13,20 +13,15 @@
 module Transport : Dns_client.S
    with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
    and type +'a io = 'a Lwt.t
-   and type stack = Happy_eyeballs_lwt.t
+   and type stack = unit
 
 include module type of Dns_client.Make(Transport)
 
 val create_happy_eyeballs :
-  ?cache_size:int ->
-  ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
-  ?nameservers:(Dns.proto * Transport.io_addr list) ->
-  ?timeout:int64 ->
-  Happy_eyeballs_lwt.t ->
-  t * Happy_eyeballs_lwt.t
-(** [create_happy_eyeballs he] returns and inject the [ocaml-dns] implementation
-    into the given happy-eyeballs instance. By default, an happy-eyeballs
-    instance use the system DNS resolver (via {!val:Unix.getaddrinfo}). However,
-    the user is able to use the [ocaml-dns] implementation to resolve
-    domain-name. By this way, when the user wants to connect to a domain-name,
-    the happy-eyeballs instance will use the {!val:getaddrinfo} provided above. *)
+  ?happy_eyeballs:Happy_eyeballs.t ->
+  ?timer_interval:int64 ->
+  t ->
+  Happy_eyeballs_lwt.t
+(** [create_happy_eyeballs t] returns the happy-eyeballs instance used by the
+    [dns] implementation, which uses the [dns] implementation for resolving
+    hostnames. *)
