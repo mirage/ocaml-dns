@@ -24,7 +24,8 @@ let jump () hostname typ ns =
         | None -> None
         | Some ip -> Some (`Tcp, [ `Plaintext (ip, 53) ])
       in
-      let t = Dns_client_lwt.create ?nameservers ~edns:(`Manual edns) () in
+      let he = Happy_eyeballs_lwt.create () in
+      let t = Dns_client_lwt.create ?nameservers ~edns:(`Manual edns) he in
       let (_, ns) = Dns_client_lwt.nameservers t in
       Logs.info (fun m -> m "querying NS %a for A records of %a"
                     pp_nameserver (List.hd ns) Domain_name.pp hostname);
