@@ -195,7 +195,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
       Dns.read_tcp f >>= function
       | Error () ->
         Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.pp ip) ;
-        close ~timer:false ip
+        close ~timer ip
       | Ok data ->
         inc `Tcp_query;
         let now = Ptime.v (P.now_d_ps ()) in
@@ -211,7 +211,7 @@ module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_t
            Dns.send_tcp (Dns.flow f) x >>= function
            | Error () ->
              Log.debug (fun m -> m "removing %a from tcp_out" Ipaddr.pp ip) ;
-             close ~timer:false ip >|= fun () -> Error ()
+             close ~timer ip >|= fun () -> Error ()
            | Ok () -> Lwt.return (Ok ())) >>= fun r ->
         (match out with
          | None -> Lwt.return_unit
