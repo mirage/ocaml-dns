@@ -8,7 +8,7 @@ let root_servers =
       Ipaddr.V6.of_string_exn ip6)
     [
       "a.root-servers.net", "198.41.0.4", "2001:503:ba3e::2:30" ; (* VeriSign, Inc. *)
-      "b.root-servers.net", "199.9.14.201", "2001:500:200::b" ; (* University of Southern California (ISI) *)
+      "b.root-servers.net", "170.247.170.2", "2801:1b8:10::b" ; (* University of Southern California (ISI) *)
       "c.root-servers.net", "192.33.4.12", "2001:500:2::c" ; (* Cogent Communications *)
       "d.root-servers.net", "199.7.91.13", "2001:500:2d::d" ; (* University of Maryland *)
       "e.root-servers.net", "192.203.230.10", "2001:500:a8::e" ; (* NASA (Ames Research Center) *)
