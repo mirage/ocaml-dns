@@ -13,7 +13,7 @@ module Pure = struct
 
   let make_query rng protocol ?(dnssec = false) edns hostname
       : 'xy  ->
-        Cstruct.t * 'xy query_state =
+        string * 'xy query_state =
     (* SRV records: Service + Protocol are case-insensitive, see RFC2728 pg2. *)
     fun record_type ->
     let edns = match edns with
@@ -37,9 +37,9 @@ module Pure = struct
     begin match protocol with
       | `Udp -> cs
       | `Tcp ->
-        let len_field = Cstruct.create 2 in
-        Cstruct.BE.set_uint16 len_field 0 (Cstruct.length cs) ;
-        Cstruct.concat [len_field ; cs]
+        let len_field = Bytes.create 2 in
+        Bytes.set_uint16_be len_field 0 (String.length cs) ;
+        String.concat "" [Bytes.unsafe_to_string len_field ; cs]
     end, { protocol ; query ; key = record_type }
 
   (* name: the originally requested domain name. *)
@@ -71,16 +71,16 @@ module Pure = struct
     function (* consume TCP two-byte length prefix: *)
     | `Udp -> Ok buf
     | `Tcp ->
-      match Cstruct.BE.get_uint16 buf 0 with
+      match String.get_uint16_be buf 0 with
         | exception Invalid_argument _ -> Error () (* TODO *)
-        | pkt_len when pkt_len > Cstruct.length buf -2 ->
+        | pkt_len when pkt_len > String.length buf -2 ->
           Log.debug (fun m -> m "Partial: %d >= %d-2"
-                          pkt_len (Cstruct.length buf));
+                          pkt_len (String.length buf));
           Error () (* TODO return remaining # *)
         | pkt_len ->
-          if 2 + pkt_len < Cstruct.length buf then
+          if 2 + pkt_len < String.length buf then
             Log.warn (fun m -> m "Extraneous data in DNS response");
-          Ok (Cstruct.sub buf 2 pkt_len)
+          Ok (String.sub buf 2 pkt_len)
 
   let find_soa authority =
     Domain_name.Map.fold (fun k rr_map acc ->
@@ -143,7 +143,7 @@ module Pure = struct
       to_msg t (Packet.reply_matches_request ~request:state.query t)
 
   let parse_response (type requested)
-    : requested Rr_map.key query_state -> Cstruct.t ->
+    : requested Rr_map.key query_state -> string ->
       (Packet.reply,
        [> `Partial
        | `Msg of string]) result =
@@ -153,7 +153,7 @@ module Pure = struct
     | Error () -> Error `Partial
 
   let handle_response (type requested)
-    : requested Rr_map.key query_state -> Cstruct.t ->
+    : requested Rr_map.key query_state -> string ->
       ( [ `Data of requested
         | `Partial
         | `No_data of [`raw] Domain_name.t * Soa.t
@@ -183,11 +183,11 @@ module type S = sig
   val create : ?nameservers:(Dns.proto * io_addr list) -> timeout:int64 -> stack -> t
 
   val nameservers : t -> Dns.proto * io_addr list
-  val rng : int -> Cstruct.t
+  val rng : int -> string
   val clock : unit -> int64
 
   val connect : t -> (Dns.proto * context, [> `Msg of string ]) result io
-  val send_recv : context -> Cstruct.t -> (Cstruct.t, [> `Msg of string ]) result io
+  val send_recv : context -> string -> (string, [> `Msg of string ]) result io
   val close : context -> unit io
 
   val bind : 'a io -> ('a -> 'b io) -> 'b io
@@ -263,8 +263,8 @@ struct
     in
     (Transport.send_recv socket tx >>| fun recv_buffer ->
      Log.debug (fun m -> m "Read @[<v>%d bytes@]"
-                    (Cstruct.length recv_buffer)) ;
-     Log.debug (fun m -> m "received: %a" Cstruct.hexdump_pp recv_buffer);
+                    (String.length recv_buffer)) ;
+     Log.debug (fun m -> m "received: %a" (Ohex.pp_hexdump ()) recv_buffer);
      Transport.lift (Pure.parse_response state recv_buffer)) >>= fun r ->
     Transport.close socket >>= fun () ->
     Transport.lift r
@@ -293,7 +293,7 @@ struct
         in
         (Transport.send_recv socket tx >>| fun recv_buffer ->
          Log.debug (fun m -> m "Read @[<v>%d bytes@]"
-                        (Cstruct.length recv_buffer)) ;
+                        (String.length recv_buffer)) ;
          let update_cache entry =
            let rank = Dns_cache.NonAuthoritativeAnswer in
            let cache =

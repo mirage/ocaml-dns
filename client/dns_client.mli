@@ -40,7 +40,7 @@ module type S = sig
       the underlying context, can be used if the user does not want to
       bother with configuring their own.*)
 
-  val rng : int -> Cstruct.t
+  val rng : int -> string
   (** [rng t] is a random number generator. *)
 
   val clock : unit -> int64
@@ -49,7 +49,7 @@ module type S = sig
   val connect : t -> (Dns.proto * context, [> `Msg of string ]) result io
   (** [connect t] is a new connection ([context]) to [t], or an error. *)
 
-  val send_recv : context -> Cstruct.t -> (Cstruct.t, [> `Msg of string ]) result io
+  val send_recv : context -> string -> (string, [> `Msg of string ]) result io
   (** [send_recv context buffer] sends [buffer] to the [context] upstream, and
       then reads a buffer. *)
 
@@ -148,16 +148,16 @@ module Pure : sig
       application. *)
 
   val make_query :
-    (int -> Cstruct.t) -> Dns.proto -> ?dnssec:bool ->
+    (int -> string) -> Dns.proto -> ?dnssec:bool ->
     [ `None | `Auto | `Manual of Dns.Edns.t ] ->
     'a Domain_name.t ->
     'query_type Dns.Rr_map.key ->
-    Cstruct.t * 'query_type Dns.Rr_map.key query_state
+    string * 'query_type Dns.Rr_map.key query_state
   (** [make_query rng protocol name query_type] is [query, query_state]
       where [query] is the serialized DNS query to send to the name server,
       and [query_state] is the information required to validate the response. *)
 
-  val parse_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
+  val parse_response : 'query_type Dns.Rr_map.key query_state -> string ->
     (Dns.Packet.reply, [ `Partial | `Msg of string]) result
   (** [parse_response query_state response] is the information contained in
       [response] parsed using [query_state] when the query was successful, or
@@ -173,7 +173,7 @@ module Pure : sig
       In a UDP usage context the [`Partial] means information was lost, due to
       an incomplete packet. *)
 
-  val handle_response : 'query_type Dns.Rr_map.key query_state -> Cstruct.t ->
+  val handle_response : 'query_type Dns.Rr_map.key query_state -> string ->
     ( [ `Data of 'query_type
       | `Partial
       | `No_data of [`raw] Domain_name.t * Dns.Soa.t

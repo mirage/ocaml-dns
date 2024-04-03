@@ -9,14 +9,14 @@ let ip =
 
 let ipset = Alcotest.(slist ip Ipaddr.V4.compare)
 
-let p_cs = Alcotest.testable Cstruct.hexdump_pp Cstruct.equal
+let p_cs = Alcotest.testable (Ohex.pp_hexdump ()) String.equal
 
 module Make_query_tests = struct
   let produces_same_output () =
-    let rng = Cstruct.create in
+    let rng n = String.make n '\x00' in
     let name:'a Domain_name.t = Domain_name.of_string_exn "example.com" in
     let actual, _state = Dns_client.Pure.make_query rng `Tcp `Auto name Dns.Rr_map.A in
-    let expected = Cstruct.of_hex
+    let expected = Ohex.decode
         "00 2e 00 00 01 00 00 01  00 00 00 00 00 01 07 65
          78 61 6d 70 6c 65 03 63  6f 6d 00 00 01 00 01 00
          00 29 02 00 00 00 00 00  00 06 00 0b 00 02 04 b0" in
@@ -31,7 +31,7 @@ end
 module Parse_response_tests = struct
   let unpacks_response () =
     (* Bytes 3, 4 are set to `00 00` - these represent query ID *)
-    let ipv4_buf = Cstruct.of_hex
+    let ipv4_buf = Ohex.decode
       "00 77 00 00 81 80 00 01  00 01 00 02 00 02 03 66
        6f 6f 03 63 6f 6d 00 00  01 00 01 c0 0c 00 01 00
        01 00 00 02 2a 00 04 17  17 56 2c c0 0c 00 02 00
@@ -42,7 +42,7 @@ module Parse_response_tests = struct
        02 40 8a 00 04 17 15 f3  77" in
 
     (* This `rng` generates zeros, used for the query ID above *)
-    let rng = Cstruct.create in
+    let rng n = String.make n '\x00' in
     let name:'a Domain_name.t = Domain_name.of_string_exn "foo.com" in
     let _actual, state = Dns_client.Pure.make_query rng `Tcp `Auto name Dns.Rr_map.A in
     match Dns_client.Pure.handle_response state ipv4_buf with
@@ -53,7 +53,7 @@ module Parse_response_tests = struct
     (* TODO: It is possible to use crowbar here, to generate the ipv4_buf *)
 
     (* Bytes 3, 4 are set to `aa aa` - these represent query ID *)
-    let ipv4_buf = Cstruct.of_hex
+    let ipv4_buf = Ohex.decode
       "00 77 aa aa 81 80 00 01  00 01 00 02 00 02 03 66
        6f 6f 03 63 6f 6d 00 00  01 00 01 c0 0c 00 01 00
        01 00 00 02 2a 00 04 17  17 56 2c c0 0c 00 02 00
@@ -64,7 +64,7 @@ module Parse_response_tests = struct
        02 40 8a 00 04 17 15 f3  77" in
 
     (* This `rng` generates zeros, used for the query ID above *)
-    let rng = Cstruct.create in
+    let rng n = String.make n '\x00' in
     let name:'a Domain_name.t = Domain_name.of_string_exn "foo.com" in
     let _actual, state = Dns_client.Pure.make_query rng `Tcp `Auto name Dns.Rr_map.A in
     match Dns_client.Pure.parse_response state ipv4_buf with
@@ -82,7 +82,7 @@ end
    Dns_client.Make. The mock data uses the default_debug_info reference cell.
 *)
 
-type debug_info = Cstruct.t
+type debug_info = string
 let default_debug_info = ref []
 
 module Transport (*: Dns_client.S
@@ -99,7 +99,7 @@ module Transport (*: Dns_client.S
   let create ?nameservers:_ ~timeout:_ proto = proto
 
   let nameservers proto = proto, !default_debug_info
-  let rng = Cstruct.create
+  let rng n = String.make n '\x00'
   let clock () = 0L
 
   let bind a b = b a
@@ -136,7 +136,7 @@ module Gethostbyname_tests = struct
   let foo_com_is_valid () =
     let domain_name = Domain_name.(of_string_exn "foo.com" |> host_exn) in
     (* Bytes 3, 4 are set to `00 00` - these represent query ID *)
-    let ipv4_buf = Cstruct.of_hex
+    let ipv4_buf = Ohex.decode
       "00 77 00 00 81 80 00 01  00 01 00 02 00 02 03 66
        6f 6f 03 63 6f 6d 00 00  01 00 01 c0 0c 00 01 00
        01 00 00 02 2a 00 04 17  17 56 2c c0 0c 00 02 00
@@ -154,7 +154,7 @@ module Gethostbyname_tests = struct
   let returns_from_the_cache () =
     let domain_name = Domain_name.(of_string_exn "foo.com" |> host_exn) in
     (* Bytes 3, 4 are set to `00 00` - these represent query ID *)
-    let ipv4_buf = Cstruct.of_hex
+    let ipv4_buf = Ohex.decode
       "00 77 00 00 81 80 00 01  00 01 00 02 00 02 03 66
        6f 6f 03 63 6f 6d 00 00  01 00 01 c0 0c 00 01 00
        01 00 00 02 2a 00 04 17  17 56 2c c0 0c 00 02 00
@@ -176,7 +176,7 @@ module Gethostbyname_tests = struct
   let uses_network_when_cache_evicted () =
     let domain_name = Domain_name.(of_string_exn "foo.com" |> host_exn) in
     (* Bytes 3, 4 are set to `00 00` - these represent query ID *)
-    let ipv4_buf = Cstruct.of_hex
+    let ipv4_buf = Ohex.decode
       "00 77 00 00 81 80 00 01  00 01 00 02 00 02 03 66
        6f 6f 03 63 6f 6d 00 00  01 00 01 c0 0c 00 01 00
        01 00 00 02 2a 00 04 17  17 56 2c c0 0c 00 02 00
@@ -207,7 +207,7 @@ module Getaddrinfo_tests = struct
   let supports_mx_packets () =
     let domain_name = Domain_name.(of_string_exn "google.com" |> host_exn) in
     (* a google.com MX record - bytes 3,4 are set to the query ID 00 00 *)
-    let ipv4_buf = Cstruct.of_hex
+    let ipv4_buf = Ohex.decode
       "02 1e 00 00 81 80 00 01  00 05 00 04 00 0f 06 67
       6f 6f 67 6c 65 03 63 6f  6d 00 00 0f 00 01 c0 0c
       00 0f 00 01 00 00 02 58  00 11 00 1e 04 61 6c 74
@@ -271,7 +271,7 @@ module Getaddrinfo_tests = struct
        first two bytes identify this as a TCP packet - dropped here
        bytes 3,4 are set to the query ID 00 00
      *)
-    let udp_buf = Cstruct.of_hex
+    let udp_buf = Ohex.decode
       "     00 00 81 80 00 01  00 05 00 04 00 0f 06 67
       6f 6f 67 6c 65 03 63 6f  " in
     let mock_state = create `Udp in
@@ -291,7 +291,7 @@ module Getaddrinfo_tests = struct
     let domain_name =
       Domain_name.(of_string_exn "raw.githubusercontent.com" |> host_exn)
     in
-    let udp_buf = Cstruct.of_hex {|
+    let udp_buf = Ohex.decode {|
 00 00 81 80 00 01 00 01 00 01 00 00 03 72
 61 77 11 67 69 74 68 75 62 75 73 65 72 63 6f 6e
 74 65 6e 74 03 63 6f 6d 00 00 1c 00 01 c0 0c 00
