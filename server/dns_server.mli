@@ -76,6 +76,13 @@ val handle_question : t -> Packet.Question.t ->
 (** [handle_question t question] handles the DNS query [question] by looking
     it up in the trie of [t]. *)
 
+val update_data : Dns_trie.t -> 'a Domain_name.t ->
+  Dns.Packet.Update.prereq list Domain_name.Map.t
+  * Dns.Packet.Update.update list Domain_name.Map.t ->
+  ( Dns_trie.t * (Domain_name.Set.elt * Dns.Soa.t) list,
+   Dns.Rcode.t )
+  result
+
 val handle_update : t -> proto -> [ `raw ] Domain_name.t option ->
   Packet.Question.t -> Packet.Update.t ->
   (Dns_trie.t * ([`raw] Domain_name.t * Soa.t) list, Rcode.t) result
