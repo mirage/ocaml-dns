@@ -140,23 +140,28 @@ module Primary : sig
     -> proto -> Ipaddr.t -> int -> Packet.t -> 'a Domain_name.t option ->
     s * Packet.t option * (Ipaddr.t * Cstruct.t list) list *
     [> `Notify of Soa.t option | `Keep ] option
-  (** [handle_packet s now ts src src_port proto key packet] handles the given
-     [packet], returning new state, an answer, and potentially notify packets to
-     secondary name servers. *)
+  (** [handle_packet ~packet_callback s now ts src src_port proto key packet]
+      handles the given [packet], returning new state, an answer, and
+      potentially notify packets to secondary name servers. If [packet_callback]
+      is specified, it is called for each incoming query. If it returns
+      [Some reply], this reply is used instead of the usual lookup in the
+      zone data. It can be used for custom query processing, such as for load
+      balancing or transporting data. *)
 
   val handle_buf : ?packet_callback:packet_callback -> s -> Ptime.t -> int64
     -> proto -> Ipaddr.t -> int -> Cstruct.t ->
     s * Cstruct.t list * (Ipaddr.t * Cstruct.t list) list *
     [ `Notify of Soa.t option | `Signed_notify of Soa.t option | `Keep ] option *
     [ `raw ] Domain_name.t option
-  (** [handle_buf ~packet_callback s now ts proto src src_port buffer] decodes the
-     [buffer], processes the DNS frame using {!handle_packet}, and encodes the reply.
-      The result is a new state, potentially a list of answers to the requestor,
-      a list of notifications to send out, information whether a notify (or
-     signed notify) was received, and the hmac key used for authentication.
-     [packet_callback] can be specified to return an optional reply to a question.
-     This can be used for custom query processing, such as for load balancing or
-     transporting data. *)
+  (** [handle_buf ~packet_callback s now ts proto src src_port buffer] decodes
+      the [buffer], processes the DNS frame using {!handle_packet}, and encodes
+      the reply. The result is a new state, potentially a list of answers to the
+      requestor, a list of notifications to send out, information whether a
+      notify (or signed notify) was received, and the hmac key used for
+      authentication. If [packet_callback] is specified, it is called for each
+      incoming query. If it returns [Some reply], this reply is used instead of
+      the usual lookup in the zone data. This can be used for custom query
+      processing, such as for load balancing or transporting data. *)
 
   val closed : s -> Ipaddr.t -> s
   (** [closed s ip] marks the connection to [ip] closed. *)
