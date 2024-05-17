@@ -109,6 +109,9 @@ val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.t ->
 (** [handle_tsig ~mac t now packet buffer] verifies the tsig
     signature if present, returning the keyname, tsig, mac, and used key. *)
 
+type packet_callback = Packet.Question.t -> Packet.reply option
+(** [packet_callback question] either returns a reply to a DNS question [Some reply] or [None]. *)
+
 module Primary : sig
 
   type s
@@ -140,24 +143,32 @@ module Primary : sig
      data] creates a primary server. If [unauthenticated_zone_transfer] is
      provided and [true] (defaults to [false]), anyone can transfer the zones. *)
 
-  val handle_packet : s -> Ptime.t -> int64 -> proto -> Ipaddr.t -> int ->
-    Packet.t -> 'a Domain_name.t option ->
+  val handle_packet : ?packet_callback:packet_callback -> s -> Ptime.t -> int64
+    -> proto -> Ipaddr.t -> int -> Packet.t -> 'a Domain_name.t option ->
     s * Packet.t option * (Ipaddr.t * Cstruct.t list) list *
     [> `Notify of Soa.t option | `Keep ] option
-  (** [handle_packet s now ts src src_port proto key packet] handles the given
-     [packet], returning new state, an answer, and potentially notify packets to
-     secondary name servers. *)
+  (** [handle_packet ~packet_callback s now ts src src_port proto key packet]
+      handles the given [packet], returning new state, an answer, and
+      potentially notify packets to secondary name servers. If [packet_callback]
+      is specified, it is called for each incoming query. If it returns
+      [Some reply], this reply is used instead of the usual lookup in the
+      zone data. It can be used for custom query processing, such as for load
+      balancing or transporting data. *)
 
-  val handle_buf : s -> Ptime.t -> int64 -> proto ->
-    Ipaddr.t -> int -> Cstruct.t ->
+  val handle_buf : ?packet_callback:packet_callback -> s -> Ptime.t -> int64
+    -> proto -> Ipaddr.t -> int -> Cstruct.t ->
     s * Cstruct.t list * (Ipaddr.t * Cstruct.t list) list *
     [ `Notify of Soa.t option | `Signed_notify of Soa.t option | `Keep ] option *
     [ `raw ] Domain_name.t option
-  (** [handle_buf s now ts proto src src_port buffer] decodes the [buffer],
-     processes the DNS frame using {!handle_packet}, and encodes the reply.
-     The result is a new state, potentially a list of answers to the requestor,
-     a list of notifications to send out, information whether a notify (or
-     signed notify) was received, and the hmac key used for authentication. *)
+  (** [handle_buf ~packet_callback s now ts proto src src_port buffer] decodes
+      the [buffer], processes the DNS frame using {!handle_packet}, and encodes
+      the reply. The result is a new state, potentially a list of answers to the
+      requestor, a list of notifications to send out, information whether a
+      notify (or signed notify) was received, and the hmac key used for
+      authentication. If [packet_callback] is specified, it is called for each
+      incoming query. If it returns [Some reply], this reply is used instead of
+      the usual lookup in the zone data. This can be used for custom query
+      processing, such as for load balancing or transporting data. *)
 
   val closed : s -> Ipaddr.t -> s
   (** [closed s ip] marks the connection to [ip] closed. *)
@@ -192,14 +203,16 @@ module Secondary : sig
   (** [create ~primary ~tsig_verify ~tsig_sign ~rng keys] creates a secondary
      DNS server state. *)
 
-  val handle_packet : s -> Ptime.t -> int64 -> Ipaddr.t ->
-    Packet.t -> 'a Domain_name.t option ->
+  val handle_packet : ?packet_callback:packet_callback -> s -> Ptime.t -> int64 ->
+    Ipaddr.t -> Packet.t -> 'a Domain_name.t option ->
     s * Packet.t option * (Ipaddr.t * Cstruct.t) option
   (** [handle_packet s now ts ip proto key t] handles the incoming packet. *)
 
-  val handle_buf : s -> Ptime.t -> int64 -> proto -> Ipaddr.t -> Cstruct.t ->
+
+  val handle_buf : ?packet_callback:packet_callback -> s -> Ptime.t -> int64 ->
+    proto -> Ipaddr.t -> Cstruct.t ->
     s * Cstruct.t option * (Ipaddr.t * Cstruct.t) option
-  (** [handle_buf s now ts proto src buf] decodes [buf], processes with
+  (** [handle_buf ~packet_callback s now ts proto src buf] decodes [buf], processes with
       {!handle_packet}, and encodes the results. *)
 
   val timer : s -> Ptime.t -> int64 ->

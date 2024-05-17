@@ -407,6 +407,8 @@ let safe_decode buf =
     rx_metrics v.Packet.data;
     Ok v
 
+type packet_callback = Packet.Question.t -> Packet.reply option
+
 let handle_question t (name, typ) =
   (* TODO allow/disallowlist of allowed qtypes? what about ANY and UDP? *)
   match typ with
@@ -987,7 +989,7 @@ module Primary = struct
       end
     | _ -> Error ()
 
-  let handle_packet (t, m, l, ns) now ts proto ip _port p key =
+  let handle_packet ?(packet_callback = fun _q -> None) (t, m, l, ns) now ts proto ip _port p key =
     let key = match key with
       | None -> None
       | Some k -> Some (Domain_name.raw k)
@@ -1023,10 +1025,14 @@ module Primary = struct
         | _ -> l, ns, [], None
       in
       let answer =
-        let flags, data, additional = match handle_question t p.question with
-          | Ok (flags, data, additional) -> flags, `Answer data, additional
-          | Error (rcode, data) ->
-            err_flags rcode, `Rcode_error (rcode, Opcode.Query, data), None
+        let flags, data, additional =
+          match packet_callback p.question with
+          | Some reply -> Packet.Flags.singleton `Authoritative, (reply :> Packet.data), None
+          | None ->
+            match handle_question t p.question with
+            | Ok (flags, data, additional) -> flags, `Answer data, additional
+            | Error (rcode, data) ->
+              err_flags rcode, `Rcode_error (rcode, Opcode.Query, data), None
         in
         Packet.create ?additional (fst p.header, flags) p.question data
       in
@@ -1091,7 +1097,7 @@ module Primary = struct
       Log.err (fun m -> m "ignoring unsolicited %a" Packet.pp_data p);
       (t, m, l, ns), None, [], None
 
-  let handle_buf t now ts proto ip port buf =
+  let handle_buf ?(packet_callback = fun _q -> None) t now ts proto ip port buf =
     match
       let* res = safe_decode buf in
       Log.debug (fun m -> m "from %a received:@[%a@]" Ipaddr.pp ip
@@ -1109,7 +1115,7 @@ module Primary = struct
     | Ok p ->
       let handle_inner tsig_size keyname =
         let t, answer, out, notify =
-          handle_packet t now ts proto ip port p keyname
+          handle_packet ~packet_callback t now ts proto ip port p keyname
         in
         let answer = match answer with
           | Some answer ->
@@ -1661,17 +1667,21 @@ module Secondary = struct
                    Packet.Question.pp (Domain_name.raw zone, typ));
       Error Rcode.Refused
 
-  let handle_packet (t, zones) now ts ip p keyname =
+  let handle_packet ?(packet_callback = fun _q -> None) (t, zones) now ts ip p keyname =
     let keyname = match keyname with
       | None -> None
       | Some k -> Some (Domain_name.raw k)
     in
     match p.Packet.data with
     | `Query ->
-      let flags, data, additional = match handle_question t p.question with
-        | Ok (flags, data, additional) -> flags, `Answer data, additional
-        | Error (rcode, data) ->
-          err_flags rcode, `Rcode_error (rcode, Opcode.Query, data), None
+      let flags, data, additional =
+        match packet_callback p.question with
+        | Some reply -> Packet.Flags.singleton `Authoritative, (reply :> Packet.data), None
+        | None ->
+          match handle_question t p.question with
+          | Ok (flags, data, additional) -> flags, `Answer data, additional
+          | Error (rcode, data) ->
+            err_flags rcode, `Rcode_error (rcode, Opcode.Query, data), None
       in
       let answer =
         Packet.create ?additional (fst p.header, flags) p.question data
@@ -1850,7 +1860,7 @@ module Secondary = struct
         | Some (Processing_axfr (_, _, mac, _, _), _, _) -> Some mac
         | _ -> None
 
-  let handle_buf t now ts proto ip buf =
+  let handle_buf ?(packet_callback = fun _q -> None) t now ts proto ip buf =
     match
       let* res = safe_decode buf in
       Log.debug (fun m -> m "received a packet from %a: %a" Ipaddr.pp ip
@@ -1862,7 +1872,7 @@ module Secondary = struct
       t, Packet.raw_error buf rcode, None
     | Ok p ->
       let handle_inner keyname =
-        let t, answer, out = handle_packet t now ts ip p keyname in
+        let t, answer, out = handle_packet ~packet_callback t now ts ip p keyname in
         let answer = match answer with
           | Some answer ->
             let max_size, edns = Edns.reply p.edns in

@@ -24,6 +24,7 @@ depends: [
   "dns-tsig" {with-test}
   "base64" {with-test & >= "3.0.0"}
   "metrics"
+  "logs" {>= "0.7.0"}
 ]
 
 build: [
