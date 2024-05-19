@@ -22,6 +22,6 @@ val create_happy_eyeballs :
   ?timer_interval:int64 ->
   t ->
   Happy_eyeballs_lwt.t
-(** [create_happy_eyeballs t] returns the happy-eyeballs instance used by the
+(** [create_happy_eyeballs dns] returns the happy-eyeballs instance used by the
     [dns] implementation, which uses the [dns] implementation for resolving
     hostnames. *)
