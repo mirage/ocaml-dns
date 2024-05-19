@@ -21,7 +21,7 @@ depends: [
   "lwt" {>= "4.2.1"}
   "mtime" {>= "1.2.0"}
   "mirage-crypto-rng-lwt" {>= "0.11.0"}
-  "happy-eyeballs-lwt" {>= "0.6.0"}
+  "happy-eyeballs-lwt" {>= "1.0.0"}
   "tls-lwt" {>= "0.16.0"}
   "ca-certs"
 ]
@@ -29,7 +29,3 @@ synopsis: "DNS client API using lwt"
 description: """
 A client implementation using uDNS and lwt for side effects.
 """
-pin-depends: [
-  [ "happy-eyeballs-lwt.dev" "git+https://github.com/dinosaure/happy-eyeballs.git#a0ae36741eebfc425faf95c7fb4f7e03463e213c" ]
-  [ "happy-eyeballs.dev" "git+https://github.com/dinosaure/happy-eyeballs.git#a0ae36741eebfc425faf95c7fb4f7e03463e213c" ]
-]
