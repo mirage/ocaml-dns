@@ -6,6 +6,8 @@ module Log = (val Logs.src_log src : Logs.LOG)
 module IM = Map.Make(Int)
 
 module type S = sig
+  module HE : Happy_eyeballs_mirage.S
+
   module Transport : Dns_client.S
     with type io_addr = [
         | `Plaintext of Ipaddr.t * int
@@ -24,6 +26,10 @@ module type S = sig
     ?nameservers:string list ->
     ?timeout:int64 ->
     Transport.stack -> t Lwt.t
+
+  val create_happy_eyeballs : ?aaaa_timeout:int64 -> ?connect_delay:int64 ->
+    ?connect_timeout:int64 -> ?resolve_timeout:int64 -> ?resolve_retries:int ->
+    ?timer_interval:int64 -> t -> HE.t Lwt.t
 end
 
 module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) = struct
@@ -106,6 +112,8 @@ The format of a nameserver is:
         Error (`Msg ("Unable to decode nameserver " ^ str))
     end |> Result.map_error (function `Msg e -> `Msg (e ^ format))
 
+  module HE = Happy_eyeballs_mirage.Make(T)(M)(S)
+
   module Transport : Dns_client.S
     with type stack = S.t
      and type +'a io = 'a Lwt.t
@@ -129,106 +137,11 @@ The format of a nameserver is:
       mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
       mutable connected_condition : (unit, [ `Msg of string ]) result Lwt_condition.t option ;
       mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
-      mutable he : Happy_eyeballs.t ;
-      mutable cancel_connecting : (int * unit Lwt.u) list Happy_eyeballs.Waiter_map.t ;
-      mutable waiters : ((Ipaddr.t * int) * S.TCP.flow, [ `Msg of string ]) result Lwt.u Happy_eyeballs.Waiter_map.t ;
-      timer_condition : unit Lwt_condition.t ;
+      he : HE.t ;
     }
     type context = t
 
     let clock = M.elapsed_ns
-    let he_timer_interval = Duration.of_ms 10
-
-    let try_connect stack addr =
-      let open Lwt.Infix in
-      S.TCP.create_connection (S.tcp stack) addr >|=
-      Result.map_error
-        (fun err -> `Msg (Fmt.str "error connecting to nameserver %a:%u: %a"
-                            Ipaddr.pp (fst addr) (snd addr) S.TCP.pp_error err))
-
-    let handle_one_action t = function
-      | Happy_eyeballs.Connect (host, id, attempt, addr) ->
-        let cancelled, cancel = Lwt.task () in
-        let entry = attempt, cancel in
-        t.cancel_connecting <-
-          Happy_eyeballs.Waiter_map.update id
-            (function None -> Some [ entry ] | Some c -> Some (entry :: c))
-            t.cancel_connecting;
-        let conn =
-          try_connect t.stack addr >>= function
-          | Ok flow ->
-            let cancel_connecting, others =
-              Happy_eyeballs.Waiter_map.find_and_remove id t.cancel_connecting
-            in
-            t.cancel_connecting <- cancel_connecting;
-            List.iter (fun (att, u) -> if att <> attempt then Lwt.wakeup_later u ())
-              (Option.value ~default:[] others);
-            let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
-            t.waiters <- waiters;
-            begin match r with
-              | Some waiter ->
-                Lwt.wakeup_later waiter (Ok (addr, flow));
-                Lwt.return_unit
-              | None -> S.TCP.close flow
-            end >|= fun () ->
-            Some (Happy_eyeballs.Connected (host, id, addr))
-          | Error `Msg msg ->
-            t.cancel_connecting <-
-              Happy_eyeballs.Waiter_map.update id
-                (function None -> None | Some c ->
-                  match List.filter (fun (att, _) -> not (att = attempt)) c with
-                  | [] -> None
-                  | c -> Some c)
-                t.cancel_connecting;
-            Lwt.return (Some (Happy_eyeballs.Connection_failed (host, id, addr, msg)))
-        in
-        Lwt.pick [ conn ; (cancelled >|= fun () -> None) ]
-      | Connect_failed (host, id, reason) ->
-        let cancel_connecting, others =
-          Happy_eyeballs.Waiter_map.find_and_remove id t.cancel_connecting
-        in
-        t.cancel_connecting <- cancel_connecting;
-        List.iter (fun (_, u) -> Lwt.wakeup_later u ()) (Option.value ~default:[] others);
-        let waiters, r = Happy_eyeballs.Waiter_map.find_and_remove id t.waiters in
-        t.waiters <- waiters;
-        begin match r with
-          | Some waiter ->
-            let err =
-              Fmt.str "connection to %a failed: %s" Domain_name.pp host reason
-            in
-            Lwt.wakeup_later waiter (Error (`Msg err))
-          | None -> ()
-        end;
-        Lwt.return None
-      | Resolve_a _ | Resolve_aaaa _ as a ->
-        Log.warn (fun m -> m "ignoring action %a" Happy_eyeballs.pp_action a);
-        Lwt.return None
-
-    let rec handle_action t action =
-      handle_one_action t action >>= function
-      | None -> Lwt.return_unit
-      | Some event ->
-        let he, actions = Happy_eyeballs.event t.he (clock ()) event in
-        t.he <- he;
-        Lwt_list.iter_p (handle_action t) actions
-
-    let handle_timer_actions t actions =
-      Lwt.async (fun () -> Lwt_list.iter_p (fun a -> handle_action t a) actions)
-
-    let rec he_timer t =
-      let open Lwt.Infix in
-      let rec loop () =
-        let he, cont, actions = Happy_eyeballs.timer t.he (clock ()) in
-        t.he <- he ;
-        handle_timer_actions t actions ;
-        match cont with
-        | `Suspend -> he_timer t
-        | `Act ->
-          T.sleep_ns he_timer_interval >>= fun () ->
-          loop ()
-      in
-      Lwt_condition.wait t.timer_condition >>= fun () ->
-      loop ()
 
     let read_udp t ip ip_us ~src ~dst ~src_port:_ data =
       if Ipaddr.compare ip_us dst = 0 && Ipaddr.compare ip src = 0 &&
@@ -272,7 +185,11 @@ The format of a nameserver is:
           `Tcp, ns
         | Some (a, ns) -> a, ns
       in
-      let t = {
+      let he =
+        let happy_eyeballs = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) in
+        HE.create ~happy_eyeballs stack
+      in
+      {
         nameservers ;
         proto ;
         timeout_ns = timeout ;
@@ -281,14 +198,8 @@ The format of a nameserver is:
         flow = None ;
         connected_condition = None ;
         requests = IM.empty ;
-        he = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) ;
-        cancel_connecting = Happy_eyeballs.Waiter_map.empty ;
-        waiters = Happy_eyeballs.Waiter_map.empty ;
-        timer_condition = Lwt_condition.create () ;
-      } in
-      match proto with
-      | `Tcp -> Lwt.async (fun () -> he_timer t); t
-      | `Udp -> t
+        he ;
+      }
 
     let nameservers { proto ; nameservers ; _ } = proto, nameservers
     let rng = R.generate ?g:None
@@ -395,15 +306,8 @@ The format of a nameserver is:
     let rec connect_ns t nameservers =
       let connected_condition = Lwt_condition.create () in
       t.connected_condition <- Some connected_condition ;
-      let waiter, notify = Lwt.task () in
-      let waiters, id = Happy_eyeballs.Waiter_map.register notify t.waiters in
-      t.waiters <- waiters;
       let ns = to_pairs nameservers in
-      let he, actions = Happy_eyeballs.connect_ip t.he (clock ()) ~id ns in
-      t.he <- he;
-      Lwt_condition.signal t.timer_condition ();
-      Lwt.async (fun () -> Lwt_list.iter_p (handle_action t) actions);
-      waiter >>= function
+      HE.connect_ip t.he ns >>= function
       | Error `Msg msg ->
         let err = Error (`Msg (Fmt.str "error %s connecting to resolver %a"
                                  msg
@@ -537,4 +441,21 @@ The format of a nameserver is:
       | _::_, _ -> Some (`Tcp, tcp)
     in
     Lwt.return (create ?cache_size ?edns ?nameservers ?timeout stack)
+
+  let create_happy_eyeballs ?aaaa_timeout ?connect_delay ?connect_timeout
+      ?resolve_timeout ?resolve_retries ?timer_interval t =
+    let getaddrinfo record domain_name =
+      let open Lwt_result.Infix in
+      match record with
+      | `A ->
+        getaddrinfo t Dns.Rr_map.A domain_name >|= fun (_ttl, set) ->
+        Ipaddr.V4.Set.fold (fun ipv4 -> Ipaddr.Set.add (Ipaddr.V4 ipv4))
+          set Ipaddr.Set.empty
+      | `AAAA ->
+        getaddrinfo t Dns.Rr_map.Aaaa domain_name >|= fun (_ttl, set) ->
+        Ipaddr.V6.Set.fold (fun ipv6 -> Ipaddr.Set.add (Ipaddr.V6 ipv6))
+          set Ipaddr.Set.empty
+    in
+    HE.connect_device ?aaaa_timeout ?connect_delay ?connect_timeout
+      ?resolve_timeout ?resolve_retries ?timer_interval ~getaddrinfo (stack t)
 end

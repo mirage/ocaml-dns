@@ -1,4 +1,7 @@
 module type S = sig
+
+  module HE : Happy_eyeballs_mirage.S
+
   module Transport : Dns_client.S
     with type io_addr = [
         | `Plaintext of Ipaddr.t * int
@@ -40,7 +43,13 @@ module type S = sig
 
       @raise [Invalid_argument] if given strings don't respect formats explained
       by {!nameserver_of_string}.
-   *)
+  *)
+
+  val create_happy_eyeballs : ?aaaa_timeout:int64 -> ?connect_delay:int64 ->
+    ?connect_timeout:int64 -> ?resolve_timeout:int64 -> ?resolve_retries:int ->
+    ?timer_interval:int64 -> t -> HE.t Lwt.t
+  (** [create_happy_eyeballs ~aaaa_timeout ~connect_delay ~connect_timeout ~resolve_timeout ~resolve_retries ~timer_interval dns]
+      is a happy_eyeballs value where [dns] is used for resolving hostnames. *)
 end
 
 module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) : S with type Transport.stack = S.t

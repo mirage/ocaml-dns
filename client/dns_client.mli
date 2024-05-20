@@ -80,6 +80,9 @@ sig
       [`Auto] adds TCP Keepalive if protocol is TCP, [`Manual edns] adds the
       EDNS data specified. *)
 
+  val stack : t -> T.stack
+  (** [stack t] is the used stack by [t]. *)
+
   val nameservers : t -> Dns.proto * T.io_addr list
   (** [nameservers state] returns the list of nameservers to be used. *)
 

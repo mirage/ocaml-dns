@@ -143,15 +143,14 @@ module Transport : Dns_client.S
       let happy_eyeballs = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) in
       Happy_eyeballs_lwt.create ~happy_eyeballs ()
     in
-    let t = {
+    {
       nameservers ;
       timeout_ns = timeout ;
       fd = None ;
       connected_condition = None ;
       requests = IM.empty ;
       he ;
-    } in
-    t
+    }
 
   let nameservers { nameservers; _ } = `Tcp, nameserver_ips nameservers
 

@@ -219,6 +219,7 @@ struct
     mutable cache : Dns_cache.t ;
     transport : Transport.t ;
     edns : [ `None | `Auto | `Manual of Dns.Edns.t ] ;
+    stack : Transport.stack;
   }
 
   (* TODO eventually use Auto, and retry without on FormErr *)
@@ -226,7 +227,10 @@ struct
     { cache = Dns_cache.empty cache_size ;
       transport = Transport.create ?nameservers ~timeout stack ;
       edns ;
+      stack ;
     }
+
+  let stack { stack ; _ } = stack
 
   let nameservers { transport; _ } = Transport.nameservers transport
 
