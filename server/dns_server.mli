@@ -65,7 +65,10 @@ val create : ?unauthenticated_zone_transfer:bool ->
 
 val with_data : t -> Dns_trie.t -> t
 (** [with_data t data] is [t'] where the [data] field is updated with the
-    provided value. *)
+    provided value. Be aware that this function breaks the semantics of a
+    primary server with secondaries, since secondaries won't be notified and
+    will be out of sync. Use if you know what you do. The data of a secondary
+    will usually come via zone transfer from the primary name services. *)
 
 val text : 'a Domain_name.t -> Dns_trie.t -> (string, [> `Msg of string ]) result
 (** [text name trie] results in a string representation (zonefile) of the trie. *)
@@ -74,7 +77,7 @@ val handle_question : t -> Packet.Question.t ->
   (Packet.Flags.t * Packet.Answer.t * Name_rr_map.t option,
    Rcode.t * Packet.Answer.t option) result
 (** [handle_question t question] handles the DNS query [question] by looking
-    it up in the trie of [t]. *)
+    it up in the trie of [t]. The result is either an answer or an error. *)
 
 val update_data : Dns_trie.t -> 'a Domain_name.t ->
   Dns.Packet.Update.prereq list Domain_name.Map.t
@@ -82,12 +85,18 @@ val update_data : Dns_trie.t -> 'a Domain_name.t ->
   ( Dns_trie.t * (Domain_name.Set.elt * Dns.Soa.t) list,
    Dns.Rcode.t )
   result
+(** [update_data data domain update_content] applies the [update_content] to
+    the [data] for [domain]. This function breaks the semantics of a primary
+    server with secondaries, since the secondaries won't be notified of the
+    update and will be out of sync. Use if you know what you are doing. *)
 
 val handle_update : t -> proto -> [ `raw ] Domain_name.t option ->
   Packet.Question.t -> Packet.Update.t ->
   (Dns_trie.t * ([`raw] Domain_name.t * Soa.t) list, Rcode.t) result
 (** [handle_update t proto keyname question update] authenticates the update
-    request and processes the update. *)
+    request and processes the update. This function breaks the semantics of a
+    primary server with secondaries, since the secondaries won't be notified.
+    Use if you know what you are doing. *)
 
 val handle_axfr_request : t -> proto -> [ `raw ] Domain_name.t option ->
   Packet.Question.t -> (Packet.Axfr.t, Rcode.t) result
@@ -134,6 +143,7 @@ module Primary : sig
       and generates notifications. *)
 
   val trie_cache : s -> trie_cache
+  (** [trie_cache s] is the trie cache of the server. *)
 
   val create : ?keys:('a Domain_name.t * Dnskey.t) list ->
     ?unauthenticated_zone_transfer:bool ->
@@ -207,7 +217,6 @@ module Secondary : sig
     Ipaddr.t -> Packet.t -> 'a Domain_name.t option ->
     s * Packet.t option * (Ipaddr.t * Cstruct.t) option
   (** [handle_packet s now ts ip proto key t] handles the incoming packet. *)
-
 
   val handle_buf : ?packet_callback:packet_callback -> s -> Ptime.t -> int64 ->
     proto -> Ipaddr.t -> Cstruct.t ->
