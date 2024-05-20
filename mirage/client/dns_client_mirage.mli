@@ -1,6 +1,5 @@
 module type S = sig
-
-  module HE : Happy_eyeballs_mirage.S
+  type happy_eyeballs
 
   module Transport : Dns_client.S
     with type io_addr = [
@@ -45,11 +44,20 @@ module type S = sig
       by {!nameserver_of_string}.
   *)
 
-  val create_happy_eyeballs : ?aaaa_timeout:int64 -> ?connect_delay:int64 ->
-    ?connect_timeout:int64 -> ?resolve_timeout:int64 -> ?resolve_retries:int ->
-    ?timer_interval:int64 -> t -> HE.t
-  (** [create_happy_eyeballs ~aaaa_timeout ~connect_delay ~connect_timeout ~resolve_timeout ~resolve_retries ~timer_interval dns]
-      is a happy_eyeballs value where [dns] is used for resolving hostnames. *)
+  val with_happy_eyeballs : ?cache_size:int ->
+    ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
+    ?nameservers:string list ->
+    ?timeout:int64 ->
+    Transport.stack -> happy_eyeballs -> t Lwt.t
 end
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) : S with type Transport.stack = S.t
+module Make
+  (R : Mirage_random.S)
+  (T : Mirage_time.S)
+  (M : Mirage_clock.MCLOCK)
+  (P : Mirage_clock.PCLOCK)
+  (S : Tcpip.Stack.V4V6)
+  (H : Happy_eyeballs_mirage.S with type stack = S.t
+                                and type flow = S.TCP.flow)
+  : S with type Transport.stack = S.t
+       and type happy_eyeballs = H.t

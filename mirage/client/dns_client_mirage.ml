@@ -6,7 +6,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 module IM = Map.Make(Int)
 
 module type S = sig
-  module HE : Happy_eyeballs_mirage.S
+  type happy_eyeballs
 
   module Transport : Dns_client.S
     with type io_addr = [
@@ -27,12 +27,23 @@ module type S = sig
     ?timeout:int64 ->
     Transport.stack -> t Lwt.t
 
-  val create_happy_eyeballs : ?aaaa_timeout:int64 -> ?connect_delay:int64 ->
-    ?connect_timeout:int64 -> ?resolve_timeout:int64 -> ?resolve_retries:int ->
-    ?timer_interval:int64 -> t -> HE.t
+  val with_happy_eyeballs : ?cache_size:int ->
+    ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
+    ?nameservers:string list ->
+    ?timeout:int64 ->
+    Transport.stack -> happy_eyeballs -> t Lwt.t
 end
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) = struct
+module Make
+  (R : Mirage_random.S)
+  (T : Mirage_time.S)
+  (M : Mirage_clock.MCLOCK)
+  (P : Mirage_clock.PCLOCK)
+  (S : Tcpip.Stack.V4V6)
+  (H : Happy_eyeballs_mirage.S with type stack = S.t
+                                and type flow = S.TCP.flow) = struct
+  type happy_eyeballs = H.t
+
   module TLS = Tls_mirage.Make(S.TCP)
   module CA = Ca_certs_nss.Make(P)
 
@@ -112,8 +123,6 @@ The format of a nameserver is:
         Error (`Msg ("Unable to decode nameserver " ^ str))
     end |> Result.map_error (function `Msg e -> `Msg (e ^ format))
 
-  module HE = Happy_eyeballs_mirage.Make(T)(M)(S)
-
   module Transport : Dns_client.S
     with type stack = S.t
      and type +'a io = 'a Lwt.t
@@ -137,7 +146,7 @@ The format of a nameserver is:
       mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
       mutable connected_condition : (unit, [ `Msg of string ]) result Lwt_condition.t option ;
       mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
-      he : HE.t ;
+      he : H.t ;
     }
     type context = t
 
@@ -187,7 +196,7 @@ The format of a nameserver is:
       in
       let he =
         let happy_eyeballs = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) in
-        HE.create ~happy_eyeballs stack
+        H.create ~happy_eyeballs stack
       in
       {
         nameservers ;
@@ -307,7 +316,7 @@ The format of a nameserver is:
       let connected_condition = Lwt_condition.create () in
       t.connected_condition <- Some connected_condition ;
       let ns = to_pairs nameservers in
-      HE.connect_ip t.he ns >>= function
+      H.connect_ip t.he ns >>= function
       | Error `Msg msg ->
         let err = Error (`Msg (Fmt.str "error %s connecting to resolver %a"
                                  msg
@@ -442,8 +451,8 @@ The format of a nameserver is:
     in
     Lwt.return (create ?cache_size ?edns ?nameservers ?timeout stack)
 
-  let create_happy_eyeballs ?aaaa_timeout ?connect_delay ?connect_timeout
-      ?resolve_timeout ?resolve_retries ?timer_interval t =
+  let with_happy_eyeballs ?cache_size ?edns ?nameservers ?timeout stack happy_eyeballs =
+    connect ?cache_size ?edns ?nameservers ?timeout stack >>= fun t ->
     let getaddrinfo record domain_name =
       let open Lwt_result.Infix in
       match record with
@@ -456,9 +465,6 @@ The format of a nameserver is:
         Ipaddr.V6.Set.fold (fun ipv6 -> Ipaddr.Set.add (Ipaddr.V6 ipv6))
           set Ipaddr.Set.empty
     in
-    let happy_eyeballs =
-      Happy_eyeballs.create ?aaaa_timeout ?connect_delay ?connect_timeout
-        ?resolve_timeout ?resolve_retries (M.elapsed_ns ())
-    in
-    HE.create ~happy_eyeballs ~getaddrinfo ?timer_interval (stack t)
+    H.inject happy_eyeballs getaddrinfo;
+    Lwt.return t
 end
