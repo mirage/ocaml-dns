@@ -29,7 +29,7 @@ module type S = sig
 
   val create_happy_eyeballs : ?aaaa_timeout:int64 -> ?connect_delay:int64 ->
     ?connect_timeout:int64 -> ?resolve_timeout:int64 -> ?resolve_retries:int ->
-    ?timer_interval:int64 -> t -> HE.t Lwt.t
+    ?timer_interval:int64 -> t -> HE.t
 end
 
 module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) = struct
@@ -456,6 +456,9 @@ The format of a nameserver is:
         Ipaddr.V6.Set.fold (fun ipv6 -> Ipaddr.Set.add (Ipaddr.V6 ipv6))
           set Ipaddr.Set.empty
     in
-    HE.connect_device ?aaaa_timeout ?connect_delay ?connect_timeout
-      ?resolve_timeout ?resolve_retries ?timer_interval ~getaddrinfo (stack t)
+    let happy_eyeballs =
+      Happy_eyeballs.create ?aaaa_timeout ?connect_delay ?connect_timeout
+        ?resolve_timeout ?resolve_retries (M.elapsed_ns ())
+    in
+    HE.create ~happy_eyeballs ~getaddrinfo ?timer_interval (stack t)
 end

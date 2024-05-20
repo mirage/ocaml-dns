@@ -47,7 +47,7 @@ module type S = sig
 
   val create_happy_eyeballs : ?aaaa_timeout:int64 -> ?connect_delay:int64 ->
     ?connect_timeout:int64 -> ?resolve_timeout:int64 -> ?resolve_retries:int ->
-    ?timer_interval:int64 -> t -> HE.t Lwt.t
+    ?timer_interval:int64 -> t -> HE.t
   (** [create_happy_eyeballs ~aaaa_timeout ~connect_delay ~connect_timeout ~resolve_timeout ~resolve_retries ~timer_interval dns]
       is a happy_eyeballs value where [dns] is used for resolving hostnames. *)
 end
