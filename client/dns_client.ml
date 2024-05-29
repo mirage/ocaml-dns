@@ -221,6 +221,8 @@ struct
     edns : [ `None | `Auto | `Manual of Dns.Edns.t ] ;
   }
 
+  let transport { transport ; _ } = transport
+
   (* TODO eventually use Auto, and retry without on FormErr *)
   let create ?(cache_size = 32) ?(edns = `None) ?nameservers ?(timeout = Duration.of_sec 5) stack =
     { cache = Dns_cache.empty cache_size ;

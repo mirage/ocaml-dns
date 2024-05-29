@@ -1,10 +1,16 @@
 module type S = sig
-  module Transport : Dns_client.S
-    with type io_addr = [
-        | `Plaintext of Ipaddr.t * int
-        | `Tls of Tls.Config.client * Ipaddr.t * int
-      ]
-     and type +'a io = 'a Lwt.t
+  type happy_eyeballs
+
+  module Transport :
+    sig
+      include Dns_client.S
+        with type +'a io = 'a Lwt.t
+         and type io_addr = [
+             | `Plaintext of Ipaddr.t * int
+             | `Tls of Tls.Config.client * Ipaddr.t * int
+           ]
+      val happy_eyeballs : t -> happy_eyeballs
+    end
 
   include module type of Dns_client.Make(Transport)
 
@@ -30,17 +36,28 @@ module type S = sig
     ?nameservers:string list ->
     ?timeout:int64 ->
     Transport.stack -> t Lwt.t
-  (** [connect ?cache_size ?edns ?nameservers ?timeout stack] creates a DNS
-      entity which is able to resolve domain-name. It expects few optional
-      arguments:
-      - [cache_size] the size of the LRU cache
-      - [edns] the behaviour of whether or not to send edns in queries
-      - [nameservers] a list of {i nameservers} used to resolve domain-names
-      - [timeout] (in nanoseconds), passed to {create}
+  (** [connect ?cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs)]
+      creates a DNS entity which is able to resolve domain-name. It expects
+      few optional arguments:
+      - [cache_size] the size of the LRU cache,
+      - [edns] the behaviour of whether or not to send edns in queries,
+      - [nameservers] a list of {i nameservers} used to resolve domain-names,
+      - [timeout] (in nanoseconds), passed to {create}.
+
+      The provided [happy_eyeballs] will use [t] for resolving hostnames.
 
       @raise [Invalid_argument] if given strings don't respect formats explained
       by {!nameserver_of_string}.
-   *)
+  *)
 end
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (M : Mirage_clock.MCLOCK) (P : Mirage_clock.PCLOCK) (S : Tcpip.Stack.V4V6) : S with type Transport.stack = S.t
+module Make
+  (R : Mirage_random.S)
+  (T : Mirage_time.S)
+  (M : Mirage_clock.MCLOCK)
+  (P : Mirage_clock.PCLOCK)
+  (S : Tcpip.Stack.V4V6)
+  (H : Happy_eyeballs_mirage.S with type stack = S.t
+                                and type flow = S.TCP.flow)
+  : S with type Transport.stack = S.t * H.t
+       and type happy_eyeballs = H.t

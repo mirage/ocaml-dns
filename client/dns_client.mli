@@ -66,6 +66,10 @@ module Make : functor (T : S) ->
 sig
 
   type t
+  (** The abstract type of a DNS client. *)
+
+  val transport : t -> T.t
+  (** [transport t] is the transport of [t]. *)
 
   val create : ?cache_size:int ->
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->

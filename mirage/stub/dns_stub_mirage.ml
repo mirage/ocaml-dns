@@ -58,7 +58,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
     let metrics = Dns.counter_metrics ~f "stub-resolver" in
     (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
 
-  module Client = Dns_client_mirage.Make(R)(T)(C)(P)(S)
+  module H = Happy_eyeballs_mirage.Make(T)(C)(S)
+  module Client = Dns_client_mirage.Make(R)(T)(C)(P)(S)(H)
 
   (* likely this should contain:
      - a primary server (handling updates)
@@ -232,8 +233,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         | Some data -> metrics `Reserved_answers ; Lwt.return (Some data)
         | None -> resolve t packet.Packet.question packet.Packet.data build_reply
 
-  let create ?(cache_size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary stack =
-    Client.connect ~cache_size ?edns ?nameservers ?timeout stack >|= fun client ->
+  let create ?(cache_size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
+    Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let server = Dns_server.Primary.server primary in
     let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in
     let t = { client ; reserved ; server ; on_update } in
