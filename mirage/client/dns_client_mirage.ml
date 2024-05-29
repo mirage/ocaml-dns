@@ -30,7 +30,7 @@ module type S = sig
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
-    ?happy_eyeballs:happy_eyeballs ->
+    happy_eyeballs:happy_eyeballs ->
     stack -> t Lwt.t
 end
 
@@ -127,7 +127,7 @@ The format of a nameserver is:
   module Transport :
     sig
       include Dns_client.S
-        with type stack = S.t * happy_eyeballs option
+        with type stack = S.t * happy_eyeballs
          and type +'a io = 'a Lwt.t
          and type io_addr = [
              | `Plaintext of Ipaddr.t * int
@@ -135,7 +135,7 @@ The format of a nameserver is:
            ]
       val happy_eyeballs : t -> happy_eyeballs
     end = struct
-    type stack = S.t * happy_eyeballs option
+    type stack = S.t * happy_eyeballs
     type io_addr = [
       | `Plaintext of Ipaddr.t * int
       | `Tls of Tls.Config.client * Ipaddr.t * int
@@ -183,7 +183,7 @@ The format of a nameserver is:
       in
       go 32
 
-    let create ?nameservers ~timeout (stack, happy_eyeballs) =
+    let create ?nameservers ~timeout (stack, he) =
       let proto, nameservers = match nameservers with
         | None ->
           let authenticator = match CA.authenticator () with
@@ -200,12 +200,6 @@ The format of a nameserver is:
           in
           `Tcp, ns
         | Some (a, ns) -> a, ns
-      in
-      let he =
-        Option.value happy_eyeballs
-          ~default:
-            (let he = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) in
-             H.create ~happy_eyeballs:he stack)
       in
       {
         nameservers ;
@@ -472,7 +466,7 @@ The format of a nameserver is:
                    Fmt.(list ~sep:(any ", ") pp_io_addr) tcp);
       Some (`Tcp, tcp)
 
-  let connect ?cache_size ?edns ?nameservers ?timeout ?happy_eyeballs:he stack =
+  let connect ?cache_size ?edns ?nameservers ?timeout ~happy_eyeballs:he stack =
     let nameservers = decode_nameservers ?nameservers () in
     let t = create ?cache_size ?edns ?nameservers ?timeout (stack, he) in
     let getaddrinfo record domain_name =

@@ -36,7 +36,7 @@ module type S = sig
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
-    ?happy_eyeballs:happy_eyeballs ->
+    happy_eyeballs:happy_eyeballs ->
     stack -> t Lwt.t
   (** [connect ?cache_size ?edns ?nameservers ?timeout ?happy_eyeballs stack]
       creates a DNS entity which is able to resolve domain-name. It expects
@@ -63,5 +63,5 @@ module Make
   (H : Happy_eyeballs_mirage.S with type stack = S.t
                                 and type flow = S.TCP.flow)
   : S with type stack = S.t
-       and type Transport.stack = S.t * H.t option
+       and type Transport.stack = S.t * H.t
        and type happy_eyeballs = H.t
