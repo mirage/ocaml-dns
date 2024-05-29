@@ -7,7 +7,6 @@ module IM = Map.Make(Int)
 
 module type S = sig
   type happy_eyeballs
-  type stack
 
   module Transport :
     sig
@@ -29,9 +28,8 @@ module type S = sig
     ?cache_size:int ->
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
-    ?timeout:int64 ->
-    happy_eyeballs:happy_eyeballs ->
-    stack -> t Lwt.t
+    ?timeout:int64 -> Transport.stack ->
+    t Lwt.t
 end
 
 module Make
@@ -43,7 +41,6 @@ module Make
   (H : Happy_eyeballs_mirage.S with type stack = S.t
                                 and type flow = S.TCP.flow) = struct
   type happy_eyeballs = H.t
-  type stack = S.t
 
   module TLS = Tls_mirage.Make(S.TCP)
   module CA = Ca_certs_nss.Make(P)
@@ -466,7 +463,7 @@ The format of a nameserver is:
                    Fmt.(list ~sep:(any ", ") pp_io_addr) tcp);
       Some (`Tcp, tcp)
 
-  let connect ?cache_size ?edns ?nameservers ?timeout ~happy_eyeballs:he stack =
+  let connect ?cache_size ?edns ?nameservers ?timeout (stack, he) =
     let nameservers = decode_nameservers ?nameservers () in
     let t = create ?cache_size ?edns ?nameservers ?timeout (stack, he) in
     let getaddrinfo record domain_name =

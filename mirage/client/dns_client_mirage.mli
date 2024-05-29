@@ -1,6 +1,5 @@
 module type S = sig
   type happy_eyeballs
-  type stack
 
   module Transport :
     sig
@@ -36,16 +35,14 @@ module type S = sig
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
-    happy_eyeballs:happy_eyeballs ->
-    stack -> t Lwt.t
-  (** [connect ?cache_size ?edns ?nameservers ?timeout ?happy_eyeballs stack]
+    Transport.stack -> t Lwt.t
+  (** [connect ?cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs)]
       creates a DNS entity which is able to resolve domain-name. It expects
       few optional arguments:
       - [cache_size] the size of the LRU cache,
       - [edns] the behaviour of whether or not to send edns in queries,
       - [nameservers] a list of {i nameservers} used to resolve domain-names,
-      - [timeout] (in nanoseconds), passed to {create},
-      - [happy_eyeballs] an instance of happy eyeballs to use.
+      - [timeout] (in nanoseconds), passed to {create}.
 
       The provided [happy_eyeballs] will use [t] for resolving hostnames.
 
@@ -62,6 +59,5 @@ module Make
   (S : Tcpip.Stack.V4V6)
   (H : Happy_eyeballs_mirage.S with type stack = S.t
                                 and type flow = S.TCP.flow)
-  : S with type stack = S.t
-       and type Transport.stack = S.t * H.t
+  : S with type Transport.stack = S.t * H.t
        and type happy_eyeballs = H.t
