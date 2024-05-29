@@ -7,13 +7,18 @@ module IM = Map.Make(Int)
 
 module type S = sig
   type happy_eyeballs
+  type stack
 
-  module Transport : Dns_client.S
-    with type io_addr = [
-        | `Plaintext of Ipaddr.t * int
-        | `Tls of Tls.Config.client * Ipaddr.t * int
-      ]
-     and type +'a io = 'a Lwt.t
+  module Transport :
+    sig
+      include Dns_client.S
+        with type +'a io = 'a Lwt.t
+         and type io_addr = [
+             | `Plaintext of Ipaddr.t * int
+             | `Tls of Tls.Config.client * Ipaddr.t * int
+           ]
+      val happy_eyeballs : t -> happy_eyeballs
+    end
 
   include module type of Dns_client.Make(Transport)
 
@@ -25,13 +30,8 @@ module type S = sig
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
-    Transport.stack -> t Lwt.t
-
-  val with_happy_eyeballs : ?cache_size:int ->
-    ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
-    ?nameservers:string list ->
-    ?timeout:int64 ->
-    Transport.stack -> happy_eyeballs -> t Lwt.t
+    ?happy_eyeballs:happy_eyeballs ->
+    stack -> t Lwt.t
 end
 
 module Make
@@ -43,6 +43,7 @@ module Make
   (H : Happy_eyeballs_mirage.S with type stack = S.t
                                 and type flow = S.TCP.flow) = struct
   type happy_eyeballs = H.t
+  type stack = S.t
 
   module TLS = Tls_mirage.Make(S.TCP)
   module CA = Ca_certs_nss.Make(P)
@@ -123,14 +124,18 @@ The format of a nameserver is:
         Error (`Msg ("Unable to decode nameserver " ^ str))
     end |> Result.map_error (function `Msg e -> `Msg (e ^ format))
 
-  module Transport : Dns_client.S
-    with type stack = S.t
-     and type +'a io = 'a Lwt.t
-     and type io_addr = [
-         | `Plaintext of Ipaddr.t * int
-         | `Tls of Tls.Config.client * Ipaddr.t * int
-       ] = struct
-    type stack = S.t
+  module Transport :
+    sig
+      include Dns_client.S
+        with type stack = S.t * happy_eyeballs option
+         and type +'a io = 'a Lwt.t
+         and type io_addr = [
+             | `Plaintext of Ipaddr.t * int
+             | `Tls of Tls.Config.client * Ipaddr.t * int
+           ]
+      val happy_eyeballs : t -> happy_eyeballs
+    end = struct
+    type stack = S.t * happy_eyeballs option
     type io_addr = [
       | `Plaintext of Ipaddr.t * int
       | `Tls of Tls.Config.client * Ipaddr.t * int
@@ -141,7 +146,7 @@ The format of a nameserver is:
       nameservers : io_addr list ;
       proto : Dns.proto ;
       timeout_ns : int64 ;
-      stack : stack ;
+      stack : S.t ;
       mutable udp_ports : IS.t ;
       mutable flow : [`Plain of S.TCP.flow | `Tls of TLS.flow ] option ;
       mutable connected_condition : (unit, [ `Msg of string ]) result Lwt_condition.t option ;
@@ -151,6 +156,8 @@ The format of a nameserver is:
     type context = t
 
     let clock = M.elapsed_ns
+
+    let happy_eyeballs { he ; _ } = he
 
     let read_udp t ip ip_us ~src ~dst ~src_port:_ data =
       if Ipaddr.compare ip_us dst = 0 && Ipaddr.compare ip src = 0 &&
@@ -176,7 +183,7 @@ The format of a nameserver is:
       in
       go 32
 
-    let create ?nameservers ~timeout stack =
+    let create ?nameservers ~timeout (stack, happy_eyeballs) =
       let proto, nameservers = match nameservers with
         | None ->
           let authenticator = match CA.authenticator () with
@@ -195,8 +202,10 @@ The format of a nameserver is:
         | Some (a, ns) -> a, ns
       in
       let he =
-        let happy_eyeballs = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) in
-        H.create ~happy_eyeballs stack
+        Option.value happy_eyeballs
+          ~default:
+            (let he = Happy_eyeballs.create ~connect_timeout:timeout (clock ()) in
+             H.create ~happy_eyeballs:he stack)
       in
       {
         nameservers ;
@@ -429,7 +438,7 @@ The format of a nameserver is:
 
   include Dns_client.Make(Transport)
 
-  let connect ?cache_size ?edns ?(nameservers= []) ?timeout stack =
+  let decode_nameservers ?(nameservers= []) () =
     let nameservers =
       List.map
         (fun nameserver -> match nameserver_of_string nameserver with
@@ -443,16 +452,23 @@ The format of a nameserver is:
           | `Udp, a -> tcp, a :: udp)
         ([], []) nameservers
     in
-    let nameservers =
-      match tcp, udp with
-      | [], [] -> None
-      | [], _::_ -> Some (`Udp, udp)
-      | _::_, _ -> Some (`Tcp, tcp)
-    in
-    Lwt.return (create ?cache_size ?edns ?nameservers ?timeout stack)
+    match tcp, udp with
+    | [], [] -> None
+    | [], _::_ -> Some (`Udp, udp)
+    | _::_, [] -> Some (`Tcp, tcp)
+    | _::_, udps ->
+      let pp_io_addr ppf = function
+        |`Plaintext (ip, port) -> Fmt.pf ppf "%a:%u" Ipaddr.pp ip port
+        | `Tls (_, ip, port) -> Fmt.pf ppf "TLS: %a:%u" Ipaddr.pp ip port
+      in
+      Log.warn (fun m -> m "ignoring UDP nameservers %a, using TCP nameservers %a"
+                   Fmt.(list ~sep:(any ", ") pp_io_addr) udps
+                   Fmt.(list ~sep:(any ", ") pp_io_addr) tcp);
+      Some (`Tcp, tcp)
 
-  let with_happy_eyeballs ?cache_size ?edns ?nameservers ?timeout stack happy_eyeballs =
-    connect ?cache_size ?edns ?nameservers ?timeout stack >>= fun t ->
+  let connect ?cache_size ?edns ?nameservers ?timeout ?happy_eyeballs:he stack =
+    let nameservers = decode_nameservers ?nameservers () in
+    let t = create ?cache_size ?edns ?nameservers ?timeout (stack, he) in
     let getaddrinfo record domain_name =
       let open Lwt_result.Infix in
       match record with
@@ -465,6 +481,6 @@ The format of a nameserver is:
         Ipaddr.V6.Set.fold (fun ipv6 -> Ipaddr.Set.add (Ipaddr.V6 ipv6))
           set Ipaddr.Set.empty
     in
-    H.inject happy_eyeballs getaddrinfo;
+    H.inject (Transport.happy_eyeballs (transport t)) getaddrinfo;
     Lwt.return t
 end

@@ -1,12 +1,17 @@
 module type S = sig
   type happy_eyeballs
+  type stack
 
-  module Transport : Dns_client.S
-    with type io_addr = [
-        | `Plaintext of Ipaddr.t * int
-        | `Tls of Tls.Config.client * Ipaddr.t * int
-      ]
-     and type +'a io = 'a Lwt.t
+  module Transport :
+    sig
+      include Dns_client.S
+        with type +'a io = 'a Lwt.t
+         and type io_addr = [
+             | `Plaintext of Ipaddr.t * int
+             | `Tls of Tls.Config.client * Ipaddr.t * int
+           ]
+      val happy_eyeballs : t -> happy_eyeballs
+    end
 
   include module type of Dns_client.Make(Transport)
 
@@ -31,24 +36,22 @@ module type S = sig
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
     ?nameservers:string list ->
     ?timeout:int64 ->
-    Transport.stack -> t Lwt.t
-  (** [connect ?cache_size ?edns ?nameservers ?timeout stack] creates a DNS
-      entity which is able to resolve domain-name. It expects few optional
-      arguments:
-      - [cache_size] the size of the LRU cache
-      - [edns] the behaviour of whether or not to send edns in queries
-      - [nameservers] a list of {i nameservers} used to resolve domain-names
-      - [timeout] (in nanoseconds), passed to {create}
+    ?happy_eyeballs:happy_eyeballs ->
+    stack -> t Lwt.t
+  (** [connect ?cache_size ?edns ?nameservers ?timeout ?happy_eyeballs stack]
+      creates a DNS entity which is able to resolve domain-name. It expects
+      few optional arguments:
+      - [cache_size] the size of the LRU cache,
+      - [edns] the behaviour of whether or not to send edns in queries,
+      - [nameservers] a list of {i nameservers} used to resolve domain-names,
+      - [timeout] (in nanoseconds), passed to {create},
+      - [happy_eyeballs] an instance of happy eyeballs to use.
+
+      The provided [happy_eyeballs] will use [t] for resolving hostnames.
 
       @raise [Invalid_argument] if given strings don't respect formats explained
       by {!nameserver_of_string}.
   *)
-
-  val with_happy_eyeballs : ?cache_size:int ->
-    ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
-    ?nameservers:string list ->
-    ?timeout:int64 ->
-    Transport.stack -> happy_eyeballs -> t Lwt.t
 end
 
 module Make
@@ -59,5 +62,6 @@ module Make
   (S : Tcpip.Stack.V4V6)
   (H : Happy_eyeballs_mirage.S with type stack = S.t
                                 and type flow = S.TCP.flow)
-  : S with type Transport.stack = S.t
+  : S with type stack = S.t
+       and type Transport.stack = S.t * H.t option
        and type happy_eyeballs = H.t

@@ -58,7 +58,8 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
     let metrics = Dns.counter_metrics ~f "stub-resolver" in
     (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
 
-  module Client = Dns_client_mirage.Make(R)(T)(C)(P)(S)
+  module H = Happy_eyeballs_mirage.Make(T)(C)(S)
+  module Client = Dns_client_mirage.Make(R)(T)(C)(P)(S)(H)
 
   (* likely this should contain:
      - a primary server (handling updates)

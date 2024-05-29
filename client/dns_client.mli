@@ -66,6 +66,10 @@ module Make : functor (T : S) ->
 sig
 
   type t
+  (** The abstract type of a DNS client. *)
+
+  val transport : t -> T.t
+  (** [transport t] is the transport of [t]. *)
 
   val create : ?cache_size:int ->
     ?edns:[ `None | `Auto | `Manual of Dns.Edns.t ] ->
@@ -79,9 +83,6 @@ sig
       by [~edns] (defaults to [`None]): if [None], no EDNS will be present,
       [`Auto] adds TCP Keepalive if protocol is TCP, [`Manual edns] adds the
       EDNS data specified. *)
-
-  val stack : t -> T.stack
-  (** [stack t] is the used stack by [t]. *)
 
   val nameservers : t -> Dns.proto * T.io_addr list
   (** [nameservers state] returns the list of nameservers to be used. *)
