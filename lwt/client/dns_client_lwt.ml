@@ -264,7 +264,13 @@ module Transport : Dns_client.S
 
   let rec connect_to_ns_list (t : t) connected_condition nameservers =
     let ns = to_pairs nameservers in
-    Happy_eyeballs_lwt.connect_ip t.he ns >>= function
+    (* The connect_timeout given here is a bit too much, since it should
+       be (a) connect to the remote NS (b) send query, receive answer.
+
+       At the moment, how this is done, is that we use the connect_timeout
+       for (a) and another separate one for (b). Since we do connection
+       pooling, it is slightly tricky to use only a single connect_timeout. *)
+    Happy_eyeballs_lwt.connect_ip ~connect_timeout:t.timeout_ns t.he ns >>= function
     | Error `Msg msg ->
       let err =
         Error (`Msg (Fmt.str "error %s connecting to resolver %a"

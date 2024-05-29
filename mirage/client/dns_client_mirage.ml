@@ -325,7 +325,13 @@ The format of a nameserver is:
       let connected_condition = Lwt_condition.create () in
       t.connected_condition <- Some connected_condition ;
       let ns = to_pairs nameservers in
-      H.connect_ip t.he ns >>= function
+      (* The connect_timeout given here is a bit too much, since it should
+         be (a) connect to the remote NS (b) send query, receive answer.
+
+         At the moment, how this is done, is that we use the connect_timeout
+         for (a) and another separate one for (b). Since we do connection
+         pooling, it is slightly tricky to use only a single connect_timeout. *)
+      H.connect_ip ~connect_timeout:t.timeout_ns t.he ns >>= function
       | Error `Msg msg ->
         let err = Error (`Msg (Fmt.str "error %s connecting to resolver %a"
                                  msg
