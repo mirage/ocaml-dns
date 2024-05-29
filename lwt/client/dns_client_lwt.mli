@@ -13,15 +13,6 @@
 module Transport : Dns_client.S
    with type io_addr = [ `Plaintext of Ipaddr.t * int | `Tls of Tls.Config.client * Ipaddr.t * int ]
    and type +'a io = 'a Lwt.t
-   and type stack = unit
+   and type stack = Happy_eyeballs_lwt.t
 
 include module type of Dns_client.Make(Transport)
-
-val create_happy_eyeballs :
-  ?happy_eyeballs:Happy_eyeballs.t ->
-  ?timer_interval:int64 ->
-  t ->
-  Happy_eyeballs_lwt.t
-(** [create_happy_eyeballs dns] creates a happy-eyeballs-lwt instance, where
-    resolving of hostnames uses [getaddrinfo] provided by the [dns]
-    implementation. *)

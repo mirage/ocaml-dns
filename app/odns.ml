@@ -36,7 +36,8 @@ let pp_nameserver ppf = function
       ((Tls.Config.of_client tls_cfg).Tls.Config.peer_name)
 
 let do_a nameservers domains () =
-  let t = Dns_client_lwt.create ?nameservers () in
+  let happy_eyeballs = Happy_eyeballs_lwt.create () in
+  let t = Dns_client_lwt.create ?nameservers happy_eyeballs in
   let (_, ns) = Dns_client_lwt.nameservers t in
   Logs.info (fun m -> m "querying NS %a for A records of %a"
                 pp_nameserver (List.hd ns) Fmt.(list ~sep:(any ", ") Domain_name.pp) domains);
@@ -65,7 +66,8 @@ let for_all_domains nameservers ~domains typ f =
   (* [for_all_domains] is a utility function that lets us avoid duplicating
      this block of code in all the subcommands.
      We leave {!do_a} simple to provide a more readable example. *)
-  let t = Dns_client_lwt.create ?nameservers () in
+  let happy_eyeballs = Happy_eyeballs_lwt.create () in
+  let t = Dns_client_lwt.create ?nameservers happy_eyeballs in
   let _, ns = Dns_client_lwt.nameservers t in
   Logs.info (fun m -> m "NS: %a" pp_nameserver (List.hd ns));
   let open Lwt in
