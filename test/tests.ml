@@ -4,7 +4,7 @@ open Packet
 
 let n_of_s = Domain_name.of_string_exn
 
-let p_cs = Alcotest.testable Cstruct.hexdump_pp Cstruct.equal
+let p_cs = Alcotest.testable (Ohex.pp_hexdump ()) String.equal
 
 let p_err =
   let module M = struct
@@ -26,15 +26,15 @@ module Packet = struct
     (module Packet: Alcotest.TESTABLE with type t = M.t)
 
   let bad_query () =
-    let cs = Cstruct.of_hex "0000 0000 0001 0000 0000 0000 0000 0100 02" in
+    let cs = Ohex.decode "0000 0000 0001 0000 0000 0000 0000 0100 02" in
     Alcotest.(check (result t_ok p_err) "query with bad class"
                 (Error (`Not_implemented (0, "BadClass 2")))
                 (decode cs)) ;
-    let cs = Cstruct.of_hex "0000 0100 0001 0000 0000 0000 0000 0100 03" in
+    let cs = Ohex.decode "0000 0100 0001 0000 0000 0000 0000 0100 03" in
     Alcotest.(check (result t_ok p_err) "query with unsupported class"
                 (Error (`Not_implemented (0, "UnsupportedClass 0")))
                 (decode cs)) ;
-    let cs = Cstruct.of_hex "0000 0100 0001 0000 0000 0000 0000 0000 01" in
+    let cs = Ohex.decode "0000 0100 0001 0000 0000 0000 0000 0000 01" in
     let header = (0, Flags.singleton `Recursion_desired) in
     let res =
       let i = match Rr_map.I.of_int 0 with
@@ -48,14 +48,14 @@ module Packet = struct
     in
     Alcotest.(check (result t_ok p_err) "question with unsupported typ"
                 (Ok res) (decode cs)) ;
-    let cs = Cstruct.of_hex "0000 0100 0001 0000 0000 0000 0000 2100 01" in
+    let cs = Ohex.decode "0000 0100 0001 0000 0000 0000 0000 2100 01" in
     let r =
       let question = Question.create Domain_name.root Srv in
       Packet.create header question `Query
     in
     Alcotest.(check (result t_ok p_err) "question with SRV ()"
                 (Ok r) (decode cs)) ;
-    let cs = Cstruct.of_hex "0000 0100 0001 0000 0000 0000 0102 0000 0200 01" in
+    let cs = Ohex.decode "0000 0100 0001 0000 0000 0000 0102 0000 0200 01" in
     let r =
       let name = Domain_name.of_string_exn "\002." in
       let question = Question.create name Ns in
@@ -65,7 +65,7 @@ module Packet = struct
                 (Ok r) (decode cs))
 
   let regression0 () =
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|d4 e4 85 83 00 01 00 00 00 01 00 00 01 36 02 31
              36 03 31 35 30 03 31 33 38 07 69 6e 2d 61 64 64
              72 04 61 72 70 61 00 00 0c 00 01 03 31 35 30 03
@@ -97,7 +97,7 @@ module Packet = struct
                 (Ok res) (decode data))
 
   let regression1 () =
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|83 d9 01 00 00 01 00 00 00 00 00 00 04 6b 65 79
              73 06 72 69 73 65 75 70 03 6e 65 74 00 00 1c 00
              01|___}
@@ -111,7 +111,7 @@ module Packet = struct
                 (Ok res) (decode data))
 
   let regression2 () =
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|ae 00 84 03 00 01 00 00 00 01 00 00 04 6e 65 77
              73 03 62 62 63 03 6e 65 74 02 75 6b 00 00 02 00
              01 03 62 62 63 03 6e 65 74 02 75 6b 00 00 06 00
@@ -139,7 +139,7 @@ module Packet = struct
                 (Ok res) (decode data))
 
   let regression3 () =
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|e213 8180 0001
              0001 0000 0001 0366 6f6f 0363 6f6d 0000
              0f00 01c0 0c00 0f00 0100 0002 2c00 0b03
@@ -167,7 +167,7 @@ module Packet = struct
   (* still not sure whether to allow this or not... -- since the resolver code
      now knows about SRV records (and drops _foo._tcp), this shouldn't appear *)
   let regression4 () =
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|9f ca 84 03 00 01 00 00  00 01 00 01 04 5f 74 63
              70 04 6b 65 79 73 06 72  69 73 65 75 70 03 6e 65
              74 00 00 02 00 01 c0 16  00 06 00 01 00 00 01 2c
@@ -196,7 +196,7 @@ module Packet = struct
 
   let regression5 () =
     (* this is what bbc returns me (extra bytes) since it doesn't like EDNS *)
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|5b 12 84 01 00 01 00 00  00 00 00 00 03 6e 73 34
              03 62 62 63 03 6e 65 74  02 75 6b 00 00 02 00 01
              00 00 29 05 cc 00 00 00  00 00 00|___}
@@ -212,7 +212,7 @@ module Packet = struct
                 (Ok res) (decode data))
 
   let regression6 () =
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {|00 03 00 00 00 b5 00 00  00 00 00 00 03 66 6f 6f
           02 6d 79 06 64 6f 6d 61  69 6e 00 00 01 00 01 03
           66 6f 6f 02 6d 79 06 64  6f 6d 61 69 6e 00 00 01
@@ -470,7 +470,7 @@ module Packet = struct
 
   let regression9 () =
     (* from ednscomp.isc.org *)
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
 a8 6c 00 00 00 01 00 00  00 00 00 01 04 6e 71 73
 62 02 69 6f 00 00 01 00  01 00 00 29 10 00 00 00
 00 00 00 1c 00 03 00 00  00 08 00 04 00 01 00 00
@@ -481,10 +481,10 @@ a8 6c 00 00 00 01 00 00  00 00 00 01 04 6e 71 73
     and question = Question.create (n_of_s "nqsb.io") A
     and edns =
       let extensions = [
-        Edns.Nsid Cstruct.empty ;
-        Edns.Extension (8, Cstruct.of_hex "00 01 00 00") ;
-        Edns.Cookie (Cstruct.of_hex "c8 9a 2a f8 aa 77 31 af") ;
-        Edns.Extension (9, Cstruct.empty)
+        Edns.Nsid "" ;
+        Edns.Extension (8, Ohex.decode "00 01 00 00") ;
+        Edns.Cookie (Ohex.decode "c8 9a 2a f8 aa 77 31 af") ;
+        Edns.Extension (9, "")
       ] in
       Edns.create ~payload_size:4096 ~extensions ()
     in
@@ -495,7 +495,7 @@ a8 6c 00 00 00 01 00 00  00 00 00 01 04 6e 71 73
   let regression10 () =
     (* ERR [application] decode error (from 141.1.1.1:53)
        not implemented at 305: unsupported RR typ ISDN for *)
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
 10 92 81 80 00 01 00 0d  00 00 00 0d 03 63 63 63
 02 64 65 00 00 ff 00 01  c0 0c 00 06 00 01 00 00
 1b 9e 00 2a 02 6e 73 03  68 61 6d c0 0c 0a 68 6f
@@ -565,7 +565,7 @@ b0 42 00 30 00 00 23 00  55 00 00 00 65 00 00 29
                     (Rr_map.add A (7070l, ip "195.54.164.39")
                        (Rr_map.add Aaaa (7070l, ip6 "2001:67c:20a0:2:0:164:0:39")
                           (Rr_map.add Txt (7070l, Rr_map.Txt_set.singleton "Chaos Computer Club, Hamburg, Germany")
-                             (Rr_map.singleton (Unknown isdn) (7070l, Rr_map.Txt_set.singleton Cstruct.(to_string (of_hex "0B3439343034303138303130")))))))))),
+                             (Rr_map.singleton (Unknown isdn) (7070l, Rr_map.Txt_set.singleton (Ohex.decode "0B3439343034303138303130"))))))))),
       Domain_name.Map.add (n_of_s "mail.ccc.de")
         (Rr_map.add Aaaa (7070l, ip6 "2a00:14b0:4200:3000:23:55:0:66")
            (Rr_map.singleton A (7070l, ip "212.12.55.66")))
@@ -593,7 +593,7 @@ b0 42 00 30 00 00 23 00  55 00 00 00 65 00 00 29
 
   let regression11 () =
     (* here we have an overlong text record (>255 bytes) which should be encoded into a single RR! *)
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
 d0 55 81 80 00 01 00 01 00 00 00 01 0c 61 72 63
 2d 32 30 31 36 30 38 31 36 0a 5f 64 6f 6d 61 69
 6e 6b 65 79 06 67 6f 6f 67 6c 65 03 63 6f 6d 00
@@ -640,7 +640,7 @@ aa 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "regression 11 decodes"
                 (Ok res) (decode data)) ;
     (* manually moved the length field a bit further *)
-    let data' = Cstruct.of_hex {|
+    let data' = Ohex.decode {|
 d0 55 81 80 00 01 00 01 00 00 00 01 0c 61 72 63
 2d 32 30 31 36 30 38 31 36 0a 5f 64 6f 6d 61 69
 6e 6b 65 79 06 67 6f 6f 67 6c 65 03 63 6f 6d 00
@@ -697,7 +697,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
           Ok (ts, _, _) -> ts
         | Error _ -> Alcotest.fail "bad ts"
       in
-      let mac = Cstruct.of_hex {|
+      let mac = Ohex.decode {|
   b1 40 50 19 fd 27 49 c3  90 77 d3 a2 87 38 ed a0
   eb 2f e8 eb c4 12 03 f1  25 ad fa 5b 4a 17 83 5e
 |}
@@ -719,10 +719,10 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     in
     let res = create ~tsig header question r in
     Alcotest.(check (result t_ok p_err) "regression 12 decodes"
-                (Ok res) (decode (Cstruct.of_hex data)))
+                (Ok res) (decode (Ohex.decode data)))
 
   let a_success () =
-    let data = Cstruct.of_hex {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 01 00 01 c0 0c
                           00 01 00 01 00 00 0d c9  00 04 c1 1e 28 8a|}
     in
@@ -737,7 +737,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "A decodes" (Ok res) (decode data))
 
   let a_leftover () =
-    let data = Cstruct.of_hex {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 01 00 01 c0 0c
                           00 01 00 01 00 00 0d c9  00 04 c1 1e 28 8a 9b|}
     in
@@ -752,14 +752,14 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "A decodes" (Ok res) (decode data))
 
   let a_fail_partial () =
-    let data = Cstruct.of_hex {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 01 00 01 c0 0c
                           00 01 00 01 00 00 0d c9  00 04 c1 1e 28|}
     in
     Alcotest.(check (result t_ok p_err) "short A decodes" (Error `Partial) (decode data))
 
   let a_fail_leftover_inner () =
-    let data = Cstruct.of_hex {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 01 00 01 c0 0c
                           00 01 00 01 00 00 0d c9  00 05 c1 1e 28 8a 9b|}
     in
@@ -767,14 +767,14 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       (Error (`Leftover (44, "rdata"))) (decode data))
 
   let a_fail_partial_inner () =
-    let data = Cstruct.of_hex {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|ac 8f 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 01 00 01 c0 0c
                           00 01 00 01 00 00 0d c9  00 03 c1 1e 28 8a|}
     in
     Alcotest.(check (result t_ok p_err) "A decode failure (rdata partial)" (Error `Partial) (decode data))
 
   let ns_success () =
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
                           31 58 81 80 00 01  00 03 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 02 00 01 c0 0c
                           00 02 00 01 00 00 0e 10  00 11 03 6e 73 32 07 6d
@@ -796,7 +796,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "NS decodes" (Ok res) (decode data))
 
   let ns_fail_partial () =
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
                           31 58 81 80 00 01  00 03 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 02 00 01 c0 0c
                           00 02 00 01 00 00 0e 10  00 11 03 6e 73 32 07 6d
@@ -808,7 +808,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       (Error `Partial) (decode data))
 
   let ns_fail_leftover_inner () =
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
                           31 58 81 80 00 01  00 03 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 02 00 01 c0 0c
                           00 02 00 01 00 00 0e 10  00 12 03 6e 73 32 07 6d
@@ -818,7 +818,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     in
     Alcotest.(check (result t_ok p_err) "Ns decode failure (rdata leftover)"
       (Error (`Leftover (57, "rdata"))) (decode data));
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
                           31 58 81 80 00 01  00 03 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 02 00 01 c0 0c
                           00 02 00 01 00 00 0e 10  00 11 03 6e 73 32 07 6d
@@ -828,7 +828,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     in
     Alcotest.(check (result t_ok p_err) "Ns decode failure (rdata leftover)"
       (Error (`Leftover (75, "rdata"))) (decode data));
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
                           31 58 81 80 00 01  00 03 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 02 00 01 c0 0c
                           00 02 00 01 00 00 0e 10  00 11 03 6e 73 32 07 6d
@@ -840,7 +840,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       (Error (`Leftover (93, "rdata"))) (decode data))
 
   let ns_fail_partial_inner () =
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
                           31 58 81 80 00 01  00 03 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 02 00 01 c0 0c
                           00 02 00 01 00 00 0e 10  00 10 03 6e 73 32 07 6d
@@ -850,7 +850,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     in
     Alcotest.(check (result t_ok p_err) "Ns decode failure (rdata partial)"
       (Error `Partial) (decode data));
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
                           31 58 81 80 00 01  00 03 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 02 00 01 c0 0c
                           00 02 00 01 00 00 0e 11  00 10 03 6e 73 32 07 6d
@@ -860,7 +860,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     in
     Alcotest.(check (result t_ok p_err) "Ns decode failure (rdata partial)"
       (Error `Partial) (decode data));
-    let data = Cstruct.of_hex {|
+    let data = Ohex.decode {|
                           31 58 81 80 00 01  00 03 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 02 00 01 c0 0c
                           00 02 00 01 00 00 0e 11  00 10 03 6e 73 32 07 6d
@@ -872,7 +872,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       (Error `Partial) (decode data))
 
   let cname_success () =
-    let data = Cstruct.of_hex {|58 ca 81 80 00 01  00 01 00 00 00 00 03 77
+    let data = Ohex.decode {|58 ca 81 80 00 01  00 01 00 00 00 00 03 77
                           77 77 0a 74 61 67 65 73  73 63 68 61 75 02 64 65
                           00 00 05 00 01 c0 0c 00  05 00 01 00 00 00 aa 00
                           1f 03 77 77 77 0a 74 61  67 65 73 73 63 68 61 75
@@ -889,7 +889,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "Cname decodes" (Ok res) (decode data))
 
   let cname_fail_partial () =
-    let data = Cstruct.of_hex {|58 ca 81 80 00 01  00 01 00 00 00 00 03 77
+    let data = Ohex.decode {|58 ca 81 80 00 01  00 01 00 00 00 00 03 77
                           77 77 0a 74 61 67 65 73  73 63 68 61 75 02 64 65
                           00 00 05 00 01 c0 0c 00  05 00 01 00 00 00 aa 00
                           1f 03 77 77 77 0a 74 61  67 65 73 73 63 68 61 75
@@ -899,7 +899,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       (Error `Partial) (decode data))
 
   let cname_fail_leftover_inner () =
-    let data = Cstruct.of_hex {|58 ca 81 80 00 01  00 01 00 00 00 00 03 77
+    let data = Ohex.decode {|58 ca 81 80 00 01  00 01 00 00 00 00 03 77
                           77 77 0a 74 61 67 65 73  73 63 68 61 75 02 64 65
                           00 00 05 00 01 c0 0c 00  05 00 01 00 00 00 aa 00
                           1f 03 77 77 77 0a 74 61  67 65 73 73 63 68 61 75
@@ -909,7 +909,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       (Error (`Leftover (77, ""))) (decode data))
 
   let cname_fail_partial_inner () =
-    let data = Cstruct.of_hex {|58 ca 81 80 00 01  00 01 00 00 00 00 03 77
+    let data = Ohex.decode {|58 ca 81 80 00 01  00 01 00 00 00 00 03 77
                           77 77 0a 74 61 67 65 73  73 63 68 61 75 02 64 65
                           00 00 05 00 01 c0 0c 00  05 00 01 00 00 00 aa 00
                           1e 03 77 77 77 0a 74 61  67 65 73 73 63 68 61 75
@@ -919,7 +919,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       (Error `Partial) (decode data))
 
   let soa_success () =
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|d4 e4 85 83 00 01 00 00 00 01 00 00 01 36 02 31
              36 03 31 35 30 03 31 33 38 07 69 6e 2d 61 64 64
              72 04 61 72 70 61 00 00 0c 00 01 03 31 35 30 03
@@ -952,7 +952,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
 
   let soa_fail_partial () =
     (*  missing one byte for the SOA (minimum) *)
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|d4 e4 85 83 00 01 00 00 00 01 00 00 01 36 02 31
              36 03 31 35 30 03 31 33 38 07 69 6e 2d 61 64 64
              72 04 61 72 70 61 00 00 0c 00 01 03 31 35 30 03
@@ -967,7 +967,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let soa_fail_leftover_inner () =
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|d4 e4 85 83 00 01 00 00 00 01 00 00 01 36 02 31
              36 03 31 35 30 03 31 33 38 07 69 6e 2d 61 64 64
              72 04 61 72 70 61 00 00 0c 00 01 03 31 35 30 03
@@ -983,7 +983,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
 
   let soa_fail_partial_inner () =
     (*  missing one byte for the SOA (minimum) *)
-    let data = Cstruct.of_hex
+    let data = Ohex.decode
         {___|d4 e4 85 83 00 01 00 00 00 01 00 00 01 36 02 31
              36 03 31 35 30 03 31 33 38 07 69 6e 2d 61 64 64
              72 04 61 72 70 61 00 00 0c 00 01 03 31 35 30 03
@@ -998,7 +998,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let ptr_success () =
-    let data = Cstruct.of_hex {|1f 71 81 80 00 01  00 01 00 00 00 00 01 31
+    let data = Ohex.decode {|1f 71 81 80 00 01  00 01 00 00 00 00 01 31
                           01 31 01 31 01 31 07 69  6e 2d 61 64 64 72 04 61
                           72 70 61 00 00 0c 00 01  c0 0c 00 0c 00 01 00 00
                           02 cf 00 11 03 6f 6e 65  03 6f 6e 65 03 6f 6e 65
@@ -1015,7 +1015,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let ptr_fail_partial () =
-    let data = Cstruct.of_hex {|1f 71 81 80 00 01  00 01 00 00 00 00 01 31
+    let data = Ohex.decode {|1f 71 81 80 00 01  00 01 00 00 00 00 01 31
                           01 31 01 31 01 31 07 69  6e 2d 61 64 64 72 04 61
                           72 70 61 00 00 0c 00 01  c0 0c 00 0c 00 01 00 00
                           02 cf 00 11 03 6f 6e 65  03 6f 6e 65 03 6f 6e 65
@@ -1025,7 +1025,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let ptr_fail_leftover_inner () =
-    let data = Cstruct.of_hex {|1f 71 81 80 00 01  00 01 00 00 00 00 01 31
+    let data = Ohex.decode {|1f 71 81 80 00 01  00 01 00 00 00 00 01 31
                           01 31 01 31 01 31 07 69  6e 2d 61 64 64 72 04 61
                           72 70 61 00 00 0c 00 01  c0 0c 00 0c 00 01 00 00
                           02 cf 00 12 03 6f 6e 65  03 6f 6e 65 03 6f 6e 65
@@ -1035,7 +1035,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error (`Leftover (67, ""))) (decode data))
 
   let ptr_fail_partial_inner () =
-    let data = Cstruct.of_hex {|1f 71 81 80 00 01  00 01 00 00 00 00 01 31
+    let data = Ohex.decode {|1f 71 81 80 00 01  00 01 00 00 00 00 01 31
                           01 31 01 31 01 31 07 69  6e 2d 61 64 64 72 04 61
                           72 70 61 00 00 0c 00 01  c0 0c 00 0c 00 01 00 00
                           02 cf 00 11 03 6f 6e 65  03 6f 6e 65 03 6f 6e 65
@@ -1046,7 +1046,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
 
 
   let mx_success () =
-    let data = Cstruct.of_hex {|85 5a 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|85 5a 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 0f 00 01 c0 0c
                           00 0f 00 01 00 00 0e 10  00 0f 00 0a 02 6d 78 05
                           72 6f 62 75 72 02 69 6f  00|}
@@ -1063,7 +1063,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let mx_fail_partial () =
-    let data = Cstruct.of_hex {|85 5a 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|85 5a 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 0f 00 01 c0 0c
                           00 0f 00 01 00 00 0e 10  00 0f 00 0a 02 6d 78 05
                           72 6f 62 75 72 02 69 6f|}
@@ -1072,7 +1072,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let mx_fail_leftover_inner () =
-    let data = Cstruct.of_hex {|85 5a 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|85 5a 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 0f 00 01 c0 0c
                           00 0f 00 01 00 00 0e 10  00 10 00 0a 02 6d 78 05
                           72 6f 62 75 72 02 69 6f  00 00|}
@@ -1081,7 +1081,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error (`Leftover (55, ""))) (decode data))
 
   let mx_fail_partial_inner () =
-    let data = Cstruct.of_hex {|85 5a 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|85 5a 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 0f 00 01 c0 0c
                           00 0f 00 01 00 00 0e 10  00 0e 00 0a 02 6d 78 05
                           72 6f 62 75 72 02 69 6f  00|}
@@ -1090,7 +1090,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let txt_success () =
-    let data = Cstruct.of_hex {|a9 f3 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|a9 f3 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 10 00 01 c0 0c
                           00 10 00 01 00 00 0e 10  00 0f 0e 76 3d 73 70 66
                           31 20 6d 78 20 2d 61 6c  6c|}
@@ -1107,7 +1107,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let txt_fail_partial () =
-    let data = Cstruct.of_hex {|a9 f3 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|a9 f3 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 10 00 01 c0 0c
                           00 10 00 01 00 00 0e 10  00 0f 0e 76 3d 73 70 66
                           31 20 6d 78 20 2d 61 6c  |}
@@ -1116,7 +1116,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let txt_fail_partial_inner () =
-    let data = Cstruct.of_hex {|a9 f3 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|a9 f3 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 10 00 01 c0 0c
                           00 10 00 01 00 00 0e 10  00 10 0e 76 3d 73 70 66
                           31 20 6d 78 20 2d 61 6c  6c 01|}
@@ -1125,7 +1125,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let aaaa_success () =
-    let data = Cstruct.of_hex {|c1 a8 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|c1 a8 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 1c 00 01 c0 0c
                           00 1c 00 01 00 00 0e 10  00 10 2a 0f 7c c7 7c c7
                           7c 40 00 00 00 00 00 00  01 38|}
@@ -1142,7 +1142,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let aaaa_fail_partial () =
-    let data = Cstruct.of_hex {|c1 a8 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|c1 a8 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 1c 00 01 c0 0c
                           00 1c 00 01 00 00 0e 10  00 10 2a 0f 7c c7 7c c7
                           7c 40 00 00 00 00 00 00  01|}
@@ -1151,7 +1151,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let aaaa_fail_leftover_inner () =
-    let data = Cstruct.of_hex {|c1 a8 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|c1 a8 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 1c 00 01 c0 0c
                           00 1c 00 01 00 00 0e 10  00 11 2a 0f 7c c7 7c c7
                           7c 40 00 00 00 00 00 00  01 38 00|}
@@ -1160,7 +1160,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error (`Leftover (56, ""))) (decode data))
 
   let aaaa_fail_partial_inner () =
-    let data = Cstruct.of_hex {|c1 a8 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|c1 a8 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 00 1c 00 01 c0 0c
                           00 1c 00 01 00 00 0e 10  00 08 2a 0f 7c c7 7c c7
                           7c 40 00 00 00 00 00 00  01 38|}
@@ -1169,7 +1169,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let srv_success () =
-    let data = Cstruct.of_hex {|03 ad 81 80 00 01  00 03 00 00 00 00 0c 5f
+    let data = Ohex.decode {|03 ad 81 80 00 01  00 03 00 00 00 00 0c 5f
                           78 6d 70 70 2d 73 65 72  76 65 72 04 5f 74 63 70
                           06 6a 61 62 62 65 72 03  63 63 63 02 64 65 00 00
                           21 00 01 c0 0c 00 21 00  01 00 00 1a 55 00 1d 00
@@ -1197,7 +1197,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let srv_fail_partial () =
-    let data = Cstruct.of_hex {|03 ad 81 80 00 01  00 03 00 00 00 00 0c 5f
+    let data = Ohex.decode {|03 ad 81 80 00 01  00 03 00 00 00 00 0c 5f
                           78 6d 70 70 2d 73 65 72  76 65 72 04 5f 74 63 70
                           06 6a 61 62 62 65 72 03  63 63 63 02 64 65 00 00
                           21 00 01 c0 0c 00 21 00  01 00 00 1a 55 00 1d 00
@@ -1214,7 +1214,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let srv_fail_leftover_inner () =
-    let data = Cstruct.of_hex {|03 ad 81 80 00 01  00 03 00 00 00 00 0c 5f
+    let data = Ohex.decode {|03 ad 81 80 00 01  00 03 00 00 00 00 0c 5f
                           78 6d 70 70 2d 73 65 72  76 65 72 04 5f 74 63 70
                           06 6a 61 62 62 65 72 03  63 63 63 02 64 65 00 00
                           21 00 01 c0 0c 00 21 00  01 00 00 1a 55 00 1e 00
@@ -1231,7 +1231,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error (`Leftover (90, ""))) (decode data))
 
   let srv_fail_partial_inner () =
-    let data = Cstruct.of_hex {|03 ad 81 80 00 01  00 03 00 00 00 00 0c 5f
+    let data = Ohex.decode {|03 ad 81 80 00 01  00 03 00 00 00 00 0c 5f
                           78 6d 70 70 2d 73 65 72  76 65 72 04 5f 74 63 70
                           06 6a 61 62 62 65 72 03  63 63 63 02 64 65 00 00
                           21 00 01 c0 0c 00 21 00  01 00 00 1a 55 00 1d 00
@@ -1248,7 +1248,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let sshfp_success () =
-    let data = Cstruct.of_hex {|98 e5 81 80 00 01  00 06 00 00 00 00 0f 72
+    let data = Ohex.decode {|98 e5 81 80 00 01  00 06 00 00 00 00 0f 72
                           65 64 70 69 6c 6c 6c 69  6e 70 72 6f 30 31 04 72
                           69 6e 67 05 6e 6c 6e 6f  67 03 6e 65 74 00 00 2c
                           00 01 c0 0c 00 2c 00 01  00 00 02 58 00 16 03 01
@@ -1271,12 +1271,12 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let host = n_of_s "redpilllinpro01.ring.nlnog.net" in
     let header = 0x98e5, Flags.(add `Recursion_desired (singleton `Recursion_available))
     and content =
-      let one = { Sshfp.algorithm = Ecdsa ; typ = SHA256 ; fingerprint = Cstruct.of_hex "20CFE8D906A4C38ABBBE8F5D04C2CAB8A00C8A803B51E252A1585F739098B02B" } in
-      let two = { Sshfp.algorithm = Ecdsa ; typ = SHA1 ; fingerprint = Cstruct.of_hex "3E46CECD986042E50626575231A4A155CB0EE5CA" } in
-      let three = { Sshfp.algorithm = Dsa ; typ = SHA256 ; fingerprint = Cstruct.of_hex "8A07B97B96D826A7D4D403424B97A8CCDB77105B527BE7D7BE835D02FDB9CD58" } in
-      let four = { Sshfp.algorithm = Dsa ; typ = SHA1 ; fingerprint = Cstruct.of_hex "613F389A36CF33B67D9BD69E381785B275E101CD" } in
-      let five = { Sshfp.algorithm = Rsa ; typ = SHA256 ; fingerprint = Cstruct.of_hex "CDB4CDAF7734DF343FD567E0CAB92FD6AC5F2754BFEF797826DFD4BCF90F0BAF" } in
-      let six = { Sshfp.algorithm = Rsa ; typ = SHA1 ; fingerprint = Cstruct.of_hex "5FCA087A7C3EBEBBC89B229A05AFD450D08CF9B3" } in
+      let one = { Sshfp.algorithm = Ecdsa ; typ = SHA256 ; fingerprint = Ohex.decode "20CFE8D906A4C38ABBBE8F5D04C2CAB8A00C8A803B51E252A1585F739098B02B" } in
+      let two = { Sshfp.algorithm = Ecdsa ; typ = SHA1 ; fingerprint = Ohex.decode "3E46CECD986042E50626575231A4A155CB0EE5CA" } in
+      let three = { Sshfp.algorithm = Dsa ; typ = SHA256 ; fingerprint = Ohex.decode "8A07B97B96D826A7D4D403424B97A8CCDB77105B527BE7D7BE835D02FDB9CD58" } in
+      let four = { Sshfp.algorithm = Dsa ; typ = SHA1 ; fingerprint = Ohex.decode "613F389A36CF33B67D9BD69E381785B275E101CD" } in
+      let five = { Sshfp.algorithm = Rsa ; typ = SHA256 ; fingerprint = Ohex.decode "CDB4CDAF7734DF343FD567E0CAB92FD6AC5F2754BFEF797826DFD4BCF90F0BAF" } in
+      let six = { Sshfp.algorithm = Rsa ; typ = SHA1 ; fingerprint = Ohex.decode "5FCA087A7C3EBEBBC89B229A05AFD450D08CF9B3" } in
       Name_rr_map.singleton host Sshfp
         (600l, Rr_map.Sshfp_set.(add one (add two (add three (add four (add five (singleton six)))))))
     in
@@ -1286,7 +1286,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let sshfp_fail_partial () =
-    let data = Cstruct.of_hex {|98 e5 81 80 00 01  00 06 00 00 00 00 0f 72
+    let data = Ohex.decode {|98 e5 81 80 00 01  00 06 00 00 00 00 0f 72
                           65 64 70 69 6c 6c 6c 69  6e 70 72 6f 30 31 04 72
                           69 6e 67 05 6e 6c 6e 6f  67 03 6e 65 74 00 00 2c
                           00 01 c0 0c 00 2c 00 01  00 00 02 58 00 16 03 01
@@ -1310,7 +1310,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let sshfp_fail_partial_inner () =
-    let data = Cstruct.of_hex {|98 e5 81 80 00 01  00 06 00 00 00 00 0f 72
+    let data = Ohex.decode {|98 e5 81 80 00 01  00 06 00 00 00 00 0f 72
                           65 64 70 69 6c 6c 6c 69  6e 70 72 6f 30 31 04 72
                           69 6e 67 05 6e 6c 6e 6f  67 03 6e 65 74 00 00 2c
                           00 01 c0 0c 00 2c 00 01  00 00 02 58 00 16 03 01
@@ -1332,7 +1332,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Error `Partial) (decode data))
 
   let tlsa_success () =
-    let data = Cstruct.of_hex {|e1 bf 81 80 00 01  00 04 00 00 00 00 0c 5f
+    let data = Ohex.decode {|e1 bf 81 80 00 01  00 04 00 00 00 00 0c 5f
                           6c 65 74 73 65 6e 63 72  79 70 74 04 5f 74 63 70
                           05 72 6f 62 75 72 04 63  6f 6f 70 00 00 34 00 01
                           c0 0c 00 34 00 01 00 00  0e 10 05 1d 00 00 00 30
@@ -1683,10 +1683,10 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let host = n_of_s "_letsencrypt._tcp.robur.coop" in
     let header = 0xe1bf, Flags.(add `Recursion_desired (singleton `Recursion_available))
     and content =
-      let tlsa1 = { Tlsa.cert_usage = Domain_issued_certificate ; selector = Private ; matching_type = No_hash ; data = Cstruct.of_hex "308204903082027802010030153113301106035504030C0A726F6275722E636F6F7030820222300D06092A864886F70D01010105000382020F003082020A028202010096913129A2123B1313A2B7CC36FC16A2E7A10BAD87DC847E26B544F70D306033B412D9DE0F4ADFD0085A5DB59C2B4038D9F34654E7BAFDD13FC7F3764D885CE63199292486ED9599F4D4492A5ADC4BDB6243C72EE71AB819B31DBDE70BCA513882F720D35DC4E441343825917CD9DE395E201D24EDA74376DA6A687B3A1143A0ABAD664F8A69C6DE3DA0A16D650D80276B7FDB82763893204401873A2AA90FF4807A90A6D93BFE7457E9F641480EAD4D694C4F80E7159BC8958C27C38D5733F50DD0EEE89B00F40E66D5D49796C1E29613F66690579E9A8136F64A7474BF00BF6A81CE480B83DE90275580567492441ADA2E529D68070D7AC3979E3E6D03656818B041277ECFB6960A4F7F43793F2D40690F7121F8F1AD652D1976CD646FF156F6ED08C3B21CBF072265447024F974FB578A33A8C50BA5859C987A8671810AC4F1F7A795F636068177A10C67987AC8A41160C719EA2323B735FDD95127F79421BE804AE0EB9D1C6E205F5B99F13D4F89AFCEFEC7AF75C7C288C6E3601E11E9CD02DBDBD677ED2D58A0065CBF8D29040324FDEF4E3173B9B6030ECEBA8B54C160780E701A5345DE06BA59FECD81C465E918A1C5855CACA1B11A5B29D311DEAA75B7D8EF4A926436D8E51986595018ECC69DDF69B7FACCE5E718E4277FE000C9E54D2FF075492AB660A8771D8FA3A4F973292CE985462FD44572F6E5146646E3910203010001A036303406092A864886F70D01090E3127302530230603551D11041C301A820A726F6275722E636F6F70820C2A2E726F6275722E636F6F70300D06092A864886F70D01010B050003820201006148DFC1BF348FEEEFE6F2E6DF2D28E3388E6DB2FB9A3430362019812D4AE03568784FF2077B84A108D74A0DA56CE312AF25D7DE7BF38FB015D1957D0BBFE3A384372D48BD3C77F065A5E68F5D7BD2052B1EA8E07139E04DF4D5DF42F55DB2C45E4F9F6686249A99AA7DF9BC08484A495011A011A6C5001CC97330E904B34E8465385658BD5305BEC919D0F1740487A9628963FA5FA584985B75F1B71814A7784CA2D12EA80FA8007D03CABD1506A9E002F7353314EC7303D436070969264161126E868888242E81413529B1F519AEAA72D10D830905CD0B75F233D9CCE8D7E4AC7430EC6F163ABBC62AF6BE658D612EEEF498D72E7CC11ED50AC7608758C801934140542FB2D85111BF23380FE963630C0FF71AD42BAD01C2288676D218BB10E155CA21157FFE6B6F63C7A1E346BBE8242E84CB9F03F3E734A56356953D79065E00C65DC6896AA5DEA9F02D765B7B422F0825946F18D80D3D6FB918FC191D8B5650CE78AFE84DE04AE765F4150911B340519DA9B950F30BE87D30FFED436A281BE79329901F9F333C95CE9A8E9FB01BB8584A5E87B4D2C86D2D3542148723A3E1EC44D910CF0A764BF8EE97233CF6C89F6AEEDD72E6B9C0F81A64FA681E288E8B44E7047CD88E1FC9977E62573938CB4BF088ECC2D0BD9D3425BAFB35E5368DB94B10701552A57DD996BC6709540D15C52AB00D0BF767C64A302F3736781D34" } in
-      let tlsa2 = { Tlsa.cert_usage = Domain_issued_certificate ; selector = Full_certificate ; matching_type = No_hash ; data = Cstruct.of_hex "3082062830820510A003020102021204097C41DEEA77A0694437DC69E0A3834F5B300D06092A864886F70D01010B05003032310B300906035504061302555331163014060355040A130D4C6574277320456E6372797074310B3009060355040313025233301E170D3231313130373233353332325A170D3232303230353233353332315A3015311330110603550403130A726F6275722E636F6F7030820222300D06092A864886F70D01010105000382020F003082020A028202010096913129A2123B1313A2B7CC36FC16A2E7A10BAD87DC847E26B544F70D306033B412D9DE0F4ADFD0085A5DB59C2B4038D9F34654E7BAFDD13FC7F3764D885CE63199292486ED9599F4D4492A5ADC4BDB6243C72EE71AB819B31DBDE70BCA513882F720D35DC4E441343825917CD9DE395E201D24EDA74376DA6A687B3A1143A0ABAD664F8A69C6DE3DA0A16D650D80276B7FDB82763893204401873A2AA90FF4807A90A6D93BFE7457E9F641480EAD4D694C4F80E7159BC8958C27C38D5733F50DD0EEE89B00F40E66D5D49796C1E29613F66690579E9A8136F64A7474BF00BF6A81CE480B83DE90275580567492441ADA2E529D68070D7AC3979E3E6D03656818B041277ECFB6960A4F7F43793F2D40690F7121F8F1AD652D1976CD646FF156F6ED08C3B21CBF072265447024F974FB578A33A8C50BA5859C987A8671810AC4F1F7A795F636068177A10C67987AC8A41160C719EA2323B735FDD95127F79421BE804AE0EB9D1C6E205F5B99F13D4F89AFCEFEC7AF75C7C288C6E3601E11E9CD02DBDBD677ED2D58A0065CBF8D29040324FDEF4E3173B9B6030ECEBA8B54C160780E701A5345DE06BA59FECD81C465E918A1C5855CACA1B11A5B29D311DEAA75B7D8EF4A926436D8E51986595018ECC69DDF69B7FACCE5E718E4277FE000C9E54D2FF075492AB660A8771D8FA3A4F973292CE985462FD44572F6E5146646E3910203010001A38202533082024F300E0603551D0F0101FF0404030205A0301D0603551D250416301406082B0601050507030106082B06010505070302300C0603551D130101FF04023000301D0603551D0E0416041455E79035FE745B6BE5CAA8DD5F538286B23C09C8301F0603551D23041830168014142EB317B75856CBAE500940E61FAF9D8B14C2C6305506082B0601050507010104493047302106082B060105050730018615687474703A2F2F72332E6F2E6C656E63722E6F7267302206082B060105050730028616687474703A2F2F72332E692E6C656E63722E6F72672F30230603551D11041C301A820C2A2E726F6275722E636F6F70820A726F6275722E636F6F70304C0603551D20044530433008060667810C0102013037060B2B0601040182DF130101013028302606082B06010505070201161A687474703A2F2F6370732E6C657473656E63727970742E6F726730820104060A2B06010401D6790204020481F50481F200F000760041C8CAB1DF22464A10C6A13A0942875E4E318B1B03EBEB4BC768F090629606F60000017CFD0912CA0000040300473045022100E8F77F832D24C2290FF7BB07677AE88B0AC2C38B96ACC7ADCDBF738478291E640220105FD79C34EDBCF828EE517A5D5D2CC60007A61CA2905B6366234318CBCD3D730076002979BEF09E393921F056739F63A577E5BE577D9C600AF8F94D5D265C255DC7840000017CFD09129E000004030047304502203A162928F0CDB6367D1480A15B589526F5979CCE94CC447BF6578B6BDE49A836022100C730FF24799C053662CA7A6BADD6D4DE8080CB4AEF44D56BDABB95872C8EE7BD300D06092A864886F70D01010B0500038201010078EE1CBF34F44E3FCA143FBADB36D51EB0D7FA75F5C74EDEFB3773807F9C555A154A7021A142E79C24340DC66B0D2DECFC3CE29EE7CC05FB570DB1F89E6FFBFC9520185E02727B8FDF01E3FE8EA21335A5AEFF3D86FD989D337F752D168961A034BE5EA92883A538250846DBE65C84628B09F49A2EADB324C40118DFD66DD7CB96726409B62B8776CF3643931CA3C2FCA899940A0EC4AE2E04660AD20D4EB3EB27F0DB14352589D02BA1B48A9DB26F2101DA93D3B252C92CCA97D8207DA12F879590CB3CC556A9D59A9F46FEFEE23CBF2C7C530272FCA225878168D5EB31F41219E9210C9C90914D85DB50C244DFA0106A53CC8F80CBFF78117DA2545D8DDF79" } in
-      let tlsa3 = { Tlsa.cert_usage =CA_constraint ; selector = Full_certificate; matching_type = No_hash ; data = Cstruct.of_hex "3082056030820448A00302010202104001772137D4E942B8EE76AA3C640AB7300D06092A864886F70D01010B0500303F31243022060355040A131B4469676974616C205369676E617475726520547275737420436F2E311730150603550403130E44535420526F6F74204341205833301E170D3231303132303139313430335A170D3234303933303138313430335A304F310B300906035504061302555331293027060355040A1320496E7465726E65742053656375726974792052657365617263682047726F7570311530130603550403130C4953524720526F6F7420583130820222300D06092A864886F70D01010105000382020F003082020A0282020100ADE82473F41437F39B9E2B57281C87BEDCB7DF38908C6E3CE657A078F775C2A2FEF56A6EF6004F28DBDE68866C4493B6B163FD14126BBF1FD2EA319B217ED1333CBA48F5DD79DFB3B8FF12F1219A4BC18A8671694A66666C8F7E3C70BFAD292206F3E4C0E680AEE24B8FB7997E94039FD347977C99482353E838AE4F0A6F832ED149578C8074B6DA2FD0388D7B0370211B75F2303CFA8FAEDDDA63ABEB164FC28E114B7ECF0BE8FFB5772EF4B27B4AE04C12250C708D0329A0E15324EC13D9EE19BF10B34A8C3F89A36151DEAC870794F46371EC2EE26F5B9881E1895C34796C76EF3B906279E6DBA49A2F26C5D010E10EDED9108E16FBB7F7A8F7C7E50207988F360895E7E237960D36759EFB0E72B11D9BBC03F94905D881DD05B42AD641E9AC0176950A0FD8DFD5BD121F352F28176CD298C1A80964776E4737BACEAC595E689D7F72D689C50641293E593EDD26F524C911A75AA34C401F46A199B5A73A516E863B9E7D72A712057859ED3E5178150B038F8DD02F05B23E7B4A1C4B730512FCC6EAE050137C439374B3CA74E78E1F0108D030D45B7136B407BAC130305C48B7823B98A67D608AA2A32982CCBABD83041BA2830341A1D605F11BC2B6F0A87C863B46A8482A88DC769A76BF1F6AA53D198FEB38F364DEC82B0D0A28FFF7DBE21542D422D0275DE179FE18E77088AD4EE6D98B3AC6DD27516EFFBC64F533434F0203010001A382014630820142300F0603551D130101FF040530030101FF300E0603551D0F0101FF040403020106304B06082B06010505070101043F303D303B06082B06010505073002862F687474703A2F2F617070732E6964656E74727573742E636F6D2F726F6F74732F647374726F6F74636178332E703763301F0603551D23041830168014C4A7B1A47B2C71FADBE14B9075FFC4156085891030540603551D20044D304B3008060667810C010201303F060B2B0601040182DF130101013030302E06082B060105050702011622687474703A2F2F6370732E726F6F742D78312E6C657473656E63727970742E6F7267303C0603551D1F043530333031A02FA02D862B687474703A2F2F63726C2E6964656E74727573742E636F6D2F445354524F4F544341583343524C2E63726C301D0603551D0E0416041479B459E67BB6E5E40173800888C81A58F6E99B6E300D06092A864886F70D01010B050003820101000A73006C966EFF0E52D0AEDD8CE75A06AD2FA8E38FBFC90A031550C2E56C42BB6F9BF4B44FC244880875CCEB079B14626E78DEEC27BA395CF5A2A16E5694701053B1BBE4AFD0A2C32B01D496F4C5203533F9D86136E0718DB4B8B5AA824595C0F2A92328E7D6A1CB6708DAA0432CAA1B931FC9DEF5AB695D13F55B865822CA4D55E470676DC257C5463941CF8A5883586D99FE57E8360EF00E23AAFD8897D0E35C0E9449B5B51735D22EBF4E85EF18E08592EB063B6C29230960DC45024C12183BE9FB0EDEDC44F85898AEEABD4545A1885D66CAFE10E96F82C811420DFBE9ECE38600DE9D10E338FAA47DB1D8E8498284069B2BE86B4F010C38772EF9DDE739" } in
-      let tlsa4 = { Tlsa.cert_usage = CA_constraint ; selector = Full_certificate ; matching_type = No_hash ; data = Cstruct.of_hex "30820516308202FEA003020102021100912B084ACF0C18A753F6D62E25A75F5A300D06092A864886F70D01010B0500304F310B300906035504061302555331293027060355040A1320496E7465726E65742053656375726974792052657365617263682047726F7570311530130603550403130C4953524720526F6F74205831301E170D3230303930343030303030305A170D3235303931353136303030305A3032310B300906035504061302555331163014060355040A130D4C6574277320456E6372797074310B300906035504031302523330820122300D06092A864886F70D01010105000382010F003082010A0282010100BB021528CCF6A094D30F12EC8D5592C3F882F199A67A4288A75D26AAB52BB9C54CB1AF8E6BF975C8A3D70F4794145535578C9EA8A23919F5823C42A94E6EF53BC32EDB8DC0B05CF35938E7EDCF69F05A0B1BBEC094242587FA3771B313E71CACE19BEFDBE43B45524596A9C153CE34C852EEB5AEED8FDE6070E2A554ABB66D0E97A540346B2BD3BC66EB66347CFA6B8B8F572999F830175DBA726FFB81C5ADD286583D17C7E709BBF12BF786DCC1DA715DD446E3CCAD25C188BC60677566B3F118F7A25CE653FF3A88B647A5FF1318EA9809773F9D53F9CF01E5F5A6701714AF63A4FF99B3939DDC53A706FE48851DA169AE2575BB13CC5203F5ED51A18BDB150203010001A382010830820104300E0603551D0F0101FF040403020186301D0603551D250416301406082B0601050507030206082B0601050507030130120603551D130101FF040830060101FF020100301D0603551D0E04160414142EB317B75856CBAE500940E61FAF9D8B14C2C6301F0603551D2304183016801479B459E67BB6E5E40173800888C81A58F6E99B6E303206082B0601050507010104263024302206082B060105050730028616687474703A2F2F78312E692E6C656E63722E6F72672F30270603551D1F0420301E301CA01AA0188616687474703A2F2F78312E632E6C656E63722E6F72672F30220603551D20041B30193008060667810C010201300D060B2B0601040182DF13010101300D06092A864886F70D01010B0500038202010085CA4E473EA3F7854485BCD56778B29863AD754D1E963D336572542D81A0EAC3EDF820BF5FCCB77000B76E3BF65E94DEE4209FA6EF8BB203E7A2B5163C91CEB4ED3902E77C258A47E6656E3F46F4D9F0CE942BEE54CE12BC8C274BB8C1982FA2AFCD71914A08B7C8B8237B042D08F908573E83D904330A472178098227C32AC89BB9CE5CF264C8C0BE79C04F8E6D440C5E92BB2EF78B10E1E81D4429DB5920ED63B921F81226949357A01D6504C10A22AE100D4397A1181F7EE0E08637B55AB1BD30BF876E2B2AFF214E1B05C3F51897F05EACC3A5B86AF02EBC3B33B9EE4BDECCFCE4AF840B863FC0554336F668E136176A8E99D1FFA540A734B7C0D063393539756EF2BA76C89302E9A94B6C17CE0C02D9BD81FB9FB768D40665B3823D7753F88E7903AD0A3107752A43D8559772C4290EF7C45D4EC8AE468430D7F2855F18A179BBE75E708B07E18693C3B98FDC6171252AAFDFED255052688B92DCE5D6B5E3DA7DD0876C842131AE82F5FBB9ABC889173DE14CE5380EF6BD2BBD968114EBD5DB3D20A77E59D3E2F858F95BB848CDFE5C4F1629FE1E5523AFC811B08DEA7C9390172FFDACA20947463FF0E9B0B7FF284D6832D6675E1E69A393B8F59D8B2F0BD25243A66F3257654D3281DF3853855D7E5D6629EAB8DDE495B5CDB5561242CDC44EC6253844506DECCE005518FEE94964D44ECA979CB45BC073A8ABB847C2" } in
+      let tlsa1 = { Tlsa.cert_usage = Domain_issued_certificate ; selector = Private ; matching_type = No_hash ; data = Ohex.decode "308204903082027802010030153113301106035504030C0A726F6275722E636F6F7030820222300D06092A864886F70D01010105000382020F003082020A028202010096913129A2123B1313A2B7CC36FC16A2E7A10BAD87DC847E26B544F70D306033B412D9DE0F4ADFD0085A5DB59C2B4038D9F34654E7BAFDD13FC7F3764D885CE63199292486ED9599F4D4492A5ADC4BDB6243C72EE71AB819B31DBDE70BCA513882F720D35DC4E441343825917CD9DE395E201D24EDA74376DA6A687B3A1143A0ABAD664F8A69C6DE3DA0A16D650D80276B7FDB82763893204401873A2AA90FF4807A90A6D93BFE7457E9F641480EAD4D694C4F80E7159BC8958C27C38D5733F50DD0EEE89B00F40E66D5D49796C1E29613F66690579E9A8136F64A7474BF00BF6A81CE480B83DE90275580567492441ADA2E529D68070D7AC3979E3E6D03656818B041277ECFB6960A4F7F43793F2D40690F7121F8F1AD652D1976CD646FF156F6ED08C3B21CBF072265447024F974FB578A33A8C50BA5859C987A8671810AC4F1F7A795F636068177A10C67987AC8A41160C719EA2323B735FDD95127F79421BE804AE0EB9D1C6E205F5B99F13D4F89AFCEFEC7AF75C7C288C6E3601E11E9CD02DBDBD677ED2D58A0065CBF8D29040324FDEF4E3173B9B6030ECEBA8B54C160780E701A5345DE06BA59FECD81C465E918A1C5855CACA1B11A5B29D311DEAA75B7D8EF4A926436D8E51986595018ECC69DDF69B7FACCE5E718E4277FE000C9E54D2FF075492AB660A8771D8FA3A4F973292CE985462FD44572F6E5146646E3910203010001A036303406092A864886F70D01090E3127302530230603551D11041C301A820A726F6275722E636F6F70820C2A2E726F6275722E636F6F70300D06092A864886F70D01010B050003820201006148DFC1BF348FEEEFE6F2E6DF2D28E3388E6DB2FB9A3430362019812D4AE03568784FF2077B84A108D74A0DA56CE312AF25D7DE7BF38FB015D1957D0BBFE3A384372D48BD3C77F065A5E68F5D7BD2052B1EA8E07139E04DF4D5DF42F55DB2C45E4F9F6686249A99AA7DF9BC08484A495011A011A6C5001CC97330E904B34E8465385658BD5305BEC919D0F1740487A9628963FA5FA584985B75F1B71814A7784CA2D12EA80FA8007D03CABD1506A9E002F7353314EC7303D436070969264161126E868888242E81413529B1F519AEAA72D10D830905CD0B75F233D9CCE8D7E4AC7430EC6F163ABBC62AF6BE658D612EEEF498D72E7CC11ED50AC7608758C801934140542FB2D85111BF23380FE963630C0FF71AD42BAD01C2288676D218BB10E155CA21157FFE6B6F63C7A1E346BBE8242E84CB9F03F3E734A56356953D79065E00C65DC6896AA5DEA9F02D765B7B422F0825946F18D80D3D6FB918FC191D8B5650CE78AFE84DE04AE765F4150911B340519DA9B950F30BE87D30FFED436A281BE79329901F9F333C95CE9A8E9FB01BB8584A5E87B4D2C86D2D3542148723A3E1EC44D910CF0A764BF8EE97233CF6C89F6AEEDD72E6B9C0F81A64FA681E288E8B44E7047CD88E1FC9977E62573938CB4BF088ECC2D0BD9D3425BAFB35E5368DB94B10701552A57DD996BC6709540D15C52AB00D0BF767C64A302F3736781D34" } in
+      let tlsa2 = { Tlsa.cert_usage = Domain_issued_certificate ; selector = Full_certificate ; matching_type = No_hash ; data = Ohex.decode "3082062830820510A003020102021204097C41DEEA77A0694437DC69E0A3834F5B300D06092A864886F70D01010B05003032310B300906035504061302555331163014060355040A130D4C6574277320456E6372797074310B3009060355040313025233301E170D3231313130373233353332325A170D3232303230353233353332315A3015311330110603550403130A726F6275722E636F6F7030820222300D06092A864886F70D01010105000382020F003082020A028202010096913129A2123B1313A2B7CC36FC16A2E7A10BAD87DC847E26B544F70D306033B412D9DE0F4ADFD0085A5DB59C2B4038D9F34654E7BAFDD13FC7F3764D885CE63199292486ED9599F4D4492A5ADC4BDB6243C72EE71AB819B31DBDE70BCA513882F720D35DC4E441343825917CD9DE395E201D24EDA74376DA6A687B3A1143A0ABAD664F8A69C6DE3DA0A16D650D80276B7FDB82763893204401873A2AA90FF4807A90A6D93BFE7457E9F641480EAD4D694C4F80E7159BC8958C27C38D5733F50DD0EEE89B00F40E66D5D49796C1E29613F66690579E9A8136F64A7474BF00BF6A81CE480B83DE90275580567492441ADA2E529D68070D7AC3979E3E6D03656818B041277ECFB6960A4F7F43793F2D40690F7121F8F1AD652D1976CD646FF156F6ED08C3B21CBF072265447024F974FB578A33A8C50BA5859C987A8671810AC4F1F7A795F636068177A10C67987AC8A41160C719EA2323B735FDD95127F79421BE804AE0EB9D1C6E205F5B99F13D4F89AFCEFEC7AF75C7C288C6E3601E11E9CD02DBDBD677ED2D58A0065CBF8D29040324FDEF4E3173B9B6030ECEBA8B54C160780E701A5345DE06BA59FECD81C465E918A1C5855CACA1B11A5B29D311DEAA75B7D8EF4A926436D8E51986595018ECC69DDF69B7FACCE5E718E4277FE000C9E54D2FF075492AB660A8771D8FA3A4F973292CE985462FD44572F6E5146646E3910203010001A38202533082024F300E0603551D0F0101FF0404030205A0301D0603551D250416301406082B0601050507030106082B06010505070302300C0603551D130101FF04023000301D0603551D0E0416041455E79035FE745B6BE5CAA8DD5F538286B23C09C8301F0603551D23041830168014142EB317B75856CBAE500940E61FAF9D8B14C2C6305506082B0601050507010104493047302106082B060105050730018615687474703A2F2F72332E6F2E6C656E63722E6F7267302206082B060105050730028616687474703A2F2F72332E692E6C656E63722E6F72672F30230603551D11041C301A820C2A2E726F6275722E636F6F70820A726F6275722E636F6F70304C0603551D20044530433008060667810C0102013037060B2B0601040182DF130101013028302606082B06010505070201161A687474703A2F2F6370732E6C657473656E63727970742E6F726730820104060A2B06010401D6790204020481F50481F200F000760041C8CAB1DF22464A10C6A13A0942875E4E318B1B03EBEB4BC768F090629606F60000017CFD0912CA0000040300473045022100E8F77F832D24C2290FF7BB07677AE88B0AC2C38B96ACC7ADCDBF738478291E640220105FD79C34EDBCF828EE517A5D5D2CC60007A61CA2905B6366234318CBCD3D730076002979BEF09E393921F056739F63A577E5BE577D9C600AF8F94D5D265C255DC7840000017CFD09129E000004030047304502203A162928F0CDB6367D1480A15B589526F5979CCE94CC447BF6578B6BDE49A836022100C730FF24799C053662CA7A6BADD6D4DE8080CB4AEF44D56BDABB95872C8EE7BD300D06092A864886F70D01010B0500038201010078EE1CBF34F44E3FCA143FBADB36D51EB0D7FA75F5C74EDEFB3773807F9C555A154A7021A142E79C24340DC66B0D2DECFC3CE29EE7CC05FB570DB1F89E6FFBFC9520185E02727B8FDF01E3FE8EA21335A5AEFF3D86FD989D337F752D168961A034BE5EA92883A538250846DBE65C84628B09F49A2EADB324C40118DFD66DD7CB96726409B62B8776CF3643931CA3C2FCA899940A0EC4AE2E04660AD20D4EB3EB27F0DB14352589D02BA1B48A9DB26F2101DA93D3B252C92CCA97D8207DA12F879590CB3CC556A9D59A9F46FEFEE23CBF2C7C530272FCA225878168D5EB31F41219E9210C9C90914D85DB50C244DFA0106A53CC8F80CBFF78117DA2545D8DDF79" } in
+      let tlsa3 = { Tlsa.cert_usage =CA_constraint ; selector = Full_certificate; matching_type = No_hash ; data = Ohex.decode "3082056030820448A00302010202104001772137D4E942B8EE76AA3C640AB7300D06092A864886F70D01010B0500303F31243022060355040A131B4469676974616C205369676E617475726520547275737420436F2E311730150603550403130E44535420526F6F74204341205833301E170D3231303132303139313430335A170D3234303933303138313430335A304F310B300906035504061302555331293027060355040A1320496E7465726E65742053656375726974792052657365617263682047726F7570311530130603550403130C4953524720526F6F7420583130820222300D06092A864886F70D01010105000382020F003082020A0282020100ADE82473F41437F39B9E2B57281C87BEDCB7DF38908C6E3CE657A078F775C2A2FEF56A6EF6004F28DBDE68866C4493B6B163FD14126BBF1FD2EA319B217ED1333CBA48F5DD79DFB3B8FF12F1219A4BC18A8671694A66666C8F7E3C70BFAD292206F3E4C0E680AEE24B8FB7997E94039FD347977C99482353E838AE4F0A6F832ED149578C8074B6DA2FD0388D7B0370211B75F2303CFA8FAEDDDA63ABEB164FC28E114B7ECF0BE8FFB5772EF4B27B4AE04C12250C708D0329A0E15324EC13D9EE19BF10B34A8C3F89A36151DEAC870794F46371EC2EE26F5B9881E1895C34796C76EF3B906279E6DBA49A2F26C5D010E10EDED9108E16FBB7F7A8F7C7E50207988F360895E7E237960D36759EFB0E72B11D9BBC03F94905D881DD05B42AD641E9AC0176950A0FD8DFD5BD121F352F28176CD298C1A80964776E4737BACEAC595E689D7F72D689C50641293E593EDD26F524C911A75AA34C401F46A199B5A73A516E863B9E7D72A712057859ED3E5178150B038F8DD02F05B23E7B4A1C4B730512FCC6EAE050137C439374B3CA74E78E1F0108D030D45B7136B407BAC130305C48B7823B98A67D608AA2A32982CCBABD83041BA2830341A1D605F11BC2B6F0A87C863B46A8482A88DC769A76BF1F6AA53D198FEB38F364DEC82B0D0A28FFF7DBE21542D422D0275DE179FE18E77088AD4EE6D98B3AC6DD27516EFFBC64F533434F0203010001A382014630820142300F0603551D130101FF040530030101FF300E0603551D0F0101FF040403020106304B06082B06010505070101043F303D303B06082B06010505073002862F687474703A2F2F617070732E6964656E74727573742E636F6D2F726F6F74732F647374726F6F74636178332E703763301F0603551D23041830168014C4A7B1A47B2C71FADBE14B9075FFC4156085891030540603551D20044D304B3008060667810C010201303F060B2B0601040182DF130101013030302E06082B060105050702011622687474703A2F2F6370732E726F6F742D78312E6C657473656E63727970742E6F7267303C0603551D1F043530333031A02FA02D862B687474703A2F2F63726C2E6964656E74727573742E636F6D2F445354524F4F544341583343524C2E63726C301D0603551D0E0416041479B459E67BB6E5E40173800888C81A58F6E99B6E300D06092A864886F70D01010B050003820101000A73006C966EFF0E52D0AEDD8CE75A06AD2FA8E38FBFC90A031550C2E56C42BB6F9BF4B44FC244880875CCEB079B14626E78DEEC27BA395CF5A2A16E5694701053B1BBE4AFD0A2C32B01D496F4C5203533F9D86136E0718DB4B8B5AA824595C0F2A92328E7D6A1CB6708DAA0432CAA1B931FC9DEF5AB695D13F55B865822CA4D55E470676DC257C5463941CF8A5883586D99FE57E8360EF00E23AAFD8897D0E35C0E9449B5B51735D22EBF4E85EF18E08592EB063B6C29230960DC45024C12183BE9FB0EDEDC44F85898AEEABD4545A1885D66CAFE10E96F82C811420DFBE9ECE38600DE9D10E338FAA47DB1D8E8498284069B2BE86B4F010C38772EF9DDE739" } in
+      let tlsa4 = { Tlsa.cert_usage = CA_constraint ; selector = Full_certificate ; matching_type = No_hash ; data = Ohex.decode "30820516308202FEA003020102021100912B084ACF0C18A753F6D62E25A75F5A300D06092A864886F70D01010B0500304F310B300906035504061302555331293027060355040A1320496E7465726E65742053656375726974792052657365617263682047726F7570311530130603550403130C4953524720526F6F74205831301E170D3230303930343030303030305A170D3235303931353136303030305A3032310B300906035504061302555331163014060355040A130D4C6574277320456E6372797074310B300906035504031302523330820122300D06092A864886F70D01010105000382010F003082010A0282010100BB021528CCF6A094D30F12EC8D5592C3F882F199A67A4288A75D26AAB52BB9C54CB1AF8E6BF975C8A3D70F4794145535578C9EA8A23919F5823C42A94E6EF53BC32EDB8DC0B05CF35938E7EDCF69F05A0B1BBEC094242587FA3771B313E71CACE19BEFDBE43B45524596A9C153CE34C852EEB5AEED8FDE6070E2A554ABB66D0E97A540346B2BD3BC66EB66347CFA6B8B8F572999F830175DBA726FFB81C5ADD286583D17C7E709BBF12BF786DCC1DA715DD446E3CCAD25C188BC60677566B3F118F7A25CE653FF3A88B647A5FF1318EA9809773F9D53F9CF01E5F5A6701714AF63A4FF99B3939DDC53A706FE48851DA169AE2575BB13CC5203F5ED51A18BDB150203010001A382010830820104300E0603551D0F0101FF040403020186301D0603551D250416301406082B0601050507030206082B0601050507030130120603551D130101FF040830060101FF020100301D0603551D0E04160414142EB317B75856CBAE500940E61FAF9D8B14C2C6301F0603551D2304183016801479B459E67BB6E5E40173800888C81A58F6E99B6E303206082B0601050507010104263024302206082B060105050730028616687474703A2F2F78312E692E6C656E63722E6F72672F30270603551D1F0420301E301CA01AA0188616687474703A2F2F78312E632E6C656E63722E6F72672F30220603551D20041B30193008060667810C010201300D060B2B0601040182DF13010101300D06092A864886F70D01010B0500038202010085CA4E473EA3F7854485BCD56778B29863AD754D1E963D336572542D81A0EAC3EDF820BF5FCCB77000B76E3BF65E94DEE4209FA6EF8BB203E7A2B5163C91CEB4ED3902E77C258A47E6656E3F46F4D9F0CE942BEE54CE12BC8C274BB8C1982FA2AFCD71914A08B7C8B8237B042D08F908573E83D904330A472178098227C32AC89BB9CE5CF264C8C0BE79C04F8E6D440C5E92BB2EF78B10E1E81D4429DB5920ED63B921F81226949357A01D6504C10A22AE100D4397A1181F7EE0E08637B55AB1BD30BF876E2B2AFF214E1B05C3F51897F05EACC3A5B86AF02EBC3B33B9EE4BDECCFCE4AF840B863FC0554336F668E136176A8E99D1FFA540A734B7C0D063393539756EF2BA76C89302E9A94B6C17CE0C02D9BD81FB9FB768D40665B3823D7753F88E7903AD0A3107752A43D8559772C4290EF7C45D4EC8AE468430D7F2855F18A179BBE75E708B07E18693C3B98FDC6171252AAFDFED255052688B92DCE5D6B5E3DA7DD0876C842131AE82F5FBB9ABC889173DE14CE5380EF6BD2BBD968114EBD5DB3D20A77E59D3E2F858F95BB848CDFE5C4F1629FE1E5523AFC811B08DEA7C9390172FFDACA20947463FF0E9B0B7FF284D6832D6675E1E69A393B8F59D8B2F0BD25243A66F3257654D3281DF3853855D7E5D6629EAB8DDE495B5CDB5561242CDC44EC6253844506DECCE005518FEE94964D44ECA979CB45BC073A8ABB847C2" } in
       Name_rr_map.singleton host Tlsa
         (3600l, Rr_map.Tlsa_set.(add tlsa1 (add tlsa2 (add tlsa3 (singleton tlsa4)))))
     in
@@ -1696,7 +1696,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let caa_success () =
-    let data = Cstruct.of_hex {|2b 9b 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|2b 9b 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 01 01 00 01 c0 0c
                           01 01 00 01 00 00 0e 10  00 16 80 05 69 73 73 75
                           65 6c 65 74 73 65 6e 63  72 79 70 74 2e 6f 72 67|}
@@ -1714,7 +1714,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let caa_fail_partial () =
-    let data = Cstruct.of_hex {|2b 9b 81 80 00 01  00 01 00 00 00 00 05 72
+    let data = Ohex.decode {|2b 9b 81 80 00 01  00 01 00 00 00 00 05 72
                           6f 62 75 72 04 63 6f 6f  70 00 01 01 00 01 c0 0c
                           01 01 00 01 00 00 0e 10  00 16 80 05 69 73 73 75
                           65 6c 65 74 73 65 6e 63  72 79 70 74 2e 6f 72|}
@@ -1724,7 +1724,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
 
 
   let dnskey_success () =
-    let data = Cstruct.of_hex {| 58 1d 81 80 00 01  00 03 00 00 00 00 04 63
+    let data = Ohex.decode {| 58 1d 81 80 00 01  00 03 00 00 00 00 04 63
                           6f 6f 70 00 00 30 00 01  c0 0c 00 30 00 01 00 00
                           0d bd 00 88 01 00 03 08  03 01 00 01 b0 16 c5 b1
                           c0 a1 ea c9 9d 1c ae 3d  38 32 21 e4 c3 77 5c 0b
@@ -1771,19 +1771,19 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
         Dnskey.({
           flags = F.add `Zone (F.singleton `Secure_entry_point) ;
           algorithm = RSA_SHA256 ;
-          key = Cstruct.of_string (Base64.decode_exn b64)})
+          key = Base64.decode_exn b64})
       and key2 =
         let b64 = "AwEAAbAWxbHAoerJnRyuPTgyIeTDd1wL+uLAze3FbTcOr6BTXChr09WCVH/bQl8D0xHndnAnSyIDaTAlpI/W6p0s26x9zsKo/IaFKR+r+c7As+4w1SJhRAEk/22HT57UdYiUsPdSWfXdeT7dZOrnDL4WN/h1SA1HjI8P0J/AGLFVbkFV" in
         Dnskey.({
           flags = F.singleton `Zone ;
           algorithm = RSA_SHA256 ;
-          key = Cstruct.of_string (Base64.decode_exn b64)})
+          key = Base64.decode_exn b64})
       and key3 =
         let b64 = "AwEAAd1nNLyB8bKSXKavopmT2UiUi8wPxIF8jfKFI2gn/S+fN/uSuDQLzNPINucU1xd/bXgM+ZBDWfh/PZDwpqowG1uEYRs8v9TuuiHSRabWpXf+9+LNh6h72m7FfOOGh6SubPQbrA6OCsr7dz12tN4tEAnNkpUkDX0vCt0CS86fI/gN" in
         Dnskey.({
           flags = F.singleton `Zone ;
           algorithm = RSA_SHA256 ;
-          key = Cstruct.of_string (Base64.decode_exn b64)})
+          key = Base64.decode_exn b64})
       in
       Name_rr_map.singleton host Dnskey
         (3517l, Rr_map.Dnskey_set.(add key3 (add key2 (singleton key1))))
@@ -1794,7 +1794,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let ds_success () =
-    let data = Cstruct.of_hex {|04 1f 81 80 00 01  00 02 00 00 00 00 04 63
+    let data = Ohex.decode {|04 1f 81 80 00 01  00 02 00 00 00 00 04 63
                           6f 6f 70 00 00 2b 00 01  c0 0c 00 2b 00 01 00 01
                           31 c3 00 18 26 e9 08 01  f9 37 0f ae af 0b 84 64
                           b7 c8 80 21 36 a0 3f c9  6d 8f f2 00 c0 0c 00 2b
@@ -1805,8 +1805,8 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let host = n_of_s "coop" in
     let header = 0x041f, Flags.(add `Recursion_desired (singleton `Recursion_available))
     and content =
-      let ds1 = Ds.{ key_tag = 9961 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA256 ; digest = Cstruct.of_hex "7464849B6C08384030D135D156559691DB98804CE1DAB9891447CA45B594EF36"}
-      and ds2 = Ds.{ key_tag = 9961 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA1 ; digest = Cstruct.of_hex "F9370FAEAF0B8464B7C8802136A03FC96D8FF200" }
+      let ds1 = Ds.{ key_tag = 9961 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA256 ; digest = Ohex.decode "7464849B6C08384030D135D156559691DB98804CE1DAB9891447CA45B594EF36"}
+      and ds2 = Ds.{ key_tag = 9961 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA1 ; digest = Ohex.decode "F9370FAEAF0B8464B7C8802136A03FC96D8FF200" }
       in
       Name_rr_map.singleton host Ds
         (78275l, Rr_map.Ds_set.(add ds2 (singleton ds1)))
@@ -1817,7 +1817,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let rrsig_success () =
-    let data = Cstruct.of_hex {|6d ec 81 80 00 01  00 03 00 00 00 01 0a 63
+    let data = Ohex.decode {|6d ec 81 80 00 01  00 03 00 00 00 01 0a 63
                               6c 6f 75 64 66 6c 61 72  65 03 63 6f 6d 00 00 01
                               00 01 c0 0c 00 01 00 01  00 00 01 29 00 04 68 10
                               85 e5 c0 0c 00 01 00 01  00 00 01 29 00 04 68 10
@@ -1843,7 +1843,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                   signature_inception = of_d_t (2021, 12, 28) ((17, 20, 15), 0) ;
                   key_tag = 34505 ;
                   signer_name = n_of_s "cloudflare.com" ;
-                  signature = Cstruct.of_string (Base64.decode_exn "fErDVDh08A/02+1Yf+Sqqgu/vYMqzMHwQlVEe61DnoO6WAw4o3wa5xP+v47dOWttw8IGnoKHjttc+oiCue5axg==")
+                  signature = Base64.decode_exn "fErDVDh08A/02+1Yf+Sqqgu/vYMqzMHwQlVEe61DnoO6WAw4o3wa5xP+v47dOWttw8IGnoKHjttc+oiCue5axg=="
                 }
       in
       Domain_name.Map.singleton host
@@ -1856,7 +1856,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 (Ok res) (decode data))
 
   let nsec_success () =
-    let data = Cstruct.of_hex {|38 51 81 80 00 01  00 01 00 00 00 00 06 66
+    let data = Ohex.decode {|38 51 81 80 00 01  00 01 00 00 00 00 06 66
                           6f 6f 6f 6f 6f 0a 63 6c  6f 75 64 66 6c 61 72 65
                           03 63 6f 6d 00 00 2f 00  01 c0 0c 00 2f 00 01 00
                           00 01 2c 00 21 01 00 06  66 6f 6f 6f 6f 6f 0a 63
@@ -1875,10 +1875,10 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "nsec decodes"
                 (Ok res) (decode data));
     let encoded, _ = Packet.encode `Udp res in
-    Alcotest.(check bool "nsec encodes" true (Cstruct.equal data encoded))
+    Alcotest.(check bool "nsec encodes" true (String.equal data encoded))
 
   let nsec_success2 () =
-    let data = Cstruct.of_hex {|38 51 81 80 00 01  00 01 00 00 00 00 06 66
+    let data = Ohex.decode {|38 51 81 80 00 01  00 01 00 00 00 00 06 66
                           6f 6f 6f 6f 6f 0a 63 6c  6f 75 64 66 6c 61 72 65
                           03 63 6f 6d 00 00 2f 00  01 c0 0c 00 2f 00 01 00
                           00 01 2c 00 22 01 00 06  66 6f 6f 6f 6f 6f 0a 63
@@ -1898,10 +1898,10 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "nsec decodes"
                 (Ok res) (decode data));
     let encoded, _ = Packet.encode `Udp res in
-    Alcotest.(check bool "nsec encodes" true (Cstruct.equal data encoded))
+    Alcotest.(check bool "nsec encodes" true (String.equal data encoded))
 
   let nsec3_success () =
-    let data = Cstruct.of_hex {|8f ab 81 83 00 01  00 00 00 06 00 01 03 61
+    let data = Ohex.decode {|8f ab 81 83 00 01  00 00 00 06 00 01 03 61
                               61 61 05 73 73 68 66 70  03 6e 65 74 00 00 2b 00
                               01 c0 10 00 06 00 01 00  00 00 85 00 3b 03 6e 73
                               30 08 77 65 62 65 72 64  6e 73 02 64 65 00 09 77
@@ -1992,29 +1992,29 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 signature_inception = of_d_t (2021, 12, 25) ((23, 34, 53), 0) ;
                 key_tag = 31055 ;
                 signer_name = domain ;
-                signature = Cstruct.of_string (Base64.decode_exn "Nd0DwHXp8I+mI5AaTVzhUiutAtPRpUNSjfN2CDhe7COwhYBxAokT1H0kDik5ZFEv8OAwwWnGDuD8fuUIsRl7sn7/KA58Rc+IJYclNN7LSclYOcfHgMzxr3Mta9YHQQKINLWJtcaZ+DDgsnDK+0PIcY6O2bYODQpI74mmd1c8CORH7EBwQJUPDUzgdl3LNkgCgluTWoTD1skljiKZEV0sA3L4MmKg4t9QiUrPrLnZRCS9gFvLt5SwQOfDZa5GuQDUFIPIcxw6XpQppV8Tc/m6fHtOGIKn6hIKv+EofWckcHav6PUBYaf3uhH3RR5JvhljLBnfioNXrJ3flLddXQ9JPA==")
+                signature = Base64.decode_exn "Nd0DwHXp8I+mI5AaTVzhUiutAtPRpUNSjfN2CDhe7COwhYBxAokT1H0kDik5ZFEv8OAwwWnGDuD8fuUIsRl7sn7/KA58Rc+IJYclNN7LSclYOcfHgMzxr3Mta9YHQQKINLWJtcaZ+DDgsnDK+0PIcY6O2bYODQpI74mmd1c8CORH7EBwQJUPDUzgdl3LNkgCgluTWoTD1skljiKZEV0sA3L4MmKg4t9QiUrPrLnZRCS9gFvLt5SwQOfDZa5GuQDUFIPIcxw6XpQppV8Tc/m6fHtOGIKn6hIKv+EofWckcHav6PUBYaf3uhH3RR5JvhljLBnfioNXrJ3flLddXQ9JPA=="
               }
       and nsec3_1 =
         let types = Bit_map.of_list [1;2;6;16;28;46;48;51;257] in
-        Nsec3.{ flags = None ; iterations = 20 ; salt = Cstruct.of_hex "7B1A90A916197E45D0772ABCB6441156" ; next_owner_hashed = Cstruct.of_hex "88026CD0EC9BCAB31502811BFB8E8C8D356DD978" ; types }
+        Nsec3.{ flags = None ; iterations = 20 ; salt = Ohex.decode "7B1A90A916197E45D0772ABCB6441156" ; next_owner_hashed = Ohex.decode "88026CD0EC9BCAB31502811BFB8E8C8D356DD978" ; types }
       and rrsig_nsec3_1 =
         Rrsig.{ type_covered = 50 ; algorithm = Dnskey.RSA_SHA512 ; label_count = 3 ; original_ttl = 180l ;
                 signature_expiration = of_d_t (2022, 01, 13) ((11, 43, 57), 0) ;
                 signature_inception = of_d_t (2021, 12, 14) ((11, 00, 40), 0) ;
                 key_tag = 31055 ;
                 signer_name = domain ;
-                signature = Cstruct.of_string (Base64.decode_exn "R8QV6C9RqNIVOZ8J+46OPWkB3Ddve2yuXnegyLZyNnNj57vGQWTxFBVtm3mj/BJlW6y280l6G4MJZ6z099xm3McnmEGLLh/pWBUBSbKRsfwdGeIVbD7OKy6taNn4fXoXYNtnA1Dog9gbWfbunlQOmF722Dvl9qaisnPv+MJO6BcnJZVZPyqiDHl0beQSNIMp957WrcpvbLEP4q3kPuOBKHRydYqqfNolUuSgVouq+CoIJSTVmChfuTAieepHuEsmdbDCWU3pEoetFUdArDbKGxPYqZyQdgZPkQvYC0tmm7w5XCI4LCqP8f7/ZDjUSKz6WfDlqgV/DpKODb4XpyE0Rw==")
+                signature = Base64.decode_exn "R8QV6C9RqNIVOZ8J+46OPWkB3Ddve2yuXnegyLZyNnNj57vGQWTxFBVtm3mj/BJlW6y280l6G4MJZ6z099xm3McnmEGLLh/pWBUBSbKRsfwdGeIVbD7OKy6taNn4fXoXYNtnA1Dog9gbWfbunlQOmF722Dvl9qaisnPv+MJO6BcnJZVZPyqiDHl0beQSNIMp957WrcpvbLEP4q3kPuOBKHRydYqqfNolUuSgVouq+CoIJSTVmChfuTAieepHuEsmdbDCWU3pEoetFUdArDbKGxPYqZyQdgZPkQvYC0tmm7w5XCI4LCqP8f7/ZDjUSKz6WfDlqgV/DpKODb4XpyE0Rw=="
               }
       and nsec3_2 =
         let types = Bit_map.of_list [16;46] in
-        Nsec3.{ flags = None ; iterations = 20 ; salt = Cstruct.of_hex "7B1A90A916197E45D0772ABCB6441156" ; next_owner_hashed = Cstruct.of_hex "DD585CDC286F148EF0C923CF0E4330CAC1001EB0" ; types }
+        Nsec3.{ flags = None ; iterations = 20 ; salt = Ohex.decode "7B1A90A916197E45D0772ABCB6441156" ; next_owner_hashed = Ohex.decode "DD585CDC286F148EF0C923CF0E4330CAC1001EB0" ; types }
       and rrsig_nsec3_2 =
         Rrsig.{ type_covered = 50 ; algorithm = Dnskey.RSA_SHA512 ; label_count = 3 ; original_ttl = 180l ;
                 signature_expiration = of_d_t (2022, 01, 13) ((13, 12, 32), 0) ;
                 signature_inception = of_d_t (2021, 12, 14) ((12, 50, 51), 0) ;
                 key_tag = 31055 ;
                 signer_name = domain ;
-                signature = Cstruct.of_string (Base64.decode_exn "Hx1pCbjUfMJZqUrX+EvYJyuwAUZAEJevvoFrQ3WmRDvIKrw0mWYaEZlZzCKi8PkmmxLhRLyXghKSbC3QmClpa7Nojm1fUdPcRGUvzbnxNKjTCAy4FDKMTIy7tE5Vy9d0w4C3eOw0j+7WQj73d1TUjH3xT8iCszpQIWjNarU3zQKFXHzWtFA/aEdDmIa19/mF7iUBhGXf7GfpTwujZ2L0M3T5ezVQu5Jqe+7KzhQEFQvg5z+OK0/aUJxitOEh+k8TDSt5zHiR7vc+pscPm52MyXB4tPmRqBMyqxBXy+OnoMQkGx1qv0suR+byN2P+D5WNqKcdazzUt0ctLrsw9eUWIA==")
+                signature = Base64.decode_exn "Hx1pCbjUfMJZqUrX+EvYJyuwAUZAEJevvoFrQ3WmRDvIKrw0mWYaEZlZzCKi8PkmmxLhRLyXghKSbC3QmClpa7Nojm1fUdPcRGUvzbnxNKjTCAy4FDKMTIy7tE5Vy9d0w4C3eOw0j+7WQj73d1TUjH3xT8iCszpQIWjNarU3zQKFXHzWtFA/aEdDmIa19/mF7iUBhGXf7GfpTwujZ2L0M3T5ezVQu5Jqe+7KzhQEFQvg5z+OK0/aUJxitOEh+k8TDSt5zHiR7vc+pscPm52MyXB4tPmRqBMyqxBXy+OnoMQkGx1qv0suR+byN2P+D5WNqKcdazzUt0ctLrsw9eUWIA=="
               }
       in
       Domain_name.Map.(
@@ -2068,7 +2068,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       Domain_name.Map.singleton host (Rr_map.singleton Loc (3600l, Rr_map.Loc_set.singleton loc))
     in
     let res = create header q (`Answer (content, Name_rr_map.empty)) in
-    let _ = Format.printf "%a\n" Cstruct.hexdump_pp (fst (encode `Udp res)) in
+    let _ = Format.printf "%a\n" (Ohex.pp_hexdump ()) (fst (encode `Udp res)) in
     let _ =
       Format.printf "%a\n" pp (match (decode data) with
       | Ok t -> t
@@ -2077,7 +2077,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "Loc decodes" (Ok res) (decode data))
 
   let loc_decode () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
         (* RFC1876 section 2 *)
         "00" ^ (* version *)
@@ -2097,7 +2097,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_decode_min () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
       (* RDATA *)
       (* RFC1876 section 2 *)
@@ -2118,7 +2118,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_decode_min_negated () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
       (* RDATA *)
       (* RFC1876 section 2 *)
@@ -2139,7 +2139,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_decode_max () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
       (* RDATA *)
       (* RFC1876 section 2 *)
@@ -2160,7 +2160,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_decode_max_inverted () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
       (* RDATA *)
       (* RFC1876 section 2 *)
@@ -2181,7 +2181,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_decode_alt_signed_max_under () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
       (* RDATA *)
       (* RFC1876 section 2 *)
@@ -2202,7 +2202,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_decode_alt_signed_max () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
       (* RDATA *)
       (* RFC1876 section 2 *)
@@ -2223,7 +2223,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_decode_alt_signed_max_over () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
       (* RDATA *)
       (* RFC1876 section 2 *)
@@ -2244,7 +2244,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_leftover () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
         (* RFC1876 section 2 *)
         "00" ^ (* version *)
@@ -2264,7 +2264,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_leftover_inner () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       (* RFC1035 section 4.1 *)
       (* header *)
       "11 11 81 80 00 01 00 01 00 00 00 00" ^
@@ -2308,7 +2308,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     loc_decode_helper data loc
 
   let loc_fail_partial () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       loc_packet_preamble ^
       (* RDATA *)
       (* RFC1876 section 2 *)
@@ -2323,7 +2323,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     Alcotest.(check (result t_ok p_err) "short LOC decodes" (Error `Partial) (decode data))
 
   let loc_fail_partial_inner () =
-    let data = Cstruct.of_hex (
+    let data = Ohex.decode (
       (* RFC1035 section 4.1 *)
       (* header *)
       "11 11 81 80 00 01 00 01 00 00 00 00" ^
@@ -2369,7 +2369,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
       Domain_name.Map.singleton host (Rr_map.singleton Loc (3600l, Rr_map.Loc_set.singleton loc))
     in
     let res = create header q (`Answer (content, Name_rr_map.empty)) in
-    let _ = Format.printf "%a" Cstruct.hexdump_pp (fst (encode `Udp res)) in
+    let _ = Format.printf "%a" (Ohex.pp_hexdump ()) (fst (encode `Udp res)) in
     Alcotest.(check (result t_ok p_err) "Loc encodes" (Ok res) (decode (fst (encode `Udp res))))
 
   let loc_encode_min () =

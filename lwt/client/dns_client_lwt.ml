@@ -25,7 +25,7 @@ module Transport : Dns_client.S
     (* TODO: avoid race, use a mvar instead of condition *)
     mutable fd : [ `Plain of Lwt_unix.file_descr | `Tls of Tls_lwt.Unix.t ] option ;
     mutable connected_condition : (unit, [ `Msg of string ]) result Lwt_condition.t option ;
-    mutable requests : (Cstruct.t * (Cstruct.t, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
+    mutable requests : (string * (string, [ `Msg of string ]) result Lwt_condition.t) IM.t ;
     he : Happy_eyeballs_lwt.t ;
   }
   type context = t
@@ -165,9 +165,9 @@ module Transport : Dns_client.S
     Lwt.catch (fun () ->
       match fd with
       | `Plain fd ->
-        Lwt_unix.send fd (Cstruct.to_bytes tx) 0
-          (Cstruct.length tx) [] >>= fun res ->
-        if res <> Cstruct.length tx then
+        Lwt_unix.send fd (Bytes.unsafe_of_string tx) 0
+          (String.length tx) [] >>= fun res ->
+        if res <> String.length tx then
           Lwt_result.fail (`Msg ("oops" ^ (string_of_int res)))
         else
           Lwt_result.return ()
@@ -176,11 +176,11 @@ module Transport : Dns_client.S
       (fun e -> Lwt.return (Error (`Msg (Printexc.to_string e))))
 
   let send_recv (t : context) tx =
-    if Cstruct.length tx > 4 then
+    if String.length tx > 4 then
       match t.fd with
       | None -> Lwt.return (Error (`Msg "no connection to the nameserver established"))
       | Some fd ->
-        let id = Cstruct.BE.get_uint16 tx 2 in
+        let id = String.get_uint16_be tx 2 in
         with_timeout t.timeout_ns
           (let open Lwt_result.Infix in
            send_query fd tx >>= fun () ->
@@ -197,20 +197,20 @@ module Transport : Dns_client.S
   let bind = Lwt.bind
   let lift = Lwt.return
 
-  let rec read_loop ?(linger = Cstruct.empty) (t : t) fd =
+  let rec read_loop ?(linger = "") (t : t) fd =
     Lwt.catch (fun () ->
       match fd with
       | `Plain fd ->
-        let recv_buffer = Bytes.make 2048 '\000' in
+        let recv_buffer = Bytes.create 2048 in
         Lwt_unix.recv fd recv_buffer 0 (Bytes.length recv_buffer) [] >|= fun r ->
-        (r, Cstruct.of_bytes recv_buffer)
+        (r, recv_buffer)
       | `Tls fd ->
-        let recv_buffer = Cstruct.create 2048 in
+        let recv_buffer = Bytes.create 2048 in
         Tls_lwt.Unix.read fd recv_buffer >|= fun r ->
         (r, recv_buffer))
      (fun e ->
       Log.err (fun m -> m "error %s reading from resolver" (Printexc.to_string e));
-      Lwt.return (0, Cstruct.empty)) >>= function
+      Lwt.return (0, Bytes.empty)) >>= function
      | (0, _) ->
        (match fd with
        | `Plain fd -> close_socket fd
@@ -220,16 +220,16 @@ module Transport : Dns_client.S
          Log.info (fun m -> m "end of file reading from resolver")
      | (read_len, cs) ->
        let rec handle_data data =
-         let cs_len = Cstruct.length data in
+         let cs_len = String.length data in
          if cs_len > 2 then
-           let len = Cstruct.BE.get_uint16 data 0 in
+           let len = String.get_uint16_be data 0 in
            if cs_len - 2 >= len then
              let packet, rest =
                if cs_len - 2 = len
-               then data, Cstruct.empty
-               else Cstruct.split data (len + 2)
+               then data, ""
+               else String.sub data 0 (len + 2), String.sub data (len + 2) (String.length data - len - 2)
              in
-             let id = Cstruct.BE.get_uint16 packet 2 in
+             let id = String.get_uint16_be packet 2 in
              (match IM.find_opt id t.requests with
               | None -> Log.warn (fun m -> m "received unsolicited data, ignoring")
               | Some (_, cond) ->
@@ -240,8 +240,8 @@ module Transport : Dns_client.S
          else
            read_loop ~linger:data t fd
        in
-       let cs = Cstruct.sub cs 0 read_len in
-       handle_data (if Cstruct.length linger = 0 then cs else Cstruct.append linger cs)
+       let cs = String.sub (Bytes.unsafe_to_string cs) 0 read_len in
+       handle_data (if String.length linger = 0 then cs else linger ^ cs)
 
   let req_all fd t =
     IM.fold (fun _id (data, _) r ->

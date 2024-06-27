@@ -138,8 +138,7 @@ module Transport : Dns_client.S
       with e ->
         Error (`Msg (Printexc.to_string e))
 
-  let send_recv ctx (tx : Cstruct.t) =
-    let str = Cstruct.to_string tx in
+  let send_recv ctx (str : string) =
     try
       begin match
           with_timeout ctx (fun fd ->
@@ -157,7 +156,7 @@ module Transport : Dns_client.S
               Unix.setsockopt_float fd Unix.SO_RCVTIMEO (Duration.to_f ctx.timeout_ns);
               let x = Unix.recv fd buffer 0 (Bytes.length buffer) [] in
               if x > 0 && x <= Bytes.length buffer then
-                Ok (Cstruct.of_bytes buffer ~len:x)
+                Ok (String.sub (Bytes.unsafe_to_string buffer) 0 x)
               else
                 Error (`Msg "Reading from NS socket failed"))
       end

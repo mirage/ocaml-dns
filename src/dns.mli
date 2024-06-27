@@ -349,7 +349,7 @@ module Dnskey : sig
   type t = {
     flags : F.t ;
     algorithm :  algorithm ; (* u_int8_t *)
-    key : Cstruct.t ;
+    key : string ;
   }
   (** The type of a DNSKEY record. *)
 
@@ -371,7 +371,7 @@ module Dnskey : sig
   val pp_name_key : ([ `raw ] Domain_name.t * t) Fmt.t
   (** [pp_name_key (name, key)] pretty-prints the dnskey and name pair. *)
 
-  val digest_prep : [ `raw ] Domain_name.t -> t -> Cstruct.t
+  val digest_prep : [ `raw ] Domain_name.t -> t -> string
   (** [digest_prep name key] encodes name and key into a buffer, as preparation
       for computing its digest (for DS records). *)
 
@@ -393,7 +393,7 @@ module Rrsig : sig
     signature_inception : Ptime.t ;
     key_tag : int ;
     signer_name : [ `raw ] Domain_name.t ;
-    signature : Cstruct.t
+    signature : string
   }
   (** The type of a RRSIG. *)
 
@@ -430,7 +430,7 @@ module Ds : sig
     key_tag : int ;
     algorithm : Dnskey.algorithm ;
     digest_type : digest_type ;
-    digest : Cstruct.t
+    digest : string
   }
   (** The type of delegation signer resource records. *)
 
@@ -474,8 +474,8 @@ module Nsec3 : sig
   type t = {
     flags : f option ;
     iterations : int ;
-    salt : Cstruct.t ;
-    next_owner_hashed : Cstruct.t ;
+    salt : string ;
+    next_owner_hashed : string ;
     types : Bit_map.t ;
   }
   (** The type of Nsec3. *)
@@ -570,7 +570,7 @@ module Tlsa : sig
     cert_usage : cert_usage ;
     selector : selector ;
     matching_type : matching_type ;
-    data : Cstruct.t ;
+    data : string ;
   }
   (** The type of a TLSA record: certificate usage, selector, matching type,
       and data. *)
@@ -631,7 +631,7 @@ module Sshfp : sig
   type t = {
     algorithm : algorithm ;
     typ : typ ;
-    fingerprint : Cstruct.t ;
+    fingerprint : string ;
   }
   (** The type of a SSH fingerprint record, consisting of algorithm, typ, and
      actual fingerprint. *)
@@ -686,7 +686,7 @@ module Tsig : sig
     algorithm : algorithm ;
     signed : Ptime.t ;
     fudge : Ptime.Span.t ;
-    mac : Cstruct.t ;
+    mac : string ;
     original_id : int ; (* again 16 bit *)
     error : Rcode.t ;
     other : Ptime.t option
@@ -697,13 +697,13 @@ module Tsig : sig
      to signal non-synchronized clocks). *)
 
   val tsig : algorithm:algorithm -> signed:Ptime.t ->
-    ?fudge:Ptime.span -> ?mac:Cstruct.t -> ?original_id:int ->
+    ?fudge:Ptime.span -> ?mac:string -> ?original_id:int ->
     ?error:Rcode.t -> ?other:Ptime.t -> unit -> t option
   (** [tsig ~algorithm ~signed ~fudge ~mac ~original_id ~error ~other ()]
      constructs a transaction signature [t] if possible (timestamp needs to
      fit into 48 bit as seconds since Unix epoch). *)
 
-  val with_mac : t -> Cstruct.t -> t
+  val with_mac : t -> string -> t
   (** [with_mac t mac] updates [t] with [mac]. *)
 
   val with_error : t -> Rcode.t -> t
@@ -724,12 +724,12 @@ module Tsig : sig
   (** [equal a b] compares the transaction signature [a] with [b], and is [true]
      if they are equal, [false] otherwise. *)
 
-  val encode_raw : [ `raw ] Domain_name.t -> t -> Cstruct.t
+  val encode_raw : [ `raw ] Domain_name.t -> t -> string
   (** [encode_raw name t] encodes the transaction signature [t] as resource
      record using [name]. The mac is not included, this is used for computing
      the signature. *)
 
-  val encode_full : [ `raw ] Domain_name.t -> t -> Cstruct.t
+  val encode_full : [ `raw ] Domain_name.t -> t -> string
   (** [encode_full name t] encodes the transaction signature [t] as resource
      record using [name]. *)
 
@@ -750,11 +750,11 @@ end
     and encode. *)
 module Edns : sig
   type extension =
-    | Nsid of Cstruct.t
-    | Cookie of Cstruct.t
+    | Nsid of string
+    | Cookie of string
     | Tcp_keepalive of int option
     | Padding of int
-    | Extension of int * Cstruct.t
+    | Extension of int * string
   (** The type of supported extensions. *)
 
   type t = private {
@@ -786,7 +786,7 @@ module Edns : sig
   val pp : t Fmt.t
   (** [pp ppf t] pretty-prints the EDNS record [t] on [ppf]. *)
 
-  val allocate_and_encode : t -> Cstruct.t
+  val allocate_and_encode : t -> string
   (** [allocate_and_encode t] allocates a buffer and encodes [t] into that
       buffer. *)
 end
@@ -836,7 +836,7 @@ end
 
 (** Null records *)
 module Null : sig
-  type t = Cstruct.t
+  type t = string
   (** The type of a Null record. *)
 
   val pp : t Fmt.t
@@ -969,9 +969,9 @@ module Rr_map : sig
   (** [with_ttl k v ttl] updates [ttl] in [v]. *)
 
   val prep_for_sig : [`raw] Domain_name.t -> Rrsig.t -> 'a key -> 'a ->
-    ([`raw] Domain_name.t * Cstruct.t, [ `Msg of string ]) result
+    ([`raw] Domain_name.t * string, [ `Msg of string ]) result
 
-  val canonical_encoded_name : [`raw] Domain_name.t -> Cstruct.t
+  val canonical_encoded_name : [`raw] Domain_name.t -> string
 
 end
 
@@ -1288,7 +1288,7 @@ module Packet : sig
   val pp_err : err Fmt.t
   (** [pp_err ppf err] pretty-prints the decode error [err] on [ppf]. *)
 
-  val decode : Cstruct.t -> (t, err) result
+  val decode : string -> (t, err) result
   (** [decode cs] decode the binary data [cs] to a DNS packet [t] or an error. *)
 
   type mismatch = [ `Not_a_reply of request
@@ -1315,20 +1315,20 @@ module Packet : sig
   (** [size_edns max_size edns protocol query] computes the size of the reply
      packet, and optionally an EDNS record. *)
 
-  val encode : ?max_size:int -> proto -> t -> Cstruct.t * int
+  val encode : ?max_size:int -> proto -> t -> string * int
   (** [encode ~max_size protocol t] allocates a buffer and encodes the DNS
      packet [t] into it. If the maximum size (depending on [max_size] and
      [protocol]) is reached, the truncation flag is set. The last component of
      the result is the maximum size. *)
 
   val encode_axfr_reply : ?max_size:int -> int -> proto -> t -> Axfr.t ->
-    Cstruct.t list * int
+    string list * int
   (** [encode_axfr_reply ~max_size tsig_size protocol t axfr] encodes the [axfr]
       into a list of buffers to be sent out (each with at least [tsig_size]
       space for a tsig signature. The second component of the result is the
       maximum size (dependent on [max_size] and [protocol]). *)
 
-  val raw_error : Cstruct.t -> Rcode.t -> Cstruct.t option
+  val raw_error : string -> Rcode.t -> string option
   (** [raw_error cs rcode] is an error reply with [rcode] to [cs], or None if
      [cs] is already a reply. *)
 end
@@ -1346,18 +1346,18 @@ module Tsig_op : sig
   val pp_e : e Fmt.t
   (** [pp_e ppf e] pretty-prints the verification error [e] on [ppf]. *)
 
-  type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.t ->
-    [ `raw ] Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> Cstruct.t ->
-    (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
+  type verify = ?mac:string -> Ptime.t -> Packet.t ->
+    [ `raw ] Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> string ->
+    (Tsig.t * string * Dnskey.t, e * string option) result
   (** The type of a verification function. The [mac] contains data for a reply
      to a signed request. *)
 
   val no_verify : verify
   (** [no_verify] always returns an error. *)
 
-  type sign = ?mac:Cstruct.t -> ?max_size:int -> [ `raw ] Domain_name.t ->
-    Tsig.t -> key:Dnskey.t -> Packet.t -> Cstruct.t ->
-    (Cstruct.t * Cstruct.t) option
+  type sign = ?mac:string -> ?max_size:int -> [ `raw ] Domain_name.t ->
+    Tsig.t -> key:Dnskey.t -> Packet.t -> string ->
+    (string * string) option
   (** The type of a signature function. The [mac] contains data for a reply to
      a signed request. *)
 
