@@ -14,43 +14,44 @@ let algorithm_to_nc = function
 
 let compute_tsig name tsig ~key buf =
   let raw_name = Domain_name.raw name in
-  let h = algorithm_to_nc tsig.Tsig.algorithm
+  let h = (algorithm_to_nc tsig.Tsig.algorithm :> Digestif.hash')
   and data = Tsig.encode_raw raw_name tsig
   in
-  Mirage_crypto.Hash.mac h ~key (Cstruct.append buf data)
+  let module H = (val (Digestif.module_of_hash' h)) in
+  H.hmac_string ~key (buf ^ data) |> H.to_raw_string
 
 let ( let* ) = Result.bind
 
 let guard p err = if p then Ok () else Error err
 
 (* TODO: should name compression be done?  atm it's convenient not to do it *)
-let add_tsig ?max_size name tsig buf =
-  Cstruct.BE.set_uint16 buf 10 (succ (Cstruct.BE.get_uint16 buf 10)) ;
+let add_tsig ?max_size name tsig str =
+  let buf = Bytes.of_string str in
+  Bytes.set_uint16_be buf 10 (succ (Bytes.get_uint16_be buf 10)) ;
   let tsig = Tsig.encode_full name tsig in
   match max_size with
-  | Some x when x - Cstruct.length buf < Cstruct.length tsig -> None
-  | _ -> Some (Cstruct.(append buf tsig))
+  | Some x when x - Bytes.length buf < String.length tsig -> None
+  | _ -> Some (Bytes.unsafe_to_string buf ^ tsig)
 
 let mac_to_prep = function
-  | None -> Cstruct.create 0
+  | None -> ""
   | Some mac ->
-    let l = Cstruct.create 2 in
-    Cstruct.BE.set_uint16 l 0 (Cstruct.length mac) ;
-    Cstruct.append l mac
+    let l = Bytes.create 2 in
+    Bytes.set_uint16_be l 0 (String.length mac) ;
+    Bytes.unsafe_to_string l ^ mac
 
-let sign ?mac ?max_size name tsig ~key p buf =
-  match Base64.decode (Cstruct.to_string key.Dnskey.key) with
+let sign ?mac ?max_size name tsig ~key p str =
+  match Base64.decode key.Dnskey.key with
   | Error _ -> None
   | Ok key ->
-    let key = Cstruct.of_string key in
     let prep = mac_to_prep mac in
-    let mac = compute_tsig name tsig ~key (Cstruct.append prep buf) in
+    let mac = compute_tsig name tsig ~key (prep ^ str) in
     let tsig = Tsig.with_mac tsig mac in
     (* RFC2845 Sec 3.1: if TSIG leads to truncation, alter message:
        - header stays (truncated = true)!
        - only question is preserved
        - _one_ additional, the TSIG itself *)
-    match add_tsig ?max_size name tsig buf with
+    match add_tsig ?max_size name tsig str with
     | Some out -> Some (out, mac)
     | None ->
       match p.Packet.data with
@@ -68,15 +69,15 @@ let sign ?mac ?max_size name tsig ~key p buf =
         in
         let p' = Packet.create header p.question (`Rcode_error (rc, op, None)) in
         let new_buf, off = Packet.encode `Udp p' in
-        let tbs = Cstruct.sub new_buf 0 off in
-        let mac = compute_tsig name tsig ~key (Cstruct.append prep tbs) in
+        let tbs = String.sub new_buf 0 off in
+        let mac = compute_tsig name tsig ~key (prep ^ tbs) in
         let tsig = Tsig.with_mac tsig mac in
         match add_tsig name tsig new_buf with
         | None ->
           Log.err (fun m -> m "dns_tsig sign failed query %a with tsig %a too big (max_size %a) truncated packet %a:@.%a"
                     Packet.pp p Tsig.pp tsig Packet.pp p'
                     Fmt.(option ~none:(any "none") int) max_size
-                    Cstruct.hexdump_pp new_buf) ;
+                    Ohex.pp new_buf) ;
           None
         | Some out -> Some (out, mac)
 
@@ -85,16 +86,17 @@ let verify_raw ?mac now name ~key tsig tbs =
   let* priv =
     Result.map_error
       (fun _ -> `Bad_key (name, tsig))
-      (Base64.decode (Cstruct.to_string key.Dnskey.key))
+      (Base64.decode key.Dnskey.key)
   in
-  let ac = Cstruct.BE.get_uint16 tbs 10 in
-  Cstruct.BE.set_uint16 tbs 10 (pred ac) ;
+  let ac = String.get_int16_be tbs 10 in
+  let tbs = Bytes.of_string tbs in
+  Bytes.set_int16_be tbs 10 (pred ac) ;
+  let tbs = Bytes.unsafe_to_string tbs in
   let prep = mac_to_prep mac in
-  let priv = Cstruct.of_string priv in
-  let computed = compute_tsig name tsig ~key:priv (Cstruct.append prep tbs) in
+  let computed = compute_tsig name tsig ~key:priv (prep ^ tbs) in
   let mac = tsig.Tsig.mac in
-  let* () = guard (Cstruct.length mac = Cstruct.length computed) (`Bad_truncation (name, tsig)) in
-  let* () = guard (Cstruct.equal computed mac) (`Invalid_mac (name, tsig)) in
+  let* () = guard (String.length mac = String.length computed) (`Bad_truncation (name, tsig)) in
+  let* () = guard (String.equal computed mac) (* Eqaf? *) (`Invalid_mac (name, tsig)) in
   let* () = guard (Tsig.valid_time now tsig) (`Bad_timestamp (name, tsig, key)) in
   let* tsig =
     Option.to_result ~none:(`Bad_timestamp (name, tsig, key))
@@ -114,7 +116,7 @@ let verify ?mac now p name ?key tsig tbs =
   | Ok x -> Ok x
   | Error e ->
     Log.err (fun m -> m "error %a while verifying %a" Tsig_op.pp_e e Packet.pp p);
-    let answer = match p.Packet.data with
+    let answer : string option = match p.Packet.data with
       | #Packet.reply -> None
       | #Packet.request as r ->
         (* now we prepare a reply for the request! *)
@@ -128,13 +130,13 @@ let verify ?mac now p name ?key tsig tbs =
         let or_err f err = match f err with None -> Some err | Some x -> Some x in
         match e with
         | `Bad_key (name, tsig) ->
-          let tsig = Tsig.with_error (Tsig.with_mac tsig Cstruct.empty) Rcode.BadKey in
+          let tsig = Tsig.with_error (Tsig.with_mac tsig String.empty) Rcode.BadKey in
           or_err (add_tsig ~max_size name tsig) err
         | `Invalid_mac (name, tsig) ->
-          let tsig = Tsig.with_error (Tsig.with_mac tsig Cstruct.empty) Rcode.BadVersOrSig in
+          let tsig = Tsig.with_error (Tsig.with_mac tsig String.empty) Rcode.BadVersOrSig in
           or_err (add_tsig ~max_size name tsig) err
         | `Bad_truncation (name, tsig) ->
-          let tsig = Tsig.with_error (Tsig.with_mac tsig (Cstruct.create 0)) Rcode.BadTrunc in
+          let tsig = Tsig.with_error (Tsig.with_mac tsig String.empty) Rcode.BadTrunc in
           or_err (add_tsig ~max_size name tsig) err
         | `Bad_timestamp (name, tsig, key) ->
           let tsig = Tsig.with_error tsig Rcode.BadTime in
@@ -185,7 +187,7 @@ let decode_and_verify now key keyname ?mac buf =
   | Error e -> Error (`Decode e)
   | Ok ({ Packet.tsig = None ; _ } as res) -> Error (`Unsigned res)
   | Ok ({ Packet.tsig = Some (name, tsig, tsig_off) ; _ } as res) when Domain_name.equal keyname name ->
-    begin match verify_raw ?mac now raw_keyname ~key tsig (Cstruct.sub buf 0 tsig_off) with
+    begin match verify_raw ?mac now raw_keyname ~key tsig (String.sub buf 0 tsig_off) with
       | Ok (_, mac) -> Ok (res, tsig, mac)
       | Error e -> Error (`Crypto e)
     end
