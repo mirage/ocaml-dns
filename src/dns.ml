@@ -864,7 +864,7 @@ module Dnskey = struct
     names, off + 4 + kl
 
   let key_tag t =
-    let data = Bytes.create (4 + String.length t.key) in
+    let data = Bytes.make (4 + String.length t.key) '\000' in
     let _names, _off = encode t Domain_name.Map.empty data 0 in
     let rec go idx ac =
       if idx >= Bytes.length data then
@@ -886,7 +886,7 @@ module Dnskey = struct
 
   let digest_prep owner t =
     let kl = String.length t.key in
-    let buf = Bytes.create (kl + 255 + 4) in (* key length + max name + 4 *)
+    let buf = Bytes.make (kl + 255 + 4) '\000' in (* key length + max name + 4 *)
     let names = Domain_name.Map.empty in
     let _, off = Name.encode ~compress:false owner names buf 0 in
     let _, off' = encode t names buf off in
@@ -1017,7 +1017,7 @@ module Rrsig = struct
   let prep_rrsig rrsig =
     (* from RFC 4034 section 3.1.8.1 *)
     (* this buffer may be too small... *)
-    let tbs = Bytes.create 4096 in
+    let tbs = Bytes.make 4096 '\000' in
     let rrsig_raw = canonical { rrsig with signature = "" } in
     let _, off = encode rrsig_raw Domain_name.Map.empty tbs 0 in
     tbs, off
@@ -2033,7 +2033,7 @@ module Tsig = struct
     names, off + 16 + mac_len + other_len
 
   let name_to_buf name =
-    let buf = Bytes.create 255
+    let buf = Bytes.make 255 '\000'
     and emp = Domain_name.Map.empty
     in
     let _, off = Name.encode ~compress:false name emp buf 0 in
@@ -2043,20 +2043,20 @@ module Tsig = struct
     let name = name_to_buf (Domain_name.canonical name)
     and aname = name_to_buf (algorithm_to_name t.algorithm)
     in
-    let clttl = Bytes.create 6 in
+    let clttl = Bytes.make 6 '\000' in
     Bytes.set_uint16_be clttl 0 Class.(to_int ANY_CLASS) ;
     Bytes.set_int32_be clttl 2 0l ;
-    let time = Bytes.create 8 in
+    let time = Bytes.make 8 '\000' in
     encode_48bit_time time t.signed ;
     encode_16bit_time time ~off:6 t.fudge ;
     let other =
       let buf = match t.other with
         | None ->
-          let buf = Bytes.create 4 in
+          let buf = Bytes.make 4 '\000' in
           Bytes.set_uint16_be buf 2 0 ;
           buf
         | Some t ->
-          let buf = Bytes.create 10 in
+          let buf = Bytes.make 10 '\000' in
           Bytes.set_uint16_be buf 2 6 ;
           encode_48bit_time buf ~off:4 t ;
           buf
@@ -2073,20 +2073,20 @@ module Tsig = struct
   let encode_full name t =
     let name, clttl, mid, fin = encode_raw_tsig_base name t in
     let typ =
-      let typ = Bytes.create 2 in
+      let typ = Bytes.make 2 '\000' in
       Bytes.set_uint16_be typ 0 rtyp ;
       Bytes.unsafe_to_string typ
     and mac =
       let len = String.length t.mac in
-      let l = Bytes.create 2 in
+      let l = Bytes.make 2 '\000' in
       Bytes.set_uint16_be l 0 len ;
-      let orig = Bytes.create 2 in
+      let orig = Bytes.make 2 '\000' in
       Bytes.set_uint16_be orig 0 t.original_id ;
       [ Bytes.unsafe_to_string l ; t.mac ; Bytes.unsafe_to_string orig ]
     in
     let rdata = String.concat "" (mid @ mac @ [ fin ]) in
     let len =
-      let buf = Bytes.create 2 in
+      let buf = Bytes.make 2 '\000' in
       Bytes.set_uint16_be buf 0 (String.length rdata) ;
       Bytes.unsafe_to_string buf
     in
@@ -2161,7 +2161,7 @@ module Edns = struct
       (match i with
        | None -> ""
        | Some i ->
-         let buf = Bytes.create 2 in
+         let buf = Bytes.make 2 '\000' in
          Bytes.set_uint16_be buf 0 i ;
          Bytes.unsafe_to_string buf)
     | Padding i -> String.make i '\x00'
@@ -2301,7 +2301,7 @@ module Edns = struct
 
   let allocate_and_encode edns =
     (* this is unwise! *)
-    let buf = Bytes.create 128 in
+    let buf = Bytes.make 128 '\000' in
     let off = encode edns buf 0 in
     String.sub (Bytes.unsafe_to_string buf) 0 off
 end
@@ -2612,7 +2612,7 @@ module Rr_map = struct
     let compress = false in
     let names = Domain_name.Map.empty in
     let rr f =
-      let buf = Bytes.create 4096 in
+      let buf = Bytes.make 4096 '\000' in
       let _names, off' = encode_ntc ~compress names buf 0 (name, `K (K k), clas) in
       (* leave 6 bytes space for TTL and length *)
       let rdata_start = off' + 6 in
@@ -2751,7 +2751,7 @@ module Rr_map = struct
     Ok (name, String.concat "" (rrsig_cs :: sorted_cs))
 
   let canonical_encoded_name name =
-    let buf = Bytes.create 512 in
+    let buf = Bytes.make 512 '\000' in
     let _, s =
       Name.encode ~compress:false (Domain_name.canonical name)
         Domain_name.Map.empty buf 0
@@ -2874,7 +2874,7 @@ module Rr_map = struct
       else String.sub s 0 pos ^ " " ^ ws_after_56 (String.sub s pos (l - pos))
     in
     let hex cs =
-      let buf = Bytes.create (String.length cs * 2) in
+      let buf = Bytes.make (String.length cs * 2) '\000' in
       for i = 0 to pred (String.length cs) do
         let byte = String.get_uint8 cs i in
         let up, low = byte lsr 4, byte land 0x0F in
@@ -4684,7 +4684,7 @@ module Packet = struct
       String.sub (Bytes.unsafe_to_string buf) 0 off, trunc
     in
     let rec doit s =
-      let cs = Bytes.create s in
+      let cs = Bytes.make s '\000' in
       match try_encoding cs with
       | (cs, false) -> (cs, max)
       | (cs, true) ->
@@ -4714,7 +4714,7 @@ module Packet = struct
     in
     let new_buffer () =
       (* we always embed a question in the AXFR reply (this is optional according to RFC) *)
-      let buf = Bytes.create max in
+      let buf = Bytes.make max '\000' in
       Header.encode buf (t.header, query, opcode, rcode);
       let names, off = Question.encode Domain_name.Map.empty buf Header.len t.question in
       Bytes.set_uint16_be buf 4 1 ;
@@ -4734,7 +4734,7 @@ module Packet = struct
       if not query then (* never reply to an answer! *)
         None
       else
-        let hdr = Bytes.create 12 in
+        let hdr = Bytes.make 12 '\000' in
         (* manually copy the id from the incoming buf *)
         Bytes.set_uint16_be hdr 0 (String.get_uint16_be buf 0) ;
         (* manually copy the opcode from the incoming buf, and set response *)
