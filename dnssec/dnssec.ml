@@ -70,9 +70,10 @@ let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
     (* described in RFC 3110 *)
     let* () = if String.length key > 0 then Ok () else Error (`Msg "key data too short") in
     let e_len = String.get_int8 key 0 in
+    let data = String.sub key 1 (String.length key - 1) in
     let* () = if String.length key > (e_len + 1) then Ok () else Error (`Msg "key data too short") in
-    let e = String.sub key 1 (1 + e_len)
-    and n = String.sub key (1 + e_len) (String.length key - (1 + e_len)) in
+    let e = String.sub data 0 e_len
+    and n = String.sub data e_len (String.length data - e_len) in
     let e = Mirage_crypto_pk.Z_extra.of_octets_be e
     and n = Mirage_crypto_pk.Z_extra.of_octets_be n
     in
