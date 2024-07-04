@@ -37,7 +37,7 @@ let nsec3_covering t ts name =
       List.exists (fun (name, nsec3) ->
           let hashed_next_owner =
             Domain_name.prepend_label_exn soa_name
-              (Base32.encode (Cstruct.to_string nsec3.Nsec3.next_owner_hashed))
+              (Base32.encode nsec3.Nsec3.next_owner_hashed)
           in
           (* TODO non-wc-expanded nsec3 only?? *)
           (Domain_name.compare name hashed_name < 0 &&

@@ -15,7 +15,7 @@ let invalid_soa = Dns_resolver_utils.invalid_soa
 let root_servers = List.map (fun (_, ip4, _) -> ip4) Dns_resolver_root.root_servers
 let a_root = List.hd root_servers
 
-let rng i = Cstruct.create i
+let rng i = String.make i '\000'
 
 let follow_res =
   let module M = struct

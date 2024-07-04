@@ -211,7 +211,7 @@ The format of a nameserver is:
       }
 
     let nameservers { proto ; nameservers ; _ } = proto, nameservers
-    let rng = R.generate ?g:None
+    let rng n = Cstruct.to_string (R.generate ?g:None n)
 
     let with_timeout time_left f =
       let timeout =
@@ -431,6 +431,8 @@ The format of a nameserver is:
       else
         Lwt.return (Error (`Msg "invalid context (data length <= 4)"))
 
+    let send_recv t tx =
+      Lwt_result.map Cstruct.to_string (send_recv t (Cstruct.of_string tx))
   end
 
   include Dns_client.Make(Transport)

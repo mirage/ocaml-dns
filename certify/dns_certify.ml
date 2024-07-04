@@ -139,7 +139,7 @@ let cert_matches_csr ?until now csr cert =
   and (st, en) = X509.Certificate.validity cert
   in
   let valid = Ptime.is_later ~than:st now && Ptime.is_later ~than:until en in
-  if not (Cstruct.equal (X509.Public_key.fingerprint cert_key) (X509.Public_key.fingerprint csr_key)) then begin
+  if not (String.equal (X509.Public_key.fingerprint cert_key) (X509.Public_key.fingerprint csr_key)) then begin
     Log.info (fun m -> m "public key of CSR and certificate %a do not match"
                  X509.Certificate.pp cert);
     false
@@ -164,7 +164,7 @@ let tlsas_to_certchain host now csr tlsas =
           | Error (`Msg msg) ->
             Log.warn (fun m -> m "couldn't decode tlsa record %a: %s (%a)"
                          Domain_name.pp host msg
-                         Cstruct.hexdump_pp tlsa.Tlsa.data);
+                         Ohex.pp tlsa.Tlsa.data);
             acc
           | Ok cert ->
             match is_certificate tlsa, is_ca_certificate tlsa with

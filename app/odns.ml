@@ -19,7 +19,7 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Dns.Tlsa.t)) =
     (Dns.Tlsa.matching_type_to_int tlsa.matching_type)
     ( (* this produces output similar to `dig`, splitting the hex string
          in chunks of 56 chars (28 bytes): *)
-      let `Hex hex = Hex.of_cstruct tlsa.data in
+      let hex = Ohex.decode tlsa.data in
       let hlen = String.length hex in
       let rec loop acc = function
         | n when n + 56 >= hlen ->
@@ -225,14 +225,14 @@ let nameserver =
                 | Some h -> h, String.concat "" rt
                 | None -> invalid_arg ("unknown hash: " ^ hash)
             in
-            let hex = Hex.to_cstruct (`Hex fp) in
+            let hex = Ohex.encode fp in
             hash, hex
           in
           match ca_file, ca_dir, cert_fp, key_fp with
           | None, None, None, None -> cfg (Ca_certs.authenticator ())
           | Some f, None, None, None ->
             let* data = Bos.OS.File.read (Fpath.v f) in
-            let* certs = X509.Certificate.decode_pem_multiple (Cstruct.of_string data) in
+            let* certs = X509.Certificate.decode_pem_multiple data in
             cfg (Ok (X509.Authenticator.chain_of_trust ~time certs))
           | None, Some d, None, None ->
             let* files = Bos.OS.Dir.contents (Fpath.v d) in
@@ -240,7 +240,7 @@ let nameserver =
               List.fold_left (fun r f ->
                   let* acc = r in
                   let* data = Bos.OS.File.read f in
-                  let* cert = X509.Certificate.decode_pem (Cstruct.of_string data) in
+                  let* cert = X509.Certificate.decode_pem data in
                   Ok (cert :: acc))
                 (Ok []) files
             in

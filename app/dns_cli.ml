@@ -14,13 +14,13 @@ let connect_tcp ip port =
 
 (* TODO EINTR, SIGPIPE *)
 let send_tcp sock buf =
-  let size = Cstruct.length buf in
+  let size = String.length buf in
   let size_cs =
-    let b = Cstruct.create 2 in
-    Cstruct.BE.set_uint16 b 0 size ;
+    let b = Bytes.create 2 in
+    Bytes.set_int16_be b 0 size ;
     b
   in
-  let data = Cstruct.(to_bytes (append size_cs buf)) in
+  let data = Bytes.cat size_cs (Bytes.of_string buf) in
   let whole = size + 2 in
   let rec out off =
     if off = whole then ()
@@ -39,10 +39,10 @@ let recv_tcp sock =
   in
   let buf = Bytes.create 2 in
   read_exactly buf 2 0 ;
-  let len = Cstruct.BE.get_uint16 (Cstruct.of_bytes buf) 0 in
+  let len = Bytes.get_int16_be buf 0 in
   let buf' = Bytes.create len in
   read_exactly buf' len 0 ;
-  Cstruct.of_bytes buf'
+  Bytes.unsafe_to_string buf'
 
 open Cmdliner
 

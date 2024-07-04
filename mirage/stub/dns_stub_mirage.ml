@@ -3,6 +3,7 @@ open Lwt.Infix
 
 open Dns
 
+let ( % ) f g = fun x -> f (g x)
 let src = Logs.Src.create "dns_stub_mirage" ~doc:"effectful DNS stub layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
@@ -236,13 +237,15 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
   let create ?(cache_size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let server = Dns_server.Primary.server primary in
-    let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in
+    let reserved = Dns_server.create Dns_resolver_root.reserved (Cstruct.to_string % R.generate) in
     let t = { client ; reserved ; server ; on_update } in
     let udp_cb ~src ~dst:_ ~src_port buf =
+      let buf = Cstruct.to_string buf in
       metrics `Udp_queries;
       handle t `Udp src buf >>= function
       | None -> Lwt.return_unit
       | Some data ->
+        let data = Cstruct.of_string data in
         S.UDP.write ~src_port:53 ~dst:src ~dst_port:src_port (S.udp stack) data >|= function
         | Error e -> Log.warn (fun m -> m "udp: failure %a while sending to %a:%d"
                                   S.UDP.pp_error e Ipaddr.pp src src_port)
@@ -259,11 +262,13 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
         | Error () -> Lwt.return_unit
         | Ok data ->
           metrics `Tcp_queries;
+          let data = Cstruct.to_string data in
           handle t `Tcp dst_ip data >>= function
           | None ->
             Log.warn (fun m -> m "no TCP output") ;
             loop ()
           | Some data ->
+            let data = Cstruct.of_string data in
             Dns_flow.send_tcp flow data >>= function
             | Ok () -> loop ()
             | Error () -> Lwt.return_unit

@@ -38,7 +38,7 @@ let retry_interval = Duration.of_ms 500
 type t = {
   ip_protocol : [ `Both | `Ipv4_only | `Ipv6_only ];
   dnssec : bool ;
-  rng : int -> Cstruct.t ;
+  rng : int -> string ;
   primary : Dns_server.Primary.s ;
   cache : Dns_cache.t ;
   transit : awaiting QM.t ;
@@ -467,7 +467,7 @@ let handle_buf t now ts query proto sender sport buf =
   | Error e ->
     Log.err (fun m -> m "decode error (from %a:%d) %a for@.%a"
                  Ipaddr.pp sender sport
-                 Packet.pp_err e Cstruct.hexdump_pp buf) ;
+                 Packet.pp_err e Ohex.pp buf) ;
     let answer = match Packet.raw_error buf Rcode.FormErr with
       | None -> []
       | Some data -> [ proto, sender, sport, data ]

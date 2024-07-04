@@ -2,6 +2,7 @@
 
 open Lwt.Infix
 
+let ( % ) f g = fun x -> f (g x)
 let src = Logs.Src.create "dns_resolver_mirage" ~doc:"effectful DNS resolver"
 module Log = (val Logs.src_log src : Logs.LOG)
 
@@ -25,7 +26,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
 
   let resolver stack ?(root = false) ?(timer = 500) ?(udp = true) ?(tcp = true) ?tls ?(port = 53) ?(tls_port = 853) t =
     (* according to RFC5452 4.5, we can chose source port between 1024-49152 *)
-    let sport () = 1024 + Randomconv.int ~bound:48128 R.generate in
+    let sport () = 1024 + Randomconv.int ~bound:48128 (Cstruct.to_string % R.generate) in
     let state = ref t in
     let tcp_in = ref FM.empty in
     let tcp_out = ref Ipaddr.Map.empty in
@@ -64,6 +65,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
                 let now = Ptime.v (P.now_d_ps ()) in
                 let ts = M.elapsed_ns () in
                 let new_state, answers, queries =
+                  let data = Cstruct.to_string data in
                   Dns_resolver.handle_buf !state now ts false `Tcp dst port data
                 in
                 state := new_state ;
@@ -81,43 +83,44 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
           | Error () ->
             let sport = sport () in
             S.UDP.listen (S.udp stack) ~port:sport (udp_cb sport false) ;
-            Dns.send_udp stack sport dst port data
+            Dns.send_udp stack sport dst port (Cstruct.of_string data)
           | Ok () -> client_tcp dst port data
         end
       | Some x ->
-        Dns.send_tcp x data >>= function
+        Dns.send_tcp x (Cstruct.of_string data) >>= function
         | Ok () -> Lwt.return_unit
         | Error () ->
           tcp_out := Ipaddr.Map.remove dst !tcp_out ;
           client_tcp dst port data
     and maybe_tcp dst port data =
       (match Ipaddr.Map.find_opt dst !tcp_out with
-       | Some flow -> Dns.send_tcp flow data
+       | Some flow -> Dns.send_tcp flow (Cstruct.of_string data)
        | None -> Lwt.return (Error ())) >>= function
       | Ok () -> Lwt.return_unit
       | Error () ->
         let sport = sport () in
         S.UDP.listen (S.udp stack) ~port:sport (udp_cb sport false) ;
-        Dns.send_udp stack sport dst port data
+        Dns.send_udp stack sport dst port (Cstruct.of_string data)
     and handle_query (proto, dst, data) = match proto with
       | `Udp -> maybe_tcp dst port data
       | `Tcp -> client_tcp dst port data
     and handle_answer (proto, dst, dst_port, data) = match proto with
-      | `Udp -> Dns.send_udp stack port dst dst_port data
+      | `Udp -> Dns.send_udp stack port dst dst_port (Cstruct.of_string data)
       | `Tcp -> match try Some (FM.find (dst, dst_port) !tcp_in) with Not_found -> None with
         | None ->
           Log.err (fun m -> m "wanted to answer %a:%d via TCP, but couldn't find a flow"
                        Ipaddr.pp dst dst_port) ;
           Lwt.return_unit
         | Some `Tcp flow ->
-          (Dns.send_tcp flow data >|= function
+          (Dns.send_tcp flow (Cstruct.of_string data) >|= function
            | Ok () -> ()
            | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in)
         | Some `Tls flow ->
-          (send_tls flow data >|= function
+          (send_tls flow (Cstruct.of_string data) >|= function
            | Ok () -> ()
            | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in)
     and udp_cb lport req ~src ~dst:_ ~src_port buf =
+      let buf = Cstruct.to_string buf in
       let now = Ptime.v (P.now_d_ps ())
       and ts = M.elapsed_ns ()
       in
@@ -147,6 +150,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
           tcp_in := FM.remove (dst_ip, dst_port) !tcp_in ;
           Lwt.return_unit
         | Ok data ->
+          let data = Cstruct.to_string data in
           let now = Ptime.v (P.now_d_ps ()) in
           let ts = M.elapsed_ns () in
           let new_state, answers, queries =
@@ -202,6 +206,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
             tcp_in := FM.remove (dst_ip, dst_port) !tcp_in ;
             Lwt.return_unit
           | Ok data ->
+            let data = Cstruct.to_string data in
             let now = Ptime.v (P.now_d_ps ()) in
             let ts = M.elapsed_ns () in
             let new_state, answers, queries =

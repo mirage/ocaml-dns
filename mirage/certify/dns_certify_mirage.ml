@@ -2,6 +2,7 @@
 
 open Lwt.Infix
 
+let ( % ) f g = fun x -> f (g x)
 let src = Logs.Src.create "dns_certify_mirage" ~doc:"effectful DNS certify"
 module Log = (val Logs.src_log src : Logs.LOG)
 
@@ -11,29 +12,29 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
 
   let nsupdate_csr flow host keyname zone dnskey csr =
     match
-      Dns_certify.nsupdate R.generate (fun () -> Ptime.v (P.now_d_ps ()))
+      Dns_certify.nsupdate (Cstruct.to_string % R.generate) (fun () -> Ptime.v (P.now_d_ps ()))
         ~host ~keyname ~zone dnskey csr
     with
     | Error s -> Lwt.return (Error s)
     | Ok (out, cb) ->
-      D.send_tcp (D.flow flow) out >>= function
+      D.send_tcp (D.flow flow) (Cstruct.of_string out) >>= function
       | Error () -> Lwt.return (Error (`Msg "tcp sending error"))
       | Ok () -> D.read_tcp flow >|= function
         | Error () -> Error (`Msg "tcp receive err")
-        | Ok data -> match cb data with
+        | Ok data -> match cb (Cstruct.to_string data) with
           | Error e -> Error (`Msg (Fmt.str "nsupdate reply error %a" Dns_certify.pp_u_err e))
           | Ok () -> Ok ()
 
   let query_certificate flow name csr =
-    match Dns_certify.query R.generate (Ptime.v (P.now_d_ps ())) name csr with
+    match Dns_certify.query (Cstruct.to_string % R.generate) (Ptime.v (P.now_d_ps ())) name csr with
     | Error e -> Lwt.return (Error e)
     | Ok (out, cb) ->
-      D.send_tcp (D.flow flow) out >>= function
+      D.send_tcp (D.flow flow) (Cstruct.of_string out) >>= function
       | Error () -> Lwt.return (Error (`Msg "couldn't send tcp"))
       | Ok () ->
         D.read_tcp flow >|= function
         | Error () -> Error (`Msg "error while reading answer")
-        | Ok data -> match cb data with
+        | Ok data -> match cb (Cstruct.to_string data) with
           | Error e -> Error e
           | Ok cert -> Ok cert
 
