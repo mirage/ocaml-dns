@@ -864,7 +864,7 @@ module Dnskey = struct
     names, off + 4 + kl
 
   let key_tag t =
-    let data = Bytes.make (4 + String.length t.key) '\000' in
+    let data = Bytes.create (4 + String.length t.key) in
     let _names, _off = encode t Domain_name.Map.empty data 0 in
     let rec go idx ac =
       if idx >= Bytes.length data then
@@ -886,7 +886,7 @@ module Dnskey = struct
 
   let digest_prep owner t =
     let kl = String.length t.key in
-    let buf = Bytes.make (kl + 255 + 4) '\000' in (* key length + max name + 4 *)
+    let buf = Bytes.create (kl + 255 + 4) in (* key length + max name + 4 *)
     let names = Domain_name.Map.empty in
     let _, off = Name.encode ~compress:false owner names buf 0 in
     let _, off' = encode t names buf off in
@@ -1017,7 +1017,7 @@ module Rrsig = struct
   let prep_rrsig rrsig =
     (* from RFC 4034 section 3.1.8.1 *)
     (* this buffer may be too small... *)
-    let tbs = Bytes.make 4096 '\000' in
+    let tbs = Bytes.create 4096 in
     let rrsig_raw = canonical { rrsig with signature = "" } in
     let _, off = encode rrsig_raw Domain_name.Map.empty tbs 0 in
     tbs, off
@@ -2043,16 +2043,16 @@ module Tsig = struct
     let name = name_to_buf (Domain_name.canonical name)
     and aname = name_to_buf (algorithm_to_name t.algorithm)
     in
-    let clttl = Bytes.make 6 '\000' in
+    let clttl = Bytes.create 6 in
     Bytes.set_uint16_be clttl 0 Class.(to_int ANY_CLASS) ;
     Bytes.set_int32_be clttl 2 0l ;
-    let time = Bytes.make 8 '\000' in
+    let time = Bytes.create 8 in
     encode_48bit_time time t.signed ;
     encode_16bit_time time ~off:6 t.fudge ;
     let other =
       let buf = match t.other with
         | None ->
-          let buf = Bytes.make 4 '\000' in
+          let buf = Bytes.create 4 in
           Bytes.set_uint16_be buf 2 0 ;
           buf
         | Some t ->
@@ -2073,14 +2073,14 @@ module Tsig = struct
   let encode_full name t =
     let name, clttl, mid, fin = encode_raw_tsig_base name t in
     let typ =
-      let typ = Bytes.make 2 '\000' in
+      let typ = Bytes.create 2 in
       Bytes.set_uint16_be typ 0 rtyp ;
       Bytes.unsafe_to_string typ
     and mac =
       let len = String.length t.mac in
-      let l = Bytes.make 2 '\000' in
+      let l = Bytes.create 2 in
       Bytes.set_uint16_be l 0 len ;
-      let orig = Bytes.make 2 '\000' in
+      let orig = Bytes.create 2 in
       Bytes.set_uint16_be orig 0 t.original_id ;
       [ Bytes.unsafe_to_string l ; t.mac ; Bytes.unsafe_to_string orig ]
     in
@@ -2161,7 +2161,7 @@ module Edns = struct
       (match i with
        | None -> ""
        | Some i ->
-         let buf = Bytes.make 2 '\000' in
+         let buf = Bytes.create 2 in
          Bytes.set_uint16_be buf 0 i ;
          Bytes.unsafe_to_string buf)
     | Padding i -> String.make i '\x00'
@@ -2301,7 +2301,7 @@ module Edns = struct
 
   let allocate_and_encode edns =
     (* this is unwise! *)
-    let buf = Bytes.make 128 '\000' in
+    let buf = Bytes.create 128 in
     let off = encode edns buf 0 in
     String.sub (Bytes.unsafe_to_string buf) 0 off
 end
@@ -2612,7 +2612,7 @@ module Rr_map = struct
     let compress = false in
     let names = Domain_name.Map.empty in
     let rr f =
-      let buf = Bytes.make 4096 '\000' in
+      let buf = Bytes.create 4096 in
       let _names, off' = encode_ntc ~compress names buf 0 (name, `K (K k), clas) in
       (* leave 6 bytes space for TTL and length *)
       let rdata_start = off' + 6 in
@@ -2709,14 +2709,14 @@ module Rr_map = struct
     | _, v -> v
 
   (* ordering, according to RFC 4034, section 6.3 *)
-  let canonical_order cs cs_off cs' cs'_off =
-    let cs_l = String.length cs - cs_off and cs'_l = String.length cs' - cs'_off in
+  let canonical_order str str_off str' str'_off =
+    let str_l = String.length str - str_off and str'_l = String.length str' - str'_off in
     let rec c idx =
-      if cs_l = cs'_l && cs_l = idx then 0
-      else if cs_l = idx then 1
-      else if cs'_l = idx then -1
+      if str_l = str'_l && str_l = idx then 0
+      else if str_l = idx then 1
+      else if str'_l = idx then -1
       else
-        match Int.compare (String.get_uint8 cs (cs_off + idx)) (String.get_uint8 cs' (cs'_off + idx)) with
+        match Int.compare (String.get_uint8 str (str_off + idx)) (String.get_uint8 str' (str'_off + idx)) with
         | 0 -> c (succ idx)
         | x -> x
     in
@@ -2874,7 +2874,7 @@ module Rr_map = struct
       else String.sub s 0 pos ^ " " ^ ws_after_56 (String.sub s pos (l - pos))
     in
     let hex cs =
-      let buf = Bytes.make (String.length cs * 2) '\000' in
+      let buf = Bytes.create (String.length cs * 2) in
       for i = 0 to pred (String.length cs) do
         let byte = String.get_uint8 cs i in
         let up, low = byte lsr 4, byte land 0x0F in
@@ -4734,7 +4734,7 @@ module Packet = struct
       if not query then (* never reply to an answer! *)
         None
       else
-        let hdr = Bytes.make 12 '\000' in
+        let hdr = Bytes.create 12 in
         (* manually copy the id from the incoming buf *)
         Bytes.set_uint16_be hdr 0 (String.get_uint16_be buf 0) ;
         (* manually copy the opcode from the incoming buf, and set response *)
