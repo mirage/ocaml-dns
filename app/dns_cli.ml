@@ -15,12 +15,12 @@ let connect_tcp ip port =
 (* TODO EINTR, SIGPIPE *)
 let send_tcp sock buf =
   let size = String.length buf in
-  let size_cs =
+  let size_buf =
     let b = Bytes.create 2 in
     Bytes.set_int16_be b 0 size ;
     b
   in
-  let data = Bytes.cat size_cs (Bytes.of_string buf) in
+  let data = Bytes.cat size_buf (Bytes.of_string buf) in
   let whole = size + 2 in
   let rec out off =
     if off = whole then ()
