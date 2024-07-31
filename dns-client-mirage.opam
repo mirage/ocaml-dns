@@ -26,10 +26,16 @@ depends: [
   "happy-eyeballs-mirage" {>= "1.1.0"}
   "happy-eyeballs" {>= "1.0.0"}
   "tls-mirage" {>= "0.16.0"}
-  "x509" {>= "0.16.0"}
-  "ca-certs-nss"
+  "x509" {>= "1.0.0"}
+  "ca-certs-nss" {>= "3.101-1"}
 ]
 synopsis: "DNS client API for MirageOS"
 description: """
 A client implementation using uDNS using MirageOS.
 """
+
+pin-depends: [
+  [ "tls.dev" "git+https://github.com/dinosaure/ocaml-tls.git#7495fa5451047bf2137f703f9706adbeba529c03" ]
+  [ "tls-mirage.dev" "git+https://github.com/dinosaure/ocaml-tls.git#7495fa5451047bf2137f703f9706adbeba529c03" ]
+  [ "tcpip.dev" "git+https://github.com/mirage/mirage-tcpip.git#1bc27cd57dc0d79c70d2312bb9396c88df38aef0" ]
+]

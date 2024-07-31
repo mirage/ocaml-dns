@@ -37,3 +37,9 @@ description: """
 Forwarding and recursive resolvers as value-passing functions. To be used with
 an effectful layer.
 """
+
+pin-depends: [
+  [ "tls.dev" "git+https://github.com/dinosaure/ocaml-tls.git#7495fa5451047bf2137f703f9706adbeba529c03" ]
+  [ "tls-mirage.dev" "git+https://github.com/dinosaure/ocaml-tls.git#7495fa5451047bf2137f703f9706adbeba529c03" ]
+  [ "tcpip.dev" "git+https://github.com/mirage/mirage-tcpip.git#1bc27cd57dc0d79c70d2312bb9396c88df38aef0" ]
+]

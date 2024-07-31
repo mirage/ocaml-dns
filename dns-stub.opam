@@ -38,3 +38,7 @@ description: """
 Forwarding and recursive resolvers as value-passing functions. To be used with
 an effectful layer.
 """
+
+pin-depends: [
+  [ "tcpip.dev" "git+https://github.com/mirage/mirage-tcpip.git#1bc27cd57dc0d79c70d2312bb9396c88df38aef0" ]
+]
