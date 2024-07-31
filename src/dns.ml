@@ -4734,7 +4734,7 @@ module Packet = struct
       if not query then (* never reply to an answer! *)
         None
       else
-        let hdr = Bytes.create 12 in
+        let hdr = Bytes.make 12 '\000' in
         (* manually copy the id from the incoming buf *)
         Bytes.set_uint16_be hdr 0 (String.get_uint16_be buf 0) ;
         (* manually copy the opcode from the incoming buf, and set response *)
