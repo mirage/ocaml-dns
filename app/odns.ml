@@ -247,10 +247,10 @@ let nameserver =
             cfg (Ok (X509.Authenticator.chain_of_trust ~time certs))
           | None, None, Some fp, None ->
             let hash, fingerprint = of_fp fp in
-            cfg (Ok (X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprint))
+            cfg (Ok (X509.Authenticator.cert_fingerprint ~time ~hash ~fingerprint))
           | None, None, None, Some fp ->
             let hash, fingerprint = of_fp fp in
-            cfg (Ok (X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprint))
+            cfg (Ok (X509.Authenticator.key_fingerprint ~time ~hash ~fingerprint))
           | _ -> invalid_arg "only one of cert-file, cert-dir, key-fingerprint, cert-fingerprint is supported"
         in
         let ip' = match hostname with None -> Some ip | Some _ -> None in
