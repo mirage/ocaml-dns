@@ -68,8 +68,12 @@ module Transport : Dns_client.S
       List.flatten
         (List.map
            (fun (`Nameserver ip) ->
-              let tls = Tls.Config.client ~authenticator ~ip () in
-              [ `Tls (tls, ip, 853) ; `Plaintext (ip, 53) ])
+              match Tls.Config.client ~authenticator ~ip () with
+              | Ok tls -> [ `Tls (tls, ip, 853) ; `Plaintext (ip, 53) ]
+              | Error `Msg msg ->
+                Log.err (fun m -> m "creating TLS configuratio for %a: %s"
+                            Ipaddr.pp ip msg);
+                [ `Plaintext (ip, 53) ])
            ns)
     with
     | [] -> Error (`Msg "no nameservers in resolv.conf")
@@ -90,7 +94,11 @@ module Transport : Dns_client.S
   let default_resolver () =
     let authenticator = authenticator () in
     let peer_name = Dns_client.default_resolver_hostname in
-    let tls_config = Tls.Config.client ~authenticator ~peer_name () in
+    let tls_config =
+      match Tls.Config.client ~authenticator ~peer_name () with
+      | Ok cfg -> cfg
+      | Error `Msg msg -> invalid_arg msg
+    in
     List.map (fun ip -> `Tls (tls_config, ip, 853)) Dns_client.default_resolvers
 
   let maybe_resolv_conf t =

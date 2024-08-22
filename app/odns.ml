@@ -202,9 +202,10 @@ let nameserver =
       | None -> None
       | Some ip ->
         let auth peer_name ip =
-          let cfg =
-            Result.map
-              (fun authenticator -> Tls.Config.client ~authenticator ?peer_name ?ip ())
+          let cfg auth =
+            Result.join
+              (Result.map
+                 (fun authenticator -> Tls.Config.client ~authenticator ?peer_name ?ip ()) auth)
           in
           let time () = Some (Ptime_clock.now ()) in
           let of_fp data =
@@ -254,7 +255,10 @@ let nameserver =
           | _ -> invalid_arg "only one of cert-file, cert-dir, key-fingerprint, cert-fingerprint is supported"
         in
         let ip' = match hostname with None -> Some ip | Some _ -> None in
-        let tls = Result.get_ok (auth hostname ip') in
+        let tls = match auth hostname ip' with
+          | Ok a -> a
+          | Error `Msg msg -> invalid_arg msg
+        in
         Some (`Tcp, [ `Tls (tls, ip, if port = 53 then 853 else port);
                       `Plaintext (ip, port) ])
   in

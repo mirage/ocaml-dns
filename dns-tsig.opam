@@ -10,10 +10,8 @@ license: "BSD-2-Clause"
 depends: [
   "dune" {>= "2.0.0"}
   "ocaml" {>= "4.08.0"}
-  "cstruct" {>= "6.0.0"}
   "dns" {= version}
   "digestif" {>= "1.2.0"}
-  "mirage-crypto"
   "base64" {>= "3.0.0"}
   "alcotest" {with-test}
 ]

@@ -23,16 +23,10 @@ depends: [
   "mirage-crypto-rng-lwt" {>= "1.0.0"}
   "happy-eyeballs-lwt" {>= "1.1.0"}
   "happy-eyeballs" {>= "1.0.0"}
-  "tls-lwt" {>= "0.16.0"}
-  "ca-certs"
+  "tls-lwt" {>= "1.0.0"}
+  "ca-certs" {>= "1.0.0"}
 ]
 synopsis: "DNS client API using lwt"
 description: """
 A client implementation using uDNS and lwt for side effects.
 """
-
-pin-depends: [
-  [ "tls.dev" "git+https://github.com/dinosaure/ocaml-tls.git#7495fa5451047bf2137f703f9706adbeba529c03" ]
-  [ "tls-lwt.dev" "git+https://github.com/dinosaure/ocaml-tls.git#7495fa5451047bf2137f703f9706adbeba529c03" ]
-  [ "ca-certs.dev" "git+https://github.com/dinosaure/ca-certs.git#da63fc1c756c3cc65beaf5a7d527a0ccf78ac40a" ]
-]

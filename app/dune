@@ -39,7 +39,7 @@
   (modules      odns)
   (package      dns-cli)
   (libraries    dns dns-client-lwt dns-cli cmdliner mtime.clock.os
-                lwt.unix hex bos))
+                lwt.unix ohex bos))
 
 (executable
   (name         odnssec)

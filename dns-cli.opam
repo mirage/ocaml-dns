@@ -10,7 +10,6 @@ license: "BSD-2-Clause"
 depends: [
   "dune" {>= "2.0.0"}
   "ocaml" {>= "4.08.0"}
-  "cstruct" {>= "6.0.0"}
   "dns" {= version}
   "dnssec" {= version}
   "dns-tsig" {= version}
@@ -24,7 +23,7 @@ depends: [
   "mirage-crypto" {>= "1.0.0"}
   "mirage-crypto-pk" {>= "1.0.0"}
   "mirage-crypto-rng" {>= "1.0.0"}
-  "hex" {>= "1.4.0"}
+  "ohex" {>= "0.2.0"}
   "ptime" {>= "0.8.5"}
   "mtime" {>= "1.2.0"}
   "logs" {>= "0.6.3"}

@@ -20,7 +20,7 @@ depends: [
   "mirage-random" {>= "2.0.0"}
   "mirage-time" {>= "2.0.0"}
   "mirage-clock" {>= "3.0.0"}
-  "tcpip" {>= "7.0.0"}
+  "tcpip" {>= "8.2.0"}
   "logs"
   "mirage-crypto-ec"
   "mirage-crypto-pk" {>= "1.0.0"}
@@ -38,7 +38,3 @@ description: """
 A function to retrieve a certificate when providing a hostname, TSIG key, server
 IP, and an optional key seed. Best used with an letsencrypt unikernel.
 """
-
-pin-depends: [
-  [ "tcpip.dev" "git+https://github.com/mirage/mirage-tcpip.git#1bc27cd57dc0d79c70d2312bb9396c88df38aef0" ]
-]

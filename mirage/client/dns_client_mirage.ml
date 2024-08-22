@@ -87,7 +87,7 @@ The format of a nameserver is:
           | [ nameserver ] ->
             let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
             let* authenticator = CA.authenticator () in
-            let tls = Tls.Config.client ~authenticator () in
+            let* tls = Tls.Config.client ~authenticator () in
             Ok (`Tcp, `Tls (tls, ipaddr, port))
           | nameserver :: opt_hostname :: authenticator ->
             let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
@@ -106,7 +106,7 @@ The format of a nameserver is:
                 let* a = X509.Authenticator.of_string data in
                 Ok (a (fun () -> Some (Ptime.v (P.now_d_ps ()))))
             in
-            let tls = Tls.Config.client ~authenticator ?peer_name () in
+            let* tls = Tls.Config.client ~authenticator ?peer_name () in
             Ok (`Tcp, `Tls (tls, ipaddr, port))
           | [] -> assert false )
       | "tcp" :: nameserver ->
@@ -189,7 +189,9 @@ The format of a nameserver is:
           in
           let tls_cfg =
             let peer_name = Dns_client.default_resolver_hostname in
-            Tls.Config.client ~authenticator ~peer_name ()
+            match Tls.Config.client ~authenticator ~peer_name () with
+            | Ok a -> a
+            | Error `Msg m -> invalid_arg ("invalid TLS configuration: " ^ m)
           in
           let ns =
             List.map (fun ip -> `Tls (tls_cfg, ip, 853))

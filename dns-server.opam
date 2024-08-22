@@ -18,7 +18,7 @@ depends: [
   "lwt" {>= "4.2.1"}
   "mirage-time" {>= "2.0.0"}
   "mirage-clock" {>= "3.0.0"}
-  "tcpip" {>= "7.0.0"}
+  "tcpip" {>= "8.2.0"}
   "mirage-crypto-rng" {with-test & >= "1.0.0"}
   "alcotest" {with-test}
   "dns-tsig" {with-test}
@@ -38,7 +38,3 @@ description: """
 Primary and secondary DNS server implemented in value-passing style. Needs an
 effectful layer to be useful.
 """
-
-pin-depends: [
-  [ "tcpip.dev" "git+https://github.com/mirage/mirage-tcpip.git#1bc27cd57dc0d79c70d2312bb9396c88df38aef0" ]
-]
