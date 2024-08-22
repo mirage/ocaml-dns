@@ -9,7 +9,7 @@ license: "BSD-2-Clause"
 
 depends: [
   "dune" {>= "2.0.0"}
-  "ocaml" {>= "4.08.0"}
+  "ocaml" {>= "4.13.0"}
   "dns" {= version}
   "dns-tsig" {= version}
   "dns-mirage" {= version}
