@@ -33,3 +33,6 @@ synopsis: "DNS client API for MirageOS"
 description: """
 A client implementation using uDNS using MirageOS.
 """
+pin-depends: [
+  [ "tcpip.8.2.0" "git+https://github.com/mirage/mirage-tcpip.git#519c576a9477ea381f077309f61feab01c4bb76a" ]
+]

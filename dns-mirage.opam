@@ -38,3 +38,6 @@ of the hash algorithm is used).
 Please read [the blog article](https://hannes.nqsb.io/Posts/DNS) for a more
 detailed overview.
 """
+pin-depends: [
+  [ "tcpip.8.2.0" "git+https://github.com/mirage/mirage-tcpip.git#519c576a9477ea381f077309f61feab01c4bb76a" ]
+]
