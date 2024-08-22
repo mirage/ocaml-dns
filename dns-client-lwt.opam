@@ -14,17 +14,17 @@ build: [
 
 depends: [
   "dune" {>="2.0.0"}
-  "ocaml" {>= "4.08.0"}
+  "ocaml" {>= "4.13.0"}
   "dns-client" {= version}
   "dns" {= version}
   "ipaddr" {>= "5.3.0"}
   "lwt" {>= "4.2.1"}
   "mtime" {>= "1.2.0"}
-  "mirage-crypto-rng-lwt" {>= "0.11.0"}
+  "mirage-crypto-rng-lwt" {>= "1.0.0"}
   "happy-eyeballs-lwt" {>= "1.1.0"}
   "happy-eyeballs" {>= "1.0.0"}
-  "tls-lwt" {>= "0.16.0"}
-  "ca-certs"
+  "tls-lwt" {>= "1.0.0"}
+  "ca-certs" {>= "1.0.0"}
 ]
 synopsis: "DNS client API using lwt"
 description: """

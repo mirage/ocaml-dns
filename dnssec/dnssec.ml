@@ -32,7 +32,7 @@ let root_ds =
   { Ds.key_tag = 20326 ;
     algorithm = Dnskey.RSA_SHA256 ;
     digest_type = SHA256 ;
-    digest = Cstruct.of_hex "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D" ;
+    digest = Ohex.decode "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D" ;
   } |> Rr_map.Ds_set.singleton
 
 type pub = [
@@ -50,16 +50,16 @@ let pp_pub ppf = function
 
 (* used by DS, RFC 4034 section 5.1.4 *)
 let digest algorithm owner dnskey =
-  let* h =
-    match algorithm with
-    | Ds.SHA1 -> Ok `SHA1
-    | Ds.SHA256 -> Ok `SHA256
-    | Ds.SHA384 -> Ok `SHA384
-    | dt ->
-      Error (`Msg (Fmt.str "Unsupported hash algorithm %a"
-                     Ds.pp_digest_type dt))
-  in
-  Ok (Mirage_crypto.Hash.digest h (Dnskey.digest_prep owner dnskey))
+  let digest : type a. a Digestif.hash -> (string, _) result = fun h ->
+    let res = Digestif.digest_string h (Dnskey.digest_prep owner dnskey) in
+    Ok (Digestif.to_raw_string h res) in
+  match algorithm with
+  | Ds.SHA1 -> digest Digestif.SHA1
+  | Ds.SHA256 -> digest Digestif.SHA256
+  | Ds.SHA384 -> digest Digestif.SHA384
+  | dt ->
+    Error (`Msg (Fmt.str "Unsupported hash algorithm %a"
+                   Ds.pp_digest_type dt))
 
 let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
   let map_ec_err r =
@@ -68,28 +68,32 @@ let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
   match algorithm with
   | Dnskey.RSA_SHA1 | Dnskey.RSASHA1_NSEC3_SHA1 | Dnskey.RSA_SHA256 | Dnskey.RSA_SHA512 ->
     (* described in RFC 3110 *)
-    let* () = if Cstruct.length key > 0 then Ok () else Error (`Msg "key data too short") in
-    let e_len = Cstruct.get_uint8 key 0 in
-    let* () = if Cstruct.length key > (e_len + 1) then Ok () else Error (`Msg "key data too short") in
-    let e, n = Cstruct.split (Cstruct.shift key 1) e_len in
-    let e = Mirage_crypto_pk.Z_extra.of_cstruct_be e
-    and n = Mirage_crypto_pk.Z_extra.of_cstruct_be n
+    let* () = if String.length key > 0 then Ok () else Error (`Msg "key data too short") in
+    let e_len = String.get_int8 key 0 in
+    let data = String.sub key 1 (String.length key - 1) in
+    let* () = if String.length key > (e_len + 1) then Ok () else Error (`Msg "key data too short") in
+    let e = String.sub data 0 e_len
+    and n = String.sub data e_len (String.length data - e_len) in
+    let e = Mirage_crypto_pk.Z_extra.of_octets_be e
+    and n = Mirage_crypto_pk.Z_extra.of_octets_be n
     in
     let* pub = Mirage_crypto_pk.Rsa.pub ~e ~n in
     Ok (`RSA pub)
   | Dnskey.P256_SHA256 ->
-    let four = Cstruct.create 1 in Cstruct.set_uint8 four 0 4 ;
-    let* pub = map_ec_err (Mirage_crypto_ec.P256.Dsa.pub_of_cstruct (Cstruct.append four key)) in
+    let four = String.make 1 '\004' in
+    let* pub = map_ec_err (Mirage_crypto_ec.P256.Dsa.pub_of_octets (four ^ key)) in
     Ok (`P256 pub)
   | Dnskey.P384_SHA384 ->
-    let four = Cstruct.create 1 in Cstruct.set_uint8 four 0 4 ;
-    let* pub = map_ec_err (Mirage_crypto_ec.P384.Dsa.pub_of_cstruct (Cstruct.append four key)) in
+    let four = String.make 1 '\004' in
+    let* pub = map_ec_err (Mirage_crypto_ec.P384.Dsa.pub_of_octets (four ^ key)) in
     Ok (`P384 pub)
   | Dnskey.ED25519 ->
-    let* pub = map_ec_err (Mirage_crypto_ec.Ed25519.pub_of_cstruct key) in
+    let* pub = map_ec_err (Mirage_crypto_ec.Ed25519.pub_of_octets key) in
     Ok (`ED25519 pub)
   | MD5 | SHA1 | SHA224 | SHA256 | SHA384 | SHA512 | Unknown _ ->
     Error (`Msg (Fmt.str "unsupported key algorithm %a" Dnskey.pp_algorithm algorithm))
+
+let ( % ) f g = fun x -> f (g x)
 
 let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
   a Rr_map.key -> a ->
@@ -109,7 +113,17 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
     | Dnskey.P384_SHA384 -> Ok `SHA384
     | Dnskey.ED25519 -> Ok `SHA512
     | a -> Error (`Msg (Fmt.str "unsupported signature algorithm %a"
-                          Dnskey.pp_algorithm a))
+                          Dnskey.pp_algorithm a)) in
+  let digest =
+    match rrsig.Rrsig.algorithm with
+    | Dnskey.RSA_SHA1 -> Digestif.(to_raw_string SHA1 % digest_string SHA1)
+    | Dnskey.RSASHA1_NSEC3_SHA1 -> Digestif.(to_raw_string SHA1 % digest_string SHA1)
+    | Dnskey.RSA_SHA256 -> Digestif.(to_raw_string SHA256 % digest_string SHA256)
+    | Dnskey.RSA_SHA512 -> Digestif.(to_raw_string SHA512 % digest_string SHA512)
+    | Dnskey.P256_SHA256 -> Digestif.(to_raw_string SHA256 % digest_string SHA256)
+    | Dnskey.P384_SHA384 -> Digestif.(to_raw_string SHA384 % digest_string SHA384)
+    | Dnskey.ED25519 -> Digestif.(to_raw_string SHA512 % digest_string SHA512)
+    | _ -> assert false (* NOTE(dinosaure): prevent by [algorithm] and [let*]. *)
   in
   let* () =
     guard (Ptime.is_later ~than:now rrsig.Rrsig.signature_expiration)
@@ -120,7 +134,7 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
       (`Msg "signature not yet incepted")
   in
   let* (used_name, data) = Rr_map.prep_for_sig name rrsig t v in
-  let hashed () = Mirage_crypto.Hash.digest algorithm data in
+  let hashed () = digest data in
   let ok_if_true p =
     if p then
       Ok (used_name, rrsig.Rrsig.signer_name)
@@ -129,10 +143,14 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
   in
   match key with
   | `P256 key ->
-    let signature = Cstruct.split rrsig.Rrsig.signature 32 in
+    let signature =
+      String.sub rrsig.Rrsig.signature 0 32,
+      String.sub rrsig.Rrsig.signature 32 (String.length rrsig.Rrsig.signature - 32) in
     ok_if_true (Mirage_crypto_ec.P256.Dsa.verify ~key signature (hashed ()))
   | `P384 key ->
-    let signature = Cstruct.split rrsig.Rrsig.signature 48 in
+    let signature =
+      String.sub rrsig.Rrsig.signature 0 48,
+      String.sub rrsig.Rrsig.signature 48 (String.length rrsig.Rrsig.signature - 48) in
     ok_if_true (Mirage_crypto_ec.P384.Dsa.verify ~key signature (hashed ()))
   | `ED25519 key ->
     let msg = data in
@@ -158,7 +176,7 @@ let validate_ds zone dnskeys ds =
       Error (`Msg "none or multiple key singing keys")
   in
   let* dgst = digest ds.Ds.digest_type zone used_dnskey in
-  if Cstruct.equal ds.Ds.digest dgst then begin
+  if String.equal ds.Ds.digest dgst then begin
     Log.info (fun m -> m "DS for %a is good" Domain_name.pp zone);
     Ok used_dnskey
   end else
@@ -285,14 +303,14 @@ let wildcard_non_existence ~soa_name name auth =
 let nsec3_hash salt iterations name =
   let cs_name = Rr_map.canonical_encoded_name name in
   let rec more = function
-    | 0 -> Mirage_crypto.Hash.SHA1.digest (Cstruct.append cs_name salt)
-    | k -> Mirage_crypto.Hash.SHA1.digest (Cstruct.append (more (k - 1)) salt)
+    | 0 -> Digestif.SHA1.(to_raw_string % digest_string) (cs_name ^ salt)
+    | k -> Digestif.SHA1.(to_raw_string % digest_string) ((more (k - 1)) ^ salt)
   in
   more iterations
 
 let nsec3_hashed_name salt iterations ~soa_name name =
   let h = nsec3_hash salt iterations name in
-  Domain_name.prepend_label_exn soa_name (Base32.encode (Cstruct.to_string h))
+  Domain_name.prepend_label_exn soa_name (Base32.encode h)
 
 let nsec3_rrs auth =
   let nsec3_map =
@@ -370,7 +388,7 @@ let nsec3_between nsec3_map ~soa_name hashed_name =
           let _, nsec3 = Rr_map.get Nsec3 rrs in
           let hashed_next_owner =
             Domain_name.prepend_label_exn soa_name
-              (Base32.encode (Cstruct.to_string nsec3.Nsec3.next_owner_hashed))
+              (Base32.encode nsec3.Nsec3.next_owner_hashed)
           in
           Log.debug (fun m -> m "(%a) comparing with %a: %d"
                         Domain_name.pp hashed_name

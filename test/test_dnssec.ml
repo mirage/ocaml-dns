@@ -6,11 +6,11 @@ let hn s = Domain_name.(host_exn (of_string_exn s))
 let ds_root =
   (* from https://data.iana.org/root-anchors/root-anchors.xml *)
   Ds.{ key_tag = 20326 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = Ds.SHA256 ;
-       digest = Cstruct.of_hex "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D" }
+       digest = Ohex.decode "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D" }
 
 let dnskey_root =
   (* from "dig +dnssec dnskey ." *)
-  Cstruct.of_hex {|
+  Ohex.decode {|
  d6d0 8180 0001 0003 0000 0001 0000 3000
  0100 0030 0001 0002 311f 0108 0100 0308
  0301 0001 b286 2a4a 9cd5 502f 42be 3c88
@@ -72,7 +72,7 @@ let ts_of_req = match Ptime.of_rfc3339 "2021-01-17T23:00:00Z" with
   | Error  _ -> assert false
 
 let key =
-  let cs = Cstruct.of_string
+  let str =
       (Base64.decode_exn (String.concat "" [
            "AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3+/4RgWOq7H";
            "rxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kvArMtNROxVQuCaSnIDdD5";
@@ -81,8 +81,8 @@ let key =
            "A4/ilBmSVIzuDWfdRUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2";
            "Nn6UwNR1AkUTV74bU=" ]))
   in
-  let e = Mirage_crypto_pk.Z_extra.of_cstruct_be (Cstruct.sub cs 1 3)
-  and n = Mirage_crypto_pk.Z_extra.of_cstruct_be (Cstruct.shift cs 4)
+  let e = Mirage_crypto_pk.Z_extra.of_octets_be (String.sub str 1 3)
+  and n = Mirage_crypto_pk.Z_extra.of_octets_be (String.sub str 4 (String.length str - 4))
   in
   match Mirage_crypto_pk.Rsa.pub ~e ~n with
   | Ok p -> p
@@ -122,7 +122,7 @@ let test_root () =
               | Error _ -> Alcotest.fail "bad digest"
               | Ok dgst ->
                 Alcotest.(check bool (__LOC__ ^ " DS matches") true
-                            (Cstruct.equal ds_root.Ds.digest dgst))
+                            (String.equal ds_root.Ds.digest dgst))
             end;
             begin
               match Dnssec.dnskey_to_pk used_dnskey with
@@ -177,7 +177,7 @@ let verify_dnssec ?(flags = Dnskey.F.singleton `Zone) ts zsks buf =
   let dnskey =
     List.map (fun (algorithm, zsk) ->
         Dnskey.{ algorithm ;
-                 key = Cstruct.of_string (Base64.decode_exn zsk) ;
+                 key = Base64.decode_exn zsk ;
                  flags })
       zsks
   in
@@ -202,7 +202,7 @@ let test_ns_ripe () =
   let ts = Option.get (Ptime.of_date_time ((2021, 11, 24), ((17, 26, 00), 0)))
   and zsk = "1Ykt1gvvZyfCR3IculzIepOsrPDpL63hNCNEo+wEuBd93pV8gAwLjCZ/ZtgccdbnhhVN6OBD70pUbml9Y2zOSQ=="
   and algorithm = Dnskey.P256_SHA256
-  and buf = Cstruct.of_hex {|
+  and buf = Ohex.decode {|
 6a 1c 81 a0 00 01  00 06 00 00 00 01 04 72
 69 70 65 03 6e 65 74 00  00 02 00 01 c0 0c 00 02
 00 01 00 00 4f 33 00 0c  03 6e 73 34 05 61 70 6e
@@ -238,7 +238,7 @@ let test_ds_afnoc_af_mil () =
   let ts = Option.get (Ptime.of_date_time ((2021, 11, 24), ((17, 26, 00), 0)))
   and zsk = {|AwEAAckGwhxTnqLiHTZ+/UuMnkeZqU44ORmLQHfhr1egTcMRetYHcsd9fnmlzgpoIgz19aJvSyjTT1Bp4ofOwMzeusK6knYKjbP3R5Uz8Y5hhnb3VTTm2Js6IoK3g2yxggkZWfewy7J+ZuMxwRLOKnS6O7cDBx4jM3/d61/8i1Ium1ZXbKgIjfLyphD0mZaaQ1nBigK+ej6lMaR4ddHEd4VKCl9s3s6EanfE8zR/oU9igxNzhYTpqT348aFHy6ebZAt5kfvTWyEtXsxXAZt5jQk0tBmT8nf2n6+Z9Z+M8ZWQphNzZ2m3rTafRc04EpnIDD1ROawPa6beIBvTAMsMgrS4Cus=|}
   and algorithm = Dnskey.RSA_SHA256
-  and buf = Cstruct.of_hex {|
+  and buf = Ohex.decode {|
 8c ae 81 a0 00 01  00 05 00 00 00 01 05 61
 66 6e 6f 63 02 61 66 03  6d 69 6c 00 00 2b 00 01
 c0 0c 00 2b 00 01 00 00  01 cf 00 24 d1 a7 08 02
@@ -275,16 +275,16 @@ d6 6e 57 bb b9 b4 3e 61  d2 6d b0 ad ca f4 00 00
   let exp =
     let ds0 =
       Ds.{ key_tag = 53671 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA256 ;
-           digest = Cstruct.of_hex "73081AB8E5260A0CC278FD06218D9EADDAB7955200CBEC3F883DA027D2066F08" }
+           digest = Ohex.decode "73081AB8E5260A0CC278FD06218D9EADDAB7955200CBEC3F883DA027D2066F08" }
     and ds1 =
       Ds.{ key_tag = 53671 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA1 ;
-           digest = Cstruct.of_hex "98C02C3C768E2BA8AD66CBF2396BEDAA70D6176E" }
+           digest = Ohex.decode "98C02C3C768E2BA8AD66CBF2396BEDAA70D6176E" }
     and ds2 =
       Ds.{ key_tag = 29356 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA256 ;
-           digest = Cstruct.of_hex "C7D259069B2D9632DB7A55C4B2C2836F06454FA5071D72F8AD682B6A68079710" }
+           digest = Ohex.decode "C7D259069B2D9632DB7A55C4B2C2836F06454FA5071D72F8AD682B6A68079710" }
     and ds3 =
       Ds.{ key_tag = 29356 ; algorithm = Dnskey.RSA_SHA256 ; digest_type = SHA1 ;
-           digest = Cstruct.of_hex "76EDE5B67B4367A7083E6FE3E1A4DDE69AED3A91" }
+           digest = Ohex.decode "76EDE5B67B4367A7083E6FE3E1A4DDE69AED3A91" }
     in
     Rr_map.B (Ds, (463l, Rr_map.Ds_set.of_list [ ds0 ; ds1 ; ds2 ; ds3 ]))
   in
@@ -295,7 +295,7 @@ let test_or_nsec_nxdomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 05), ((18, 00, 00), 00))) in
   let zsk = "AwEAAZym4HCWiTAAl2Mv1izgTyn9sKwgi5eBxpG29bVlefq/r+TGCtmUElvFyBWHRjvf9mBglIlTBRse22dvzNOI+cYrkjD6LOHuxMoc/d4WtXWKdviNmrtWF2GpjmDOI98gLd4BZ0U/lY847mJP9LypFABZcEn3zM3vce4Ee1A3upSlFQ2TFyJSD9HvMnP4XneFexBxV96RpLcy2O+u2W6ChIiDCjlrowPCcU3zXfXxyWy/VKM6TOa8gNf+aKaVkcv/eIh5er8rrsqAi9KT8O5hmhzYLkUOQEXVSRORV0RMt9l3JSwWxT1MebEDvtfBag3uo+mZwWSFlpc9kuzyWBd72Ec=" in
   let algorithm = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {|
+  let data = Ohex.decode {|
  2d 15 81 a3 00 01  00 00 00 06 00 01 02 6f
                                72 00 00 01 00 01 00 00  06 00 01 00 01 51 7a 00
                                40 01 61 0c 72 6f 6f 74  2d 73 65 72 76 65 72 73
@@ -370,7 +370,7 @@ let test_zz_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
   let zsk = "AwEAAZym4HCWiTAAl2Mv1izgTyn9sKwgi5eBxpG29bVlefq/r+TGCtmUElvFyBWHRjvf9mBglIlTBRse22dvzNOI+cYrkjD6LOHuxMoc/d4WtXWKdviNmrtWF2GpjmDOI98gLd4BZ0U/lY847mJP9LypFABZcEn3zM3vce4Ee1A3upSlFQ2TFyJSD9HvMnP4XneFexBxV96RpLcy2O+u2W6ChIiDCjlrowPCcU3zXfXxyWy/VKM6TOa8gNf+aKaVkcv/eIh5er8rrsqAi9KT8O5hmhzYLkUOQEXVSRORV0RMt9l3JSwWxT1MebEDvtfBag3uo+mZwWSFlpc9kuzyWBd72Ec=" in
   let algorithm = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {|
+  let data = Ohex.decode {|
  95 20 81 83 00 01  00 00 00 06 00 01 02 7a
                                7a 00 00 01 00 01 00 00  06 00 01 00 00 af 98 00
                                40 01 61 0c 72 6f 6f 74  2d 73 65 72 76 65 72 73
@@ -444,7 +444,7 @@ let test_aa_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
   let zsk = "AwEAAZym4HCWiTAAl2Mv1izgTyn9sKwgi5eBxpG29bVlefq/r+TGCtmUElvFyBWHRjvf9mBglIlTBRse22dvzNOI+cYrkjD6LOHuxMoc/d4WtXWKdviNmrtWF2GpjmDOI98gLd4BZ0U/lY847mJP9LypFABZcEn3zM3vce4Ee1A3upSlFQ2TFyJSD9HvMnP4XneFexBxV96RpLcy2O+u2W6ChIiDCjlrowPCcU3zXfXxyWy/VKM6TOa8gNf+aKaVkcv/eIh5er8rrsqAi9KT8O5hmhzYLkUOQEXVSRORV0RMt9l3JSwWxT1MebEDvtfBag3uo+mZwWSFlpc9kuzyWBd72Ec=" in
   let algorithm = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {|
+  let data = Ohex.decode {|
  eb a7 81 83 00 01  00 00 00 04 00 01 02 61
                                61 00 00 01 00 01 00 00  2f 00 01 00 00 af 06 00
                                0e 03 61 61 61 00 00 07  22 00 00 00 00 03 80 00
@@ -499,7 +499,7 @@ let test_a_se_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 05), ((18, 00, 00), 00))) in
   let zsk = "AwEAAd7Bd3v5oA7hpv1gdqBDDKVUIpu0cat4ps5IuuuDF48qo/hot3kz1TBfwFnyoQpzaaR+T5m5/42rhf9PWQ0y879yoAMur9afjPXPliMv6ZJ8QyXgS+Aj59kqRXHQJVX1JXyhpOz+jG3aVdcdMFC3HB9uQ9ivvsJQ1bJlS8t5Zw1rfhvCZ4T2FeLdfDUIthsXa5aBvkN98nDr5aD3iLUk5x2ZvELuTJAZFHNzemyviWUp9EWnXtJwvl2YrX53bGzHVA7kyRpeYf4N1OMFIEi0QDlyGUS540i3OSCLWFCu5c9YvMIfOouqUV//yyy0mjVb2BWZQDtrZ+BuMmWfOEYlAb8=" in
   let algorithm = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {|
+  let data = Ohex.decode {|
 9b f5 81 a0 00 01  00 00 00 04 00 01 02 73
                                65 00 00 01 00 01 c0 0c  00 06 00 01 00 00 07 03
                                00 40 12 63 61 74 63 68  65 72 2d 69 6e 2d 74 68
@@ -555,7 +555,7 @@ let test_ds_a_se_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((18, 00, 00), 00))) in
   let zsk = "AwEAAd7Bd3v5oA7hpv1gdqBDDKVUIpu0cat4ps5IuuuDF48qo/hot3kz1TBfwFnyoQpzaaR+T5m5/42rhf9PWQ0y879yoAMur9afjPXPliMv6ZJ8QyXgS+Aj59kqRXHQJVX1JXyhpOz+jG3aVdcdMFC3HB9uQ9ivvsJQ1bJlS8t5Zw1rfhvCZ4T2FeLdfDUIthsXa5aBvkN98nDr5aD3iLUk5x2ZvELuTJAZFHNzemyviWUp9EWnXtJwvl2YrX53bGzHVA7kyRpeYf4N1OMFIEi0QDlyGUS540i3OSCLWFCu5c9YvMIfOouqUV//yyy0mjVb2BWZQDtrZ+BuMmWfOEYlAb8=" in
   let algorithm = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {| 3b 04 81 80 00 01  00 00 00 04 00 01 01 61
+  let data = Ohex.decode {| 3b 04 81 80 00 01  00 00 00 04 00 01 01 61
                                02 73 65 00 00 2b 00 01  c0 0e 00 06 00 01 00 00
                                10 f9 00 40 12 63 61 74  63 68 65 72 2d 69 6e 2d
                                74 68 65 2d 72 79 65 03  6e 69 63 c0 0e 10 72 65
@@ -610,7 +610,7 @@ let test_ds_a_a_se_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((21, 00, 00), 00))) in
   let zsk = "AwEAAd7Bd3v5oA7hpv1gdqBDDKVUIpu0cat4ps5IuuuDF48qo/hot3kz1TBfwFnyoQpzaaR+T5m5/42rhf9PWQ0y879yoAMur9afjPXPliMv6ZJ8QyXgS+Aj59kqRXHQJVX1JXyhpOz+jG3aVdcdMFC3HB9uQ9ivvsJQ1bJlS8t5Zw1rfhvCZ4T2FeLdfDUIthsXa5aBvkN98nDr5aD3iLUk5x2ZvELuTJAZFHNzemyviWUp9EWnXtJwvl2YrX53bGzHVA7kyRpeYf4N1OMFIEi0QDlyGUS540i3OSCLWFCu5c9YvMIfOouqUV//yyy0mjVb2BWZQDtrZ+BuMmWfOEYlAb8=" in
   let algorithm = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {| 9d fd 81 83 00 01  00 00 00 04 00 01 01 61
+  let data = Ohex.decode {| 9d fd 81 83 00 01  00 00 00 04 00 01 01 61
                                01 61 02 73 65 00 00 2b  00 01 c0 10 00 06 00 01
                                00 00 1c 20 00 40 12 63  61 74 63 68 65 72 2d 69
                                6e 2d 74 68 65 2d 72 79  65 03 6e 69 63 c0 10 10
@@ -666,7 +666,7 @@ let test_ds_b_a_se_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 07), ((21, 00, 00), 00))) in
   let zsk = "AwEAAd7Bd3v5oA7hpv1gdqBDDKVUIpu0cat4ps5IuuuDF48qo/hot3kz1TBfwFnyoQpzaaR+T5m5/42rhf9PWQ0y879yoAMur9afjPXPliMv6ZJ8QyXgS+Aj59kqRXHQJVX1JXyhpOz+jG3aVdcdMFC3HB9uQ9ivvsJQ1bJlS8t5Zw1rfhvCZ4T2FeLdfDUIthsXa5aBvkN98nDr5aD3iLUk5x2ZvELuTJAZFHNzemyviWUp9EWnXtJwvl2YrX53bGzHVA7kyRpeYf4N1OMFIEi0QDlyGUS540i3OSCLWFCu5c9YvMIfOouqUV//yyy0mjVb2BWZQDtrZ+BuMmWfOEYlAb8=" in
   let algorithm = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {| f7 c7 81 83 00 01  00 00 00 06 00 01 01 62
+  let data = Ohex.decode {| f7 c7 81 83 00 01  00 00 00 06 00 01 01 62
                                01 61 02 73 65 00 00 2b  00 01 c0 10 00 06 00 01
                                00 00 1b b9 00 40 12 63  61 74 63 68 65 72 2d 69
                                6e 2d 74 68 65 2d 72 79  65 03 6e 69 63 c0 10 10
@@ -742,7 +742,7 @@ let test_ptr_isc_org_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 09), ((21, 00, 00), 00))) in
   let zsk = "1CS+VQcRn4lGTK+b3wDjVO0hFDx4DV7s3Q1Fwxuq9ahd255FRny4f4vdZOMMMxpbRH5Zhwoh/706IV0v9JwjlA==" in
   let algorithm = Dnskey.P256_SHA256 in
-  let data = Cstruct.of_hex {|e2 0f 81 80 00 01  00 00 00 04 00 01 03 69
+  let data = Ohex.decode {|e2 0f 81 80 00 01  00 00 00 04 00 01 03 69
                                73 63 03 6f 72 67 00 00  0c 00 01 c0 0c 00 06 00
                                01 00 00 0d d5 00 2a 06  6e 73 2d 69 6e 74 c0 0c
                                0a 68 6f 73 74 6d 61 73  74 65 72 c0 0c 78 85 6e
@@ -773,7 +773,7 @@ let test_ptr_doesntexist_isc_org_nsec_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 09), ((21, 00, 00), 00))) in
   let zsk = "1CS+VQcRn4lGTK+b3wDjVO0hFDx4DV7s3Q1Fwxuq9ahd255FRny4f4vdZOMMMxpbRH5Zhwoh/706IV0v9JwjlA==" in
   let algorithm = Dnskey.P256_SHA256 in
-  let data = Cstruct.of_hex {| a4 bf 81 83 00 01  00 00 00 06 00 01 0b 64
+  let data = Ohex.decode {| a4 bf 81 83 00 01  00 00 00 06 00 01 0b 64
                                6f 65 73 6e 74 65 78 69  73 74 03 69 73 63 03 6f
                                72 67 00 00 0c 00 01 c0  18 00 06 00 01 00 00 0c
                                db 00 2a 06 6e 73 2d 69  6e 74 c0 18 0a 68 6f 73
@@ -816,7 +816,7 @@ let test_ds_trac_ietf_org_nsec () =
   let algorithm1 = Dnskey.RSA_SHA1 in
   let zsk2 = "AwEAAeFI7YqOvJueqjQIw0Y1TgnQUlWk24jvkCaz9OY3JLauYLJXkePuoS7wnwqk52eqLnBk5bpeCgba3ZA2PT0X4x8BkwWwEZXRaE9h8qp/XOhr0zV0AP+AfOQ63eKp0qPh0E3T4jfiMY7cABFEvoulZH4IGCdrZNUIrmC7t5fZhEol" in
   let algorithm2 = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {| 03 3c 81 80 00 01  00 05 00 02 00 01 04 74
+  let data = Ohex.decode {| 03 3c 81 80 00 01  00 05 00 02 00 01 04 74
                                72 61 63 04 69 65 74 66  03 6f 72 67 00 00 2b 00
                                01 c0 0c 00 05 00 01 00  00 06 e9 00 02 c0 11 c0
                                0c 00 2e 00 01 00 00 06  e9 01 1c 00 05 05 03 00
@@ -879,10 +879,10 @@ let test_ds_trac_ietf_org_nsec () =
   let exp =
     let ds0 =
       Ds.{ key_tag = 45586 ; algorithm = RSA_SHA1 ; digest_type = SHA256 ;
-           digest = Cstruct.of_hex "67FCD7E0B9E0366309F3B6F7476DFF931D5226EDC5348CD80FD82A081DFCF6EE" }
+           digest = Ohex.decode "67FCD7E0B9E0366309F3B6F7476DFF931D5226EDC5348CD80FD82A081DFCF6EE" }
     and ds1 =
       Ds.{ key_tag = 45586 ; algorithm = RSA_SHA1 ; digest_type = SHA1 ;
-           digest = Cstruct.of_hex "D0FDF996D1AF2CCDBDC942B02CB02D379629E20B" }
+           digest = Ohex.decode "D0FDF996D1AF2CCDBDC942B02CB02D379629E20B" }
     in
     Rr_map.B (Ds, (69176l, Rr_map.Ds_set.(add ds1 (singleton ds0))))
   in
@@ -893,7 +893,7 @@ let test_ns_trac_ietf_org () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 08), ((18, 40, 00), 00))) in
   let zsk = "AwEAAdDECajHaTjfSoNTY58WcBah1BxPKVIHBz4IfLjfqMvium4lgKtKZLe97DgJ5/NQrNEGGQmr6fKvUj67cfrZUojZ2cGRizVhgkOqZ9scaTVXNuXLM5Tw7VWOVIceeXAuuH2mPIiEV6MhJYUsW6dvmNsJ4XwCgNgroAmXhoMEiWEjBB+wjYZQ5GtZHBFKVXACSWTiCtddHcueOeSVPi5WH94VlubhHfiytNPZLrObhUCHT6k0tNE6phLoHnXWU+6vpsYpz6GhMw/R9BFxW5PdPFIWBgoWk2/XFVRSKG9Lr61b2z1R126xeUwvw46RVy3hanV3vNO7LM5HniqaYclBbhk=" in
   let algorithm = Dnskey.RSA_SHA1 in
-  let data = Cstruct.of_hex {| b4 da 81 a0 00 01  00 09 00 00 00 01 04 74
+  let data = Ohex.decode {| b4 da 81 a0 00 01  00 09 00 00 00 01 04 74
                                72 61 63 04 69 65 74 66  03 6f 72 67 00 00 02 00
                                01 c0 0c 00 05 00 01 00  00 07 08 00 02 c0 11 c0
                                0c 00 2e 00 01 00 00 07  08 01 1c 00 05 05 03 00
@@ -961,7 +961,7 @@ let test_caa_ietf_org_nsec_nodata () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 08), ((13, 00, 00), 00))) in
   let zsk = "AwEAAdDECajHaTjfSoNTY58WcBah1BxPKVIHBz4IfLjfqMvium4lgKtKZLe97DgJ5/NQrNEGGQmr6fKvUj67cfrZUojZ2cGRizVhgkOqZ9scaTVXNuXLM5Tw7VWOVIceeXAuuH2mPIiEV6MhJYUsW6dvmNsJ4XwCgNgroAmXhoMEiWEjBB+wjYZQ5GtZHBFKVXACSWTiCtddHcueOeSVPi5WH94VlubhHfiytNPZLrObhUCHT6k0tNE6phLoHnXWU+6vpsYpz6GhMw/R9BFxW5PdPFIWBgoWk2/XFVRSKG9Lr61b2z1R126xeUwvw46RVy3hanV3vNO7LM5HniqaYclBbhk=" in
   let algorithm = Dnskey.RSA_SHA1 in
-  let data = Cstruct.of_hex {| 20 6e 81 80 00 01  00 00 00 04 00 01 04 69
+  let data = Ohex.decode {| 20 6e 81 80 00 01  00 00 00 04 00 01 04 69
                                65 74 66 03 6f 72 67 00  01 01 00 01 c0 0c 00 06
                                00 01 00 00 00 ff 00 29  03 6e 73 30 04 61 6d 73
                                6c 03 63 6f 6d 00 04 67  6c 65 6e c0 2a 47 86 8e
@@ -1016,7 +1016,7 @@ let test_a_surelynonexistentname_blog_root_cz () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 06), ((18, 00, 00), 00))) in
   let zsk = "FgkyJ3q30ussc3A+wIzqDsz0z6PUsZ4OuS/GwiE+7t4+WoNqb4Bp4dDr0WWrcVa0k2L7SyKUTlDACZ2lo7ZCWw==" in
   let algorithm = Dnskey.P256_SHA256 in
-  let data = Cstruct.of_hex {|f5 26 81 80 00 01  00 06 00 05 00 01 15 73
+  let data = Ohex.decode {|f5 26 81 80 00 01  00 06 00 05 00 01 15 73
                                75 72 65 6c 79 6e 6f 6e  65 78 69 73 74 65 6e 74
                                6e 61 6d 65 04 62 6c 6f  67 04 72 6f 6f 74 02 63
                                7a 00 00 01 00 01 c0 0c  00 05 00 01 00 00 02 4d
@@ -1074,7 +1074,7 @@ let test_ptr_surelynonexistentname_blog_root_cz () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 10), ((11, 00, 00), 00))) in
   let zsk = "FgkyJ3q30ussc3A+wIzqDsz0z6PUsZ4OuS/GwiE+7t4+WoNqb4Bp4dDr0WWrcVa0k2L7SyKUTlDACZ2lo7ZCWw==" in
   let algorithm = Dnskey.P256_SHA256 in
-  let data = Cstruct.of_hex {| 8e ef 81 80 00 01  00 04 00 06 00 01 15 73
+  let data = Ohex.decode {| 8e ef 81 80 00 01  00 04 00 06 00 01 15 73
                                75 72 65 6c 79 6e 6f 6e  65 78 69 73 74 65 6e 74
                                6e 61 6d 65 04 62 6c 6f  67 04 72 6f 6f 74 02 63
                                7a 00 00 0c 00 01 c0 0c  00 05 00 01 00 00 00 c1
@@ -1132,7 +1132,7 @@ let test_a_de_nsec3 () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 06), ((18, 00, 00), 00))) in
   let zsk = "AwEAAb5nVvUWjtX2ViEJxEovyniL+kTxSatSTxdSVwpZq2f1ryPPl0Yo4my/aQCdkuNPJmVeCOzL4Ebokp/5MfCfYLcHp7xl8saHALSvSMemsDkLUSgGWkefRNOv3It8nrbSibDthexuwtMkdN39z+LIcS4fNob/K+KUvZA6+Z+UfK65" in
   let algorithm = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {| a7 27 81 80 00 01  00 00 00 06 00 01 01 61
+  let data = Ohex.decode {| a7 27 81 80 00 01  00 00 00 06 00 01 01 61
                                02 64 65 00 00 2b 00 01  c0 0e 00 06 00 01 00 00
                                0d f1 00 28 01 66 03 6e  69 63 c0 0e 03 69 74 73
                                05 64 65 6e 69 63 c0 0e  61 d7 25 d0 00 00 1c 20
@@ -1189,7 +1189,7 @@ let test_aaaa_asd_house_gov_nsec3_nodomain () =
   let time = Option.get (Ptime.of_date_time ((2022, 01, 12), ((18, 30, 00), 00))) in
   let zsk = "AwEAAdT5CpTeKi6ORYqcLBCLYhkJD05TGZwlWH1qfGlTaN55XSh53hjmZ8tZ6WxMOQiu2y8iB4zQ9LKphUswg8ZzNNvbkIbTKnCRrQPYyG2q/uZys2ut5Blxow8/kgLAb/f+UZgNuc82Wxz6vZg75HrY+iLhhfRsq/l5bamc/x2l/gm7" in
   let algorithm = Dnskey.RSA_SHA256 in
-  let data = Cstruct.of_hex {| 15 ed 81 83 00 01  00 00 00 08 00 01 03 61
+  let data = Ohex.decode {| 15 ed 81 83 00 01  00 00 00 08 00 01 03 61
                                73 64 05 68 6f 75 73 65  03 67 6f 76 00 00 1c 00
                                01 c0 10 00 06 00 01 00  00 01 36 00 28 06 6f 78
                                79 67 65 6e c0 10 03 6e  63 63 04 6d 61 69 6c c0
@@ -1286,13 +1286,13 @@ module Rfc4035 = struct
     Dnskey.{
       flags = Dnskey.F.singleton `Zone ;
       algorithm = RSA_SHA1 ;
-      key = Cstruct.of_string (Base64.decode_exn "AQOy1bZVvpPqhg4j7EJoM9rI3ZmyEx2OzDBVrZy/lvI5CQePxXHZS4i8dANH4DX3tbHol61ek8EFMcsGXxKciJFHyhl94C+NwILQdzsUlSFovBZsyl/NX6yEbtw/xN9ZNcrbYvgjjZ/UVPZIySFNsgEYvh0z2542lzMKR4Dh8uZffQ==")
+      key = Base64.decode_exn "AQOy1bZVvpPqhg4j7EJoM9rI3ZmyEx2OzDBVrZy/lvI5CQePxXHZS4i8dANH4DX3tbHol61ek8EFMcsGXxKciJFHyhl94C+NwILQdzsUlSFovBZsyl/NX6yEbtw/xN9ZNcrbYvgjjZ/UVPZIySFNsgEYvh0z2542lzMKR4Dh8uZffQ=="
     }
   and key2 =
     Dnskey.{
       flags = Dnskey.F.(add `Secure_entry_point (singleton `Zone)) ;
       algorithm = RSA_SHA1 ;
-      key = Cstruct.of_string (Base64.decode_exn "AQOeX7+baTmvpVHb2CcLnL1dMRWbuscRvHXlLnXwDzvqp4tZVKp1sZMepFb8MvxhhW3y/0QZsyCjczGJ1qk8vJe52iOhInKROVLRwxGpMfzPRLMlGybr51bOV/1se0ODacj3DomyB4QB5gKTYot/K9alk5/j8vfd4jWCWD+E1Sze0Q==")
+      key = Base64.decode_exn "AQOeX7+baTmvpVHb2CcLnL1dMRWbuscRvHXlLnXwDzvqp4tZVKp1sZMepFb8MvxhhW3y/0QZsyCjczGJ1qk8vJe52iOhInKROVLRwxGpMfzPRLMlGybr51bOV/1se0ODacj3DomyB4QB5gKTYot/K9alk5/j8vfd4jWCWD+E1Sze0Q=="
     }
 
   let ts (y, m, d) (hh, mm, ss) =
@@ -1313,7 +1313,7 @@ module Rfc4035 = struct
     | Error _ as e -> e
 
   let rrsig type_covered label_count signature =
-    let signature = Cstruct.of_string (Base64.decode_exn (String.concat "" signature)) in
+    let signature = Base64.decode_exn (String.concat "" signature) in
     Rrsig.{
         type_covered ;
         algorithm = RSA_SHA1 ;
@@ -1542,7 +1542,7 @@ module Rfc4035 = struct
         key_tag = 57855 ;
         algorithm = Dnskey.RSA_SHA1 ;
         digest_type = SHA1 ;
-        digest = Cstruct.of_hex "B6DCD485719ADCA18E5F3D48A2331627FDD3636B"
+        digest = Ohex.decode "B6DCD485719ADCA18E5F3D48A2331627FDD3636B"
       }
     and rrsig =
       rrsig (Rr_map.to_int Ds) 2 [
@@ -1731,13 +1731,13 @@ module Rfc5155 = struct
     Dnskey.{
       flags = Dnskey.F.singleton `Zone ;
       algorithm = RSASHA1_NSEC3_SHA1 ;
-      key = Cstruct.of_string (Base64.decode_exn "AwEAAaetidLzsKWUt4swWR8yu0wPHPiUi8LUsAD0QPWU+wzt89epO6tHzkMBVDkC7qphQO2hTY4hHn9npWFRw5BYubE=")
+      key = Base64.decode_exn "AwEAAaetidLzsKWUt4swWR8yu0wPHPiUi8LUsAD0QPWU+wzt89epO6tHzkMBVDkC7qphQO2hTY4hHn9npWFRw5BYubE="
     }
   and key2 =
     Dnskey.{
       flags = Dnskey.F.(add `Secure_entry_point (singleton `Zone)) ;
       algorithm = RSASHA1_NSEC3_SHA1 ;
-      key = Cstruct.of_string (Base64.decode_exn "AwEAAcUlFV1vhmqx6NSOUOq2R/dsR7Xm3upJj7IommWSpJABVfW8Q0rOvXdM6kzt+TAu92L9AbsUdblMFin8CVF3n4s=")
+      key = Base64.decode_exn "AwEAAcUlFV1vhmqx6NSOUOq2R/dsR7Xm3upJj7IommWSpJABVfW8Q0rOvXdM6kzt+TAu92L9AbsUdblMFin8CVF3n4s="
     }
 
   let ts (y, m, d) (hh, mm, ss) =
@@ -1758,7 +1758,7 @@ module Rfc5155 = struct
     | Error _ as e -> e
 
   let rrsig type_covered label_count signature =
-    let signature = Cstruct.of_string (Base64.decode_exn (String.concat "" signature)) in
+    let signature = Base64.decode_exn (String.concat "" signature) in
     Rrsig.{
         type_covered ;
         algorithm = RSASHA1_NSEC3_SHA1 ;
@@ -1772,10 +1772,10 @@ module Rfc5155 = struct
 
   let nsec3 next_owner types =
     let next_owner_hashed =
-      Cstruct.of_string (Result.get_ok (Base32.decode (String.uppercase_ascii next_owner)))
+      Result.get_ok (Base32.decode (String.uppercase_ascii next_owner))
     in
     Nsec3.{ flags = Some `Opt_out ; iterations = 12 ;
-            salt = Cstruct.of_hex "aabbccdd" ;
+            salt = Ohex.decode "aabbccdd" ;
             next_owner_hashed ;
             types }
 

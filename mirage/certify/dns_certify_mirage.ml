@@ -5,7 +5,7 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_certify_mirage" ~doc:"effectful DNS certify"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.S) (S : Tcpip.Stack.V4V6) = struct
+module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.S) (S : Tcpip.Stack.V4V6) = struct
 
   module D = Dns_mirage.Make(S)
 
@@ -16,11 +16,11 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
     with
     | Error s -> Lwt.return (Error s)
     | Ok (out, cb) ->
-      D.send_tcp (D.flow flow) out >>= function
+      D.send_tcp (D.flow flow) (Cstruct.of_string out) >>= function
       | Error () -> Lwt.return (Error (`Msg "tcp sending error"))
       | Ok () -> D.read_tcp flow >|= function
         | Error () -> Error (`Msg "tcp receive err")
-        | Ok data -> match cb data with
+        | Ok data -> match cb (Cstruct.to_string data) with
           | Error e -> Error (`Msg (Fmt.str "nsupdate reply error %a" Dns_certify.pp_u_err e))
           | Ok () -> Ok ()
 
@@ -28,12 +28,12 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
     match Dns_certify.query R.generate (Ptime.v (P.now_d_ps ())) name csr with
     | Error e -> Lwt.return (Error e)
     | Ok (out, cb) ->
-      D.send_tcp (D.flow flow) out >>= function
+      D.send_tcp (D.flow flow) (Cstruct.of_string out) >>= function
       | Error () -> Lwt.return (Error (`Msg "couldn't send tcp"))
       | Ok () ->
         D.read_tcp flow >|= function
         | Error () -> Error (`Msg "error while reading answer")
-        | Ok data -> match cb data with
+        | Ok data -> match cb (Cstruct.to_string data) with
           | Error e -> Error e
           | Ok cert -> Ok cert
 

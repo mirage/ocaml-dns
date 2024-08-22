@@ -668,7 +668,7 @@ module S = struct
   let secondary_via_key () =
     let keys =
       [ n_of_s "1.2.3.4.5.6.7.8._transfer.one.com",
-        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = String.make 10 '\000' } ]
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
@@ -680,7 +680,7 @@ module S = struct
   let secondary_via_root_key () =
     let keys =
       [ n_of_s "1.2.3.4.5.6.7.8._transfer",
-        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = String.make 10 '\000' } ]
     in
     let server = Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate ~keys data in
     let _, notifications = Dns_server.Primary.timer server Ptime.epoch ts in
@@ -692,7 +692,7 @@ module S = struct
   let secondaries_and_keys () =
     let keys =
       [ n_of_s "1.2.3.4.5.6.7.8._transfer.one.com",
-        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = String.make 10 '\000' } ]
     in
     let data' =
       let ns =
@@ -718,7 +718,7 @@ module S = struct
   let secondaries_and_keys_dups () =
     let keys =
       [ n_of_s "1.2.3.4.5.6.7.8._transfer.one.com",
-        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = String.make 10 '\000' } ]
     in
     let data' =
       let ns =
@@ -750,7 +750,7 @@ module S = struct
   let multiple_zones () =
     let keys =
       [ n_of_s "1.2.3.4.9.10.11.12._transfer",
-        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = Cstruct.create 10 } ]
+        { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key = String.make 10 '\000' } ]
     in
     let data' =
       let ns = Domain_name.(host_exn (n_of_s "ns.one.com")) in
@@ -781,7 +781,7 @@ module S = struct
 
   let test_secondary () =
     let keys =
-      let key = String.make 32 '\000' |> Base64.encode_string |> Cstruct.of_string in
+      let key = String.make 32 '\000' |> Base64.encode_string in
       [ n_of_s "1.2.3.4.9.10.11.12._transfer.one.com",
         { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key } ]
     in
@@ -1384,7 +1384,7 @@ module Axfr = struct
     in
     answers
 
-  let p_cs = Alcotest.testable Cstruct.hexdump_pp Cstruct.equal
+  let p_cs = Alcotest.testable Ohex.pp String.equal
 
   let axfr_server ?(trie = A.example_trie) () =
     Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate
@@ -1397,7 +1397,7 @@ module Axfr = struct
     let axfr_req = n_of_s "one.com", `Axfr in
     Alcotest.(check (result A.axfr_test A.rcode_test) __LOC__ (Ok axfr)
                 (Dns_server.handle_axfr_request server `Tcp None axfr_req));
-    let cs = Cstruct.of_hex {|
+    let cs = Ohex.decode {|
 12 34 84 00 00 01 00 09  00 00 00 00 03 6f 6e 65
 03 63 6f 6d 00 00 fc 00  01 c0 0c 00 06 00 01 00
 00 0e 10 00 26 02 6e 73  c0 0c 0a 68 6f 73 74 6d
@@ -1479,7 +1479,7 @@ module Axfr = struct
     let axfr_req = n_of_s "one.com", `Axfr in
     let bufs = buf_axfr_test s axfr_req in
     Alcotest.(check int __LOC__ 1 (List.length bufs));
-    Alcotest.(check int __LOC__ 65535 (Cstruct.length (List.hd bufs)));
+    Alcotest.(check int __LOC__ 65535 (String.length (List.hd bufs)));
     match Packet.decode (List.hd bufs) with
     | Ok _ -> ()
     | Error e ->
@@ -1492,8 +1492,8 @@ module Axfr = struct
     let axfr_req = n_of_s "one.com", `Axfr in
     let bufs = buf_axfr_test s axfr_req in
     Alcotest.(check int __LOC__ 2 (List.length bufs));
-    Alcotest.(check int __LOC__ 65500 (Cstruct.length (List.hd bufs)));
-    Alcotest.(check int __LOC__ 75 (Cstruct.length (List.hd (List.tl bufs))))
+    Alcotest.(check int __LOC__ 65500 (String.length (List.hd bufs)));
+    Alcotest.(check int __LOC__ 75 (String.length (List.hd (List.tl bufs))))
 
   let axfr_encoding_big_zone_multiple_splits () =
     (* a zone split over multiple packages *)
@@ -1541,7 +1541,7 @@ module Axfr = struct
     answers
 
   let keyname, key =
-    let key = String.make 32 '\000' |> Base64.encode_string |> Cstruct.of_string in
+    let key = String.make 32 '\000' |> Base64.encode_string in
     n_of_s "1.2.3.4.9.10.11.12._transfer.one.com",
     { Dnskey.flags = Dnskey.F.empty ; algorithm = SHA256 ; key }
 
@@ -1556,7 +1556,7 @@ module Axfr = struct
     let axfr_req = n_of_s "one.com", `Axfr in
     let bufs = signed_buf_axfr_test s keyname key axfr_req in
     Alcotest.(check int __LOC__ 1 (List.length bufs));
-    Alcotest.(check int __LOC__ 65535 (Cstruct.length (List.hd bufs)))
+    Alcotest.(check int __LOC__ 65535 (String.length (List.hd bufs)))
 
   let axfr_encoding_big_zone_one_split_tsig () =
     let trie = signed_zone "0" in
@@ -1564,8 +1564,8 @@ module Axfr = struct
     let axfr_req = n_of_s "one.com", `Axfr in
     let bufs = signed_buf_axfr_test s keyname key axfr_req in
     Alcotest.(check int __LOC__ 2 (List.length bufs));
-    Alcotest.(check int __LOC__ 65500 (Cstruct.length (List.hd bufs)));
-    Alcotest.(check int __LOC__ 184 (Cstruct.length (List.hd (List.tl bufs))))
+    Alcotest.(check int __LOC__ 65500 (String.length (List.hd bufs)));
+    Alcotest.(check int __LOC__ 184 (String.length (List.hd (List.tl bufs))))
 
   let tests = [
     "encoding", `Quick, axfr_encoding ;

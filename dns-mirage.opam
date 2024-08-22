@@ -9,12 +9,12 @@ license: "BSD-2-Clause"
 
 depends: [
   "dune" {>= "2.0.0"}
-  "ocaml" {>= "4.08.0"}
+  "ocaml" {>= "4.13.0"}
   "cstruct" {>= "6.0.0"}
   "dns" {= version}
   "ipaddr" {>= "5.2.0"}
   "lwt" {>= "4.2.1"}
-  "tcpip" {>= "7.0.0"}
+  "tcpip" {>= "8.2.0"}
 ]
 
 build: [

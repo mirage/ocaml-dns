@@ -210,7 +210,7 @@ type t = {
   data : Dns_trie.t ;
   auth : Authentication.t ;
   unauthenticated_zone_transfer : bool ;
-  rng : int -> Cstruct.t ;
+  rng : int -> string ;
   tsig_verify : Tsig_op.verify ;
   tsig_sign : Tsig_op.sign ;
 }
@@ -392,15 +392,15 @@ let safe_decode buf =
   match Packet.decode buf with
   | Error (`Bad_edns_version i) ->
     Log.err (fun m -> m "bad edns version error %u while decoding@.%a"
-                 i Cstruct.hexdump_pp buf);
+                 i Ohex.pp buf);
     Error Rcode.BadVersOrSig
   | Error (`Not_implemented (off, msg)) ->
     Log.err (fun m -> m "not implemented at %d: %s while decoding@.%a"
-                off msg Cstruct.hexdump_pp buf);
+                off msg Ohex.pp buf);
     Error Rcode.NotImp
   | Error e ->
     Log.err (fun m -> m "error %a while decoding, giving up@.%a"
-                Packet.pp_err e Cstruct.hexdump_pp buf);
+                Packet.pp_err e Ohex.pp buf);
     rx_metrics (`Rcode_error (Rcode.FormErr, Opcode.Query, None));
     Error Rcode.FormErr
   | Ok v ->
@@ -598,7 +598,7 @@ module Notification = struct
      packet, an optional key name used for signing, and an optional mac (used
      for verifying the reply) *)
   type outstanding =
-    (int64 * int * Packet.t * [ `raw ] Domain_name.t option * Cstruct.t option)
+    (int64 * int * Packet.t * [ `raw ] Domain_name.t option * string option)
     Domain_name.Host_map.t IPM.t
 
   (* operations:
@@ -816,7 +816,7 @@ let handle_tsig ?mac t now p buf =
         | Ok a when a = algo -> Some key
         | _ -> None
     in
-    let signed = Cstruct.sub buf 0 off in
+    let signed = String.sub buf 0 off in
     let* tsig, mac, key = t.tsig_verify ?mac now p name ?key tsig signed in
     Ok (Some (name, tsig, mac, key))
 
@@ -1107,8 +1107,8 @@ module Primary = struct
     | Error rcode ->
       let answer = Packet.raw_error buf rcode in
       Log.warn (fun m -> m "error %a while %a sent %a, answering with %a"
-                   Rcode.pp rcode Ipaddr.pp ip Cstruct.hexdump_pp buf
-                   Fmt.(option ~none:(any "no") Cstruct.hexdump_pp) answer);
+                   Rcode.pp rcode Ipaddr.pp ip Ohex.pp buf
+                   Fmt.(option ~none:(any "no") Ohex.pp) answer);
       tx_metrics (`Rcode_error (rcode, Opcode.Query, None));
       let answer = match answer with None -> [] | Some err -> [ err ] in
       t, answer, [], None, None
@@ -1160,7 +1160,7 @@ module Primary = struct
         let tsig_size =
           let dl d = String.length (Domain_name.to_string d) + 2 in
           dl name (* key name *) + 10 (* type class ttl rdlen *) +
-          16 (* base tsig *) + Cstruct.length tsig.Tsig.mac +
+          16 (* base tsig *) + String.length tsig.Tsig.mac +
           dl (Tsig.algorithm_to_name tsig.Tsig.algorithm) (* algo name *)
         in
         let t', answer, out, notify = handle_inner tsig_size (Some name) in
@@ -1195,10 +1195,10 @@ module Secondary = struct
 
   type state =
     | Transferred of int64
-    | Requested_soa of int64 * int * int * Cstruct.t
-    | Requested_axfr of int64 * int * Cstruct.t
-    | Requested_ixfr of int64 * int * Soa.t * Cstruct.t
-    | Processing_axfr of int64 * int * Cstruct.t * Soa.t * Name_rr_map.t
+    | Requested_soa of int64 * int * int * string
+    | Requested_axfr of int64 * int * string 
+    | Requested_ixfr of int64 * int * Soa.t * string
+    | Processing_axfr of int64 * int * string * Soa.t * Name_rr_map.t
 
   let id = function
     | Transferred _ -> None
@@ -1241,7 +1241,7 @@ module Secondary = struct
                                   Domain_name.pp name Domain_name.pp keyname
                                   Ipaddr.pp ip);
                       let v =
-                        Requested_soa (0L, 0, 0, Cstruct.empty), ip, keyname
+                        Requested_soa (0L, 0, 0, ""), ip, keyname
                       in
                       Domain_name.Host_map.add zone v zones
                     end else begin
@@ -1253,7 +1253,7 @@ module Secondary = struct
           | Some (keyname, ip) ->
             Log.app (fun m -> m "adding transfer key %a for zone %a (ip %a)"
                         Domain_name.pp keyname Domain_name.pp name Ipaddr.pp ip);
-            let v = Requested_soa (0L, 0, 0, Cstruct.empty), ip, keyname in
+            let v = Requested_soa (0L, 0, 0, ""), ip, keyname in
             Domain_name.Host_map.add zone v zones
       in
       Dns_trie.fold Rr_map.Soa auth f Domain_name.Host_map.empty

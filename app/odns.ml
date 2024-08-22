@@ -19,7 +19,7 @@ let pp_zone_tlsa ppf (domain,ttl,(tlsa:Dns.Tlsa.t)) =
     (Dns.Tlsa.matching_type_to_int tlsa.matching_type)
     ( (* this produces output similar to `dig`, splitting the hex string
          in chunks of 56 chars (28 bytes): *)
-      let `Hex hex = Hex.of_cstruct tlsa.data in
+      let hex = Ohex.decode tlsa.data in
       let hlen = String.length hex in
       let rec loop acc = function
         | n when n + 56 >= hlen ->
@@ -202,9 +202,10 @@ let nameserver =
       | None -> None
       | Some ip ->
         let auth peer_name ip =
-          let cfg =
-            Result.map
-              (fun authenticator -> Tls.Config.client ~authenticator ?peer_name ?ip ())
+          let cfg auth =
+            Result.join
+              (Result.map
+                 (fun authenticator -> Tls.Config.client ~authenticator ?peer_name ?ip ()) auth)
           in
           let time () = Some (Ptime_clock.now ()) in
           let of_fp data =
@@ -225,14 +226,14 @@ let nameserver =
                 | Some h -> h, String.concat "" rt
                 | None -> invalid_arg ("unknown hash: " ^ hash)
             in
-            let hex = Hex.to_cstruct (`Hex fp) in
+            let hex = Ohex.encode fp in
             hash, hex
           in
           match ca_file, ca_dir, cert_fp, key_fp with
           | None, None, None, None -> cfg (Ca_certs.authenticator ())
           | Some f, None, None, None ->
             let* data = Bos.OS.File.read (Fpath.v f) in
-            let* certs = X509.Certificate.decode_pem_multiple (Cstruct.of_string data) in
+            let* certs = X509.Certificate.decode_pem_multiple data in
             cfg (Ok (X509.Authenticator.chain_of_trust ~time certs))
           | None, Some d, None, None ->
             let* files = Bos.OS.Dir.contents (Fpath.v d) in
@@ -240,21 +241,24 @@ let nameserver =
               List.fold_left (fun r f ->
                   let* acc = r in
                   let* data = Bos.OS.File.read f in
-                  let* cert = X509.Certificate.decode_pem (Cstruct.of_string data) in
+                  let* cert = X509.Certificate.decode_pem data in
                   Ok (cert :: acc))
                 (Ok []) files
             in
             cfg (Ok (X509.Authenticator.chain_of_trust ~time certs))
           | None, None, Some fp, None ->
             let hash, fingerprint = of_fp fp in
-            cfg (Ok (X509.Authenticator.server_cert_fingerprint ~time ~hash ~fingerprint))
+            cfg (Ok (X509.Authenticator.cert_fingerprint ~time ~hash ~fingerprint))
           | None, None, None, Some fp ->
             let hash, fingerprint = of_fp fp in
-            cfg (Ok (X509.Authenticator.server_key_fingerprint ~time ~hash ~fingerprint))
+            cfg (Ok (X509.Authenticator.key_fingerprint ~time ~hash ~fingerprint))
           | _ -> invalid_arg "only one of cert-file, cert-dir, key-fingerprint, cert-fingerprint is supported"
         in
         let ip' = match hostname with None -> Some ip | Some _ -> None in
-        let tls = Result.get_ok (auth hostname ip') in
+        let tls = match auth hostname ip' with
+          | Ok a -> a
+          | Error `Msg msg -> invalid_arg msg
+        in
         Some (`Tcp, [ `Tls (tls, ip, if port = 53 then 853 else port);
                       `Plaintext (ip, port) ])
   in

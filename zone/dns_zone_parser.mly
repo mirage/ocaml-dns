@@ -160,7 +160,7 @@ generic_type s generic_rdata {
          and selector = Tlsa.int_to_selector $5
          and matching_type = Tlsa.int_to_matching_type $7
          in
-         if Cstruct.length $9 > max_rdata_length - 3 then
+         if String.length $9 > max_rdata_length - 3 then
            parse_error "TLSA payload exceeds maximum rdata size";
          let tlsa = { Tlsa.cert_usage ; selector ; matching_type ; data = $9 } in
          B (Tlsa, (0l, Rr_map.Tlsa_set.singleton tlsa ))
@@ -172,7 +172,7 @@ generic_type s generic_rdata {
          let algorithm = Sshfp.int_to_algorithm $3
          and typ = Sshfp.int_to_typ $5
          in
-         if Cstruct.length $7 > max_rdata_length - 2 then
+         if String.length $7 > max_rdata_length - 2 then
            parse_error "SSHFP payload exceeds maximum rdata size";
          let sshfp = { Sshfp.algorithm ; typ ; fingerprint = $7 } in
          B (Sshfp, (0l, Rr_map.Sshfp_set.singleton sshfp))
@@ -185,7 +185,7 @@ generic_type s generic_rdata {
          and algorithm = Dnskey.int_to_algorithm $5
          and digest_type = Ds.int_to_digest_type $7
          in
-         if Cstruct.length $9 > max_rdata_length - 4 then
+         if String.length $9 > max_rdata_length - 4 then
            parse_error "DS payload exceeds maximum rdata size";
          let ds = { Ds.key_tag ; algorithm ; digest_type ; digest = $9 } in
          B (Ds, (0l, Rr_map.Ds_set.singleton ds))
@@ -201,7 +201,7 @@ generic_type s generic_rdata {
          if String.length $9 > max_rdata_length - 4 then
            parse_error "DNSKEY exceeds maximum rdata size";
          let flags = Dnskey.decode_flags $3 in
-         let dnskey = { Dnskey.flags ; algorithm ; key = Cstruct.of_string $9 } in
+         let dnskey = { Dnskey.flags ; algorithm ; key = $9 } in
          B (Dnskey, (0l, Rr_map.Dnskey_set.singleton dnskey))
        with
        | Invalid_argument err -> parse_error err
@@ -233,11 +233,11 @@ generic_type s generic_rdata {
  | CHARSTRING s { parse_error ("TYPE " ^ $1 ^ " not supported") }
 
 single_hex: charstring
-  { Cstruct.of_hex $1 }
+  { Ohex.decode $1 }
 
 hex:
    single_hex { $1 }
- | hex s single_hex { Cstruct.append $1 $3 }
+ | hex s single_hex { $1 ^ $3 }
 
 generic_type: TYPE_GENERIC
      { try parse_uint16 (String.sub $1 4 (String.length $1 - 4))
@@ -247,7 +247,7 @@ generic_type: TYPE_GENERIC
 generic_rdata: GENERIC s NUMBER s hex
      { try
          let len = int_of_string $3
-         and data = Cstruct.to_string $5
+         and data = $5
          in
          if not (String.length data = len) then
            parse_error ("generic data length field is "

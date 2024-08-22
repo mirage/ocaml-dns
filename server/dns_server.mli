@@ -46,7 +46,7 @@ type t = private {
   data : Dns_trie.t ;
   auth : Authentication.t ;
   unauthenticated_zone_transfer : bool ;
-  rng : int -> Cstruct.t ;
+  rng : int -> string ;
   tsig_verify : Tsig_op.verify ;
   tsig_sign : Tsig_op.sign ;
 }
@@ -57,7 +57,7 @@ val create : ?unauthenticated_zone_transfer:bool ->
   ?tsig_sign:Tsig_op.sign ->
   ?auth:Authentication.t ->
   Dns_trie.t ->
-  (int -> Cstruct.t) ->
+  (int -> string) ->
   t
 (** [create ~unauthenticated_zone_transfer ~tsig_verify ~tsig_sign ~auth data rng]
     constructs a [t]. See {!Primary.create} and {!Secondary.create} for the
@@ -112,9 +112,9 @@ val handle_ixfr_request : t -> trie_cache -> proto -> [ `raw ] Domain_name.t opt
     incremental zone transfer request and processes it. If valid, an incremental
     zone transfer is returned. *)
 
-val handle_tsig : ?mac:Cstruct.t -> t -> Ptime.t -> Packet.t ->
-  Cstruct.t -> (([ `raw ] Domain_name.t * Tsig.t * Cstruct.t * Dnskey.t) option,
-                Tsig_op.e * Cstruct.t option) result
+val handle_tsig : ?mac:string -> t -> Ptime.t -> Packet.t ->
+  string -> (([ `raw ] Domain_name.t * Tsig.t * string * Dnskey.t) option,
+                Tsig_op.e * string option) result
 (** [handle_tsig ~mac t now packet buffer] verifies the tsig
     signature if present, returning the keyname, tsig, mac, and used key. *)
 
@@ -133,12 +133,12 @@ module Primary : sig
   (** [data s] is the data store of [s]. *)
 
   val with_data : s -> Ptime.t -> int64 -> Dns_trie.t ->
-    s * (Ipaddr.t * Cstruct.t list) list
+    s * (Ipaddr.t * string list) list
   (** [with_data s now ts trie] replaces the current data with [trie] in [s].
       The returned notifications should be send out. *)
 
   val with_keys : s -> Ptime.t -> int64 -> ('a Domain_name.t * Dnskey.t) list ->
-    s * (Ipaddr.t * Cstruct.t list) list
+    s * (Ipaddr.t * string list) list
   (** [with_keys s now ts keys] replaces the current keys with [keys] in [s],
       and generates notifications. *)
 
@@ -148,14 +148,14 @@ module Primary : sig
   val create : ?keys:('a Domain_name.t * Dnskey.t) list ->
     ?unauthenticated_zone_transfer:bool ->
     ?tsig_verify:Tsig_op.verify -> ?tsig_sign:Tsig_op.sign ->
-    rng:(int -> Cstruct.t) -> Dns_trie.t -> s
+    rng:(int -> string) -> Dns_trie.t -> s
   (** [create ~keys ~unauthenticated_zone_transfer ~tsig_verify ~tsig_sign ~rng
      data] creates a primary server. If [unauthenticated_zone_transfer] is
      provided and [true] (defaults to [false]), anyone can transfer the zones. *)
 
   val handle_packet : ?packet_callback:packet_callback -> s -> Ptime.t -> int64
     -> proto -> Ipaddr.t -> int -> Packet.t -> 'a Domain_name.t option ->
-    s * Packet.t option * (Ipaddr.t * Cstruct.t list) list *
+    s * Packet.t option * (Ipaddr.t * string list) list *
     [> `Notify of Soa.t option | `Keep ] option
   (** [handle_packet ~packet_callback s now ts src src_port proto key packet]
       handles the given [packet], returning new state, an answer, and
@@ -166,8 +166,8 @@ module Primary : sig
       balancing or transporting data. *)
 
   val handle_buf : ?packet_callback:packet_callback -> s -> Ptime.t -> int64
-    -> proto -> Ipaddr.t -> int -> Cstruct.t ->
-    s * Cstruct.t list * (Ipaddr.t * Cstruct.t list) list *
+    -> proto -> Ipaddr.t -> int -> string ->
+    s * string list * (Ipaddr.t * string list) list *
     [ `Notify of Soa.t option | `Signed_notify of Soa.t option | `Keep ] option *
     [ `raw ] Domain_name.t option
   (** [handle_buf ~packet_callback s now ts proto src src_port buffer] decodes
@@ -184,7 +184,7 @@ module Primary : sig
   (** [closed s ip] marks the connection to [ip] closed. *)
 
   val timer : s -> Ptime.t -> int64 ->
-    s * (Ipaddr.t * Cstruct.t list) list
+    s * (Ipaddr.t * string list) list
   (** [timer s now ts] may encode some notifications to secondary name servers
      if previous ones were not acknowledged. *)
 
@@ -209,27 +209,27 @@ module Secondary : sig
 
   val create : ?primary:Ipaddr.t ->
    tsig_verify:Tsig_op.verify -> tsig_sign:Tsig_op.sign ->
-    rng:(int -> Cstruct.t) -> ('a Domain_name.t * Dnskey.t) list -> s
+    rng:(int -> string) -> ('a Domain_name.t * Dnskey.t) list -> s
   (** [create ~primary ~tsig_verify ~tsig_sign ~rng keys] creates a secondary
      DNS server state. *)
 
   val handle_packet : ?packet_callback:packet_callback -> s -> Ptime.t -> int64 ->
     Ipaddr.t -> Packet.t -> 'a Domain_name.t option ->
-    s * Packet.t option * (Ipaddr.t * Cstruct.t) option
+    s * Packet.t option * (Ipaddr.t * string) option
   (** [handle_packet s now ts ip proto key t] handles the incoming packet. *)
 
   val handle_buf : ?packet_callback:packet_callback -> s -> Ptime.t -> int64 ->
-    proto -> Ipaddr.t -> Cstruct.t ->
-    s * Cstruct.t option * (Ipaddr.t * Cstruct.t) option
+    proto -> Ipaddr.t -> string ->
+    s * string option * (Ipaddr.t * string) option
   (** [handle_buf ~packet_callback s now ts proto src buf] decodes [buf], processes with
       {!handle_packet}, and encodes the results. *)
 
   val timer : s -> Ptime.t -> int64 ->
-    s * (Ipaddr.t * Cstruct.t list) list
+    s * (Ipaddr.t * string list) list
   (** [timer s now ts] may request SOA or retransmit AXFR. *)
 
   val closed : s -> Ptime.t -> int64 -> Ipaddr.t ->
-    s * Cstruct.t list
+    s * string list
   (** [closed s now ts ip] marks [ip] as closed, the returned buffers (SOA
       requests) should be sent to [ip]. *)
 end

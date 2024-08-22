@@ -5,19 +5,17 @@ let find_or_generate_key key_filename keytype keydata seed bits =
   let* f_exists = Bos.OS.File.exists key_filename in
   if f_exists then
     let* data = Bos.OS.File.read key_filename in
-    X509.Private_key.decode_pem (Cstruct.of_string data)
+    X509.Private_key.decode_pem data
   else
     let* key =
       match keydata with
-      | None ->
-        let seed = match seed with None -> None | Some x -> Some (Cstruct.of_string x) in
-        Ok (X509.Private_key.generate ?seed ~bits keytype)
+      | None -> Ok (X509.Private_key.generate ?seed ~bits keytype)
       | Some s ->
         let* s = Base64.decode s in
-        X509.Private_key.of_cstruct (Cstruct.of_string s) keytype
+        X509.Private_key.of_octets s keytype
     in
     let pem = X509.Private_key.encode_pem key in
-    let* () = Bos.OS.File.write ~mode:0o600 key_filename (Cstruct.to_string pem) in
+    let* () = Bos.OS.File.write ~mode:0o600 key_filename pem in
     Ok key
 
 let query_certificate sock fqdn csr =
@@ -52,12 +50,12 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype ke
     let* f_exists = Bos.OS.File.exists csr_filename in
     if f_exists then
       let* data = Bos.OS.File.read csr_filename in
-      X509.Signing_request.decode_pem (Cstruct.of_string data)
+      X509.Signing_request.decode_pem data
     else
       let* key = find_or_generate_key key_filename keytype keydata seed bits in
       let* csr = Dns_certify.signing_request hostname ~more_hostnames key in
       let pem = X509.Signing_request.encode_pem csr in
-      let* () = Bos.OS.File.write csr_filename (Cstruct.to_string pem) in
+      let* () = Bos.OS.File.write csr_filename pem in
       Ok csr
   in
   (* before doing anything, let's check whether cert_filename is present,
@@ -71,7 +69,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype ke
     let* f_exists = Bos.OS.File.exists cert_filename in
     if f_exists then
       let* data = Bos.OS.File.read cert_filename in
-      let* certs = X509.Certificate.decode_pem_multiple (Cstruct.of_string data) in
+      let* certs = X509.Certificate.decode_pem_multiple data in
       match List.filter (fun c -> X509.Certificate.supports_hostname c hostname) certs with
       | [] -> Ok None
       | [ cert ] -> Ok (Some cert)
@@ -93,7 +91,7 @@ let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype ke
   let write_certificate certs =
     let data = X509.Certificate.encode_pem_multiple certs in
     let* () = Bos.OS.File.delete cert_filename in
-    Bos.OS.File.write cert_filename (Cstruct.to_string data)
+    Bos.OS.File.write cert_filename data
   in
   let sock = Dns_cli.connect_tcp server_ip port in
   let* should_update =

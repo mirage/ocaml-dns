@@ -34,7 +34,7 @@ val is_ca_certificate : Dns.Tlsa.t -> bool
     is CA_constraint, selector is Full_certificate, and matching_type is
     No_hash). *)
 
-val ca_certificate : Cstruct.t -> Dns.Tlsa.t
+val ca_certificate : string -> Dns.Tlsa.t
 (** [ca_certificate data] is the CA certificate [data] encoded as TLSA record. *)
 
 val is_name : 'a Domain_name.t -> bool
@@ -51,10 +51,10 @@ type u_err = [
 val pp_u_err : u_err Fmt.t
 (** [pp_u_err ppf u] pretty-prints [u] on [ppf]. *)
 
-val nsupdate : (int -> Cstruct.t) -> (unit -> Ptime.t) ->
+val nsupdate : (int -> string) -> (unit -> Ptime.t) ->
   host:[ `host ] Domain_name.t -> keyname:'b Domain_name.t ->
   zone:[ `host ] Domain_name.t -> Dns.Dnskey.t -> X509.Signing_request.t ->
-  (Cstruct.t * (Cstruct.t -> (unit, [> u_err ]) result),
+  (string * (string -> (unit, [> u_err ]) result),
    [> `Msg of string ]) result
 (** [nsupdate rng now ~host ~keyname ~zone dnskey csr] is a buffer with a DNS
    update that removes all TLSA records from the given [host], and adds a single
@@ -83,10 +83,10 @@ val cert_matches_csr : ?until:Ptime.t -> Ptime.t -> X509.Signing_request.t ->
     hostnames in [csr] and [cert] are equal. A log message on the info level
     is emitted if the return value if [false]. *)
 
-val query : (int -> Cstruct.t) -> Ptime.t -> [ `host ] Domain_name.t ->
+val query : (int -> string) -> Ptime.t -> [ `host ] Domain_name.t ->
   X509.Signing_request.t ->
-  (Cstruct.t *
-   (Cstruct.t -> (X509.Certificate.t * X509.Certificate.t list, [> q_err ]) result),
+  (string *
+   (string -> (X509.Certificate.t * X509.Certificate.t list, [> q_err ]) result),
    [> `Msg of string ]) result
 (** [query rng now csr] is a [buffer] with a DNS TLSA query for the name of
    [csr], and a function that decodes a given answer, either returning a X.509

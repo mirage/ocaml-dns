@@ -33,7 +33,7 @@ module type S = sig
 end
 
 module Make
-  (R : Mirage_random.S)
+  (R : Mirage_crypto_rng_mirage.S)
   (T : Mirage_time.S)
   (M : Mirage_clock.MCLOCK)
   (P : Mirage_clock.PCLOCK)
@@ -87,7 +87,7 @@ The format of a nameserver is:
           | [ nameserver ] ->
             let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
             let* authenticator = CA.authenticator () in
-            let tls = Tls.Config.client ~authenticator () in
+            let* tls = Tls.Config.client ~authenticator () in
             Ok (`Tcp, `Tls (tls, ipaddr, port))
           | nameserver :: opt_hostname :: authenticator ->
             let* ipaddr, port = Ipaddr.with_port_of_string ~default:853 nameserver in
@@ -106,7 +106,7 @@ The format of a nameserver is:
                 let* a = X509.Authenticator.of_string data in
                 Ok (a (fun () -> Some (Ptime.v (P.now_d_ps ()))))
             in
-            let tls = Tls.Config.client ~authenticator ?peer_name () in
+            let* tls = Tls.Config.client ~authenticator ?peer_name () in
             Ok (`Tcp, `Tls (tls, ipaddr, port))
           | [] -> assert false )
       | "tcp" :: nameserver ->
@@ -171,7 +171,7 @@ The format of a nameserver is:
         if retries = 0 then
           Error (`Msg "couldn't find a free UDP port")
         else
-          let port = 1024 + ((Cstruct.BE.get_uint16 (R.generate 2) 0) mod (65536 - 1024)) in
+          let port = 1024 + ((String.get_uint16_be (R.generate 2) 0) mod (65536 - 1024)) in
           if IS.mem port t.udp_ports then
             go (retries - 1)
           else
@@ -189,7 +189,9 @@ The format of a nameserver is:
           in
           let tls_cfg =
             let peer_name = Dns_client.default_resolver_hostname in
-            Tls.Config.client ~authenticator ~peer_name ()
+            match Tls.Config.client ~authenticator ~peer_name () with
+            | Ok a -> a
+            | Error `Msg m -> invalid_arg ("invalid TLS configuration: " ^ m)
           in
           let ns =
             List.map (fun ip -> `Tls (tls_cfg, ip, 853))
@@ -211,7 +213,7 @@ The format of a nameserver is:
       }
 
     let nameservers { proto ; nameservers ; _ } = proto, nameservers
-    let rng = R.generate ?g:None
+    let rng n = R.generate ?g:None n
 
     let with_timeout time_left f =
       let timeout =
@@ -431,6 +433,8 @@ The format of a nameserver is:
       else
         Lwt.return (Error (`Msg "invalid context (data length <= 4)"))
 
+    let send_recv t tx =
+      Lwt_result.map Cstruct.to_string (send_recv t (Cstruct.of_string tx))
   end
 
   include Dns_client.Make(Transport)

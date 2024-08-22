@@ -23,8 +23,8 @@ type s = [ `Key_algorithm of Dnskey.t | `Tsig_creation | `Sign ]
 val pp_s : s Fmt.t
 (** [pp_s ppf s] pretty-prints [s] on [ppf]. *)
 
-val encode_and_sign : ?proto:proto -> ?mac:Cstruct.t -> Packet.t -> Ptime.t ->
-  Dns.Dnskey.t -> 'a Domain_name.t -> (Cstruct.t * Cstruct.t, s) result
+val encode_and_sign : ?proto:proto -> ?mac:string -> Packet.t -> Ptime.t ->
+  Dns.Dnskey.t -> 'a Domain_name.t -> (string * string, s) result
 (** [encode_and_sign ~proto ~mac t now dnskey name] signs and encodes the DNS
     packet. If a reply to a request is signed, the [mac] argument should be the
     message authentication code from the request (needed to sign the reply).
@@ -44,15 +44,15 @@ val pp_e : e Fmt.t
 (** [pp_e ppf e] prety-prints [e] on [ppf]. *)
 
 val decode_and_verify : Ptime.t -> Dnskey.t -> 'a Domain_name.t ->
-  ?mac:Cstruct.t -> Cstruct.t ->
-  (Packet.t * Tsig.t * Cstruct.t, e) result
+  ?mac:string -> string ->
+  (Packet.t * Tsig.t * string, e) result
 (** [decode_and_verify now dnskey name ~mac buffer] decodes and verifies the
    given buffer using the key material, resulting in a DNS packet, a signature,
    and the [mac], or a failure. The optional [mac] argument should be provided
    if an answer to a signed DNS packet is to be decoded. *)
 
 (**/**)
-val compute_tsig : 'a Domain_name.t -> Tsig.t -> key:Cstruct.t ->
-  Cstruct.t -> Cstruct.t
+val compute_tsig : 'a Domain_name.t -> Tsig.t -> key:string ->
+  string -> string
 (** [compute_tsig name tsig ~key buffer] computes the mac over [buffer]
     and [tsig], using the provided [key] and [name]. *)

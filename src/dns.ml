@@ -228,14 +228,14 @@ module Name = struct
   let decode names buf ~off =
     (* first collect all the labels (and their offsets) *)
     let rec aux offsets off =
-      match Cstruct.get_uint8 buf off with
+      match String.get_uint8 buf off with
       | 0 -> Ok ((`Z, off), offsets, succ off)
       | i when i >= ptr_tag ->
-        let ptr = (i - ptr_tag) lsl 8 + Cstruct.get_uint8 buf (succ off) in
+        let ptr = (i - ptr_tag) lsl 8 + String.get_uint8 buf (succ off) in
         Ok ((`P ptr, off), offsets, off + 2)
       | i when i >= 64 -> Error (`Malformed (off, Fmt.str "label tag 0x%x" i)) (* bit patterns starting with 10 or 01 *)
       | i -> (* this is clearly < 64! *)
-        let name = Cstruct.to_string (Cstruct.sub buf (succ off) i) in
+        let name = String.sub buf (succ off) i in
         aux ((name, off) :: offsets) (succ off + i)
     in
     (* Cstruct.xxx can raise, and we'll have a partial parse then *)
@@ -268,16 +268,16 @@ module Name = struct
       Ok (t, names, foff)
 
   let encode : ?compress:bool -> 'a Domain_name.t -> int Domain_name.Map.t ->
-    Cstruct.t -> int -> int Domain_name.Map.t * int =
+    bytes -> int -> int Domain_name.Map.t * int =
     fun ?(compress = true) name names buf off ->
     let name = Domain_name.raw name in
     let encode_lbl lbl off =
       let l = String.length lbl in
-      Cstruct.set_uint8 buf off l ;
-      Cstruct.blit_from_string lbl 0 buf (succ off) l ;
+      Bytes.set_uint8 buf off l ;
+      Bytes.blit_string lbl 0 buf (succ off) l ;
       off + succ l
     and z off =
-      Cstruct.set_uint8 buf off 0 ;
+      Bytes.set_uint8 buf off 0 ;
       succ off
     in
     let maybe_insert_label name off names =
@@ -307,7 +307,7 @@ module Name = struct
               one (maybe_insert_label name off names) l rem
             | Some ptr ->
               let data = ptr_tag lsl 8 + ptr in
-              Cstruct.BE.set_uint16 buf off data ;
+              Bytes.set_uint16_be buf off data ;
               names, off + 2
         in
         one names off name
@@ -334,7 +334,7 @@ module Name = struct
   (* enable once https://github.com/ocaml/dune/issues/897 is resolved *)
   let%expect_test "decode_name" =
     let test ?(map = Int_map.empty) ?(off = 0) data rmap roff =
-      match decode map (Cstruct.of_string data) ~off with
+      match decode map data ~off with
       | Error _ -> Format.printf "decode error"
       | Ok (name, omap, ooff) ->
         begin match Int_map.equal (fun (n, off) (n', off') ->
@@ -346,7 +346,7 @@ module Name = struct
         end
     in
     let test_err ?(map = Int_map.empty) ?(off = 0) data =
-      match decode map (Cstruct.of_string data) ~off with
+      match decode map data ~off with
       | Error _ -> Format.printf "error (as expected)"
       | Ok _ -> Format.printf "expected error, got ok"
     in
@@ -437,13 +437,13 @@ module Name = struct
     [%expect {|error (as expected)|}]
 
   let%expect_test "encode_name" =
-    let cs = Cstruct.create 30 in
-    let test_cs ?(off = 0) len =
-      Format.printf "%a" Cstruct.hexdump_pp (Cstruct.sub cs off len)
+    let buf = Bytes.create 30 in
+    let test_buf ?(off = 0) len =
+      Format.printf "%a" Ohex.pp (String.sub (Bytes.unsafe_to_string buf) off len)
     in
     let test ?compress ?(map = Domain_name.Map.empty) ?(off = 0) name rmap roff =
-      let omap, ooff = encode ?compress name map cs off in
-      if Domain_name.Map.equal (fun a b -> int_compare a b = 0) rmap omap && roff = ooff then
+      let omap, ooff = encode ?compress name map buf off in
+      if Domain_name.Map.equal (fun a b -> Int.compare a b = 0) rmap omap && roff = ooff then
         Format.printf "ok"
       else
         Format.printf "error"
@@ -451,11 +451,11 @@ module Name = struct
     let n_of_s = Domain_name.of_string_exn in
     test Domain_name.root Domain_name.Map.empty 1; (* compressed encode of root is good *)
     [%expect {|ok|}];
-    test_cs 1;
+    test_buf 1;
     [%expect {|00|}];
     test ~compress:false Domain_name.root Domain_name.Map.empty 1;
     [%expect {|ok|}];
-    test_cs 1;
+    test_buf 1;
     [%expect {|00|}];
     let map =
       Domain_name.Map.add (n_of_s "foo.bar") 0
@@ -463,17 +463,17 @@ module Name = struct
     in
     test (n_of_s "foo.bar") map 9; (* encode of foo.bar is good *)
     [%expect {|ok|}];
-    test_cs 9;
-    [%expect {|03 66 6f 6f 03 62 61 72  00|}];
+    test_buf 9;
+    [%expect {|0366 6f6f 0362 6172  00|}];
     test ~compress:false (n_of_s "foo.bar") map 9; (* uncompressed foo.bar is good *)
     [%expect {|ok|}];
-    test_cs 9;
-    [%expect {|03 66 6f 6f 03 62 61 72  00|}];
+    test_buf 9;
+    [%expect {|0366 6f6f 0362 6172  00|}];
     let emap = Domain_name.Map.add (n_of_s "baz.foo.bar") 9 map in
     test ~map ~off:9 (n_of_s "baz.foo.bar") emap 15; (* encode of baz.foo.bar is good *)
     [%expect {|ok|}];
-    test_cs 15;
-    [%expect {|03 66 6f 6f 03 62 61 72  00 03 62 61 7a c0 00|}];
+    test_buf 15;
+    [%expect {|0366 6f6f 0362 6172  0003 6261 7ac0 00|}];
     let map' =
       Domain_name.Map.add (n_of_s "baz.foo.bar") 9
         (Domain_name.Map.add (n_of_s "foo.bar") 13
@@ -481,10 +481,9 @@ module Name = struct
     in
     test ~compress:false ~map ~off:9 (n_of_s "baz.foo.bar") map' 22;
     [%expect {|ok|}];
-    test_cs 22;
+    test_buf 22;
     [%expect {|
-03 66 6f 6f 03 62 61 72  00 03 62 61 7a 03 66 6f
-6f 03 62 61 72 00|}]
+0366 6f6f 0362 6172  0003 6261 7a03 666f  6f03 6261 7200|}]
     *)
 end
 
@@ -537,11 +536,11 @@ module Soa = struct
   let decode_exn names buf ~off ~len:_ =
     let* nameserver, names, off = Name.decode names buf ~off in
     let* hostmaster, names, off = Name.decode names buf ~off in
-    let serial = Cstruct.BE.get_uint32 buf off in
-    let refresh = Cstruct.BE.get_uint32 buf (off + 4) in
-    let retry = Cstruct.BE.get_uint32 buf (off + 8) in
-    let expiry = Cstruct.BE.get_uint32 buf (off + 12) in
-    let minimum = Cstruct.BE.get_uint32 buf (off + 16) in
+    let serial = String.get_int32_be buf off in
+    let refresh = String.get_int32_be buf (off + 4) in
+    let retry = String.get_int32_be buf (off + 8) in
+    let expiry = String.get_int32_be buf (off + 12) in
+    let minimum = String.get_int32_be buf (off + 16) in
     let soa =
       { nameserver ; hostmaster ; serial ; refresh ; retry ; expiry ; minimum }
     in
@@ -550,11 +549,11 @@ module Soa = struct
   let encode ?compress soa names buf off =
     let names, off = Name.encode ?compress soa.nameserver names buf off in
     let names, off = Name.encode ?compress soa.hostmaster names buf off in
-    Cstruct.BE.set_uint32 buf off soa.serial ;
-    Cstruct.BE.set_uint32 buf (off + 4) soa.refresh ;
-    Cstruct.BE.set_uint32 buf (off + 8) soa.retry ;
-    Cstruct.BE.set_uint32 buf (off + 12) soa.expiry ;
-    Cstruct.BE.set_uint32 buf (off + 16) soa.minimum ;
+    Bytes.set_int32_be buf off soa.serial ;
+    Bytes.set_int32_be buf (off + 4) soa.refresh ;
+    Bytes.set_int32_be buf (off + 8) soa.retry ;
+    Bytes.set_int32_be buf (off + 12) soa.expiry ;
+    Bytes.set_int32_be buf (off + 16) soa.minimum ;
     names, off + 20
 end
 
@@ -594,14 +593,14 @@ module Mx = struct
       (Domain_name.compare mx.mail_exchange mx'.mail_exchange)
 
   let decode_exn names buf ~off ~len:_ =
-    let preference = Cstruct.BE.get_uint16 buf off in
+    let preference = String.get_uint16_be buf off in
     let off = off + 2 in
     let* mx, names, off' = Name.decode names buf ~off in
     let* mail_exchange = Name.host off mx in
     Ok ({ preference ; mail_exchange }, names, off')
 
   let encode ?compress { preference ; mail_exchange } names buf off =
-    Cstruct.BE.set_uint16 buf off preference ;
+    Bytes.set_uint16_be buf off preference ;
     Name.encode ?compress mail_exchange names buf (off + 2)
 end
 
@@ -629,12 +628,12 @@ module A = struct
   let compare = Ipaddr.V4.compare
 
   let decode_exn names buf ~off ~len:_ =
-    let ip = Cstruct.BE.get_uint32 buf off in
+    let ip = String.get_int32_be buf off in
     Ok (Ipaddr.V4.of_int32 ip, names, off + 4)
 
   let encode ip names buf off =
     let ip = Ipaddr.V4.to_int32 ip in
-    Cstruct.BE.set_uint32 buf off ip ;
+    Bytes.set_int32_be buf off ip ;
     names, off + 4
 end
 
@@ -647,15 +646,15 @@ module Aaaa = struct
   let compare = Ipaddr.V6.compare
 
   let decode_exn names buf ~off ~len:_ =
-    let iph = Cstruct.BE.get_uint64 buf off
-    and ipl = Cstruct.BE.get_uint64 buf (off + 8)
+    let iph = String.get_int64_be buf off
+    and ipl = String.get_int64_be buf (off + 8)
     in
     Ok (Ipaddr.V6.of_int64 (iph, ipl), names, off + 16)
 
   let encode ip names buf off =
     let iph, ipl = Ipaddr.V6.to_int64 ip in
-    Cstruct.BE.set_uint64 buf off iph ;
-    Cstruct.BE.set_uint64 buf (off + 8) ipl ;
+    Bytes.set_int64_be buf off iph ;
+    Bytes.set_int64_be buf (off + 8) ipl ;
     names, off + 16
 end
 
@@ -701,9 +700,9 @@ module Srv = struct
             (Domain_name.compare a.target b.target)))
 
   let decode_exn names buf ~off ~len:_ =
-    let priority = Cstruct.BE.get_uint16 buf off
-    and weight = Cstruct.BE.get_uint16 buf (off + 2)
-    and port = Cstruct.BE.get_uint16 buf (off + 4)
+    let priority = String.get_int16_be buf off
+    and weight = String.get_int16_be buf (off + 2)
+    and port = String.get_int16_be buf (off + 4)
     in
     let off = off + 6 in
     let* target, names, off' = Name.decode names buf ~off in
@@ -711,9 +710,9 @@ module Srv = struct
     Ok ({ priority ; weight ; port ; target }, names, off')
 
   let encode t names buf off =
-    Cstruct.BE.set_uint16 buf off t.priority ;
-    Cstruct.BE.set_uint16 buf (off + 2) t.weight ;
-    Cstruct.BE.set_uint16 buf (off + 4) t.port ;
+    Bytes.set_uint16_be buf off t.priority ;
+    Bytes.set_uint16_be buf (off + 2) t.weight ;
+    Bytes.set_uint16_be buf (off + 4) t.port ;
     (* as of rfc2782, no name compression for target! rfc2052 required it *)
     Name.encode ~compress:false t.target names buf (off + 6)
 end
@@ -832,45 +831,45 @@ module Dnskey = struct
   type t = {
     flags : F.t ;
     algorithm : algorithm ; (* u_int8_t *)
-    key : Cstruct.t ;
+    key : string ;
   }
 
   let compare a b =
     andThen (F.compare a.flags b.flags)
       (andThen (compare_algorithm a.algorithm b.algorithm)
-         (Cstruct.compare a.key b.key))
+         (String.compare a.key b.key))
 
   let decode_exn names buf ~off ~len =
-    let flags = Cstruct.BE.get_uint16 buf off
-    and proto = Cstruct.get_uint8 buf (off + 2)
-    and algo = Cstruct.get_uint8 buf (off + 3)
+    let flags = String.get_uint16_be buf off
+    and proto = String.get_uint8 buf (off + 2)
+    and algo = String.get_uint8 buf (off + 3)
     in
     let* () =
       guard (proto = 3)
         (`Not_implemented (off + 2, Fmt.str "dnskey protocol 0x%x" proto))
     in
     let algorithm = int_to_algorithm algo in
-    let key = Cstruct.sub buf (off + 4) (len - 4) in
+    let key = String.sub buf (off + 4) (len - 4) in
     let flags = decode_flags flags in
     Ok ({ flags ; algorithm ; key }, names, off + len)
 
   let encode t names buf off =
     let flags = encode_flags t.flags in
-    Cstruct.BE.set_uint16 buf off flags ;
-    Cstruct.set_uint8 buf (off + 2) 3 ;
-    Cstruct.set_uint8 buf (off + 3) (algorithm_to_int t.algorithm) ;
-    let kl = Cstruct.length t.key in
-    Cstruct.blit t.key 0 buf (off + 4) kl ;
+    Bytes.set_uint16_be buf off flags ;
+    Bytes.set_uint8 buf (off + 2) 3 ;
+    Bytes.set_uint8 buf (off + 3) (algorithm_to_int t.algorithm) ;
+    let kl = String.length t.key in
+    Bytes.blit_string t.key 0 buf (off + 4) kl ;
     names, off + 4 + kl
 
   let key_tag t =
-    let data = Cstruct.create (4 + Cstruct.length t.key) in
+    let data = Bytes.create (4 + String.length t.key) in
     let _names, _off = encode t Domain_name.Map.empty data 0 in
     let rec go idx ac =
-      if idx >= Cstruct.length data then
+      if idx >= Bytes.length data then
         (ac + (ac lsr 16) land 0xFFFF) land 0xFFFF
       else
-        let b = Cstruct.get_uint8 data idx in
+        let b = Bytes.get_uint8 data idx in
         let lowest_bit_set = idx land 1 <> 0 in
         let ac = ac + if lowest_bit_set then b else b lsl 8 in
         go (succ idx) ac
@@ -882,19 +881,18 @@ module Dnskey = struct
       Fmt.(list ~sep:(any ", ") pp_flag) (F.elements t.flags)
       pp_algorithm t.algorithm
       (key_tag t)
-      Cstruct.hexdump_pp t.key
+      (Ohex.pp_hexdump ()) t.key
 
   let digest_prep owner t =
-    let kl = Cstruct.length t.key in
-    let buf = Cstruct.create (kl + 255 + 4) in (* key length + max name + 4 *)
+    let kl = String.length t.key in
+    let buf = Bytes.create (kl + 255 + 4) in (* key length + max name + 4 *)
     let names = Domain_name.Map.empty in
     let _, off = Name.encode ~compress:false owner names buf 0 in
     let _, off' = encode t names buf off in
-    Cstruct.sub buf 0 off'
+    String.sub (Bytes.unsafe_to_string buf) 0 off'
 
   let of_string key =
     let parse algo key =
-      let key = Cstruct.of_string key in
       let* algorithm = string_to_algorithm algo in
       Ok { flags = F.empty ; algorithm ; key }
     in
@@ -926,7 +924,7 @@ module Rrsig = struct
     signature_inception : Ptime.t ;
     key_tag : int ;
     signer_name : [ `raw ] Domain_name.t ;
-    signature : Cstruct.t
+    signature : string
   }
 
   let canonical t =
@@ -940,7 +938,7 @@ module Rrsig = struct
       (Ptime.pp_rfc3339 ()) t.signature_expiration
       (Ptime.pp_rfc3339 ()) t.signature_inception
       t.key_tag Domain_name.pp t.signer_name
-      Cstruct.hexdump_pp t.signature
+      (Ohex.pp_hexdump ()) t.signature
 
   let compare a b =
     andThen (Int.compare a.type_covered b.type_covered)
@@ -951,19 +949,19 @@ module Rrsig = struct
                   (andThen (Ptime.compare a.signature_inception b.signature_inception)
                      (andThen (Int.compare a.key_tag b.key_tag)
                         (andThen (Domain_name.compare a.signer_name b.signer_name)
-                           (Cstruct.compare a.signature b.signature))))))))
+                           (String.compare a.signature b.signature))))))))
 
   let decode_exn names buf ~off ~len =
-    let type_covered = Cstruct.BE.get_uint16 buf off
-    and algo = Cstruct.get_uint8 buf (off + 2)
-    and label_count = Cstruct.get_uint8 buf (off + 3)
-    and original_ttl = Cstruct.BE.get_uint32 buf (off + 4)
-    and sig_exp = Cstruct.BE.get_uint32 buf (off + 8)
-    and sig_inc = Cstruct.BE.get_uint32 buf (off + 12)
-    and key_tag = Cstruct.BE.get_uint16 buf (off + 16)
+    let type_covered = String.get_uint16_be buf off
+    and algo = String.get_uint8 buf (off + 2)
+    and label_count = String.get_uint8 buf (off + 3)
+    and original_ttl = String.get_int32_be buf (off + 4)
+    and sig_exp = String.get_int32_be buf (off + 8)
+    and sig_inc = String.get_int32_be buf (off + 12)
+    and key_tag = String.get_uint16_be buf (off + 16)
     in
     let* signer_name, names, off' = Name.decode names buf ~off:(off + 18) in
-    let signature = Cstruct.sub buf off' (len - (off' - off)) in
+    let signature = String.sub buf off' (len - (off' - off)) in
     let algorithm = Dnskey.int_to_algorithm algo in
     (* sig_exp and sig_inc are supposed seconds since UNIX epoch (1970-01-01),
        TODO but may only be +68years and -68years in respect to current timestamp *)
@@ -979,10 +977,10 @@ module Rrsig = struct
         names, off + len)
 
   let encode t names buf off =
-    Cstruct.BE.set_uint16 buf off t.type_covered ;
-    Cstruct.set_uint8 buf (off + 2) (Dnskey.algorithm_to_int t.algorithm) ;
-    Cstruct.set_uint8 buf (off + 3) t.label_count ;
-    Cstruct.BE.set_uint32 buf (off + 4) t.original_ttl ;
+    Bytes.set_uint16_be buf off t.type_covered ;
+    Bytes.set_uint8 buf (off + 2) (Dnskey.algorithm_to_int t.algorithm) ;
+    Bytes.set_uint8 buf (off + 3) t.label_count ;
+    Bytes.set_int32_be buf (off + 4) t.original_ttl ;
     (* TODO +-68 years in respect to current timestamp *)
     let int_s ts =
       match Ptime_extra.to_int64 ts with
@@ -993,12 +991,12 @@ module Rrsig = struct
         else
           0l
     in
-    Cstruct.BE.set_uint32 buf (off + 8) (int_s t.signature_expiration) ;
-    Cstruct.BE.set_uint32 buf (off + 12) (int_s t.signature_inception) ;
-    Cstruct.BE.set_uint16 buf (off + 16) t.key_tag ;
+    Bytes.set_int32_be buf (off + 8) (int_s t.signature_expiration) ;
+    Bytes.set_int32_be buf (off + 12) (int_s t.signature_inception) ;
+    Bytes.set_uint16_be buf (off + 16) t.key_tag ;
     let names, off = Name.encode ~compress:false t.signer_name names buf (off + 18) in
-    let slen = Cstruct.length t.signature in
-    Cstruct.blit t.signature 0 buf off slen ;
+    let slen = String.length t.signature in
+    Bytes.blit_string t.signature 0 buf off slen ;
     names, off + slen
 
   (* RFC 4035 section 5.3.2 *)
@@ -1018,8 +1016,8 @@ module Rrsig = struct
   let prep_rrsig rrsig =
     (* from RFC 4034 section 3.1.8.1 *)
     (* this buffer may be too small... *)
-    let tbs = Cstruct.create 4096 in
-    let rrsig_raw = canonical { rrsig with signature = Cstruct.empty } in
+    let tbs = Bytes.create 4096 in
+    let rrsig_raw = canonical { rrsig with signature = "" } in
     let _, off = encode rrsig_raw Domain_name.Map.empty tbs 0 in
     tbs, off
 end
@@ -1060,7 +1058,7 @@ module Ds = struct
     key_tag : int ;
     algorithm : Dnskey.algorithm ;
     digest_type : digest_type ;
-    digest : Cstruct.t
+    digest : string
   }
 
   let pp ppf t =
@@ -1068,19 +1066,19 @@ module Ds = struct
       t.key_tag
       Dnskey.pp_algorithm t.algorithm
       pp_digest_type t.digest_type
-      Cstruct.hexdump_pp t.digest
+      (Ohex.pp_hexdump ()) t.digest
 
   let compare a b =
     andThen (Int.compare a.key_tag b.key_tag)
       (andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
          (andThen (compare_digest_type a.digest_type b.digest_type)
-            (Cstruct.compare a.digest b.digest)))
+            (String.compare a.digest b.digest)))
 
   let decode_exn names buf ~off ~len =
-    let key_tag = Cstruct.BE.get_uint16 buf off
-    and algo = Cstruct.get_uint8 buf (off + 2)
-    and dt = Cstruct.get_uint8 buf (off + 3)
-    and digest = Cstruct.sub buf (off + 4) (len - 4)
+    let key_tag = String.get_uint16_be buf off
+    and algo = String.get_uint8 buf (off + 2)
+    and dt = String.get_uint8 buf (off + 3)
+    and digest = String.sub buf (off + 4) (len - 4)
     in
     let algorithm = Dnskey.int_to_algorithm algo
     and digest_type = int_to_digest_type dt
@@ -1088,11 +1086,11 @@ module Ds = struct
     Ok ({ key_tag ; algorithm ; digest_type ; digest }, names, off + len)
 
   let encode t names buf off =
-    Cstruct.BE.set_uint16 buf off t.key_tag ;
-    Cstruct.set_uint8 buf (off + 2) (Dnskey.algorithm_to_int t.algorithm) ;
-    Cstruct.set_uint8 buf (off + 3) (digest_type_to_int t.digest_type) ;
-    Cstruct.blit t.digest 0 buf (off + 4) (Cstruct.length t.digest) ;
-    names, off + Cstruct.length t.digest + 4
+    Bytes.set_uint16_be buf off t.key_tag ;
+    Bytes.set_uint8 buf (off + 2) (Dnskey.algorithm_to_int t.algorithm) ;
+    Bytes.set_uint8 buf (off + 3) (digest_type_to_int t.digest_type) ;
+    Bytes.blit_string t.digest 0 buf (off + 4) (String.length t.digest) ;
+    names, off + String.length t.digest + 4
 end
 
 module Bit_map = struct
@@ -1127,14 +1125,14 @@ module Bit_map = struct
       if idx - off = len then
         Ok acc
       else
-        let block = Cstruct.get_uint8 buf idx in
+        let block = String.get_uint8 buf idx in
         if block <= last_block then
           Error (`Malformed (off + idx, "block number not increasing"))
         else
-          let length = Cstruct.get_uint8 buf (idx + 1) in
+          let length = String.get_uint8 buf (idx + 1) in
           let s = idx + 2 in
           let rec octet idx =
-            let b = Cstruct.get_uint8 buf (s + idx) in
+            let b = String.get_uint8 buf (s + idx) in
             let bits = byte_to_bits b in
             let more = if idx = 0 then empty else octet (idx - 1) in
             List.fold_left (fun acc b' -> add (idx * 8 + b') acc) more bits
@@ -1162,9 +1160,9 @@ module Bit_map = struct
 
   let encode buf off data =
     let encode_block off block data =
-      Cstruct.set_uint8 buf off block;
+      Bytes.set_uint8 buf off block;
       let bytes = (max_elt data + 1 + 7) / 8 in
-      Cstruct.set_uint8 buf (off + 1) bytes;
+      Bytes.set_uint8 buf (off + 1) bytes;
       let rec enc_octet idx data =
         if is_empty data then
           ()
@@ -1172,7 +1170,7 @@ module Bit_map = struct
           let data, rest = partition (fun i -> i < (idx + 1) * 8) data in
           let d = map (fun i -> i mod 8) data in
           let byte = bits_to_byte (elements d) in
-          Cstruct.set_uint8 buf (idx + off + 2) byte;
+          Bytes.set_uint8 buf (idx + off + 2) byte;
           enc_octet (idx + 1) rest
       in
       enc_octet 0 data;
@@ -1249,8 +1247,8 @@ module Nsec3 = struct
     (* hash - but only SHA1 is supported *)
     flags : f option ;
     iterations : int ;
-    salt : Cstruct.t ;
-    next_owner_hashed : Cstruct.t ;
+    salt : string ;
+    next_owner_hashed : string ;
     types : Bit_map.t ;
   }
 
@@ -1262,45 +1260,45 @@ module Nsec3 = struct
        | None -> ""
        | Some `Opt_out -> "opt-out "
        | Some `Unknown x -> "unknown " ^ string_of_int x ^ " ")
-      iterations Cstruct.hexdump_pp salt
-      Cstruct.hexdump_pp next_owner_hashed
+      iterations (Ohex.pp_hexdump ()) salt
+      (Ohex.pp_hexdump ()) next_owner_hashed
       Fmt.(list ~sep:(any " ") int) (Bit_map.elements types)
 
   let compare a b =
     andThen (compare_flags a.flags b.flags)
       (andThen (Int.compare a.iterations b.iterations)
-         (andThen (Cstruct.compare a.salt b.salt)
-            (andThen (Cstruct.compare a.next_owner_hashed b.next_owner_hashed)
+         (andThen (String.compare a.salt b.salt)
+            (andThen (String.compare a.next_owner_hashed b.next_owner_hashed)
                (Bit_map.compare a.types b.types))))
 
   let decode_exn names buf ~off ~len =
-    let hash_algo = Cstruct.get_uint8 buf off in
+    let hash_algo = String.get_uint8 buf off in
     let* () =
       guard (hash_algo = hash)
         (`Not_implemented (off, "NSEC3 hash only SHA-1 supported"))
     in
-    let flags = flags_of_int (Cstruct.get_uint8 buf (off + 1)) in
-    let iterations = Cstruct.BE.get_uint16 buf (off + 2) in
-    let slen = Cstruct.get_uint8 buf (off + 4) in
-    let salt = Cstruct.sub buf (off + 5) slen in
-    let hlen = Cstruct.get_uint8 buf (off + 5 + slen) in
-    let next_owner_hashed = Cstruct.sub buf (off + 6 + slen) hlen in
+    let flags = flags_of_int (String.get_uint8 buf (off + 1)) in
+    let iterations = String.get_uint16_be buf (off + 2) in
+    let slen = String.get_uint8 buf (off + 4) in
+    let salt = String.sub buf (off + 5) slen in
+    let hlen = String.get_uint8 buf (off + 5 + slen) in
+    let next_owner_hashed = String.sub buf (off + 6 + slen) hlen in
     let off' = off + 6 + slen + hlen in
     let len' = len - (off' - off) in
     let* types = Bit_map.decode_exn buf ~off:off' ~len:len' in
     Ok ({ flags ; iterations ; salt ; next_owner_hashed ; types }, names, off + len)
 
   let encode t names buf off =
-    Cstruct.set_uint8 buf off hash;
-    Cstruct.set_uint8 buf (off + 1) (flags_to_int t.flags);
-    Cstruct.BE.set_uint16 buf (off + 2) t.iterations;
-    let slen = Cstruct.length t.salt in
-    Cstruct.set_uint8 buf (off + 4) slen;
-    Cstruct.blit t.salt 0 buf (off + 5) slen;
+    Bytes.set_uint8 buf off hash;
+    Bytes.set_uint8 buf (off + 1) (flags_to_int t.flags);
+    Bytes.set_uint16_be buf (off + 2) t.iterations;
+    let slen = String.length t.salt in
+    Bytes.set_uint8 buf (off + 4) slen;
+    Bytes.blit_string t.salt 0 buf (off + 5) slen;
     let off' = off + 5 + slen in
-    let hlen = Cstruct.length t.next_owner_hashed in
-    Cstruct.set_uint8 buf off' hlen;
-    Cstruct.blit t.next_owner_hashed 0 buf (off' + 1) hlen;
+    let hlen = String.length t.next_owner_hashed in
+    Bytes.set_uint8 buf off' hlen;
+    Bytes.blit_string t.next_owner_hashed 0 buf (off' + 1) hlen;
     let off' = off' + 1 + hlen in
     let off = Bit_map.encode buf off' t.types in
     names, off
@@ -1460,42 +1458,42 @@ module Loc = struct
     ] 0
 
   let decode_exn names buf ~off ~len =
-    let latitude = Cstruct.BE.get_uint32 buf (off + 4) in
-    let longitude = Cstruct.BE.get_uint32 buf (off + 8) in
-    let size = Cstruct.get_uint8 buf (off + 1) in
-    let horiz_pre = Cstruct.get_uint8 buf (off + 2) in
-    let vert_pre = Cstruct.get_uint8 buf (off + 3) in
-    let altitude = Cstruct.BE.get_uint32 buf (off + 12) in
+    let size = String.get_uint8 buf (off + 1) in
+    let horiz_pre = String.get_uint8 buf (off + 2) in
+    let vert_pre = String.get_uint8 buf (off + 3) in
+    let latitude = String.get_int32_be buf (off + 4) in
+    let longitude = String.get_int32_be buf (off + 8) in
+    let altitude = String.get_int32_be buf (off + 12) in
     Ok ({ latitude ; longitude ; altitude ; size ; horiz_pre; vert_pre }, names, off + len)
 
   let encode loc names buf off =
-    Cstruct.set_uint8 buf off 0;
-    Cstruct.set_uint8 buf (off + 1) loc.size;
-    Cstruct.set_uint8 buf (off + 2) loc.horiz_pre;
-    Cstruct.set_uint8 buf (off + 3) loc.vert_pre;
-    Cstruct.BE.set_uint32 buf (off + 4) loc.latitude;
-    Cstruct.BE.set_uint32 buf (off + 8) loc.longitude;
-    Cstruct.BE.set_uint32 buf (off + 12) loc.altitude;
+    Bytes.set_uint8 buf off 0;
+    Bytes.set_uint8 buf (off + 1) loc.size;
+    Bytes.set_uint8 buf (off + 2) loc.horiz_pre;
+    Bytes.set_uint8 buf (off + 3) loc.vert_pre;
+    Bytes.set_int32_be buf (off + 4) loc.latitude;
+    Bytes.set_int32_be buf (off + 8) loc.longitude;
+    Bytes.set_int32_be buf (off + 12) loc.altitude;
     names, off + 16
 
 end
 
 (* Null record *)
 module Null = struct
-  type t = Cstruct.t
+  type t = string
 
-  let pp ppf null = Fmt.pf ppf "NULL %a" Cstruct.hexdump_pp null
+  let pp ppf null = Fmt.pf ppf "NULL %a" (Ohex.pp_hexdump ()) null
 
-  let compare = Cstruct.compare
+  let compare = String.compare
 
   let decode names buf ~off ~len =
-    let sub = Cstruct.sub buf off len in
+    let sub = String.sub buf off len in
     Ok (sub, names, off + len)
 
   let encode null names buf off =
     let max_len = 65535 in
-    let len = min max_len (Cstruct.length null) in
-    Cstruct.blit null 0 buf off len ;
+    let len = min max_len (String.length null) in
+    Bytes.blit_string null 0 buf off len ;
     names, off + len
 end
 
@@ -1519,28 +1517,27 @@ module Caa = struct
             0 a.value b.value))
 
   let decode_exn names buf ~off ~len =
-    let critical = Cstruct.get_uint8 buf off = 0x80
-    and tl = Cstruct.get_uint8 buf (succ off)
+    let critical = String.get_uint8 buf off = 0x80
+    and tl = String.get_uint8 buf (succ off)
     in
     let* () =
       guard (tl > 0 && tl < 16)
         (`Not_implemented (succ off, Fmt.str "caa tag 0x%x" tl))
     in
-    let tag = Cstruct.sub buf (off + 2) tl in
-    let tag = Cstruct.to_string tag in
+    let tag = String.sub buf (off + 2) tl in
     let vs = 2 + tl in
-    let value = Cstruct.sub buf (off + vs) (len - vs) in
-    let value = String.split_on_char ';' (Cstruct.to_string value) in
+    let value = String.sub buf (off + vs) (len - vs) in
+    let value = String.split_on_char ';' value in
     Ok ({ critical ; tag ; value }, names, off + len)
 
   let encode t names buf off =
-    Cstruct.set_uint8 buf off (if t.critical then 0x80 else 0x0) ;
+    Bytes.set_uint8 buf off (if t.critical then 0x80 else 0x0) ;
     let tl = String.length t.tag in
-    Cstruct.set_uint8 buf (succ off) tl ;
-    Cstruct.blit_from_string t.tag 0 buf (off + 2) tl ;
+    Bytes.set_uint8 buf (succ off) tl ;
+    Bytes.unsafe_blit_string t.tag 0 buf (off + 2) tl ;
     let value = String.concat ";" t.value in
     let vl = String.length value in
-    Cstruct.blit_from_string value 0 buf (off + 2 + tl) vl ;
+    Bytes.blit_string value 0 buf (off + 2 + tl) vl ;
     names, off + tl + 2 + vl
 end
 
@@ -1651,7 +1648,7 @@ module Tlsa = struct
     cert_usage : cert_usage ;
     selector : selector ;
     matching_type : matching_type ;
-    data : Cstruct.t ;
+    data : string ;
   }
 
   let pp ppf tlsa =
@@ -1659,21 +1656,21 @@ module Tlsa = struct
       pp_cert_usage tlsa.cert_usage
       pp_selector tlsa.selector
       pp_matching_type tlsa.matching_type
-      Cstruct.hexdump_pp tlsa.data
+      (Ohex.pp_hexdump ()) tlsa.data
 
   let compare t1 t2 =
     andThen (compare_cert_usage t1.cert_usage t2.cert_usage)
       (andThen (compare_selector t1.selector t2.selector)
          (andThen (compare_matching_type t1.matching_type t2.matching_type)
-            (Cstruct.compare t1.data t2.data)))
+            (String.compare t1.data t2.data)))
 
   let decode_exn names buf ~off ~len =
     let usage, selector, matching_type =
-      Cstruct.get_uint8 buf off,
-      Cstruct.get_uint8 buf (off + 1),
-      Cstruct.get_uint8 buf (off + 2)
+      String.get_uint8 buf off,
+      String.get_uint8 buf (off + 1),
+      String.get_uint8 buf (off + 2)
     in
-    let data = Cstruct.sub buf (off + 3) (len - 3) in
+    let data = String.sub buf (off + 3) (len - 3) in
     let cert_usage = int_to_cert_usage usage in
     let selector = int_to_selector selector in
     let matching_type = int_to_matching_type matching_type in
@@ -1681,11 +1678,11 @@ module Tlsa = struct
     Ok (tlsa, names, off + len)
 
   let encode tlsa names buf off =
-    Cstruct.set_uint8 buf off (cert_usage_to_int tlsa.cert_usage) ;
-    Cstruct.set_uint8 buf (off + 1) (selector_to_int tlsa.selector) ;
-    Cstruct.set_uint8 buf (off + 2) (matching_type_to_int tlsa.matching_type) ;
-    let l = Cstruct.length tlsa.data in
-    Cstruct.blit tlsa.data 0 buf (off + 3) l ;
+    Bytes.set_uint8 buf off (cert_usage_to_int tlsa.cert_usage) ;
+    Bytes.set_uint8 buf (off + 1) (selector_to_int tlsa.selector) ;
+    Bytes.set_uint8 buf (off + 2) (matching_type_to_int tlsa.matching_type) ;
+    let l = String.length tlsa.data in
+    Bytes.blit_string tlsa.data 0 buf (off + 3) l ;
     names, off + 3 + l
 end
 
@@ -1763,33 +1760,33 @@ module Sshfp = struct
   type t = {
     algorithm : algorithm ;
     typ : typ ;
-    fingerprint : Cstruct.t ;
+    fingerprint : string ;
   }
 
   let pp ppf sshfp =
     Fmt.pf ppf "SSHFP %a %a %a"
       pp_algorithm sshfp.algorithm
       pp_typ sshfp.typ
-      Cstruct.hexdump_pp sshfp.fingerprint
+      (Ohex.pp_hexdump ()) sshfp.fingerprint
 
   let compare s1 s2 =
     andThen (compare_algorithm s1.algorithm s2.algorithm)
       (andThen (compare_typ s1.typ s2.typ)
-         (Cstruct.compare s1.fingerprint s2.fingerprint))
+         (String.compare s1.fingerprint s2.fingerprint))
 
   let decode_exn names buf ~off ~len =
-    let algo, typ = Cstruct.get_uint8 buf off, Cstruct.get_uint8 buf (succ off) in
-    let fingerprint = Cstruct.sub buf (off + 2) (len - 2) in
+    let algo, typ = String.get_uint8 buf off, String.get_uint8 buf (succ off) in
+    let fingerprint = String.sub buf (off + 2) (len - 2) in
     let algorithm = int_to_algorithm algo in
     let typ = int_to_typ typ in
     let sshfp = { algorithm ; typ ; fingerprint } in
     Ok (sshfp, names, off + len)
 
   let encode sshfp names buf off =
-    Cstruct.set_uint8 buf off (algorithm_to_int sshfp.algorithm) ;
-    Cstruct.set_uint8 buf (succ off) (typ_to_int sshfp.typ) ;
-    let l = Cstruct.length sshfp.fingerprint in
-    Cstruct.blit sshfp.fingerprint 0 buf (off + 2) l ;
+    Bytes.set_uint8 buf off (algorithm_to_int sshfp.algorithm) ;
+    Bytes.set_uint8 buf (succ off) (typ_to_int sshfp.typ) ;
+    let l = String.length sshfp.fingerprint in
+    Bytes.blit_string sshfp.fingerprint 0 buf (off + 2) l ;
     names, off + l + 2
 end
 
@@ -1803,11 +1800,11 @@ module Txt = struct
 
   let decode_exn names buf ~off ~len =
     let decode_character_str buf off =
-      let len = Cstruct.get_uint8 buf off in
-      let data = Cstruct.to_string (Cstruct.sub buf (succ off) len) in
+      let len = String.get_uint8 buf off in
+      let data = String.sub buf (succ off) len in
       (data, off + len + 1)
     in
-    let sub = Cstruct.sub buf off len in
+    let sub = String.sub buf off len in
     let rec more acc off =
       if len = off then
         List.rev acc
@@ -1831,8 +1828,8 @@ module Txt = struct
           else
             len, ""
         in
-        Cstruct.set_uint8 buf off len ;
-        Cstruct.blit_from_string txt 0 buf (succ off) len ;
+        Bytes.set_uint8 buf off len ;
+        Bytes.blit_string txt 0 buf (succ off) len ;
         more (off + len + 1) rest
     in
     let off = more off txt in
@@ -1851,7 +1848,7 @@ module Tsig = struct
     algorithm : algorithm ;
     signed : Ptime.t ;
     fudge : Ptime.Span.t ;
-    mac : Cstruct.t ;
+    mac : string ;
     original_id : int ; (* again 16 bit *)
     error : Rcode.t ;
     other : Ptime.t option
@@ -1863,7 +1860,7 @@ module Tsig = struct
     a.algorithm = b.algorithm &&
     Ptime.equal a.signed b.signed &&
     Ptime.Span.equal a.fudge b.fudge &&
-    Cstruct.equal a.mac b.mac &&
+    String.equal a.mac b.mac &&
     a.original_id = b.original_id &&
     a.error = b.error &&
     opt_eq Ptime.equal a.other b.other
@@ -1904,7 +1901,7 @@ module Tsig = struct
       if Int64.logand 0xffff_0000_0000_0000L x = 0L then Some x else None
 
   let tsig ~algorithm ~signed ?(fudge = Ptime.Span.of_int_s 300)
-      ?(mac = Cstruct.create 0) ?(original_id = 0) ?(error = Rcode.NoError)
+      ?(mac = "") ?(original_id = 0) ?(error = Rcode.NoError)
       ?other () =
     match ptime_to_bits signed, Ptime_extra.span_to_int64 fudge with
     | None, _ | _, None -> None
@@ -1936,42 +1933,42 @@ module Tsig = struct
       "TSIG %a signed %a fudge %a mac %a original id %04X err %a other %a"
       pp_algorithm t.algorithm
       (Ptime.pp_rfc3339 ()) t.signed Ptime.Span.pp t.fudge
-      Cstruct.hexdump_pp t.mac t.original_id Rcode.pp t.error
+      (Ohex.pp_hexdump ()) t.mac t.original_id Rcode.pp t.error
       Fmt.(option ~none:(any "none") (Ptime.pp_rfc3339 ())) t.other
 
   let decode_48bit_time buf off =
-    let a = Cstruct.BE.get_uint16 buf off
-    and b = Cstruct.BE.get_uint16 buf (off + 2)
-    and c = Cstruct.BE.get_uint16 buf (off + 4)
+    let a = String.get_uint16_be buf off
+    and b = String.get_uint16_be buf (off + 2)
+    and c = String.get_uint16_be buf (off + 4)
     in
     Int64.(add
              (add (shift_left (of_int a) 32) (shift_left (of_int b) 16))
              (of_int c))
 
   let decode_exn names buf ~off =
-    let ttl = Cstruct.BE.get_uint32 buf off in
+    let ttl = String.get_int32_be buf off in
     let* () =
       guard (ttl = 0l) (`Malformed (off, Fmt.str "tsig ttl is not zero %lu" ttl))
     in
-    let len = Cstruct.BE.get_uint16 buf (off + 4) in
+    let len = String.get_uint16_be buf (off + 4) in
     let rdata_start = off + 6 in
     let* (algorithm, names, off') = Name.decode names buf ~off:rdata_start in
     let* algorithm = Name.host rdata_start algorithm in
     let signed = decode_48bit_time buf off'
-    and fudge = Cstruct.BE.get_uint16 buf (off' + 6)
-    and mac_len = Cstruct.BE.get_uint16 buf (off' + 8)
+    and fudge = String.get_uint16_be buf (off' + 6)
+    and mac_len = String.get_uint16_be buf (off' + 8)
     in
-    let mac = Cstruct.sub buf (off' + 10) mac_len
-    and original_id = Cstruct.BE.get_uint16 buf (off' + 10 + mac_len)
-    and error = Cstruct.BE.get_uint16 buf (off' + 12 + mac_len)
-    and other_len = Cstruct.BE.get_uint16 buf (off' + 14 + mac_len)
+    let mac = String.sub buf (off' + 10) mac_len
+    and original_id = String.get_uint16_be buf (off' + 10 + mac_len)
+    and error = String.get_uint16_be buf (off' + 12 + mac_len)
+    and other_len = String.get_uint16_be buf (off' + 14 + mac_len)
     in
     let rdata_end = off' + 10 + mac_len + 6 + other_len in
     let* () =
       guard (rdata_end - rdata_start = len)
         (`Leftover (rdata_end, "more bytes in tsig"))
     in
-    let* () = guard (Cstruct.length buf >= rdata_end) `Partial in
+    let* () = guard (String.length buf >= rdata_end) `Partial in
     let* () =
       guard (other_len = 0 || other_len = 6)
         (`Malformed (off' + 14 + mac_len, "other timestamp should be 0 or 6 bytes!"))
@@ -2001,9 +1998,9 @@ module Tsig = struct
         let f s = Int64.(to_int (logand 0xffffL (shift_right secs s))) in
         f 32, f 16, f 0
       in
-      Cstruct.BE.set_uint16 buf off a ;
-      Cstruct.BE.set_uint16 buf (off + 2) b ;
-      Cstruct.BE.set_uint16 buf (off + 4) c
+      Bytes.set_uint16_be buf off a ;
+      Bytes.set_uint16_be buf (off + 2) b ;
+      Bytes.set_uint16_be buf (off + 4) c
 
   let encode_16bit_time buf ?(off = 0) ts =
     match Ptime_extra.span_to_int64 ts with
@@ -2014,7 +2011,7 @@ module Tsig = struct
         Log.warn (fun m -> m "secs %Lu > 16 bit" secs)
       else
         let a = Int64.(to_int (logand 0xffffL secs)) in
-        Cstruct.BE.set_uint16 buf off a
+        Bytes.set_uint16_be buf off a
 
   (* TODO unused -- why? *)
   let _encode t names buf off =
@@ -2022,77 +2019,77 @@ module Tsig = struct
     let names, off = Name.encode ~compress:false algo names buf off in
     encode_48bit_time buf ~off t.signed ;
     encode_16bit_time buf ~off:(off + 6) t.fudge ;
-    let mac_len = Cstruct.length t.mac in
-    Cstruct.BE.set_uint16 buf (off + 8) mac_len ;
-    Cstruct.blit t.mac 0 buf (off + 10) mac_len ;
-    Cstruct.BE.set_uint16 buf (off + 10 + mac_len) t.original_id ;
-    Cstruct.BE.set_uint16 buf (off + 12 + mac_len) (Rcode.to_int t.error) ;
+    let mac_len = String.length t.mac in
+    Bytes.set_uint16_be buf (off + 8) mac_len ;
+    Bytes.blit_string t.mac 0 buf (off + 10) mac_len ;
+    Bytes.set_uint16_be buf (off + 10 + mac_len) t.original_id ;
+    Bytes.set_uint16_be buf (off + 12 + mac_len) (Rcode.to_int t.error) ;
     let other_len = match t.other with None -> 0 | Some _ -> 6 in
-    Cstruct.BE.set_uint16 buf (off + 14 + mac_len) other_len ;
+    Bytes.set_uint16_be buf (off + 14 + mac_len) other_len ;
     (match t.other with
      | None -> ()
      | Some t -> encode_48bit_time buf ~off:(off + 16 + mac_len) t) ;
     names, off + 16 + mac_len + other_len
 
   let name_to_buf name =
-    let buf = Cstruct.create 255
+    let buf = Bytes.make 255 '\000'
     and emp = Domain_name.Map.empty
     in
     let _, off = Name.encode ~compress:false name emp buf 0 in
-    Cstruct.sub buf 0 off
+    String.sub (Bytes.unsafe_to_string buf) 0 off
 
   let encode_raw_tsig_base name t =
     let name = name_to_buf (Domain_name.canonical name)
     and aname = name_to_buf (algorithm_to_name t.algorithm)
     in
-    let clttl = Cstruct.create 6 in
-    Cstruct.BE.set_uint16 clttl 0 Class.(to_int ANY_CLASS) ;
-    Cstruct.BE.set_uint32 clttl 2 0l ;
-    let time = Cstruct.create 8 in
+    let clttl = Bytes.create 6 in
+    Bytes.set_uint16_be clttl 0 Class.(to_int ANY_CLASS) ;
+    Bytes.set_int32_be clttl 2 0l ;
+    let time = Bytes.create 8 in
     encode_48bit_time time t.signed ;
     encode_16bit_time time ~off:6 t.fudge ;
     let other =
       let buf = match t.other with
         | None ->
-          let buf = Cstruct.create 4 in
-          Cstruct.BE.set_uint16 buf 2 0 ;
+          let buf = Bytes.create 4 in
+          Bytes.set_uint16_be buf 2 0 ;
           buf
         | Some t ->
-          let buf = Cstruct.create 10 in
-          Cstruct.BE.set_uint16 buf 2 6 ;
+          let buf = Bytes.make 10 '\000' in
+          Bytes.set_uint16_be buf 2 6 ;
           encode_48bit_time buf ~off:4 t ;
           buf
       in
-      Cstruct.BE.set_uint16 buf 0 (Rcode.to_int t.error) ;
-      buf
+      Bytes.set_uint16_be buf 0 (Rcode.to_int t.error) ;
+      Bytes.unsafe_to_string buf
     in
-    name, clttl, [ aname ; time ], other
+    name, Bytes.unsafe_to_string clttl, [ aname ; Bytes.unsafe_to_string time ], other
 
   let encode_raw name t =
     let name, clttl, mid, fin = encode_raw_tsig_base name t in
-    Cstruct.concat (name :: clttl :: mid @ [ fin ])
+    String.concat "" (name :: clttl :: mid @ [ fin ])
 
   let encode_full name t =
     let name, clttl, mid, fin = encode_raw_tsig_base name t in
     let typ =
-      let typ = Cstruct.create 2 in
-      Cstruct.BE.set_uint16 typ 0 rtyp ;
-      typ
+      let typ = Bytes.create 2 in
+      Bytes.set_uint16_be typ 0 rtyp ;
+      Bytes.unsafe_to_string typ
     and mac =
-      let len = Cstruct.length t.mac in
-      let l = Cstruct.create 2 in
-      Cstruct.BE.set_uint16 l 0 len ;
-      let orig = Cstruct.create 2 in
-      Cstruct.BE.set_uint16 orig 0 t.original_id ;
-      [ l ; t.mac ; orig ]
+      let len = String.length t.mac in
+      let l = Bytes.create 2 in
+      Bytes.set_uint16_be l 0 len ;
+      let orig = Bytes.create 2 in
+      Bytes.set_uint16_be orig 0 t.original_id ;
+      [ Bytes.unsafe_to_string l ; t.mac ; Bytes.unsafe_to_string orig ]
     in
-    let rdata = Cstruct.concat (mid @ mac @ [ fin ]) in
+    let rdata = String.concat "" (mid @ mac @ [ fin ]) in
     let len =
-      let buf = Cstruct.create 2 in
-      Cstruct.BE.set_uint16 buf 0 (Cstruct.length rdata) ;
-      buf
+      let buf = Bytes.make 2 '\000' in
+      Bytes.set_uint16_be buf 0 (String.length rdata) ;
+      Bytes.unsafe_to_string buf
     in
-    Cstruct.concat [ name ; typ ; clttl ; len ; rdata ]
+    String.concat "" [ name ; typ ; clttl ; len ; rdata ]
 
   let dnskey_to_tsig_algo key =
     match key.Dnskey.algorithm with
@@ -2110,23 +2107,23 @@ end
 module Edns = struct
 
   type extension =
-    | Nsid of Cstruct.t
-    | Cookie of Cstruct.t
+    | Nsid of string
+    | Cookie of string
     | Tcp_keepalive of int option
     | Padding of int
-    | Extension of int * Cstruct.t
+    | Extension of int * string
 
   let pp_extension ppf = function
-    | Nsid cs -> Fmt.pf ppf "nsid %a" Cstruct.hexdump_pp cs
-    | Cookie cs -> Fmt.pf ppf "cookie %a" Cstruct.hexdump_pp cs
+    | Nsid cs -> Fmt.pf ppf "nsid %a" (Ohex.pp_hexdump ()) cs
+    | Cookie cs -> Fmt.pf ppf "cookie %a" (Ohex.pp_hexdump ()) cs
     | Tcp_keepalive i -> Fmt.pf ppf "keepalive %a" Fmt.(option ~none:(any "none") int) i
     | Padding i -> Fmt.pf ppf "padding %d" i
-    | Extension (t, v) -> Fmt.pf ppf "unknown option %d: %a" t Cstruct.hexdump_pp v
+    | Extension (t, v) -> Fmt.pf ppf "unknown option %d: %a" t (Ohex.pp_hexdump ()) v
 
   let compare_extension a b = match a, b with
-    | Nsid a, Nsid b -> Cstruct.compare a b
+    | Nsid a, Nsid b -> String.compare a b
     | Nsid _, _ -> 1 | _, Nsid _ -> -1
-    | Cookie a, Cookie b -> Cstruct.compare a b
+    | Cookie a, Cookie b -> String.compare a b
     | Cookie _, _ -> 1 | _, Cookie _ -> -1
     | Tcp_keepalive a, Tcp_keepalive b ->
       begin match a, b with
@@ -2139,7 +2136,7 @@ module Edns = struct
     | Padding a, Padding b -> Int.compare a b
     | Padding _, _ -> 1 | _, Padding _ -> -1
     | Extension (t, v), Extension (t', v') ->
-      andThen (Int.compare t t') (Cstruct.compare v v')
+      andThen (Int.compare t t') (String.compare v v')
 
   (* tag is 16 bit, we don't support many *)
   let extension_to_int = function
@@ -2159,24 +2156,30 @@ module Edns = struct
   let extension_payload = function
     | Nsid cs -> cs
     | Cookie cs -> cs
-    | Tcp_keepalive i -> (match i with None -> Cstruct.create 0 | Some i -> let buf = Cstruct.create 2 in Cstruct.BE.set_uint16 buf 0 i ; buf)
-    | Padding i -> Cstruct.create i
+    | Tcp_keepalive i ->
+      (match i with
+       | None -> ""
+       | Some i ->
+         let buf = Bytes.create 2 in
+         Bytes.set_uint16_be buf 0 i ;
+         Bytes.unsafe_to_string buf)
+    | Padding i -> String.make i '\x00'
     | Extension (_, v) -> v
 
   let encode_extension t buf off =
     let code = extension_to_int t in
     let v = extension_payload t in
-    let l = Cstruct.length v in
-    Cstruct.BE.set_uint16 buf off code ;
-    Cstruct.BE.set_uint16 buf (off + 2) l ;
-    Cstruct.blit v 0 buf (off + 4) l ;
+    let l = String.length v in
+    Bytes.set_uint16_be buf off code ;
+    Bytes.set_uint16_be buf (off + 2) l ;
+    Bytes.blit_string v 0 buf (off + 4) l ;
     off + 4 + l
 
   let decode_extension buf ~off =
-    let code = Cstruct.BE.get_uint16 buf off
-    and tl = Cstruct.BE.get_uint16 buf (off + 2)
+    let code = String.get_uint16_be buf off
+    and tl = String.get_uint16_be buf (off + 2)
     in
-    let v = Cstruct.sub buf (off + 4) tl in
+    let v = String.sub buf (off + 4) tl in
     let len = tl + 4 in
     match int_to_extension code with
     | Some `nsid -> Ok (Nsid v, len)
@@ -2185,7 +2188,7 @@ module Edns = struct
       let* i =
         match tl with
         | 0 -> Ok None
-        | 2 -> Ok (Some (Cstruct.BE.get_uint16 v 0))
+        | 2 -> Ok (Some (String.get_uint16_be v 0))
         | _ -> Error (`Not_implemented (off, Fmt.str "edns keepalive 0x%x" tl))
       in
       Ok (Tcp_keepalive i, len)
@@ -2251,14 +2254,14 @@ module Edns = struct
   let decode_exn buf ~off =
     (* EDNS is special -- the incoming off points to before name type clas *)
     (* name must be the root, typ is OPT, class is used for length *)
-    let* () = guard (Cstruct.get_uint8 buf off = 0) (`Malformed (off, "bad edns (must be 0)")) in
+    let* () = guard (String.get_uint8 buf off = 0) (`Malformed (off, "bad edns (must be 0)")) in
     (* crazyness: payload_size is encoded in class *)
-    let payload_size = Cstruct.BE.get_uint16 buf (off + 3)
+    let payload_size = String.get_uint16_be buf (off + 3)
     (* it continues: the ttl is split into: 8bit extended rcode, 8bit version, 1bit dnssec_ok, 7bit 0 *)
-    and extended_rcode = Cstruct.get_uint8 buf (off + 5)
-    and version = Cstruct.get_uint8 buf (off + 6)
-    and flags = Cstruct.BE.get_uint16 buf (off + 7)
-    and len = Cstruct.BE.get_uint16 buf (off + 9)
+    and extended_rcode = String.get_uint8 buf (off + 5)
+    and version = String.get_uint8 buf (off + 6)
+    and flags = String.get_uint16_be buf (off + 7)
+    and len = String.get_uint16_be buf (off + 9)
     in
     let off = off + 11 in
     let dnssec_ok = flags land 0x8000 = 0x8000 in
@@ -2271,7 +2274,7 @@ module Edns = struct
       end else
         payload_size
     in
-    let exts_buf = Cstruct.sub buf off len in
+    let exts_buf = String.sub buf off len in
     let* extensions = decode_extensions exts_buf ~len in
     let opt = { extended_rcode ; version ; dnssec_ok ; payload_size ; extensions } in
     Ok (opt, off + len)
@@ -2281,25 +2284,25 @@ module Edns = struct
 
   let encode t buf off =
     (* name is . *)
-    Cstruct.set_uint8 buf off 0 ;
+    Bytes.set_uint8 buf off 0 ;
     (* type *)
-    Cstruct.BE.set_uint16 buf (off + 1) rtyp ;
+    Bytes.set_uint16_be buf (off + 1) rtyp ;
     (* class is payload size! *)
-    Cstruct.BE.set_uint16 buf (off + 3) t.payload_size ;
+    Bytes.set_uint16_be buf (off + 3) t.payload_size ;
     (* it continues: the ttl is split into: 8bit extended rcode, 8bit version, 1bit dnssec_ok, 7bit 0 *)
-    Cstruct.set_uint8 buf (off + 5) t.extended_rcode ;
-    Cstruct.set_uint8 buf (off + 6) t.version ;
-    Cstruct.BE.set_uint16 buf (off + 7) (if t.dnssec_ok then 0x8000 else 0) ;
+    Bytes.set_uint8 buf (off + 5) t.extended_rcode ;
+    Bytes.set_uint8 buf (off + 6) t.version ;
+    Bytes.set_uint16_be buf (off + 7) (if t.dnssec_ok then 0x8000 else 0) ;
     let ext_start = off + 11 in
     let ext_end = encode_extensions t.extensions buf ext_start in
-    Cstruct.BE.set_uint16 buf (off + 9) (ext_end - ext_start) ;
+    Bytes.set_uint16_be buf (off + 9) (ext_end - ext_start) ;
     ext_end
 
   let allocate_and_encode edns =
     (* this is unwise! *)
-    let buf = Cstruct.create 128 in
+    let buf = Bytes.create 128 in
     let off = encode edns buf 0 in
-    Cstruct.sub buf 0 off
+    String.sub (Bytes.unsafe_to_string buf) 0 off
 end
 
 (* resource record map *)
@@ -2511,11 +2514,11 @@ module Rr_map = struct
 
   let encode_ntc ?compress names buf off (n, t, c) =
     let names, off = Name.encode ?compress n names buf off in
-    Cstruct.BE.set_uint16 buf off (rr_to_int t) ;
-    Cstruct.BE.set_uint16 buf (off + 2) c ;
+    Bytes.set_uint16_be buf off (rr_to_int t) ;
+    Bytes.set_uint16_be buf (off + 2) c ;
     names, off + 4
 
-  let encode : type a. ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Name.name_offset_map -> Cstruct.t -> int ->
+  let encode : type a. ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a -> Name.name_offset_map -> bytes -> int ->
     (Name.name_offset_map * int) * int = fun ?(clas = Class.IN) name k v names buf off ->
     let clas = Class.to_int clas in
     let rr names f off ttl =
@@ -2524,8 +2527,8 @@ module Rr_map = struct
       let rdata_start = off' + 6 in
       let names, rdata_end = f names buf rdata_start in
       let rdata_len = rdata_end - rdata_start in
-      Cstruct.BE.set_uint32 buf off' ttl ;
-      Cstruct.BE.set_uint16 buf (off' + 4) rdata_len ;
+      Bytes.set_int32_be buf off' ttl ;
+      Bytes.set_uint16_be buf (off' + 4) rdata_len ;
       names, rdata_end
     in
     match k, v with
@@ -2595,7 +2598,7 @@ module Rr_map = struct
     | Unknown _, (ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
-        Cstruct.blit_from_string data 0 buf off l;
+        Bytes.blit_string data 0 buf off l;
         names, off + l
       in
       Txt_set.fold (fun data ((names, off), count) ->
@@ -2603,20 +2606,20 @@ module Rr_map = struct
         datas ((names, off), 0)
 
   let encode_dnssec : type a. ttl:int32 -> ?clas:Class.t -> [ `raw ] Domain_name.t -> a key -> a ->
-    (int * Cstruct.t) list = fun ~ttl ?(clas = Class.IN) name k v ->
+    (int * string) list = fun ~ttl ?(clas = Class.IN) name k v ->
     let clas = Class.to_int clas in
     let compress = false in
     let names = Domain_name.Map.empty in
     let rr f =
-      let buf = Cstruct.create 4096 in
+      let buf = Bytes.create 4096 in
       let _names, off' = encode_ntc ~compress names buf 0 (name, `K (K k), clas) in
       (* leave 6 bytes space for TTL and length *)
       let rdata_start = off' + 6 in
       let _names, rdata_end = f names buf rdata_start in
       let rdata_len = rdata_end - rdata_start in
-      Cstruct.BE.set_uint32 buf off' ttl ;
-      Cstruct.BE.set_uint16 buf (off' + 4) rdata_len ;
-      rdata_start, Cstruct.sub buf 0 rdata_end
+      Bytes.set_int32_be buf off' ttl ;
+      Bytes.set_uint16_be buf (off' + 4) rdata_len ;
+      rdata_start, String.sub (Bytes.unsafe_to_string buf) 0 rdata_end
     in
     match k, v with
     | Soa, soa -> [ rr (Soa.encode ~compress soa) ]
@@ -2684,7 +2687,7 @@ module Rr_map = struct
     | Unknown _, (_ttl, datas) ->
       let encode data names buf off =
         let l = String.length data in
-        Cstruct.blit_from_string data 0 buf off l;
+        Bytes.blit_string data 0 buf off l;
         names, off + l
       in
       Txt_set.fold (fun data acc ->
@@ -2705,14 +2708,14 @@ module Rr_map = struct
     | _, v -> v
 
   (* ordering, according to RFC 4034, section 6.3 *)
-  let canonical_order cs cs' =
-    let cs_l = Cstruct.length cs and cs'_l = Cstruct.length cs' in
+  let canonical_order str str_off str' str'_off =
+    let str_l = String.length str - str_off and str'_l = String.length str' - str'_off in
     let rec c idx =
-      if cs_l = cs'_l && cs_l = idx then 0
-      else if cs_l = idx then 1
-      else if cs'_l = idx then -1
+      if str_l = str'_l && str_l = idx then 0
+      else if str_l = idx then 1
+      else if str'_l = idx then -1
       else
-        match Int.compare (Cstruct.get_uint8 cs idx) (Cstruct.get_uint8 cs' idx) with
+        match Int.compare (String.get_uint8 str (str_off + idx)) (String.get_uint8 str' (str'_off + idx)) with
         | 0 -> c (succ idx)
         | x -> x
     in
@@ -2720,11 +2723,11 @@ module Rr_map = struct
 
   (* RFC 4034, section 3.1.8.1 *)
   let prep_for_sig : type a . [`raw] Domain_name.t -> Rrsig.t -> a key -> a ->
-    ([`raw] Domain_name.t * Cstruct.t, [> `Msg of string ]) result =
+    ([`raw] Domain_name.t * string, [> `Msg of string ]) result =
       fun name rrsig typ value ->
     let buf, off = Rrsig.prep_rrsig rrsig in
-    let rrsig_cs = Cstruct.sub buf 0 off in
-    Log.debug (fun m -> m "using rrsig %a" Cstruct.hexdump_pp rrsig_cs);
+    let rrsig_cs = String.sub (Bytes.unsafe_to_string buf) 0 off in
+    Log.debug (fun m -> m "using rrsig %a" (Ohex.pp_hexdump ()) rrsig_cs);
     let* name =
       let* used_name = Rrsig.used_name rrsig name in
       Ok (Domain_name.canonical used_name)
@@ -2741,21 +2744,18 @@ module Rr_map = struct
     let ttl = rrsig.Rrsig.original_ttl in
     let cs = encode_dnssec ~ttl name typ value in
     let order (off, cs) (off', cs') =
-      let cs = Cstruct.shift cs off
-      and cs' = Cstruct.shift cs' off'
-      in
-      canonical_order cs cs'
+      canonical_order cs off cs' off'
     in
     let sorted_cs = List.map snd (List.sort order cs) in
-    Ok (name, Cstruct.concat (rrsig_cs :: sorted_cs))
+    Ok (name, String.concat "" (rrsig_cs :: sorted_cs))
 
   let canonical_encoded_name name =
-    let buf = Cstruct.create 512 in
+    let buf = Bytes.make 512 '\000' in
     let _, s =
       Name.encode ~compress:false (Domain_name.canonical name)
         Domain_name.Map.empty buf 0
     in
-    Cstruct.sub buf 0 s
+    String.sub (Bytes.unsafe_to_string buf) 0 s
 
   let union_rr : type a. a key -> a -> a -> a = fun k l r ->
     match k, l, r with
@@ -2873,9 +2873,9 @@ module Rr_map = struct
       else String.sub s 0 pos ^ " " ^ ws_after_56 (String.sub s pos (l - pos))
     in
     let hex cs =
-      let buf = Bytes.create (Cstruct.length cs * 2) in
-      for i = 0 to pred (Cstruct.length cs) do
-        let byte = Cstruct.get_uint8 cs i in
+      let buf = Bytes.create (String.length cs * 2) in
+      for i = 0 to pred (String.length cs) do
+        let byte = String.get_uint8 cs i in
         let up, low = byte lsr 4, byte land 0x0F in
         let to_hex_char v = char_of_int (if v < 10 then 0x30 + v else 0x37 + v) in
         Bytes.set buf (i * 2) (to_hex_char up) ;
@@ -2883,7 +2883,7 @@ module Rr_map = struct
       done;
       Bytes.unsafe_to_string buf |> ws_after_56
     and b64 cs =
-      Base64.encode_string (Cstruct.to_string cs) |> ws_after_56
+      Base64.encode_string cs |> ws_after_56
     in
     let origin = match origin with
       | None -> None
@@ -3023,7 +3023,7 @@ module Rr_map = struct
         [ Fmt.str "%s\t%aNSEC3\t%d\t%d\t%d\t%s\t%s\t%a" str_name
             ttl_fmt (ttl_opt ttl) Nsec3.hash (Nsec3.flags_to_int ns.Nsec3.flags)
             ns.Nsec3.iterations
-            (if Cstruct.length ns.Nsec3.salt = 0 then "-" else hex ns.Nsec3.salt)
+            (if String.length ns.Nsec3.salt = 0 then "-" else hex ns.Nsec3.salt)
             (hex (* TODO base32 *) ns.Nsec3.next_owner_hashed)
             Fmt.(list ~sep:(any " ") ppk) types ]
       | Loc, (ttl, locs) ->
@@ -3032,12 +3032,12 @@ module Rr_map = struct
           locs []
       | Null, (ttl, nulls) ->
         Null_set.fold (fun null acc ->
-            Fmt.str "%s\t%aNULL\t%a" str_name ttl_fmt (ttl_opt ttl) Cstruct.hexdump_pp null :: acc)
+            Fmt.str "%s\t%aNULL\t%a" str_name ttl_fmt (ttl_opt ttl) Ohex.pp null :: acc)
           nulls []
       | Unknown x, (ttl, datas) ->
         Txt_set.fold (fun data acc ->
             Fmt.str "%s\t%aTYPE%d\t\\# %d %s" str_name ttl_fmt (ttl_opt ttl)
-              (I.to_int x) (String.length data) (hex (Cstruct.of_string data)) :: acc)
+              (I.to_int x) (String.length data) (hex data) :: acc)
           datas []
     in
     String.concat "\n" strs
@@ -3224,23 +3224,23 @@ module Rr_map = struct
     | _ -> Domain_name.Host_set.empty
 
   let decode names buf off (K typ) =
-    let* () = guard (Cstruct.length buf - off >= 6) `Partial in
-    let ttl = Cstruct.BE.get_uint32 buf off
-    and len = Cstruct.BE.get_uint16 buf (off + 4)
+    let* () = guard (String.length buf - off >= 6) `Partial in
+    let ttl = String.get_int32_be buf off
+    and len = String.get_uint16_be buf (off + 4)
     and rdata_start = off + 6
     in
     let* () =
       guard (Int32.logand ttl 0x8000_0000l = 0l)
         (`Malformed (off, Fmt.str "bad TTL (high bit set) %lu" ttl))
     in
-    let* () = guard (Cstruct.length buf - rdata_start >= len) `Partial in
+    let* () = guard (String.length buf - rdata_start >= len) `Partial in
     let* () =
       guard (len <= max_rdata_length)
         (`Malformed (off + 4, Fmt.str "length %d exceeds maximum rdata size" len))
     in
     let* b, names, rdata_end =
       try
-        let buf = Cstruct.sub buf 0 (rdata_start + len)
+        let buf = String.sub buf 0 (rdata_start + len)
         and off = rdata_start
         in
         begin match typ with
@@ -3302,8 +3302,8 @@ module Rr_map = struct
             let* null, names, off = Null.decode names buf ~off ~len in
             Ok (B (Null, (ttl, Null_set.singleton null)), names, off)
           | Unknown x ->
-            let data = Cstruct.sub buf off len in
-            Ok (B (Unknown x, (ttl, Txt_set.singleton (Cstruct.to_string data))), names, rdata_start + len)
+            let data = String.sub buf off len in
+            Ok (B (Unknown x, (ttl, Txt_set.singleton data)), names, rdata_start + len)
         end with
         | Invalid_argument _ -> Error `Partial
     in
@@ -3463,14 +3463,14 @@ module Packet = struct
 
     let decode buf =
       (* we only access the first 4 bytes, but anything <12 is a bad DNS frame *)
-      let* () = guard (Cstruct.length buf >= len) `Partial in
-      let hdr = Cstruct.BE.get_uint16 buf 2 in
+      let* () = guard (String.length buf >= len) `Partial in
+      let hdr = String.get_uint16_be buf 2 in
       let op = (hdr land 0x7800) lsr 11
       and rc = hdr land 0x000F
       in
       let* operation = Opcode.of_int ~off:2 op in
       let* rcode = Rcode.of_int ~off:3 rc in
-      let id = Cstruct.BE.get_uint16 buf 0
+      let id = String.get_uint16_be buf 0
       and query = hdr lsr 15 = 0
       and flags = decode_flags hdr
       in
@@ -3485,87 +3485,87 @@ module Packet = struct
       let op = (Opcode.to_int operation) lsl 11 in
       let rcode = (Rcode.to_int rcode) land 0x000F in
       let header = query lor flags lor op lor rcode in
-      Cstruct.BE.set_uint16 buf 0 id ;
-      Cstruct.BE.set_uint16 buf 2 header
+      Bytes.set_uint16_be buf 0 id ;
+      Bytes.set_uint16_be buf 2 header
 
     (*
     let%expect_test "encode_decode_header" =
       let eq (hdr, query, op, rc) (hdr', query', op', rc') =
         compare hdr hdr' = 0 && rc = rc' && query = query' && op = op'
-      and cs = Cstruct.create 12
+      and buf = Bytes.create 12
       in
-      let test_cs ?(off = 0) len =
-        Format.printf "%a" Cstruct.hexdump_pp (Cstruct.sub cs off len)
+      let test_buf ?(off = 0) len =
+        Format.printf "%a" Ohex.pp (String.sub (Bytes.unsafe_to_string buf) off len)
       and test_hdr a b =
         match b with
         | Error _ -> Format.printf "error"
         | Ok b -> if eq a b then Format.printf "ok" else Format.printf "not ok"
       in
       let hdr = (1, Flags.empty), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* basic query encoding works *)
-      test_cs 4;
-      [%expect {|00 01 00 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* basic query encoding works *)
+      test_buf 4;
+      [%expect {|0001 0000|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x1010, Flags.empty), false, Opcode.Query, Rcode.NXDomain in
-      encode cs hdr; (* second encoded header works *)
-      test_cs 4;
-      [%expect {|10 10 80 03|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* second encoded header works *)
+      test_buf 4;
+      [%expect {|1010 8003|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x0101, Flags.singleton `Authentic_data), true, Opcode.Update, Rcode.NoError in
-      encode cs hdr; (* flags look nice *)
-      test_cs 4;
-      [%expect {|01 01 28 20|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* flags look nice *)
+      test_buf 4;
+      [%expect {|0101 2820|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x0080, Flags.singleton `Truncation), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* truncation flag *)
-      test_cs 4;
-      [%expect {|00 80 02 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* truncation flag *)
+      test_buf 4;
+      [%expect {|0080 0200|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x8080, Flags.singleton `Checking_disabled), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* checking disabled flag *)
-      test_cs 4;
-      [%expect {|80 80 00 10|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* checking disabled flag *)
+      test_buf 4;
+      [%expect {|8080 0010|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x1234, Flags.singleton `Authoritative), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* authoritative flag *)
-      test_cs 4;
-      [%expect {|12 34 04 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* authoritative flag *)
+      test_buf 4;
+      [%expect {|1234 0400|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0xFFFF, Flags.singleton `Recursion_desired), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* rd flag *)
-      test_cs 4;
-      [%expect {|ff ff 01 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* rd flag *)
+      test_buf 4;
+      [%expect {|ffff 0100|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr =
         let flags = Flags.(add `Recursion_desired (singleton `Authoritative)) in
         (0xE0E0, flags), true, Opcode.Query, Rcode.NoError
       in
-      encode cs hdr; (* rd + auth *)
-      test_cs 4;
-      [%expect {|e0 e0 05 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* rd + auth *)
+      test_buf 4;
+      [%expect {|e0e0 0500|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0xAA00, Flags.singleton `Recursion_available), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* ra *)
-      test_cs 4;
-      [%expect {|aa 00 00 80|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* ra *)
+      test_buf 4;
+      [%expect {|aa00 0080|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let test_err = function
         | Ok _ -> Format.printf "ok, expected error"
         | Error _ -> Format.printf "ok"
       in
-      let data = Cstruct.of_hex "0000 7000 0000 0000 0000 0000" in
+      let data = Ohex.decode "0000 7000 0000 0000 0000 0000" in
       test_err (decode data);
       [%expect {|ok|}];
-      let data = Cstruct.of_hex "0000 000e 0000 0000 0000 0000" in
+      let data = Ohex.decode "0000 000e 0000 0000 0000 0000" in
       test_err (decode data);
       [%expect {|ok|}]
       *)
@@ -3573,9 +3573,9 @@ module Packet = struct
 
   let decode_ntc names buf off =
     let* name, names, off = Name.decode names buf ~off in
-    let* () = guard (Cstruct.length buf - off >= 4) `Partial in
-    let typ = Cstruct.BE.get_uint16 buf off
-    and cls = Cstruct.BE.get_uint16 buf (off + 2)
+    let* () = guard (String.length buf - off >= 4) `Partial in
+    let typ = String.get_uint16_be buf off
+    and cls = String.get_uint16_be buf (off + 2)
     (* CLS is interpreted differently by OPT, thus no int_to_clas called here *)
     in
     match typ with
@@ -3743,8 +3743,8 @@ module Packet = struct
 
     let decode (_, flags) buf names off =
       let truncated = Flags.mem `Truncation flags in
-      let ancount = Cstruct.BE.get_uint16 buf 6
-      and aucount = Cstruct.BE.get_uint16 buf 8
+      let ancount = String.get_uint16_be buf 6
+      and aucount = String.get_uint16_be buf 8
       in
       let empty = Domain_name.Map.empty in
       let* r = decode_n_partial names buf off empty ancount in
@@ -3787,9 +3787,9 @@ module Packet = struct
 
     let encode names buf off question (answer, authority) =
       let (names, off), ancount = encode_answer question answer names buf off in
-      Cstruct.BE.set_uint16 buf 6 ancount ;
+      Bytes.set_uint16_be buf 6 ancount ;
       let (names, off), aucount = encode_data authority names buf off in
-      Cstruct.BE.set_uint16 buf 8 aucount ;
+      Bytes.set_uint16_be buf 8 aucount ;
       names, off
   end
 
@@ -3857,7 +3857,7 @@ module Packet = struct
       let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
       let (names, off), count = encode_data entries names buf off in
       let (names, off), _ = Rr_map.encode (fst question) Soa soa names buf off in
-      Cstruct.BE.set_uint16 buf 6 (count + 2) ;
+      Bytes.set_uint16_be buf 6 (count + 2) ;
       names, off
 
     let encode_partial names buf off question pos entries =
@@ -3870,14 +3870,14 @@ module Packet = struct
         | `Last soa -> Rr_map.encode (fst question) Soa soa names buf off
         | _ -> (names, off), 0
       in
-      Cstruct.BE.set_uint16 buf 6 (count + count' + count'') ;
+      Bytes.set_uint16_be buf 6 (count + count' + count'') ;
       names, off
 
     let encode_reply next_buffer max_size question (soa, entries) =
       (* first packet MUST contain SOA *)
       let finish buf count off =
-        Cstruct.BE.set_uint16 buf 6 count;
-        Cstruct.sub buf 0 off
+        Bytes.set_uint16_be buf 6 count;
+        String.sub (Bytes.unsafe_to_string buf) 0 off
       in
       let names, buf, off = next_buffer () in
       let (names, off), count =
@@ -4055,7 +4055,7 @@ module Packet = struct
         else
           (names, off), 0
       in
-      Cstruct.BE.set_uint16 buf 6 (count + count' + 1) ;
+      Bytes.set_uint16_be buf 6 (count + count' + 1) ;
       names, off
   end
 
@@ -4086,10 +4086,10 @@ module Packet = struct
     let decode_prereq names buf off =
       let* (name, typ, cls), names, off = decode_ntc names buf off in
       let off' = off + 6 in
-      let* () = guard (Cstruct.length buf >= off') `Partial in
-      let ttl = Cstruct.BE.get_uint32 buf off in
+      let* () = guard (String.length buf >= off') `Partial in
+      let ttl = String.get_int32_be buf off in
       let* () = guard (ttl = 0l) (`Malformed (off, Fmt.str "prereq TTL not zero %lu" ttl)) in
-      let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
+      let rlen = String.get_uint16_be buf (off + 4) in
       let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.str "prereq rdlength must be zero %d" rlen)) in
       let* c = Class.of_int cls in
       match c, typ with
@@ -4162,9 +4162,9 @@ module Packet = struct
     let decode_update names buf off =
       let* (name, typ, cls), names, off = decode_ntc names buf off in
       let off' = off + 6 in
-      let* () = guard (Cstruct.length buf >= off') `Partial in
-      let ttl = Cstruct.BE.get_uint32 buf off in
-      let rlen = Cstruct.BE.get_uint16 buf (off + 4) in
+      let* () = guard (String.length buf >= off') `Partial in
+      let ttl = String.get_int32_be buf off in
+      let rlen = String.get_uint16_be buf (off + 4) in
       let r0 = guard (rlen = 0) (`Malformed (off + 4, Fmt.str "update rdlength must be zero %d" rlen)) in
       let ttl0 = guard (ttl = 0l) (`Malformed (off, Fmt.str "update ttl must be zero %lu" ttl)) in
       let* c = Class.of_int cls in
@@ -4230,8 +4230,8 @@ module Packet = struct
         (Domain_name.Map.bindings update)
 
     let decode _header question buf names off =
-      let prcount = Cstruct.BE.get_uint16 buf 6
-      and upcount = Cstruct.BE.get_uint16 buf 8
+      let prcount = String.get_uint16_be buf 6
+      and upcount = String.get_uint16_be buf 8
       in
       let add_to_list name a map =
         let base = match Domain_name.Map.find name map with None -> [] | Some x -> x in
@@ -4257,9 +4257,9 @@ module Packet = struct
 
     let encode names buf off _question (prereq, update) =
       let (names, off), prereq_count = encode_map prereq encode_prereq names buf off in
-      Cstruct.BE.set_uint16 buf 6 prereq_count ;
+      Bytes.set_uint16_be buf 6 prereq_count ;
       let (names, off), update_count = encode_map update encode_update names buf off in
-      Cstruct.BE.set_uint16 buf 8 update_count ;
+      Bytes.set_uint16_be buf 8 update_count ;
       names, off
   end
 
@@ -4457,10 +4457,10 @@ module Packet = struct
       let* () = guard allow_trunc `Partial in
       Ok (additional, edns, tsig)
     | `Full (off, additional, edns, tsig) ->
-      (if Cstruct.length buf > off then
-         let n = Cstruct.length buf - off in
+      (if String.length buf > off then
+         let n = String.length buf - off in
          Log.warn (fun m -> m "received %d extra bytes %a"
-                      n Cstruct.hexdump_pp (Cstruct.sub buf off n))) ;
+                      n Ohex.pp (String.sub buf off n))) ;
       Ok (additional, edns, tsig)
 
   let ext_rcode ?off rcode = function
@@ -4475,10 +4475,10 @@ module Packet = struct
 
   let decode buf =
     let* header, query, operation, rcode = Header.decode buf in
-    let q_count = Cstruct.BE.get_uint16 buf 4
-    and an_count = Cstruct.BE.get_uint16 buf 6
-    and au_count = Cstruct.BE.get_uint16 buf 8
-    and ad_count = Cstruct.BE.get_uint16 buf 10
+    let q_count = String.get_uint16_be buf 4
+    and an_count = String.get_uint16_be buf 6
+    and au_count = String.get_uint16_be buf 8
+    and ad_count = String.get_uint16_be buf 10
     in
     let* () = guard (q_count = 1) (`Malformed (4, "question count not one")) in
     let* question, names, off = Question.decode buf in
@@ -4651,9 +4651,9 @@ module Packet = struct
     | None -> off
     | Some edns ->
       let extended_rcode = (Rcode.to_int rcode) lsr 4 in
-      let adcount = Cstruct.BE.get_uint16 buf 10 in
+      let adcount = Bytes.get_uint16_be buf 10 in
       let off = Edns.encode { edns with Edns.extended_rcode } buf off in
-      Cstruct.BE.set_uint16 buf 10 (adcount + 1) ;
+      Bytes.set_uint16_be buf 10 (adcount + 1) ;
       off
 
   let encode ?max_size protocol t =
@@ -4667,23 +4667,23 @@ module Packet = struct
           in
           Header.encode buf (t.header, query, opcode, rcode);
           let names, off = Question.encode Domain_name.Map.empty buf Header.len t.question in
-          Cstruct.BE.set_uint16 buf 4 1 ;
+          Bytes.set_uint16_be buf 4 1 ;
           let names, off = encode_t names buf off t.question t.data in
           (* TODO we used to drop all other additionals if rcode <> 0 *)
           let (_names, off), adcount = encode_data t.additional names buf off in
-          Cstruct.BE.set_uint16 buf 10 adcount ;
+          Bytes.set_uint16_be buf 10 adcount ;
           (* TODO if edns embedding would truncate, we used to drop all other additionals and only encode EDNS *)
           (* TODO if additional would truncate, drop them (do not set truncation) *)
           encode_edns Rcode.NoError edns buf off, false
         with Invalid_argument _ -> (* set truncated *)
           (* if we failed to store data into buf, set truncation bit! *)
-          Cstruct.set_uint8 buf 2 (0x02 lor (Cstruct.get_uint8 buf 2)) ;
-          Cstruct.length buf, true
+          Bytes.set_uint8 buf 2 (0x02 lor (Bytes.get_uint8 buf 2)) ;
+          Bytes.length buf, true
       in
-      Cstruct.sub buf 0 off, trunc
+      String.sub (Bytes.unsafe_to_string buf) 0 off, trunc
     in
     let rec doit s =
-      let cs = Cstruct.create s in
+      let cs = Bytes.make s '\000' in
       match try_encoding cs with
       | (cs, false) -> (cs, max)
       | (cs, true) ->
@@ -4713,10 +4713,10 @@ module Packet = struct
     in
     let new_buffer () =
       (* we always embed a question in the AXFR reply (this is optional according to RFC) *)
-      let buf = Cstruct.create max in
+      let buf = Bytes.make max '\000' in
       Header.encode buf (t.header, query, opcode, rcode);
       let names, off = Question.encode Domain_name.Map.empty buf Header.len t.question in
-      Cstruct.BE.set_uint16 buf 4 1 ;
+      Bytes.set_uint16_be buf 4 1 ;
       names, buf, off
     in
     Axfr.encode_reply new_buffer max_size t.question data, max
@@ -4726,29 +4726,29 @@ module Packet = struct
   let raw_error buf rcode =
     (* copy id from header, retain opcode, set rcode to ServFail
        if we receive a fragment < 12 bytes, it's not worth bothering *)
-    if Cstruct.length buf < 12 then
+    if String.length buf < 12 then
       None
     else
-      let query = Cstruct.get_uint8 buf 2 lsr 7 = 0 in
+      let query = String.get_uint8 buf 2 lsr 7 = 0 in
       if not query then (* never reply to an answer! *)
         None
       else
-        let hdr = Cstruct.create 12 in
+        let hdr = Bytes.make 12 '\000' in
         (* manually copy the id from the incoming buf *)
-        Cstruct.BE.set_uint16 hdr 0 (Cstruct.BE.get_uint16 buf 0) ;
+        Bytes.set_uint16_be hdr 0 (String.get_uint16_be buf 0) ;
         (* manually copy the opcode from the incoming buf, and set response *)
-        Cstruct.set_uint8 hdr 2 (0x80 lor ((Cstruct.get_uint8 buf 2) land 0x78)) ;
+        Bytes.set_uint8 hdr 2 (0x80 lor ((String.get_uint8 buf 2) land 0x78)) ;
         (* set rcode *)
-        Cstruct.set_uint8 hdr 3 ((Rcode.to_int rcode) land 0xF) ;
+        Bytes.set_uint8 hdr 3 ((Rcode.to_int rcode) land 0xF) ;
         let extended_rcode = Rcode.to_int rcode lsr 4 in
         if extended_rcode = 0 then
-          Some hdr
+          Some (Bytes.unsafe_to_string hdr)
         else
           (* need an edns! *)
           let edns = Edns.create ~extended_rcode () in
           let buf = Edns.allocate_and_encode edns in
-          Cstruct.BE.set_uint16 hdr 10 1 ;
-          Some (Cstruct.append hdr buf)
+          Bytes.set_uint16_be hdr 10 1 ;
+          Some (Bytes.unsafe_to_string hdr ^ buf)
 end
 
 module Tsig_op = struct
@@ -4765,16 +4765,16 @@ module Tsig_op = struct
     | `Bad_truncation (name, tsig) -> Fmt.pf ppf "bad truncation %a %a" Domain_name.pp name Tsig.pp tsig
     | `Invalid_mac (name, tsig) -> Fmt.pf ppf "invalid mac %a %a" Domain_name.pp name Tsig.pp tsig
 
-  type verify = ?mac:Cstruct.t -> Ptime.t -> Packet.t ->
-    [ `raw ] Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> Cstruct.t ->
-    (Tsig.t * Cstruct.t * Dnskey.t, e * Cstruct.t option) result
+  type verify = ?mac:string -> Ptime.t -> Packet.t ->
+    [ `raw ] Domain_name.t -> ?key:Dnskey.t -> Tsig.t -> string ->
+    (Tsig.t * string * Dnskey.t, e * string option) result
 
   let no_verify ?mac:_ _ _ _ ?key:_ tsig _ =
     Error (`Bad_key (Domain_name.of_string_exn "no.verification", tsig), None)
 
-  type sign = ?mac:Cstruct.t -> ?max_size:int -> [ `raw ] Domain_name.t ->
-    Tsig.t -> key:Dnskey.t -> Packet.t -> Cstruct.t ->
-    (Cstruct.t * Cstruct.t) option
+  type sign = ?mac:string -> ?max_size:int -> [ `raw ] Domain_name.t ->
+    Tsig.t -> key:Dnskey.t -> Packet.t -> string ->
+    (string * string) option
 
   let no_sign ?mac:_ ?max_size:_ _ _ ~key:_ _ _ = None
 end

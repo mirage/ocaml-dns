@@ -52,7 +52,7 @@ module type S = sig
 end
 
 module Make
-  (R : Mirage_random.S)
+  (R : Mirage_crypto_rng_mirage.S)
   (T : Mirage_time.S)
   (M : Mirage_clock.MCLOCK)
   (P : Mirage_clock.PCLOCK)
