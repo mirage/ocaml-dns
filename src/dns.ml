@@ -334,7 +334,7 @@ module Name = struct
   (* enable once https://github.com/ocaml/dune/issues/897 is resolved *)
   let%expect_test "decode_name" =
     let test ?(map = Int_map.empty) ?(off = 0) data rmap roff =
-      match decode map (Cstruct.of_string data) ~off with
+      match decode map data ~off with
       | Error _ -> Format.printf "decode error"
       | Ok (name, omap, ooff) ->
         begin match Int_map.equal (fun (n, off) (n', off') ->
@@ -346,7 +346,7 @@ module Name = struct
         end
     in
     let test_err ?(map = Int_map.empty) ?(off = 0) data =
-      match decode map (Cstruct.of_string data) ~off with
+      match decode map data ~off with
       | Error _ -> Format.printf "error (as expected)"
       | Ok _ -> Format.printf "expected error, got ok"
     in
@@ -437,13 +437,13 @@ module Name = struct
     [%expect {|error (as expected)|}]
 
   let%expect_test "encode_name" =
-    let cs = Cstruct.create 30 in
-    let test_cs ?(off = 0) len =
-      Format.printf "%a" Cstruct.hexdump_pp (Cstruct.sub cs off len)
+    let buf = Bytes.create 30 in
+    let test_buf ?(off = 0) len =
+      Format.printf "%a" Ohex.pp (String.sub (Bytes.unsafe_to_string buf) off len)
     in
     let test ?compress ?(map = Domain_name.Map.empty) ?(off = 0) name rmap roff =
-      let omap, ooff = encode ?compress name map cs off in
-      if Domain_name.Map.equal (fun a b -> int_compare a b = 0) rmap omap && roff = ooff then
+      let omap, ooff = encode ?compress name map buf off in
+      if Domain_name.Map.equal (fun a b -> Int.compare a b = 0) rmap omap && roff = ooff then
         Format.printf "ok"
       else
         Format.printf "error"
@@ -451,11 +451,11 @@ module Name = struct
     let n_of_s = Domain_name.of_string_exn in
     test Domain_name.root Domain_name.Map.empty 1; (* compressed encode of root is good *)
     [%expect {|ok|}];
-    test_cs 1;
+    test_buf 1;
     [%expect {|00|}];
     test ~compress:false Domain_name.root Domain_name.Map.empty 1;
     [%expect {|ok|}];
-    test_cs 1;
+    test_buf 1;
     [%expect {|00|}];
     let map =
       Domain_name.Map.add (n_of_s "foo.bar") 0
@@ -463,17 +463,17 @@ module Name = struct
     in
     test (n_of_s "foo.bar") map 9; (* encode of foo.bar is good *)
     [%expect {|ok|}];
-    test_cs 9;
-    [%expect {|03 66 6f 6f 03 62 61 72  00|}];
+    test_buf 9;
+    [%expect {|0366 6f6f 0362 6172  00|}];
     test ~compress:false (n_of_s "foo.bar") map 9; (* uncompressed foo.bar is good *)
     [%expect {|ok|}];
-    test_cs 9;
-    [%expect {|03 66 6f 6f 03 62 61 72  00|}];
+    test_buf 9;
+    [%expect {|0366 6f6f 0362 6172  00|}];
     let emap = Domain_name.Map.add (n_of_s "baz.foo.bar") 9 map in
     test ~map ~off:9 (n_of_s "baz.foo.bar") emap 15; (* encode of baz.foo.bar is good *)
     [%expect {|ok|}];
-    test_cs 15;
-    [%expect {|03 66 6f 6f 03 62 61 72  00 03 62 61 7a c0 00|}];
+    test_buf 15;
+    [%expect {|0366 6f6f 0362 6172  0003 6261 7ac0 00|}];
     let map' =
       Domain_name.Map.add (n_of_s "baz.foo.bar") 9
         (Domain_name.Map.add (n_of_s "foo.bar") 13
@@ -481,10 +481,9 @@ module Name = struct
     in
     test ~compress:false ~map ~off:9 (n_of_s "baz.foo.bar") map' 22;
     [%expect {|ok|}];
-    test_cs 22;
+    test_buf 22;
     [%expect {|
-03 66 6f 6f 03 62 61 72  00 03 62 61 7a 03 66 6f
-6f 03 62 61 72 00|}]
+0366 6f6f 0362 6172  0003 6261 7a03 666f  6f03 6261 7200|}]
     *)
 end
 
@@ -3493,80 +3492,80 @@ module Packet = struct
     let%expect_test "encode_decode_header" =
       let eq (hdr, query, op, rc) (hdr', query', op', rc') =
         compare hdr hdr' = 0 && rc = rc' && query = query' && op = op'
-      and cs = Cstruct.create 12
+      and buf = Bytes.create 12
       in
-      let test_cs ?(off = 0) len =
-        Format.printf "%a" Cstruct.hexdump_pp (Cstruct.sub cs off len)
+      let test_buf ?(off = 0) len =
+        Format.printf "%a" Ohex.pp (String.sub (Bytes.unsafe_to_string buf) off len)
       and test_hdr a b =
         match b with
         | Error _ -> Format.printf "error"
         | Ok b -> if eq a b then Format.printf "ok" else Format.printf "not ok"
       in
       let hdr = (1, Flags.empty), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* basic query encoding works *)
-      test_cs 4;
-      [%expect {|00 01 00 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* basic query encoding works *)
+      test_buf 4;
+      [%expect {|0001 0000|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x1010, Flags.empty), false, Opcode.Query, Rcode.NXDomain in
-      encode cs hdr; (* second encoded header works *)
-      test_cs 4;
-      [%expect {|10 10 80 03|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* second encoded header works *)
+      test_buf 4;
+      [%expect {|1010 8003|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x0101, Flags.singleton `Authentic_data), true, Opcode.Update, Rcode.NoError in
-      encode cs hdr; (* flags look nice *)
-      test_cs 4;
-      [%expect {|01 01 28 20|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* flags look nice *)
+      test_buf 4;
+      [%expect {|0101 2820|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x0080, Flags.singleton `Truncation), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* truncation flag *)
-      test_cs 4;
-      [%expect {|00 80 02 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* truncation flag *)
+      test_buf 4;
+      [%expect {|0080 0200|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x8080, Flags.singleton `Checking_disabled), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* checking disabled flag *)
-      test_cs 4;
-      [%expect {|80 80 00 10|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* checking disabled flag *)
+      test_buf 4;
+      [%expect {|8080 0010|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0x1234, Flags.singleton `Authoritative), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* authoritative flag *)
-      test_cs 4;
-      [%expect {|12 34 04 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* authoritative flag *)
+      test_buf 4;
+      [%expect {|1234 0400|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0xFFFF, Flags.singleton `Recursion_desired), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* rd flag *)
-      test_cs 4;
-      [%expect {|ff ff 01 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* rd flag *)
+      test_buf 4;
+      [%expect {|ffff 0100|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr =
         let flags = Flags.(add `Recursion_desired (singleton `Authoritative)) in
         (0xE0E0, flags), true, Opcode.Query, Rcode.NoError
       in
-      encode cs hdr; (* rd + auth *)
-      test_cs 4;
-      [%expect {|e0 e0 05 00|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* rd + auth *)
+      test_buf 4;
+      [%expect {|e0e0 0500|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let hdr = (0xAA00, Flags.singleton `Recursion_available), true, Opcode.Query, Rcode.NoError in
-      encode cs hdr; (* ra *)
-      test_cs 4;
-      [%expect {|aa 00 00 80|}];
-      test_hdr hdr (decode cs);
+      encode buf hdr; (* ra *)
+      test_buf 4;
+      [%expect {|aa00 0080|}];
+      test_hdr hdr (decode (Bytes.unsafe_to_string buf));
       [%expect {|ok|}];
       let test_err = function
         | Ok _ -> Format.printf "ok, expected error"
         | Error _ -> Format.printf "ok"
       in
-      let data = Cstruct.of_hex "0000 7000 0000 0000 0000 0000" in
+      let data = Ohex.decode "0000 7000 0000 0000 0000 0000" in
       test_err (decode data);
       [%expect {|ok|}];
-      let data = Cstruct.of_hex "0000 000e 0000 0000 0000 0000" in
+      let data = Ohex.decode "0000 000e 0000 0000 0000 0000" in
       test_err (decode data);
       [%expect {|ok|}]
       *)
