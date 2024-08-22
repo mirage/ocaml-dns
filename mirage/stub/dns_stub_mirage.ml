@@ -3,11 +3,10 @@ open Lwt.Infix
 
 open Dns
 
-let ( % ) f g = fun x -> f (g x)
 let src = Logs.Src.create "dns_stub_mirage" ~doc:"effectful DNS stub layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MCLOCK) (S : Tcpip.Stack.V4V6) = struct
+module Make (R : Mirage_crypto_rng_mirage.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MCLOCK) (S : Tcpip.Stack.V4V6) = struct
 
   (* data in the wild:
      - a request comes in hdr, q
@@ -237,7 +236,7 @@ module Make (R : Mirage_random.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) 
   let create ?(cache_size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let server = Dns_server.Primary.server primary in
-    let reserved = Dns_server.create Dns_resolver_root.reserved (Cstruct.to_string % R.generate) in
+    let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in
     let t = { client ; reserved ; server ; on_update } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in

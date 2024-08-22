@@ -33,7 +33,7 @@ module type S = sig
 end
 
 module Make
-  (R : Mirage_random.S)
+  (R : Mirage_crypto_rng_mirage.S)
   (T : Mirage_time.S)
   (M : Mirage_clock.MCLOCK)
   (P : Mirage_clock.PCLOCK)
@@ -171,7 +171,7 @@ The format of a nameserver is:
         if retries = 0 then
           Error (`Msg "couldn't find a free UDP port")
         else
-          let port = 1024 + ((Cstruct.BE.get_uint16 (R.generate 2) 0) mod (65536 - 1024)) in
+          let port = 1024 + ((String.get_uint16_be (R.generate 2) 0) mod (65536 - 1024)) in
           if IS.mem port t.udp_ports then
             go (retries - 1)
           else
@@ -213,7 +213,7 @@ The format of a nameserver is:
       }
 
     let nameservers { proto ; nameservers ; _ } = proto, nameservers
-    let rng n = Cstruct.to_string (R.generate ?g:None n)
+    let rng n = R.generate ?g:None n
 
     let with_timeout time_left f =
       let timeout =

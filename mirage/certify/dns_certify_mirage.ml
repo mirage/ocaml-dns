@@ -2,17 +2,16 @@
 
 open Lwt.Infix
 
-let ( % ) f g = fun x -> f (g x)
 let src = Logs.Src.create "dns_certify_mirage" ~doc:"effectful DNS certify"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.S) (S : Tcpip.Stack.V4V6) = struct
+module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.S) (S : Tcpip.Stack.V4V6) = struct
 
   module D = Dns_mirage.Make(S)
 
   let nsupdate_csr flow host keyname zone dnskey csr =
     match
-      Dns_certify.nsupdate (Cstruct.to_string % R.generate) (fun () -> Ptime.v (P.now_d_ps ()))
+      Dns_certify.nsupdate R.generate (fun () -> Ptime.v (P.now_d_ps ()))
         ~host ~keyname ~zone dnskey csr
     with
     | Error s -> Lwt.return (Error s)
@@ -26,7 +25,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.
           | Ok () -> Ok ()
 
   let query_certificate flow name csr =
-    match Dns_certify.query (Cstruct.to_string % R.generate) (Ptime.v (P.now_d_ps ())) name csr with
+    match Dns_certify.query R.generate (Ptime.v (P.now_d_ps ())) name csr with
     | Error e -> Lwt.return (Error e)
     | Ok (out, cb) ->
       D.send_tcp (D.flow flow) (Cstruct.of_string out) >>= function

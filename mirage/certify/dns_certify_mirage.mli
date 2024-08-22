@@ -1,5 +1,5 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
-module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (T : Mirage_time.S) (S : Tcpip.Stack.V4V6) : sig
+module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (T : Mirage_time.S) (S : Tcpip.Stack.V4V6) : sig
 
   val retrieve_certificate :
     S.t -> dns_key:string -> hostname:[ `host ] Domain_name.t ->

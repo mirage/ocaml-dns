@@ -2,11 +2,10 @@
 
 open Lwt.Infix
 
-let ( % ) f g = fun x -> f (g x)
 let src = Logs.Src.create "dns_resolver_mirage" ~doc:"effectful DNS resolver"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_time.S) (S : Tcpip.Stack.V4V6) = struct
+module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_time.S) (S : Tcpip.Stack.V4V6) = struct
 
   module Dns = Dns_mirage.Make(S)
 
@@ -26,7 +25,7 @@ module Make (R : Mirage_random.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MC
 
   let resolver stack ?(root = false) ?(timer = 500) ?(udp = true) ?(tcp = true) ?tls ?(port = 53) ?(tls_port = 853) t =
     (* according to RFC5452 4.5, we can chose source port between 1024-49152 *)
-    let sport () = 1024 + Randomconv.int ~bound:48128 (Cstruct.to_string % R.generate) in
+    let sport () = 1024 + Randomconv.int ~bound:48128 R.generate in
     let state = ref t in
     let tcp_in = ref FM.empty in
     let tcp_out = ref Ipaddr.Map.empty in
