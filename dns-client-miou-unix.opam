@@ -27,7 +27,3 @@ synopsis: "DNS client API for Miou"
 description: """
 A client implementation using uDNS using Miou.
 """
-
-pin-depends: [
-  [ "happy-eyeballs-miou-unix.1.1.0" "git+https://github.com/robur-coop/happy-eyeballs.git#2a2f276b547d9ac34c0ce9ca40a19b67c7db726f" ]
-]
