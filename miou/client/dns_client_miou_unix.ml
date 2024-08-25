@@ -1,8 +1,8 @@
 let error_msgf fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
 
-let src_daemon = Logs.Src.create "dns-client-miou-unix"
+let src = Logs.Src.create "dns-client-miou-unix"
 
-module Log = (val Logs.src_log src_daemon : Logs.LOG)
+module Log = (val Logs.src_log src : Logs.LOG)
 
 module Transport = struct
   open Happy_eyeballs_miou_unix
@@ -116,9 +116,12 @@ module Transport = struct
           Tls_miou_unix.really_read fd buf ~off:rx_len ~len;
           go buf (rx_len + len)
         | Some expected_len ->
+          (* NOTE(dinosaure): in this branch, [buf] is not large enough to store
+             the DNS packet. We allocate a new buffer which can store the actual
+             DNS packet and use it for the next [go] iteration. *)
           let buf' = Bytes.make (expected_len + 2) '\000' in
           Bytes.blit buf 0 buf' 0 rx_len;
-          go buf rx_len in
+          go buf' rx_len in
       go (Bytes.make 2048 '\000') 0 in
     let ( >>= ) = Result.bind in
     match with_timeout ~timeout send >>= fun () ->
