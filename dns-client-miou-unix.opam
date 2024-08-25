@@ -28,7 +28,5 @@ A client implementation using uDNS using Miou.
 """
 
 pin-depends: [
-  [ "miou.dev" "git+https://git.robur.coop/robur/miou.git#ed5087b832797616df073bd8ec9baed2ec4e474c" ]
-  [ "happy-eyeballs-miou-unix.0.6.0" "git+https://github.com/dinosaure/happy-eyeballs.git#4ff9ff889500b764adcefaf719852298c8d51a40" ]
-  [ "tls-miou-unix.0.17.4" "git+https://github.com/dinosaure/ocaml-tls.git#6b635d130b83bb45007e374d828f877332ab2b2e" ]
+  [ "happy-eyeballs-miou-unix.1.1.0" "git+https://github.com/robur-coop/happy-eyeballs.git#2a2f276b547d9ac34c0ce9ca40a19b67c7db726f" ]
 ]
