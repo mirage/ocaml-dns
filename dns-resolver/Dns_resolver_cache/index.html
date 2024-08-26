@@ -18,7 +18,7 @@
   * <a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-resolve"><a href="#val-resolve" class="anchor"></a><code><span><span class="keyword">val</span> resolve : 
   <span><a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a> <span class="arrow">&#45;&gt;</span></span>
   <span><span class="label">dnssec</span>:bool <span class="arrow">&#45;&gt;</span></span>
-  <span><span class="label">rng</span>:<span>(<span>int <span class="arrow">&#45;&gt;</span></span> <span class="xref-unresolved">Cstruct</span>.t)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">rng</span>:<span>(<span>int <span class="arrow">&#45;&gt;</span></span> string)</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span>[ `Both <span>| `Ipv4_only</span> <span>| `Ipv6_only</span> ]</span> <span class="arrow">&#45;&gt;</span></span>
   <span>int64 <span class="arrow">&#45;&gt;</span></span>
   <span><span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
@@ -30,7 +30,7 @@
   * <a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-handle_query"><a href="#val-handle_query" class="anchor"></a><code><span><span class="keyword">val</span> handle_query : 
   <span><a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a> <span class="arrow">&#45;&gt;</span></span>
   <span><span class="label">dnssec</span>:bool <span class="arrow">&#45;&gt;</span></span>
-  <span><span class="label">rng</span>:<span>(<span>int <span class="arrow">&#45;&gt;</span></span> <span class="xref-unresolved">Cstruct</span>.t)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">rng</span>:<span>(<span>int <span class="arrow">&#45;&gt;</span></span> string)</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span>[ `Both <span>| `Ipv4_only</span> <span>| `Ipv6_only</span> ]</span> <span class="arrow">&#45;&gt;</span></span>
   <span>int64 <span class="arrow">&#45;&gt;</span></span>
   <span><span>(<span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> * <a href="../../dns/Dns/Packet/Question/index.html#type-qtype">Dns.Packet.Question.qtype</a>)</span> <span class="arrow">&#45;&gt;</span></span>

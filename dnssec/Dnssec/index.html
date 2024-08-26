@@ -17,14 +17,14 @@
   <span><a href="../../dns/Dns/Ds/index.html#type-digest_type">Dns.Ds.digest_type</a> <span class="arrow">&#45;&gt;</span></span>
   <span><span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
   <span><a href="../../dns/Dns/Dnskey/index.html#type-t">Dns.Dnskey.t</a> <span class="arrow">&#45;&gt;</span></span>
-  <span><span>(<span class="xref-unresolved">Mirage_crypto</span>.Hash.digest, <span>[&gt; <span>`Msg of string</span> ]</span>)</span> <span class="xref-unresolved">Stdlib</span>.result</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-dnskey_to_pk"><a href="#val-dnskey_to_pk" class="anchor"></a><code><span><span class="keyword">val</span> dnskey_to_pk : 
+  <span><span>(string, <span>[&gt; <span>`Msg of string</span> ]</span>)</span> <span class="xref-unresolved">Stdlib</span>.result</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-dnskey_to_pk"><a href="#val-dnskey_to_pk" class="anchor"></a><code><span><span class="keyword">val</span> dnskey_to_pk : 
   <span><a href="../../dns/Dns/Dnskey/index.html#type-t">Dns.Dnskey.t</a> <span class="arrow">&#45;&gt;</span></span>
   <span><span>(<span>[&gt; <span>`ED25519 of <span class="xref-unresolved">Mirage_crypto_ec</span>.Ed25519.pub</span>
    <span><span>| `P256</span> of <span class="xref-unresolved">Mirage_crypto_ec</span>.P256.Dsa.pub</span>
    <span><span>| `P384</span> of <span class="xref-unresolved">Mirage_crypto_ec</span>.P384.Dsa.pub</span>
    <span><span>| `RSA</span> of <span class="xref-unresolved">Mirage_crypto_pk</span>.Rsa.pub</span> ]</span>,
     <span>[&gt; <span>`Msg of string</span> ]</span>)</span>
-    <span class="xref-unresolved">Stdlib</span>.result</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-verify"><a href="#val-verify" class="anchor"></a><code><span><span class="keyword">val</span> verify : 
+    <span class="xref-unresolved">Stdlib</span>.result</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-(%)"><a href="#val-(%)" class="anchor"></a><code><span><span class="keyword">val</span> (%) : <span><span>(<span><span class="type-var">'a</span> <span class="arrow">&#45;&gt;</span></span> <span class="type-var">'b</span>)</span> <span class="arrow">&#45;&gt;</span></span> <span><span>(<span><span class="type-var">'c</span> <span class="arrow">&#45;&gt;</span></span> <span class="type-var">'d</span>)</span> <span class="arrow">&#45;&gt;</span></span> <span><span class="type-var">'e</span> <span class="arrow">&#45;&gt;</span></span> <span class="type-var">'f</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-verify"><a href="#val-verify" class="anchor"></a><code><span><span class="keyword">val</span> verify : 
   'a. <span><span class="xref-unresolved">Ptime</span>.t <span class="arrow">&#45;&gt;</span></span>
   <span><a href="#type-pub">pub</a> <span class="arrow">&#45;&gt;</span></span>
   <span><span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
@@ -69,22 +69,18 @@
   <span><span class="label">soa_name</span>:<span><span class="type-var">'a</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span><span>(<a href="../../dns/Dns/Rr_map/index.html#type-t">Dns.Rr_map.t</a> * <span><span><span class="type-var">'b</span> <span class="xref-unresolved">Domain_name</span>.t</span> <a href="KM/index.html#type-t">KM.t</a></span>)</span> <span class="xref-unresolved">Domain_name</span>.Map.t</span> <span class="arrow">&#45;&gt;</span></span>
-  <span><span>(unit, <span>[&gt; <span>`Msg of string</span> ]</span>)</span> <span class="xref-unresolved">Stdlib</span>.result</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-nsec3_hash"><a href="#val-nsec3_hash" class="anchor"></a><code><span><span class="keyword">val</span> nsec3_hash : 
-  <span><span class="xref-unresolved">Cstruct</span>.t <span class="arrow">&#45;&gt;</span></span>
-  <span>int <span class="arrow">&#45;&gt;</span></span>
-  <span><span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
-  <span class="xref-unresolved">Mirage_crypto</span>.Hash.digest</span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-nsec3_hashed_name"><a href="#val-nsec3_hashed_name" class="anchor"></a><code><span><span class="keyword">val</span> nsec3_hashed_name : 
-  <span><span class="xref-unresolved">Cstruct</span>.t <span class="arrow">&#45;&gt;</span></span>
+  <span><span>(unit, <span>[&gt; <span>`Msg of string</span> ]</span>)</span> <span class="xref-unresolved">Stdlib</span>.result</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-nsec3_hash"><a href="#val-nsec3_hash" class="anchor"></a><code><span><span class="keyword">val</span> nsec3_hash : <span>string <span class="arrow">&#45;&gt;</span></span> <span>int <span class="arrow">&#45;&gt;</span></span> <span><span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span> string</span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-nsec3_hashed_name"><a href="#val-nsec3_hashed_name" class="anchor"></a><code><span><span class="keyword">val</span> nsec3_hashed_name : 
+  <span>string <span class="arrow">&#45;&gt;</span></span>
   <span>int <span class="arrow">&#45;&gt;</span></span>
   <span><span class="label">soa_name</span>:<span><span class="type-var">'a</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-nsec3_rrs"><a href="#val-nsec3_rrs" class="anchor"></a><code><span><span class="keyword">val</span> nsec3_rrs : 
   <span><span><span>(<a href="../../dns/Dns/Rr_map/index.html#type-t">Dns.Rr_map.t</a> * <span><span><span class="type-var">'a</span> <span class="xref-unresolved">Domain_name</span>.t</span> <a href="KM/index.html#type-t">KM.t</a></span>)</span> <span class="xref-unresolved">Domain_name</span>.Map.t</span> <span class="arrow">&#45;&gt;</span></span>
-  <span><span>(<span><span>(<a href="../../dns/Dns/Rr_map/index.html#type-t">Dns.Rr_map.t</a> * <span><span><span class="type-var">'a</span> <span class="xref-unresolved">Domain_name</span>.t</span> <a href="KM/index.html#type-t">KM.t</a></span>)</span> <span class="xref-unresolved">Domain_name</span>.Map.t</span> * <span class="xref-unresolved">Cstruct</span>.t * int,
+  <span><span>(<span><span>(<a href="../../dns/Dns/Rr_map/index.html#type-t">Dns.Rr_map.t</a> * <span><span><span class="type-var">'a</span> <span class="xref-unresolved">Domain_name</span>.t</span> <a href="KM/index.html#type-t">KM.t</a></span>)</span> <span class="xref-unresolved">Domain_name</span>.Map.t</span> * string * int,
     <span>[&gt; <span>`Msg of string</span> ]</span>)</span>
     <span class="xref-unresolved">Stdlib</span>.result</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-nsec3_closest_encloser"><a href="#val-nsec3_closest_encloser" class="anchor"></a><code><span><span class="keyword">val</span> nsec3_closest_encloser : 
   <span><span><span>(<a href="../../dns/Dns/Rr_map/index.html#type-t">Dns.Rr_map.t</a> * <span class="type-var">'a</span>)</span> <span class="xref-unresolved">Domain_name</span>.Map.t</span> <span class="arrow">&#45;&gt;</span></span>
-  <span><span class="xref-unresolved">Cstruct</span>.t <span class="arrow">&#45;&gt;</span></span>
+  <span>string <span class="arrow">&#45;&gt;</span></span>
   <span>int <span class="arrow">&#45;&gt;</span></span>
   <span><span class="label">soa_name</span>:<span><span class="type-var">'b</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
