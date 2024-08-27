@@ -1,3 +1,8 @@
+### v9.0.0 (2024-08-26)
+
+* Remove `Cstruct.t` and use `string`/`bytes` (@hannesm, @dinosaure, @palainp, #351)
+* Add a Miou implementation of `ocaml-dns` (@dinosaure, @hannesm, #352)
+
 ### v8.0.0 (2024-05-29)
 
 * dns-client (lwt, mirage): depend on happy-eyeballs-{lwt,mirage} instead of
