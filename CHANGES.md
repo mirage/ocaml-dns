@@ -1,3 +1,8 @@
+### v9.0.1 (2024-09-27)
+
+* dns-client-miou: use String.get_uint16_be instead of String.get_int16_be
+  (#354 @dinosaure)
+
 ### v9.0.0 (2024-08-26)
 
 * Remove `Cstruct.t` and use `string`/`bytes` (@hannesm, @dinosaure, @palainp, #351)
