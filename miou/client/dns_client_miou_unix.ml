@@ -139,7 +139,7 @@ module Transport = struct
     if String.length str > 4 then begin
       match fd with
       | `Tls fd ->
-        let id = String.get_int16_be str 2 in
+        let id = String.get_uint16_be str 2 in
         send_recv_tls ~timeout ~id fd str 
       | `Udp fd | `Tcp fd ->
           let fd = Miou_unix.to_file_descr fd in
