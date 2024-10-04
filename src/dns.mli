@@ -303,6 +303,65 @@ module Srv : sig
   (** [compare a b] compares the service record [a] with [b]. *)
 end
 
+(** Service binding and parameter specification record
+
+    A Service record (SVCB) specifies a target, its priority, weight and port. *)
+    module Svcb : sig
+      type srv_param =
+        | Mandatory of int list
+        | Alpn of string list
+        | No_default_alpn
+        | Port of int
+        | Ipv4_hint of Ipaddr.V4.t list
+        | Ipv6_hint of Ipaddr.V6.t list
+        | Key of int * string
+    
+      type t = {
+        svc_priority : int ;
+        target_name : [ `host ] Domain_name.t ;
+        svc_params : srv_param list ;
+      }
+      (** The type for a service binding and parameter specification record. *)
+    
+      val pp : t Fmt.t
+      (** [pp ppf t] pretty-prints the service binding and parameter
+            specification record. *)
+    
+      val compare : t -> t -> int
+      (** [compare a b] compares the service binding and parameter
+            specificationrecord [a] with [b]. *)
+    end
+
+(** Https binding and parameter specification record
+
+    A Https record (HTTPS) specifies a target, its priority, weight and port. *)
+    module Https : sig
+      type srv_param =
+        | Mandatory of int list
+        | Alpn of string list
+        | No_default_alpn
+        | Port of int
+        | Ipv4_hint of Ipaddr.V4.t list
+        | Ipv6_hint of Ipaddr.V6.t list
+        | Key of int * string
+    
+      type t = {
+        svc_priority : int ;
+        target_name : [ `host ] Domain_name.t ;
+        svc_params : srv_param list ;
+      }
+      (** The type for a service binding and parameter specification record. *)
+    
+      val pp : t Fmt.t
+      (** [pp ppf t] pretty-prints the service binding and parameter
+            specification record. *)
+    
+      val compare : t -> t -> int
+      (** [compare a b] compares the service binding and parameter
+            specificationrecord [a] with [b]. *)
+    end
+
+         
 (** DNS keys
 
     A DNS key record (DNSKEY) specifies flags, algorithm, and key data. *)
@@ -855,6 +914,8 @@ module Rr_map : sig
   module Mx_set : Set.S with type elt = Mx.t
   module Txt_set : Set.S with type elt = Txt.t
   module Srv_set : Set.S with type elt = Srv.t
+  module Svcb_set : Set.S with type elt = Svcb.t
+  module Https_set : Set.S with type elt = Https.t
   module Dnskey_set : Set.S with type elt = Dnskey.t
   module Caa_set : Set.S with type elt = Caa.t
   module Tlsa_set : Set.S with type elt = Tlsa.t
@@ -883,6 +944,8 @@ module Rr_map : sig
     | Aaaa : Ipaddr.V6.Set.t with_ttl rr
     | Ptr : Ptr.t with_ttl rr
     | Srv : Srv_set.t with_ttl rr
+    | Svcb : Svcb_set.t with_ttl rr
+    | Https : Https_set.t with_ttl rr
     | Dnskey : Dnskey_set.t with_ttl rr
     | Caa : Caa_set.t with_ttl rr
     | Tlsa : Tlsa_set.t with_ttl rr

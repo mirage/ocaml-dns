@@ -717,6 +717,758 @@ module Srv = struct
     Name.encode ~compress:false t.target names buf (off + 6)
 end
 
+(* SVCB *)
+module Svcb = struct
+
+  type srv_param =
+    | Mandatory of int list
+    | Alpn of string list
+    | No_default_alpn
+    | Port of int
+    | Ipv4_hint of Ipaddr.V4.t list
+    | Ipv6_hint of Ipaddr.V6.t list
+    | Key of int * string
+
+  type t = {
+    svc_priority : int ;
+    target_name : [ `host ] Domain_name.t ;
+    svc_params : srv_param list ;
+  }
+
+  let canonical t =
+    { t with target_name = Domain_name.canonical t.target_name }
+
+  (* for encoding, do the mandatory first *)
+  let separate_mandatory t =
+    List.fold_left (fun (mandatory,non_mandatory) svc_p ->
+        match svc_p with
+        | Mandatory mandatory_list -> (mandatory_list::mandatory,non_mandatory)
+        | _ ->           (mandatory,svc_p::non_mandatory)
+      ) ([],[]) t.svc_params
+
+  let pp ppf t =
+    Fmt.pf ppf "SVCB svc_priority %d target_name %a svc_params (%a)"
+      t.svc_priority Domain_name.pp t.target_name 
+      Fmt.(list ~sep:(any " ")
+        (using (fun (s:srv_param) ->
+            match s with
+            | Mandatory mandatories -> (
+              let rec loop first s l =
+                match l with
+                | hd::tl -> (
+                  let m =
+                    match hd with
+                    | 1 -> "alpn"
+                    | 2 -> "no-default-alpn"
+                    | 3 -> "port"
+                    | 4 -> "ipv4hint"
+                    | 5 -> "ech"
+                    | 6 -> "ipv6hint"
+                    | _ -> "key"^(string_of_int hd)
+                  in
+                  let s' = if first then m else s^","^m in
+                  loop false s' tl
+                )
+                | [] -> s
+              in
+              " mandatory="^(loop true "" mandatories)
+            )
+            | Alpn alpns -> (
+              let (_,alpns') = (List.fold_left (fun (first,a) alpn ->
+                  if first then (false,alpn) else (false,a^","^alpn)
+                ) (true,"") alpns) in
+              " alpn="^alpns'
+            )
+            | No_default_alpn -> " no-default-alpn"
+            | Port port -> " port="^(string_of_int port)
+            | Ipv4_hint ipv4s -> (
+              let (_,ipv4s') = (List.fold_left (fun (first,a) ipv4 ->
+                if first then (false,Ipaddr.V4.to_string ipv4) else
+                  (false,a^","^Ipaddr.V4.to_string ipv4)
+              ) (true,"") ipv4s) in
+              " ipv4hint="^ipv4s'
+            )
+            | Ipv6_hint ipv6s -> (
+              let (_,ipv6s') = (List.fold_left (fun (first,a) ipv6 ->
+                if first then (false,Ipaddr.V6.to_string ipv6) else
+                  (false,a^","^Ipaddr.V6.to_string ipv6)
+              ) (true,"") ipv6s) in
+              " ipv6hint="^ipv6s'
+            )
+            | Key (key,v) -> " key"^(string_of_int key)^"="^v
+
+          ) string) ) t.svc_params
+
+  let compare a b =
+    andThen (Int.compare a.svc_priority b.svc_priority)
+      (andThen (Domain_name.compare a.target_name b.target_name)
+        (List.fold_left2
+          (fun r svc_param_a svc_param_b ->
+            match r with
+            | 0 ->
+              (match svc_param_a, svc_param_b with
+              | Mandatory mandatories_a, Mandatory mandatories_b -> (
+                if List.length mandatories_a <> List.length mandatories_b
+                  then 1
+                  else
+                  List.fold_left (fun r mandatory_a ->
+                    match r with
+                    | 0 -> (
+                      match List.find_opt
+                        (fun mandatory_b ->
+                          mandatory_a = mandatory_b) mandatories_b with
+                      | None -> 1
+                      | Some _ -> 0
+                    )
+                    | x -> x
+                  ) 0 mandatories_a
+              )
+              | Alpn alpns_a, Alpn alpns_b -> (
+                if List.length alpns_a <> List.length alpns_b
+                  then 1
+                  else
+                  List.fold_left (fun r alpn_a ->
+                    match r with
+                    | 0 -> (
+                      match List.find_opt
+                        (fun alpn_b ->
+                          alpn_a = alpn_b) alpns_b with
+                      | None -> 1
+                      | Some _ -> 0
+                    )
+                    | x -> x
+                  ) 0 alpns_a
+              )
+              | No_default_alpn, No_default_alpn -> 0
+              | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
+              | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
+                if List.length ipv4s_a <> List.length ipv4s_b
+                  then 1
+                  else
+                  List.fold_left (fun r ipv4_a ->
+                    match r with
+                    | 0 -> (
+                      match List.find_opt
+                        (fun ipv4_b ->
+                          ipv4_a = ipv4_b) ipv4s_b with
+                      | None -> 1
+                      | Some _ -> 0
+                    )
+                    | x -> x
+                  ) 0 ipv4s_a
+              )
+              | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
+                if List.length ipv6s_a <> List.length ipv6s_b
+                  then 1
+                  else
+                  List.fold_left (fun r ipv6_a ->
+                    match r with
+                    | 0 -> (
+                      match List.find_opt
+                        (fun ipv6_b ->
+                          ipv6_a = ipv6_b) ipv6s_b with
+                      | None -> 1
+                      | Some _ -> 0
+                    )
+                    | x -> x
+                  ) 0 ipv6s_a
+              )
+              | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
+              | _, _ -> 1)
+            | x -> x
+          ) 0 a.svc_params b.svc_params)
+      )
+
+  let decode names buf ~off ~len =
+    let exit_len = off + len in
+    let svc_priority = String.get_uint16_be buf off in
+    let off = off + 2 in
+    (* if the target is domain root then there should be a 0x00
+       at the current offset *)
+    let* target, names, off = Name.decode names buf ~off in
+    let* target_name = Name.host off target in
+    let svc_params =
+      if off < exit_len then (
+        let rec loop_svc_params off l =
+          if off = exit_len then l else (
+            let key = String.get_uint16_be buf off in
+            let off = off + 2 in
+            match key with
+            | 0 -> ( (* mandatory *)
+              let param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let rec loop off remaining mandatories =
+                if remaining = 0 then mandatories, off else
+                  let mandatories = (String.get_uint16_be buf off)::mandatories in
+                  loop (off + 2) (remaining-2) mandatories
+              in
+              let mandatories', off = loop off param_length [] in
+              loop_svc_params off (Mandatory mandatories'::l)
+            )
+            | 1 -> ( (* alpn *)
+              let param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let rec loop off remaining alpns =
+                if remaining = 0 then alpns, off else
+                  let alpn_len = String.get_uint8 buf off in
+                  let off = off + 1 in
+                  let alpn_value = String.sub buf off alpn_len in
+                  let off = off + alpn_len in
+                  let alpns = alpn_value::alpns in
+                  loop off (remaining-1-alpn_len) alpns
+              in
+              let alpns', off = loop off param_length [] in
+              loop_svc_params off (Alpn alpns'::l)
+            )
+            | 2 -> ( (* no-default-alpn *)
+              loop_svc_params off (No_default_alpn::l)
+            )
+            | 3 -> ( (* port *)
+              let _param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let port = String.get_uint16_be buf off in
+              let off = off + 2 in
+              loop_svc_params off (Port port::l)
+            )
+            | 4 -> ( (* ipv4hint *)
+              let param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let rec loop off remaining ipv4s =
+                if remaining = 0 then ipv4s, off else
+                  let ipv4 = Ipaddr.V4.of_int32 (String.get_int32_be buf off) in
+                  let off = off + 4 in
+                  let ipv4s = ipv4::ipv4s in
+                  loop off (remaining-4) ipv4s
+              in
+              let ipv4s', off = loop off param_length [] in
+              loop_svc_params off (Ipv4_hint ipv4s'::l)
+            )
+            | 5 -> ( (* ech *)
+              (* loop_svc_params off (Ech::l) *)
+              loop_svc_params off l
+            )
+            | 6 -> ( (* ipv6hint *)
+              let param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let rec loop off remaining ipv6s =
+                if remaining = 0 then ipv6s, off else
+                  let i64_1 = String.get_int64_be buf off in
+                  let off = off + 8 in
+                  let i64_2 = String.get_int64_be buf off in
+                  let off = off + 8 in
+                  let ipv6 = Ipaddr.V6.of_int64 (i64_1,i64_2) in
+                  let ipv6s = ipv6::ipv6s in
+                  loop off (remaining-16) ipv6s
+              in
+              let ipv6s', off = loop off param_length [] in
+              loop_svc_params off (Ipv6_hint ipv6s'::l)
+            )
+            | _ -> ( (* decode as keyNNNNN *)
+            let key_length = String.get_uint16_be buf off in
+            let off = off + 2 in
+            let key_value = String.sub buf off key_length in
+            let off = off + key_length in
+            loop_svc_params off (Key (key,key_value)::l)
+            )
+          )
+        in
+        loop_svc_params off []
+      ) else []
+    in
+    Ok ({ svc_priority ; target_name ; svc_params }, names, exit_len)
+
+    (* TODO : ADD STACKED GUARDS *)
+
+  let encode t names buf off =
+    Bytes.set_uint8 buf off t.svc_priority;
+    let names, off = Name.encode ~compress:false t.target_name names buf (succ off) in
+    let mandatory, non_mandatory = separate_mandatory t in
+    (* if there is a mandatory, do this first *)
+    let off =
+      if List.length mandatory > 0 then (
+        let mandatory_list = List.hd mandatory in
+        Bytes.set_uint16_be buf off 0;
+        Bytes.set_uint16_be buf off (2 * List.length mandatory_list);
+        let rec loop off keys =
+          match keys with
+          | hd::tl -> (
+            Bytes.set_uint16_be buf off hd;
+            loop (off + 2) tl
+          )
+          | [] -> off
+        in
+        loop off mandatory_list
+      ) else off
+    in
+    let off =
+      let rec loop off params =
+        match params with
+        | [] -> off
+        | param::params -> (
+          let off =
+            match param with
+            | Mandatory _mandatory_list -> off (* impossible *)
+            | Alpn alpns -> (
+              (* let alpns_list_length = List.length alpns in *)
+              Bytes.set_uint16_be buf off 1;
+              let off = off + 2 in
+              let alpns_param_length, len_val_list =
+                List.fold_left (fun (len,len_val_list) alpn ->
+                  let alpn_len = String.length alpn in
+                  (len + (2 + String.length alpn)),
+                    (alpn_len,alpn)::len_val_list) (0,[]) alpns in
+              Bytes.set_uint16_be buf off alpns_param_length;
+              let off = off + 2 in
+              let rec loop1 off len_val_list =
+                match len_val_list with
+                | [] -> off
+                | len_val::len_val_list -> (
+                  let l,v = len_val in
+                  Bytes.set_uint8 buf off l;
+                  let v_len = String.length v in
+                  Bytes.blit_string v 0 buf (succ off) v_len;
+                  loop1 (off+1+v_len) len_val_list
+                )
+              in
+              let off = loop1 off len_val_list in
+              loop off params
+            )
+            | No_default_alpn -> (
+              Bytes.set_uint16_be buf off 2;
+              succ off
+            )
+            | Port port -> (
+              Bytes.set_uint16_be buf off 3;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off port;
+              off + 2
+            )
+            | Ipv4_hint ipv4_list -> (
+              let list_len = List.length ipv4_list in
+              Bytes.set_uint16_be buf off 4;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off (list_len * 4);
+              let off = off + 2 in
+              let off =
+                List.fold_left (fun off ipv4 ->
+                    let ipv4 = Ipaddr.V4.to_int32 ipv4 in
+                    Bytes.set_int32_be buf off ipv4;
+                    off + 4
+                  ) off ipv4_list
+              in
+              off
+            )
+            | Ipv6_hint ipv6_list -> (
+              let list_len = List.length ipv6_list in
+              Bytes.set_uint16_be buf off 6;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off (list_len * 16);
+              let off = off + 2 in
+              let off =
+                List.fold_left (fun off ipv6 ->
+                    let ipv6_1, ipv6_2 = Ipaddr.V6.to_int64 ipv6 in
+                    Bytes.set_int64_be buf off ipv6_1;
+                    let off = off + 8 in
+                    Bytes.set_int64_be buf off ipv6_2;
+                    off + 8
+                  ) off ipv6_list
+              in
+              off
+            )
+            | Key (k,v) -> (
+              Bytes.set_uint16_be buf off k;
+              let off = off + 2 in
+              let v_len = String.length v in
+              Bytes.set_uint16_be buf off v_len;
+              let off = off + 2 in
+              Bytes.blit_string v 0 buf off v_len;
+              off + v_len
+            )
+          in
+          loop off params
+        )
+      in
+      loop off non_mandatory
+    in
+    names, off
+end
+
+(* HTTPS *)
+module Https = struct
+
+  type srv_param =
+    | Mandatory of int list
+    | Alpn of string list
+    | No_default_alpn
+    | Port of int
+    | Ipv4_hint of Ipaddr.V4.t list
+    | Ipv6_hint of Ipaddr.V6.t list
+    | Key of int * string
+
+  type t = {
+    svc_priority : int ;
+    target_name : [ `host ] Domain_name.t ;
+    svc_params : srv_param list ;
+  }
+
+  let canonical t =
+    { t with target_name = Domain_name.canonical t.target_name }
+
+  (* for encoding, do the mandatory first *)
+  let separate_mandatory t =
+    List.fold_left (fun (mandatory,non_mandatory) svc_p ->
+        match svc_p with
+        | Mandatory mandatory_list -> (mandatory_list::mandatory,non_mandatory)
+        | _ ->           (mandatory,svc_p::non_mandatory)
+      ) ([],[]) t.svc_params
+
+  let pp ppf t =
+    Fmt.pf ppf "HTTPS svc_priority %d target_name %a svc_params (%a)"
+      t.svc_priority Domain_name.pp t.target_name 
+      Fmt.(list ~sep:(any " ")
+        (using (fun (s:srv_param) ->
+            match s with
+            | Mandatory mandatories -> (
+              let rec loop first s l =
+                match l with
+                | hd::tl -> (
+                  let m =
+                    match hd with
+                    | 1 -> "alpn"
+                    | 2 -> "no-default-alpn"
+                    | 3 -> "port"
+                    | 4 -> "ipv4hint"
+                    | 5 -> "ech"
+                    | 6 -> "ipv6hint"
+                    | _ -> "key"^(string_of_int hd)
+                  in
+                  let s' = if first then m else s^","^m in
+                  loop false s' tl
+                )
+                | [] -> s
+              in
+              " mandatory="^(loop true "" mandatories)
+            )
+            | Alpn alpns -> (
+              let (_,alpns') = (List.fold_left (fun (first,a) alpn ->
+                  if first then (false,alpn) else (false,a^","^alpn)
+                ) (true,"") alpns) in
+              " alpn="^alpns'
+            )
+            | No_default_alpn -> " no-default-alpn"
+            | Port port -> " port="^(string_of_int port)
+            | Ipv4_hint ipv4s -> (
+              let (_,ipv4s') = (List.fold_left (fun (first,a) ipv4 ->
+                if first then (false,Ipaddr.V4.to_string ipv4) else
+                  (false,a^","^Ipaddr.V4.to_string ipv4)
+              ) (true,"") ipv4s) in
+              " ipv4hint="^ipv4s'
+            )
+            | Ipv6_hint ipv6s -> (
+              let (_,ipv6s') = (List.fold_left (fun (first,a) ipv6 ->
+                if first then (false,Ipaddr.V6.to_string ipv6) else
+                  (false,a^","^Ipaddr.V6.to_string ipv6)
+              ) (true,"") ipv6s) in
+              " ipv6hint="^ipv6s'
+            )
+            | Key (key,v) -> " key"^(string_of_int key)^"="^v
+
+          ) string) ) t.svc_params
+
+  let compare a b =
+    andThen (Int.compare a.svc_priority b.svc_priority)
+      (andThen (Domain_name.compare a.target_name b.target_name)
+        (List.fold_left2
+          (fun r svc_param_a svc_param_b ->
+            match r with
+            | 0 ->
+              (match svc_param_a, svc_param_b with
+              | Mandatory mandatories_a, Mandatory mandatories_b -> (
+                if List.length mandatories_a <> List.length mandatories_b
+                  then 1
+                  else
+                  List.fold_left (fun r mandatory_a ->
+                    match r with
+                    | 0 -> (
+                      match List.find_opt
+                        (fun mandatory_b ->
+                          mandatory_a = mandatory_b) mandatories_b with
+                      | None -> 1
+                      | Some _ -> 0
+                    )
+                    | x -> x
+                  ) 0 mandatories_a
+              )
+              | Alpn alpns_a, Alpn alpns_b -> (
+                if List.length alpns_a <> List.length alpns_b
+                  then 1
+                  else
+                  List.fold_left (fun r alpn_a ->
+                    match r with
+                    | 0 -> (
+                      match List.find_opt
+                        (fun alpn_b ->
+                          alpn_a = alpn_b) alpns_b with
+                      | None -> 1
+                      | Some _ -> 0
+                    )
+                    | x -> x
+                  ) 0 alpns_a
+              )
+              | No_default_alpn, No_default_alpn -> 0
+              | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
+              | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
+                if List.length ipv4s_a <> List.length ipv4s_b
+                  then 1
+                  else
+                  List.fold_left (fun r ipv4_a ->
+                    match r with
+                    | 0 -> (
+                      match List.find_opt
+                        (fun ipv4_b ->
+                          ipv4_a = ipv4_b) ipv4s_b with
+                      | None -> 1
+                      | Some _ -> 0
+                    )
+                    | x -> x
+                  ) 0 ipv4s_a
+              )
+              | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
+                if List.length ipv6s_a <> List.length ipv6s_b
+                  then 1
+                  else
+                  List.fold_left (fun r ipv6_a ->
+                    match r with
+                    | 0 -> (
+                      match List.find_opt
+                        (fun ipv6_b ->
+                          ipv6_a = ipv6_b) ipv6s_b with
+                      | None -> 1
+                      | Some _ -> 0
+                    )
+                    | x -> x
+                  ) 0 ipv6s_a
+              )
+              | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
+              | _, _ -> 1)
+            | x -> x
+          ) 0 a.svc_params b.svc_params)
+      )
+
+  let decode names buf ~off ~len =
+    let exit_len = off + len in
+    let svc_priority = String.get_uint16_be buf off in
+    let off = off + 2 in
+    (* if the target is domain root then there should be a 0x00
+       at the current offset *)
+    let* target, names, off = Name.decode names buf ~off in
+    let* target_name = Name.host off target in
+    let svc_params =
+      if off < exit_len then (
+        let rec loop_svc_params off l =
+          if off = exit_len then l else (
+            let key = String.get_uint16_be buf off in
+            let off = off + 2 in
+            match key with
+            | 0 -> ( (* mandatory *)
+              let param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let rec loop off remaining mandatories =
+                if remaining = 0 then mandatories, off else
+                  let mandatories = (String.get_uint16_be buf off)::mandatories in
+                  loop (off + 2) (remaining-2) mandatories
+              in
+              let mandatories', off = loop off param_length [] in
+              loop_svc_params off (Mandatory mandatories'::l)
+            )
+            | 1 -> ( (* alpn *)
+              let param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let rec loop off remaining alpns =
+                if remaining = 0 then alpns, off else
+                  let alpn_len = String.get_uint8 buf off in
+                  let off = off + 1 in
+                  let alpn_value = String.sub buf off alpn_len in
+                  let off = off + alpn_len in
+                  let alpns = alpn_value::alpns in
+                  loop off (remaining-1-alpn_len) alpns
+              in
+              let alpns', off = loop off param_length [] in
+              loop_svc_params off (Alpn alpns'::l)
+            )
+            | 2 -> ( (* no-default-alpn *)
+              loop_svc_params off (No_default_alpn::l)
+            )
+            | 3 -> ( (* port *)
+              let _param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let port = String.get_uint16_be buf off in
+              let off = off + 2 in
+              loop_svc_params off (Port port::l)
+            )
+            | 4 -> ( (* ipv4hint *)
+              let param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let rec loop off remaining ipv4s =
+                if remaining = 0 then ipv4s, off else
+                  let ipv4 = Ipaddr.V4.of_int32 (String.get_int32_be buf off) in
+                  let off = off + 4 in
+                  let ipv4s = ipv4::ipv4s in
+                  loop off (remaining-4) ipv4s
+              in
+              let ipv4s', off = loop off param_length [] in
+              loop_svc_params off (Ipv4_hint ipv4s'::l)
+            )
+            | 5 -> ( (* ech *)
+              (* loop_svc_params off (Ech::l) *)
+              loop_svc_params off l
+            )
+            | 6 -> ( (* ipv6hint *)
+              let param_length = String.get_uint16_be buf off in
+              let off = off + 2 in
+              let rec loop off remaining ipv6s =
+                if remaining = 0 then ipv6s, off else
+                  let i64_1 = String.get_int64_be buf off in
+                  let off = off + 8 in
+                  let i64_2 = String.get_int64_be buf off in
+                  let off = off + 8 in
+                  let ipv6 = Ipaddr.V6.of_int64 (i64_1,i64_2) in
+                  let ipv6s = ipv6::ipv6s in
+                  loop off (remaining-16) ipv6s
+              in
+              let ipv6s', off = loop off param_length [] in
+              loop_svc_params off (Ipv6_hint ipv6s'::l)
+            )
+            | _ -> ( (* decode as keyNNNNN *)
+            let key_length = String.get_uint16_be buf off in
+            let off = off + 2 in
+            let key_value = String.sub buf off key_length in
+            let off = off + key_length in
+            loop_svc_params off (Key (key,key_value)::l)
+            )
+          )
+        in
+        loop_svc_params off []
+      ) else []
+    in
+    Ok ({ svc_priority ; target_name ; svc_params }, names, exit_len)
+
+    (* TODO : ADD STACKED GUARDS *)
+
+  let encode t names buf off =
+    Bytes.set_uint8 buf off t.svc_priority;
+    let names, off = Name.encode ~compress:false t.target_name names buf (succ off) in
+    let mandatory, non_mandatory = separate_mandatory t in
+    (* if there is a mandatory, do this first *)
+    let off =
+      if List.length mandatory > 0 then (
+        let mandatory_list = List.hd mandatory in
+        Bytes.set_uint16_be buf off 0;
+        Bytes.set_uint16_be buf off (2 * List.length mandatory_list);
+        let rec loop off keys =
+          match keys with
+          | hd::tl -> (
+            Bytes.set_uint16_be buf off hd;
+            loop (off + 2) tl
+          )
+          | [] -> off
+        in
+        loop off mandatory_list
+      ) else off
+    in
+    let off =
+      let rec loop off params =
+        match params with
+        | [] -> off
+        | param::params -> (
+          let off =
+            match param with
+            | Mandatory _mandatory_list -> off (* impossible *)
+            | Alpn alpns -> (
+              (* let alpns_list_length = List.length alpns in *)
+              Bytes.set_uint16_be buf off 1;
+              let off = off + 2 in
+              let alpns_param_length, len_val_list =
+                List.fold_left (fun (len,len_val_list) alpn ->
+                  let alpn_len = String.length alpn in
+                  (len + (2 + String.length alpn)),
+                    (alpn_len,alpn)::len_val_list) (0,[]) alpns in
+              Bytes.set_uint16_be buf off alpns_param_length;
+              let off = off + 2 in
+              let rec loop1 off len_val_list =
+                match len_val_list with
+                | [] -> off
+                | len_val::len_val_list -> (
+                  let l,v = len_val in
+                  Bytes.set_uint8 buf off l;
+                  let v_len = String.length v in
+                  Bytes.blit_string v 0 buf (succ off) v_len;
+                  loop1 (off+1+v_len) len_val_list
+                )
+              in
+              let off = loop1 off len_val_list in
+              loop off params
+            )
+            | No_default_alpn -> (
+              Bytes.set_uint16_be buf off 2;
+              succ off
+            )
+            | Port port -> (
+              Bytes.set_uint16_be buf off 3;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off port;
+              off + 2
+            )
+            | Ipv4_hint ipv4_list -> (
+              let list_len = List.length ipv4_list in
+              Bytes.set_uint16_be buf off 4;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off (list_len * 4);
+              let off = off + 2 in
+              let off =
+                List.fold_left (fun off ipv4 ->
+                    let ipv4 = Ipaddr.V4.to_int32 ipv4 in
+                    Bytes.set_int32_be buf off ipv4;
+                    off + 4
+                  ) off ipv4_list
+              in
+              off
+            )
+            | Ipv6_hint ipv6_list -> (
+              let list_len = List.length ipv6_list in
+              Bytes.set_uint16_be buf off 6;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off (list_len * 16);
+              let off = off + 2 in
+              let off =
+                List.fold_left (fun off ipv6 ->
+                    let ipv6_1, ipv6_2 = Ipaddr.V6.to_int64 ipv6 in
+                    Bytes.set_int64_be buf off ipv6_1;
+                    let off = off + 8 in
+                    Bytes.set_int64_be buf off ipv6_2;
+                    off + 8
+                  ) off ipv6_list
+              in
+              off
+            )
+            | Key (k,v) -> (
+              Bytes.set_uint16_be buf off k;
+              let off = off + 2 in
+              let v_len = String.length v in
+              Bytes.set_uint16_be buf off v_len;
+              let off = off + 2 in
+              Bytes.blit_string v 0 buf off v_len;
+              off + v_len
+            )
+          in
+          loop off params
+        )
+      in
+      loop off non_mandatory
+    in
+    names, off
+end
+
 (* DNS key *)
 module Dnskey = struct
 
@@ -2310,6 +3062,8 @@ module Rr_map = struct
   module Mx_set = Set.Make(Mx)
   module Txt_set = Set.Make(Txt)
   module Srv_set = Set.Make(Srv)
+  module Svcb_set = Set.Make(Svcb)
+  module Https_set = Set.Make(Https)
   module Dnskey_set = Set.Make(Dnskey)
   module Caa_set = Set.Make(Caa)
   module Tlsa_set = Set.Make(Tlsa)
@@ -2345,6 +3099,8 @@ module Rr_map = struct
     | Aaaa : Ipaddr.V6.Set.t with_ttl rr
     | Ptr : Ptr.t with_ttl rr
     | Srv : Srv_set.t with_ttl rr
+    | Svcb : Svcb_set.t with_ttl rr
+    | Https : Https_set.t with_ttl rr
     | Dnskey : Dnskey_set.t with_ttl rr
     | Caa : Caa_set.t with_ttl rr
     | Tlsa : Tlsa_set.t with_ttl rr
@@ -2372,6 +3128,8 @@ module Rr_map = struct
       | Aaaa, Aaaa -> Eq | Aaaa, _ -> Lt | _, Aaaa -> Gt
       | Ptr, Ptr -> Eq | Ptr, _ -> Lt | _, Ptr -> Gt
       | Srv, Srv -> Eq | Srv, _ -> Lt | _, Srv -> Gt
+      | Svcb, Svcb -> Eq | Svcb, _ -> Lt | _, Svcb -> Gt
+      | Https, Https -> Eq | Https, _ -> Lt | _, Https -> Gt
       | Dnskey, Dnskey -> Eq | Dnskey, _ -> Lt | _, Dnskey -> Gt
       | Caa, Caa -> Eq | Caa, _ -> Lt | _, Caa -> Gt
       | Tlsa, Tlsa -> Eq | Tlsa, _ -> Lt | _, Tlsa -> Gt
@@ -2406,6 +3164,8 @@ module Rr_map = struct
     | A, (_, aas), (_, aas') -> Ipaddr.V4.Set.equal aas aas'
     | Aaaa, (_, aaaas), (_, aaaas') -> Ipaddr.V6.Set.equal aaaas aaaas'
     | Srv, (_, srvs), (_, srvs') -> Srv_set.equal srvs srvs'
+    | Svcb, (_, svcbs), (_, svcbs') -> Svcb_set.equal svcbs svcbs'
+    | Https, (_, httpss), (_, httpss') -> Https_set.equal httpss httpss'
     | Dnskey, (_, keys), (_, keys') -> Dnskey_set.equal keys keys'
     | Caa, (_, caas), (_, caas') -> Caa_set.equal caas caas'
     | Tlsa, (_, tlsas), (_, tlsas') -> Tlsa_set.equal tlsas tlsas'
@@ -2426,7 +3186,7 @@ module Rr_map = struct
     | A -> 1 | Ns -> 2 | Cname -> 5 | Soa -> 6 | Null -> 10 | Ptr -> 12 | Mx -> 15
     | Txt -> 16 | Aaaa -> 28  | Loc -> 29 | Srv -> 33 | Ds -> 43
     | Sshfp -> 44 | Rrsig -> 46 | Nsec -> 47 | Dnskey -> 48 | Nsec3 -> 50
-    | Tlsa -> 52 | Caa -> 257
+    | Tlsa -> 52 | Svcb -> 64 | Https -> 65 | Caa -> 257
     | Unknown x -> I.to_int x
 
   let any_rtyp = 255 and axfr_rtyp = 252 and ixfr_rtyp = 251
@@ -2451,6 +3211,8 @@ module Rr_map = struct
     | A -> Fmt.string ppf "A"
     | Aaaa -> Fmt.string ppf "AAAA"
     | Srv -> Fmt.string ppf "SRV"
+    | Svcb -> Fmt.string ppf "SVCB"
+    | Https -> Fmt.string ppf "HTTPS"
     | Dnskey -> Fmt.string ppf "DNSKEY"
     | Caa -> Fmt.string ppf "CAA"
     | Tlsa -> Fmt.string ppf "TLSA"
@@ -2473,6 +3235,8 @@ module Rr_map = struct
     | "A" -> Ok (K A)
     | "AAAA" -> Ok (K Aaaa)
     | "SRV" -> Ok (K Srv)
+    | "SVCB" -> Ok (K Svcb)
+    | "HTTPS" -> Ok (K Https)
     | "DNSKEY" -> Ok (K Dnskey)
     | "CAA" -> Ok (K Caa)
     | "TLSA" -> Ok (K Tlsa)
@@ -2555,6 +3319,14 @@ module Rr_map = struct
       Srv_set.fold (fun srv ((names, off), count) ->
           rr names (Srv.encode srv) off ttl, succ count)
         srvs ((names, off), 0)
+    | Svcb, (ttl, svcbs) ->
+      Svcb_set.fold (fun svcb ((names, off), count) ->
+          rr names (Svcb.encode svcb) off ttl, succ count)
+          svcbs ((names, off), 0)
+    | Https, (ttl, httpss) ->
+      Https_set.fold (fun https ((names, off), count) ->
+          rr names (Https.encode https) off ttl, succ count)
+        httpss ((names, off), 0)
     | Dnskey, (ttl, dnskeys) ->
       Dnskey_set.fold (fun dnskey ((names, off), count) ->
         rr names (Dnskey.encode dnskey) off ttl, succ count)
@@ -2644,6 +3416,14 @@ module Rr_map = struct
       Srv_set.fold (fun srv acc ->
           rr (Srv.encode srv) :: acc)
         srvs []
+    | Svcb, (_ttl, svcbs) ->
+      Svcb_set.fold (fun svcb acc ->
+          rr (Svcb.encode svcb) :: acc)
+        svcbs []
+    | Https, (_ttl, httpss) ->
+      Https_set.fold (fun https acc ->
+          rr (Https.encode https) :: acc)
+          httpss []
     | Dnskey, (_ttl, dnskeys) ->
       Dnskey_set.fold (fun dnskey acc ->
           rr (Dnskey.encode dnskey) :: acc)
@@ -2703,6 +3483,8 @@ module Rr_map = struct
     | Cname, (ttl, cn) -> ttl, Cname.canonical cn
     | Ptr, (ttl, ptr) -> ttl, Ptr.canonical ptr
     | Srv, (ttl, srv) -> ttl, Srv_set.map Srv.canonical srv
+    | Svcb, (ttl, svcb) -> ttl, Svcb_set.map Svcb.canonical svcb
+    | Https, (ttl, https) -> ttl, Https_set.map Https.canonical https
     | Rrsig, (ttl, rrsig) -> ttl, Rrsig_set.map Rrsig.canonical rrsig
     | Nsec, (ttl, nsec) -> ttl, Nsec.canonical nsec
     | _, v -> v
@@ -2768,6 +3550,8 @@ module Rr_map = struct
     | A, (_, ips), (ttl, ips') -> (ttl, Ipaddr.V4.Set.union ips ips')
     | Aaaa, (_, ips), (ttl, ips') -> (ttl, Ipaddr.V6.Set.union ips ips')
     | Srv, (_, srvs), (ttl, srvs') -> (ttl, Srv_set.union srvs srvs')
+    | Svcb, (_, svcb), (ttl, svcb') -> (ttl, Svcb_set.union svcb svcb')
+    | Https, (_, https), (ttl, https') -> (ttl, Https_set.union https https')
     | Dnskey, (_, keys), (ttl, keys') -> (ttl, Dnskey_set.union keys keys')
     | Caa, (_, caas), (ttl, caas') -> (ttl, Caa_set.union caas caas')
     | Tlsa, (_, tlsas), (ttl, tlsas') -> (ttl, Tlsa_set.union tlsas tlsas')
@@ -2811,6 +3595,12 @@ module Rr_map = struct
     | Srv, (ttl, srvs), (_, rm) ->
       let s = Srv_set.diff srvs rm in
       if Srv_set.is_empty s then None else Some (ttl, s)
+    | Svcb, (ttl, svcb), (_, rm) ->
+      let s = Svcb_set.diff svcb rm in
+      if Svcb_set.is_empty s then None else Some (ttl, s)
+    | Https, (ttl, https), (_, rm) ->
+      let s = Https_set.diff https rm in
+      if Https_set.is_empty s then None else Some (ttl, s)
     | Dnskey, (ttl, keys), (_, rm) ->
       let s = Dnskey_set.diff keys rm in
       if Dnskey_set.is_empty s then None else Some (ttl, s)
@@ -2946,6 +3736,126 @@ module Rr_map = struct
               srv.priority srv.weight srv.port
               (name srv.target) :: acc)
           srvs []
+      | Svcb, (ttl, svcbs) ->
+        Svcb_set.fold (fun svcb acc ->
+            let _,params =
+              List.fold_left (fun (i,a) p' ->
+                let p = if i > 0 then a^" " else a in
+                let p = match p' with
+                  | Svcb.Mandatory key_list -> (
+                    let (_,mandatory) =
+                      List.fold_left (fun (i',a') k ->
+                        let m = if i' = 0 then "" else "," in
+                        match k with
+                          | 0 -> (* ERROR, IGNORE *) (i',a')
+                          | 1 -> (i'+1,a'^m^"alpn")
+                          | 2 -> (i'+1,a'^m^"no-default-alpn")
+                          | 3 -> (i'+1,a'^m^"port")
+                          | 4 -> (i'+1,a'^m^"ipv4hint")
+                          | 5 -> (i'+1,a'^m^"ech")
+                          | 6 -> (i'+1,a'^m^"ipv6hint")
+                          | _ -> (i'+1,a'^m^"key"^(string_of_int k))
+                      ) (0,"") key_list in
+                    p^"mandatory="^mandatory
+                  )
+                  | Alpn alpn_list -> (
+                    let (_,alpn) =
+                      List.fold_left (fun (i',a') k ->
+                        succ i', a'^(if i' = 0 then k else ","^k)
+                      ) (0,"") alpn_list in
+                    p^"alpn="^alpn
+                  )
+                  | No_default_alpn ->
+                    p^"no-default-alpn"
+                  | Port port ->
+                    p^"key"^(string_of_int port)
+                  | Ipv4_hint ipv4_list -> (
+                    let (_,ipv4s) =
+                      List.fold_left (fun (i',a') ipv4 ->
+                        let ipv4' = Ipaddr.V4.to_string ipv4 in
+                        succ i', if i' = 0 then a'^ipv4' else a'^","^ipv4'
+                        ) (0,"") ipv4_list in
+                    p^"ipv4hint="^ipv4s
+                  )
+                  | Ipv6_hint ipv6_list -> (
+                    let (_,ipv6s) =
+                      List.fold_left (fun (i',a') ipv6 ->
+                        let ipv6' = Ipaddr.V6.to_string ipv6 in
+                        succ i', if i' = 0 then a'^ipv6' else a'^","^ipv6'
+                        ) (0,"") ipv6_list in
+                      p^"ipv6hint="^ipv6s
+                  )
+                  | Key (k,v) ->
+                    p^"key"^(string_of_int k)^"="^v
+                in
+                (succ i, p)
+                ) (0,"") svcb.svc_params
+            in
+            Fmt.str "%s\t%aSVCB\t%u\t%s\t%s"
+              str_name ttl_fmt (ttl_opt ttl)
+              svcb.svc_priority (name svcb.target_name)
+              params :: acc)
+          svcbs []
+      | Https, (ttl, httpss) ->
+        Https_set.fold (fun https acc ->
+            let _,params =
+              List.fold_left (fun (i,a) p' ->
+                let p = if i > 0 then a^" " else a in
+                let p = match p' with
+                  | Https.Mandatory key_list -> (
+                    let (_,mandatory) =
+                      List.fold_left (fun (i',a') k ->
+                        let m = if i' = 0 then "" else "," in
+                        match k with
+                          | 0 -> (* ERROR, IGNORE *) (i',a')
+                          | 1 -> (i'+1,a'^m^"alpn")
+                          | 2 -> (i'+1,a'^m^"no-default-alpn")
+                          | 3 -> (i'+1,a'^m^"port")
+                          | 4 -> (i'+1,a'^m^"ipv4hint")
+                          | 5 -> (i'+1,a'^m^"ech")
+                          | 6 -> (i'+1,a'^m^"ipv6hint")
+                          | _ -> (i'+1,a'^m^"key"^(string_of_int k))
+                      ) (0,"") key_list in
+                    p^"mandatory="^mandatory
+                  )
+                  | Alpn alpn_list -> (
+                    let (_,alpn) =
+                      List.fold_left (fun (i',a') k ->
+                        succ i', a'^(if i' = 0 then k else ","^k)
+                      ) (0,"") alpn_list in
+                    p^"alpn="^alpn
+                  )
+                  | No_default_alpn ->
+                    p^"no-default-alpn"
+                  | Port port ->
+                    p^"key"^(string_of_int port)
+                  | Ipv4_hint ipv4_list -> (
+                    let (_,ipv4s) =
+                      List.fold_left (fun (i',a') ipv4 ->
+                        let ipv4' = Ipaddr.V4.to_string ipv4 in
+                        succ i', if i' = 0 then a'^ipv4' else a'^","^ipv4'
+                        ) (0,"") ipv4_list in
+                    p^"ipv4hint="^ipv4s
+                  )
+                  | Ipv6_hint ipv6_list -> (
+                    let (_,ipv6s) =
+                      List.fold_left (fun (i',a') ipv6 ->
+                        let ipv6' = Ipaddr.V6.to_string ipv6 in
+                        succ i', if i' = 0 then a'^ipv6' else a'^","^ipv6'
+                        ) (0,"") ipv6_list in
+                      p^"ipv6hint="^ipv6s
+                  )
+                  | Key (k,v) ->
+                    p^"key"^(string_of_int k)^"="^v
+                in
+                (succ i, p)
+                ) (0,"") https.svc_params
+            in
+            Fmt.str "%s\t%aHTTPS\t%u\t%s\t%s"
+              str_name ttl_fmt (ttl_opt ttl)
+              https.svc_priority (name https.target_name)
+              params :: acc)
+              httpss []
       | Dnskey, (ttl, keys) ->
         Dnskey_set.fold (fun key acc ->
             Fmt.str "%s%a\tDNSKEY\t%u\t3\t%d\t%s"
@@ -3053,6 +3963,8 @@ module Rr_map = struct
     | A, (ttl, _) -> ttl
     | Aaaa, (ttl, _) -> ttl
     | Srv, (ttl, _) -> ttl
+    | Svcb, (ttl, _) -> ttl
+    | Https, (ttl, _) -> ttl
     | Dnskey, (ttl, _) -> ttl
     | Caa, (ttl, _) -> ttl
     | Tlsa, (ttl, _) -> ttl
@@ -3076,6 +3988,8 @@ module Rr_map = struct
     | A, (_, ips) -> ttl, ips
     | Aaaa, (_, ips) -> ttl, ips
     | Srv, (_, srvs) -> ttl, srvs
+    | Svcb, (_, svcbs) -> ttl, svcbs
+    | Https, (_, httpss) -> ttl, httpss
     | Dnskey, keys -> keys
     | Caa, (_, caas) -> ttl, caas
     | Tlsa, (_, tlsas) -> ttl, tlsas
@@ -3136,6 +4050,20 @@ module Rr_map = struct
         if Srv_set.is_empty rest then None else Some (ttl, rest)
       in
       (ttl, Srv_set.singleton one), rest'
+    | Svcb, (ttl, svcbs) ->
+      let one = Svcb_set.choose svcbs in
+      let rest = Svcb_set.remove one svcbs in
+      let rest' =
+        if Svcb_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Svcb_set.singleton one), rest'
+    | Https, (ttl, httpss) ->
+      let one = Https_set.choose httpss in
+      let rest = Https_set.remove one httpss in
+      let rest' =
+        if Https_set.is_empty rest then None else Some (ttl, rest)
+      in
+      (ttl, Https_set.singleton one), rest'
     | Dnskey, (ttl, keys) ->
       let one = Dnskey_set.choose keys in
       let rest = Dnskey_set.remove one keys in
@@ -3268,6 +4196,12 @@ module Rr_map = struct
           | Srv ->
             let* srv, names, off = Srv.decode_exn names buf ~off ~len in
             Ok (B (Srv, (ttl, Srv_set.singleton srv)), names, off)
+          | Svcb ->
+            let* svcb, names, off = Svcb.decode names buf ~off ~len in
+            Ok (B (Svcb, (ttl, Svcb_set.singleton svcb)), names, off)
+          | Https ->
+            let* https, names, off = Https.decode names buf ~off ~len in
+            Ok (B (Https, (ttl, Https_set.singleton https)), names, off)
           | Dnskey ->
             let* dnskey, names, off = Dnskey.decode_exn names buf ~off ~len in
             Ok (B (Dnskey, (ttl, Dnskey_set.singleton dnskey)), names, off)

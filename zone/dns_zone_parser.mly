@@ -76,6 +76,8 @@ let add_to_map name ~ttl (Rr_map.B (k, v)) =
 %token <string> TYPE_TXT
 %token <string> TYPE_AAAA
 %token <string> TYPE_SRV
+%token <string> TYPE_SVCB
+%token <string> TYPE_HTTPS
 %token <string> TYPE_CAA
 %token <string> TYPE_DNSKEY
 %token <string> TYPE_TLSA
@@ -153,6 +155,181 @@ generic_type s generic_rdata {
  | TYPE_SRV s int16 s int16 s int16 s hostname
      { let srv = { Srv.priority = $3 ; weight = $5 ; port = $7 ; target = $9 } in
        B (Srv, (0l, Rr_map.Srv_set.singleton srv)) }
+     /* RFC 9460 */
+ | TYPE_SVCB s int16 s hostname s charstrings
+     {  let svc_priority = $3 in
+        let target_name = $5 in
+        let svc_params =
+          List.fold_left (fun acc s ->
+            let tokens = String.split_on_char '=' s in
+            if List.length tokens = 1 then (
+              let key = List.nth tokens 0 in
+              match key with
+              | "no-default-alpn" -> Svcb.No_default_alpn::acc
+              | "ech" -> parse_error "SVCB 'ech' parameter currently reserved"
+              | _ -> parse_error ("Unknown SVCB parameter: "^key)
+            ) else if List.length tokens = 2 then (
+              let key = List.nth tokens 0 in
+              let value = List.nth tokens 1 in
+              match key with
+              | "mandatory" -> (
+                let values = String.split_on_char ',' value in
+                let mandatories =
+                  List.fold_left (fun a p ->
+                    match p with
+                    | "mandatory" ->
+                      parse_error "SVCB param : mandatory not allowed as a mandatory parameter"
+                    | "alpn" -> 1::a
+                    | "no-default-alpn" -> 2::a
+                    | "port" -> 3::a
+                    | "ipv4hint" -> 4::a
+                    | "ech" ->
+                      parse_error "SVCB param : ech is a reserved parameter"
+                    | "ipv6hint" -> 6::a
+                    | _ -> (
+                      if String.starts_with ~prefix:"key" p then (
+                        let len = String.length p in
+                        let key_num = int_of_string (String.sub p 3 (len-3)) in
+                        if key_num <= 6 then (
+                          parse_error ("SVCB mandatory key value should be greater than 6: "^p)
+                        ) else key_num::a
+                      ) else parse_error ("Unknown mandatory parameter: "^p)
+                    )
+                  ) [] values
+                in
+                Mandatory mandatories::acc
+              )
+              | "alpn" -> (
+                let values = String.split_on_char ',' value in
+                Alpn values::acc
+              )
+              | "port" -> (
+                Port (int_of_string value)::acc
+              )
+              | "ipv4hint" -> (
+                let values = String.split_on_char ',' value in
+                let ipv4s =
+                  List.fold_left (fun a ipv4 ->
+                    match Ipaddr.V4.of_string ipv4 with
+                    | Ok ipv4_t -> ipv4_t::a
+                    | Error (`Msg msg) -> parse_error ("parsing ipv4 "^ipv4^" gives error: "^msg)
+                  ) [] values
+                in
+                Ipv4_hint ipv4s::acc
+              )
+              | "ipv6hint" -> (
+                let values = String.split_on_char ',' value in
+                let ipv6s =
+                  List.fold_left (fun a ipv6 ->
+                    match Ipaddr.V6.of_string ipv6 with
+                    | Ok ipv6_t -> ipv6_t::a
+                    | Error (`Msg msg) -> parse_error ("parsing ipv6 "^ipv6^" gives error: "^msg)
+                  ) [] values
+                in
+                Ipv6_hint ipv6s::acc
+              )
+              | _ -> (
+                if String.starts_with ~prefix:"key" key then (
+                  let len = String.length key in
+                  let key_num = int_of_string (String.sub key 3 (len-3)) in
+                  if key_num <= 6 then (
+                    parse_error ("SVCB key parameter should be greater than 6: "^key)
+                  ) else Key (key_num,value)::acc
+                ) else parse_error ("Unknown mandatory paramter: "^key)
+              )
+            ) else parse_error "Cannot have more than one '=' in a SVCB param field"
+          ) [] $7
+        in
+        let svcb = { Svcb.svc_priority ; target_name ; svc_params } in
+        B (Svcb, (0l, Rr_map.Svcb_set.singleton svcb))
+        }
+  | TYPE_HTTPS s int16 s hostname s charstrings
+      {  let svc_priority = $3 in
+          let target_name = $5 in
+          let svc_params =
+            List.fold_left (fun acc s ->
+              let tokens = String.split_on_char '=' s in
+              if List.length tokens = 1 then (
+                let key = List.nth tokens 0 in
+                match key with
+                | "no-default-alpn" -> Https.No_default_alpn::acc
+                | "ech" -> parse_error "HTTPS 'ech' parameter currently reserved"
+                | _ -> parse_error ("Unknown HTTPS parameter: "^key)
+              ) else if List.length tokens = 2 then (
+                let key = List.nth tokens 0 in
+                let value = List.nth tokens 1 in
+                match key with
+                | "mandatory" -> (
+                  let values = String.split_on_char ',' value in
+                  let mandatories =
+                    List.fold_left (fun a p ->
+                      match p with
+                      | "mandatory" ->
+                        parse_error "HTTPS param : mandatory not allowed as a mandatory parameter"
+                      | "alpn" -> 1::a
+                      | "no-default-alpn" -> 2::a
+                      | "port" -> 3::a
+                      | "ipv4hint" -> 4::a
+                      | "ech" ->
+                        parse_error "HTTPS param : ech is a reserved parameter"
+                      | "ipv6hint" -> 6::a
+                      | _ -> (
+                        if String.starts_with ~prefix:"key" p then (
+                          let len = String.length p in
+                          let key_num = int_of_string (String.sub p 3 (len-3)) in
+                          if key_num <= 6 then (
+                            parse_error ("HTTPS mandatory key value should be greater than 6: "^p)
+                          ) else key_num::a
+                        ) else parse_error ("Unknown mandatory parameter: "^p)
+                      )
+                    ) [] values
+                  in
+                  Mandatory mandatories::acc
+                )
+                | "alpn" -> (
+                  let values = String.split_on_char ',' value in
+                  Alpn values::acc
+                )
+                | "port" -> (
+                  Port (int_of_string value)::acc
+                )
+                | "ipv4hint" -> (
+                  let values = String.split_on_char ',' value in
+                  let ipv4s =
+                    List.fold_left (fun a ipv4 ->
+                      match Ipaddr.V4.of_string ipv4 with
+                      | Ok ipv4_t -> ipv4_t::a
+                      | Error (`Msg msg) -> parse_error ("parsing ipv4 "^ipv4^" gives error: "^msg)
+                    ) [] values
+                  in
+                  Ipv4_hint ipv4s::acc
+                )
+                | "ipv6hint" -> (
+                  let values = String.split_on_char ',' value in
+                  let ipv6s =
+                    List.fold_left (fun a ipv6 ->
+                      match Ipaddr.V6.of_string ipv6 with
+                      | Ok ipv6_t -> ipv6_t::a
+                      | Error (`Msg msg) -> parse_error ("parsing ipv6 "^ipv6^" gives error: "^msg)
+                    ) [] values
+                  in
+                  Ipv6_hint ipv6s::acc
+                )
+                | _ -> (
+                  if String.starts_with ~prefix:"key" key then (
+                    let len = String.length key in
+                    let key_num = int_of_string (String.sub key 3 (len-3)) in
+                    if key_num <= 6 then (
+                      parse_error ("HTTPS key parameter should be greater than 6: "^key)
+                    ) else Key (key_num,value)::acc
+                  ) else parse_error ("Unknown mandatory paramter: "^key)
+                )
+              ) else parse_error "Cannot have more than one '=' in a HTTPS param field"
+            ) [] $7
+          in
+          let https = { Https.svc_priority ; target_name ; svc_params } in
+          B (Https, (0l, Rr_map.Https_set.singleton https))
+          }
      /* RFC 3596 */
  | TYPE_TLSA s int8 s int8 s int8 s hex
      { try
@@ -391,6 +568,8 @@ keyword_or_number:
  | TYPE_TXT { $1 }
  | TYPE_AAAA { $1 }
  | TYPE_SRV { $1 }
+ | TYPE_SVCB { $1 }
+ | TYPE_HTTPS { $1 }
  | TYPE_DNSKEY { $1 }
  | TYPE_CAA { $1 }
  | TYPE_TLSA { $1 }

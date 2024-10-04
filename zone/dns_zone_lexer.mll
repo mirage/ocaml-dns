@@ -40,6 +40,8 @@ let kw_or_cs s = match (String.uppercase_ascii s) with
   | "TXT" -> TYPE_TXT s
   | "AAAA" -> TYPE_AAAA s
   | "SRV" -> TYPE_SRV s
+  | "SVCB" -> TYPE_SVCB s
+  | "HTTPS" -> TYPE_HTTPS s
   | "DNSKEY" -> TYPE_DNSKEY s
   | "CAA" -> TYPE_CAA s
   | "TLSA" -> TYPE_TLSA s
