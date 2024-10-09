@@ -306,62 +306,61 @@ end
 (** Service binding and parameter specification record
 
     A Service record (SVCB) specifies a target, its priority, weight and port. *)
-    module Svcb : sig
-      type srv_param =
-        | Mandatory of int list
-        | Alpn of string list
-        | No_default_alpn
-        | Port of int
-        | Ipv4_hint of Ipaddr.V4.t list
-        | Ipv6_hint of Ipaddr.V6.t list
-        | Key of int * string
-    
-      type t = {
-        svc_priority : int ;
-        target_name : [ `host ] Domain_name.t ;
-        svc_params : srv_param list ;
-      }
-      (** The type for a service binding and parameter specification record. *)
-    
-      val pp : t Fmt.t
-      (** [pp ppf t] pretty-prints the service binding and parameter
-            specification record. *)
-    
-      val compare : t -> t -> int
-      (** [compare a b] compares the service binding and parameter
-            specificationrecord [a] with [b]. *)
-    end
+module Svcb : sig
+  type srv_param =
+    | Mandatory of int list
+    | Alpn of string list
+    | No_default_alpn
+    | Port of int
+    | Ipv4_hint of Ipaddr.V4.t list
+    | Ipv6_hint of Ipaddr.V6.t list
+    | Key of int * string
+
+  type t = {
+    svc_priority : int ;
+    target_name : [ `host ] Domain_name.t ;
+    svc_params : srv_param list ;
+  }
+  (** The type for a service binding and parameter specification record. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the service binding and parameter
+        specification record. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the service binding and parameter
+        specificationrecord [a] with [b]. *)
+end
 
 (** Https binding and parameter specification record
 
     A Https record (HTTPS) specifies a target, its priority, weight and port. *)
-    module Https : sig
-      type srv_param =
-        | Mandatory of int list
-        | Alpn of string list
-        | No_default_alpn
-        | Port of int
-        | Ipv4_hint of Ipaddr.V4.t list
-        | Ipv6_hint of Ipaddr.V6.t list
-        | Key of int * string
-    
-      type t = {
-        svc_priority : int ;
-        target_name : [ `host ] Domain_name.t ;
-        svc_params : srv_param list ;
-      }
-      (** The type for a service binding and parameter specification record. *)
-    
-      val pp : t Fmt.t
-      (** [pp ppf t] pretty-prints the service binding and parameter
-            specification record. *)
-    
-      val compare : t -> t -> int
-      (** [compare a b] compares the service binding and parameter
-            specificationrecord [a] with [b]. *)
-    end
+module Https : sig
+  type srv_param =
+    | Mandatory of int list
+    | Alpn of string list
+    | No_default_alpn
+    | Port of int
+    | Ipv4_hint of Ipaddr.V4.t list
+    | Ipv6_hint of Ipaddr.V6.t list
+    | Key of int * string
 
-         
+  type t = {
+    svc_priority : int ;
+    target_name : [ `host ] Domain_name.t ;
+    svc_params : srv_param list ;
+  }
+  (** The type for a service binding and parameter specification record. *)
+
+  val pp : t Fmt.t
+  (** [pp ppf t] pretty-prints the service binding and parameter
+        specification record. *)
+
+  val compare : t -> t -> int
+  (** [compare a b] compares the service binding and parameter
+        specificationrecord [a] with [b]. *)
+end
+
 (** DNS keys
 
     A DNS key record (DNSKEY) specifies flags, algorithm, and key data. *)

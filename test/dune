@@ -45,3 +45,9 @@
  (package dnssec)
  (libraries dns dnssec mirage-crypto-pk base64 logs.fmt alcotest)
  (modules test_dnssec))
+
+(test
+ (name test_rfc9460)
+ (package dns-server)
+ (libraries dns-server dns-server.zone logs.fmt alcotest)
+ (modules test_rfc9460))

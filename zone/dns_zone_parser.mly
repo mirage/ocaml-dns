@@ -156,6 +156,13 @@ generic_type s generic_rdata {
      { let srv = { Srv.priority = $3 ; weight = $5 ; port = $7 ; target = $9 } in
        B (Srv, (0l, Rr_map.Srv_set.singleton srv)) }
      /* RFC 9460 */
+ | TYPE_SVCB s int16 s hostname
+     {  let svc_priority = $3 in
+        let target_name = $5 in
+        let svc_params = [] in
+        let svcb = { Svcb.svc_priority ; target_name ; svc_params } in
+        B (Svcb, (0l, Rr_map.Svcb_set.singleton svcb))
+      }
  | TYPE_SVCB s int16 s hostname s charstrings
      {  let svc_priority = $3 in
         let target_name = $5 in
@@ -210,9 +217,8 @@ generic_type s generic_rdata {
                 let values = String.split_on_char ',' value in
                 let ipv4s =
                   List.fold_left (fun a ipv4 ->
-                    match Ipaddr.V4.of_string ipv4 with
-                    | Ok ipv4_t -> ipv4_t::a
-                    | Error (`Msg msg) -> parse_error ("parsing ipv4 "^ipv4^" gives error: "^msg)
+                    let ipv4 = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" ipv4 in
+                    (Ipaddr.V4.of_string_exn ipv4)::a
                   ) [] values
                 in
                 Ipv4_hint ipv4s::acc
@@ -221,9 +227,8 @@ generic_type s generic_rdata {
                 let values = String.split_on_char ',' value in
                 let ipv6s =
                   List.fold_left (fun a ipv6 ->
-                    match Ipaddr.V6.of_string ipv6 with
-                    | Ok ipv6_t -> ipv6_t::a
-                    | Error (`Msg msg) -> parse_error ("parsing ipv6 "^ipv6^" gives error: "^msg)
+                    let ipv6 = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" ipv6 in
+                    (parse_ipv6 ipv6)::a
                   ) [] values
                 in
                 Ipv6_hint ipv6s::acc
@@ -235,7 +240,7 @@ generic_type s generic_rdata {
                   if key_num <= 6 then (
                     parse_error ("SVCB key parameter should be greater than 6: "^key)
                   ) else Key (key_num,value)::acc
-                ) else parse_error ("Unknown mandatory paramter: "^key)
+                ) else parse_error ("Unknown mandatory parameter: "^key)
               )
             ) else parse_error "Cannot have more than one '=' in a SVCB param field"
           ) [] $7
@@ -243,6 +248,13 @@ generic_type s generic_rdata {
         let svcb = { Svcb.svc_priority ; target_name ; svc_params } in
         B (Svcb, (0l, Rr_map.Svcb_set.singleton svcb))
         }
+ | TYPE_HTTPS s int16 s hostname
+     {  let svc_priority = $3 in
+        let target_name = $5 in
+        let svc_params = [] in
+        let https = { Https.svc_priority ; target_name ; svc_params } in
+        B (Https, (0l, Rr_map.Https_set.singleton https))
+      }
   | TYPE_HTTPS s int16 s hostname s charstrings
       {  let svc_priority = $3 in
           let target_name = $5 in
@@ -297,9 +309,8 @@ generic_type s generic_rdata {
                   let values = String.split_on_char ',' value in
                   let ipv4s =
                     List.fold_left (fun a ipv4 ->
-                      match Ipaddr.V4.of_string ipv4 with
-                      | Ok ipv4_t -> ipv4_t::a
-                      | Error (`Msg msg) -> parse_error ("parsing ipv4 "^ipv4^" gives error: "^msg)
+                    let ipv4 = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" ipv4 in
+                    (Ipaddr.V4.of_string_exn ipv4)::a
                     ) [] values
                   in
                   Ipv4_hint ipv4s::acc
@@ -308,9 +319,8 @@ generic_type s generic_rdata {
                   let values = String.split_on_char ',' value in
                   let ipv6s =
                     List.fold_left (fun a ipv6 ->
-                      match Ipaddr.V6.of_string ipv6 with
-                      | Ok ipv6_t -> ipv6_t::a
-                      | Error (`Msg msg) -> parse_error ("parsing ipv6 "^ipv6^" gives error: "^msg)
+                    let ipv6 = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" ipv6 in
+                    (parse_ipv6 ipv6)::a
                     ) [] values
                   in
                   Ipv6_hint ipv6s::acc
@@ -585,3 +595,10 @@ keyword_or_number:
  | METERS { $1 ^ "m" }
 
 %%
+
+
+
+
+.... add paramstrings 
+
+
