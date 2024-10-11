@@ -476,7 +476,7 @@ let parse_escaped_comma_backslash () =
         svc_priority = 16 ;
         target_name = Domain_name.host_exn foo_example ;
         svc_params = [
-          Alpn ["f\\\\oo\\"; "bar"; "h2"]
+          Alpn ["\"f\\\\\\\\oo\\\\"; "bar"; "h2\""]
         ] ;
       } in
     let svcb1' = Rr_map.Svcb_set.singleton svcb1 in
@@ -484,11 +484,11 @@ let parse_escaped_comma_backslash () =
         svc_priority = 16 ;
         target_name = Domain_name.host_exn foo_example ;
         svc_params = [
-          Alpn ["f\\\092oo\092"; "bar"; "h2"]
+          Alpn ["f\\\\\\092oo\\092"; "bar"; "h2"]
         ] ;
       } in
     let svcb2' = Rr_map.Svcb_set.singleton svcb2 in
-    Name_rr_map.(add example Rr_map.Svcb (ttl,svcb1') (singleton example Rr_map.Svcb (ttl,svcb2')));
+    Name_rr_map.(add example Rr_map.Svcb (ttl,svcb2') (singleton example Rr_map.Svcb (ttl,svcb1')));
   in
   Alcotest.(check (result name_map_ok err) "escaped comma backslash"
                 (Ok rrs)  (Dns_zone.parse escaped_comma_backslash))
@@ -528,12 +528,12 @@ example.com. SVCB 1 foo.example.com. (
 |}
 
 let parse_failure_svc_param_key () =
-  let rrs =
+  let _rrs =
     let ttl = 3600l in
     let example = n_of_s "example.com" in
     let foo_example = n_of_s "foo.example.com" in
     let svcb = Svcb.{
-        svc_priority = 0 ;
+        svc_priority = 1 ;
         target_name = Domain_name.host_exn foo_example ;
         svc_params = [
           Key (123,"abc");
@@ -544,7 +544,7 @@ let parse_failure_svc_param_key () =
       Name_rr_map.add example Rr_map.Svcb (ttl,svcb') Name_rr_map.empty
   in
   Alcotest.(check (result name_map_ok err) "failure svc param key"
-                (Ok rrs)  (Dns_zone.parse failure_svc_param_key))
+                (Error (`Msg "SVCB : multiple instances of the same SvcParamKey"))  (Dns_zone.parse failure_svc_param_key))
 
 
 (*
@@ -621,12 +621,12 @@ example.com. SVCB 1 foo.example.com. (
 |}
 
 let parse_key_repitition_in_mandatory_list () =
-  let rrs =
+  let _rrs =
     let ttl = 3600l in
     let example = n_of_s "example.com" in
     let foo_example = n_of_s "foo.example.com" in
     let svcb = Svcb.{
-        svc_priority = 0 ;
+        svc_priority = 1 ;
         target_name = Domain_name.host_exn foo_example ;
         svc_params = [
           Mandatory [123;123];
@@ -637,7 +637,7 @@ let parse_key_repitition_in_mandatory_list () =
       Name_rr_map.add example Rr_map.Svcb (ttl,svcb') Name_rr_map.empty
   in
   Alcotest.(check (result name_map_ok err) "failure key repitition in mandatory list"
-                (Ok rrs)  (Dns_zone.parse failure_key_repitition_in_mandatory_list))
+          (Error (`Msg ""))  (Dns_zone.parse failure_key_repitition_in_mandatory_list))
 
 
     let tests = [
@@ -658,3 +658,4 @@ let () =
   Logs.set_reporter (Logs_fmt.reporter ());
   Logs.set_level ~all:true (Some Logs.Debug);
   Alcotest.run "rfc9460 tests" tests
+

@@ -66,6 +66,7 @@ let add_to_map name ~ttl (Rr_map.B (k, v)) =
 %token <string> NUMBER
 %token <string> NEG_NUMBER
 %token <string> CHARSTRING
+%token <string> SVCBPARAM
 
 %token <string> TYPE_A
 %token <string> TYPE_NS
@@ -163,7 +164,7 @@ generic_type s generic_rdata {
         let svcb = { Svcb.svc_priority ; target_name ; svc_params } in
         B (Svcb, (0l, Rr_map.Svcb_set.singleton svcb))
       }
- | TYPE_SVCB s int16 s hostname s charstrings
+ | TYPE_SVCB s int16 s hostname s svcbparams
      {  let svc_priority = $3 in
         let target_name = $5 in
         let svc_params =
@@ -214,20 +215,20 @@ generic_type s generic_rdata {
                 Port (int_of_string value)::acc
               )
               | "ipv4hint" -> (
+                let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
                 let values = String.split_on_char ',' value in
                 let ipv4s =
                   List.fold_left (fun a ipv4 ->
-                    let ipv4 = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" ipv4 in
                     (Ipaddr.V4.of_string_exn ipv4)::a
                   ) [] values
                 in
                 Ipv4_hint ipv4s::acc
               )
               | "ipv6hint" -> (
+                let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
                 let values = String.split_on_char ',' value in
                 let ipv6s =
                   List.fold_left (fun a ipv6 ->
-                    let ipv6 = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" ipv6 in
                     (parse_ipv6 ipv6)::a
                   ) [] values
                 in
@@ -245,6 +246,38 @@ generic_type s generic_rdata {
             ) else parse_error "Cannot have more than one '=' in a SVCB param field"
           ) [] $7
         in
+        let mandatory_opt,svc_params =
+          List.fold_left (fun (m,ps) p ->
+            match p with
+            | Svcb.Mandatory mandatory_list -> (
+              (* check for multiple instances of same SvcParamKey in mandatory list *)
+              let multiple_exists,_ =
+                List.fold_left 
+                  (fun (flag,a') k ->
+                    if flag then (flag,(k::a')) else (List.exists (fun k' -> k = k') a'),(k::a')) (false,[]) mandatory_list
+              in
+              if multiple_exists then parse_error ("SVCB : multiple instances of the same SvcParamKey in mandatory list");
+              (Some p),ps
+            )
+            | _ -> (
+              (* check for multiple instances of the same SvcParamKey*)
+              if List.exists
+                (fun k ->
+                  match k, p with
+                  | Svcb.Mandatory _, Mandatory _ -> true
+                  | Alpn _, Alpn _ -> true
+                  | No_default_alpn, No_default_alpn -> true
+                  | Port _, Port _ -> true
+                  | Ipv4_hint _, Ipv4_hint _ -> true
+                  | Ipv6_hint _, Ipv6_hint _ -> true
+                  | Key (k',_), Key (p',_) -> (k' = p')
+                  | _, _ -> false
+                ) ps then parse_error ("SVCB : multiple instances of the same SvcParamKey");
+              m,(p::ps)
+            )
+          ) (None,[]) svc_params
+        in
+        let svc_params = if Option.is_some mandatory_opt then (Option.get mandatory_opt)::svc_params else svc_params in
         let svcb = { Svcb.svc_priority ; target_name ; svc_params } in
         B (Svcb, (0l, Rr_map.Svcb_set.singleton svcb))
         }
@@ -255,7 +288,7 @@ generic_type s generic_rdata {
         let https = { Https.svc_priority ; target_name ; svc_params } in
         B (Https, (0l, Rr_map.Https_set.singleton https))
       }
-  | TYPE_HTTPS s int16 s hostname s charstrings
+  | TYPE_HTTPS s int16 s hostname s svcbparams
       {  let svc_priority = $3 in
           let target_name = $5 in
           let svc_params =
@@ -306,20 +339,20 @@ generic_type s generic_rdata {
                   Port (int_of_string value)::acc
                 )
                 | "ipv4hint" -> (
+                  let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
                   let values = String.split_on_char ',' value in
                   let ipv4s =
                     List.fold_left (fun a ipv4 ->
-                    let ipv4 = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" ipv4 in
                     (Ipaddr.V4.of_string_exn ipv4)::a
                     ) [] values
                   in
                   Ipv4_hint ipv4s::acc
                 )
                 | "ipv6hint" -> (
+                  let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
                   let values = String.split_on_char ',' value in
                   let ipv6s =
                     List.fold_left (fun a ipv6 ->
-                    let ipv6 = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" ipv6 in
                     (parse_ipv6 ipv6)::a
                     ) [] values
                   in
@@ -337,6 +370,38 @@ generic_type s generic_rdata {
               ) else parse_error "Cannot have more than one '=' in a HTTPS param field"
             ) [] $7
           in
+          let mandatory_opt,svc_params =
+            List.fold_left (fun (m,ps) p ->
+              match p with
+              | Https.Mandatory mandatory_list -> (
+                (* check for multiple instances of same SvcParamKey in mandatory list *)
+                let multiple_exists,_ =
+                  List.fold_left 
+                    (fun (flag,a') k ->
+                      if flag then (flag,(k::a')) else (List.exists (fun k' -> k = k') a'),(k::a')) (false,[]) mandatory_list
+                in
+                if multiple_exists then parse_error ("HTTPS : multiple instances of the same SvcParamKey in mandatory list");
+                (Some p),ps
+              )
+              | _ -> (
+                (* check for multiple instances of the same SvcParamKey*)
+                if List.exists
+                  (fun k ->
+                    match k, p with
+                    | Https.Mandatory _, Mandatory _ -> true
+                    | Alpn _, Alpn _ -> true
+                    | No_default_alpn, No_default_alpn -> true
+                    | Port _, Port _ -> true
+                    | Ipv4_hint _, Ipv4_hint _ -> true
+                    | Ipv6_hint _, Ipv6_hint _ -> true
+                    | Key (k',_), Key (p',_) -> (k' = p')
+                    | _, _ -> false
+                  ) ps then parse_error ("HTTPS : multiple instances of the same SvcParamKey");
+                m,(p::ps)
+              )
+            ) (None,[]) svc_params
+          in
+          let svc_params = if Option.is_some mandatory_opt then (Option.get mandatory_opt)::svc_params else svc_params in
           let https = { Https.svc_priority ; target_name ; svc_params } in
           B (Https, (0l, Rr_map.Https_set.singleton https))
           }
@@ -556,6 +621,10 @@ charstrings: charstring { [$1] } | charstrings s charstring { $1 @ [$3] }
 
 charstring: CHARSTRING { $1 } | keyword_or_number { $1 } | AT { "@" }
 
+svcbparams: svcbparam { [$1] } | svcbparams s svcbparam { $1 @ [$3] }
+
+svcbparam: SVCBPARAM { $1 }
+
 label_except_specials: CHARSTRING
     { if String.length $1 > 63 then
         parse_error "label is longer than 63 bytes";
@@ -595,10 +664,3 @@ keyword_or_number:
  | METERS { $1 ^ "m" }
 
 %%
-
-
-
-
-.... add paramstrings 
-
-
