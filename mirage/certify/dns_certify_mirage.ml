@@ -73,14 +73,8 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (TIME : M
         in
         wait_for_cert ()
 
-  let retrieve_certificate stack ~dns_key ~hostname ?(additional_hostnames = []) ?(key_type = `RSA) ?key_data ?key_seed ?bits dns port =
-    let keyname, zone, dnskey =
-      match Dns.Dnskey.name_key_of_string dns_key with
-      | Ok (name, key) ->
-        let zone = Domain_name.(host_exn (drop_label_exn ~amount:2 name)) in
-        (name, zone, key)
-      | Error (`Msg m) -> invalid_arg ("failed to parse dnskey: " ^ m)
-    in
+  let retrieve_certificate stack ~dns_key_name dns_key ~hostname ?(additional_hostnames = []) ?(key_type = `RSA) ?key_data ?key_seed ?bits dns port =
+    let zone = Domain_name.(host_exn (drop_label_exn ~amount:2 dns_key_name)) in
     let not_sub subdomain = not (Domain_name.is_subdomain ~subdomain ~domain:zone) in
     if not_sub hostname then
       invalid_arg "hostname not a subdomain of zone provided by dns_key"
@@ -109,7 +103,7 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (TIME : M
           Lwt.return (Error (`Msg "couldn't connect to name server"))
         | Ok flow ->
           let flow = D.of_flow flow in
-          query_certificate_or_csr flow hostname keyname zone dnskey csr >>= fun certificate ->
+          query_certificate_or_csr flow hostname dns_key_name zone dns_key csr >>= fun certificate ->
           S.TCP.close (D.flow flow) >|= fun () ->
           match certificate with
           | Error e -> Error e
