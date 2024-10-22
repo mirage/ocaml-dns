@@ -2408,6 +2408,29 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     in
     loc_encode_helper loc
 
+  let dnskey_t = Alcotest.testable Dnskey.pp (fun a b -> Dnskey.compare a b = 0)
+
+  let domain_name_t = Alcotest.testable Domain_name.pp Domain_name.equal
+
+  let name_key_t =
+    Alcotest.pair domain_name_t dnskey_t
+
+  let err_t =
+    Alcotest.testable
+      (fun ppf (`Msg m) -> Fmt.string ppf m)
+      (fun _ _ -> true)
+
+  let dnskey_name_to_of_string () =
+    let name = n_of_s "example.com" in
+    let keydata = "abcd" in
+    let key = Dnskey.{ flags = F.empty ; algorithm = SHA256 ; key = keydata } in
+    let keydata = Domain_name.to_string name ^ ":SHA256:" ^ keydata in
+    Alcotest.(check string "dnskey name_key_to_string is good" keydata
+                (Dnskey.name_key_to_string (name, key)));
+    Alcotest.(check (result name_key_t err_t)
+                "dnskey name_key_of_string is good" (Ok (name, key))
+                (Dnskey.name_key_of_string keydata))
+
   let code_tests = [
     "bad query", `Quick, bad_query ;
     "regression0", `Quick, regression0 ;
@@ -2487,6 +2510,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     "loc encode min negated", `Quick, loc_encode_min_negated ;
     "loc encode max", `Quick, loc_encode_max ;
     "loc encode max inverted", `Quick, loc_encode_max_inverted ;
+    "dnskey to/of_string", `Quick, dnskey_name_to_of_string ;
   ]
 end
 
