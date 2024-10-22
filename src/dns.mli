@@ -376,9 +376,6 @@ module Dnskey : sig
   (** [name_key_to_string (name, key)] is a string [name:algorithm:keydata].
       The colon character ([:]) is used as separater. *)
 
-  val pp_name_key : ([ `raw ] Domain_name.t * t) Fmt.t
-  (** [pp_name_key (name, key)] pretty-prints the dnskey and name pair. *)
-
   val digest_prep : [ `raw ] Domain_name.t -> t -> string
   (** [digest_prep name key] encodes name and key into a buffer, as preparation
       for computing its digest (for DS records). *)

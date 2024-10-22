@@ -914,9 +914,6 @@ module Dnskey = struct
 
   let name_key_to_string (name, key) =
     Domain_name.to_string name ^ ":" ^ to_string key
-
-  let pp_name_key ppf (name, key) =
-    Fmt.pf ppf "%a %a" Domain_name.pp name pp key
 end
 
 (** RRSIG *)
