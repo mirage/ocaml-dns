@@ -73,7 +73,7 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (TIME : M
         in
         wait_for_cert ()
 
-  let retrieve_certificate stack ~dns_key_name dns_key ~hostname ?(additional_hostnames = []) ?(key_type = `RSA) ?key_data ?key_seed ?bits dns port =
+  let retrieve_certificate stack (dns_key_name, dns_key) ~hostname ?(additional_hostnames = []) ?(key_type = `RSA) ?key_data ?key_seed ?bits dns port =
     let zone = Domain_name.(host_exn (drop_label_exn ~amount:2 dns_key_name)) in
     let not_sub subdomain = not (Domain_name.is_subdomain ~subdomain ~domain:zone) in
     if not_sub hostname then
