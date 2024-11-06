@@ -307,7 +307,7 @@ end
 
     A Service record (SVCB) specifies a target, its priority, weight and port. *)
 module Svcb : sig
-  type srv_param =
+  type svc_param =
     | Mandatory of int list
     | Alpn of string list
     | No_default_alpn
@@ -319,7 +319,7 @@ module Svcb : sig
   type t = {
     svc_priority : int ;
     target_name : [ `host ] Domain_name.t ;
-    svc_params : srv_param list ;
+    svc_params : svc_param list ;
   }
   (** The type for a service binding and parameter specification record. *)
 
@@ -336,7 +336,7 @@ end
 
     A Https record (HTTPS) specifies a target, its priority, weight and port. *)
 module Https : sig
-  type srv_param =
+  type svc_param =
     | Mandatory of int list
     | Alpn of string list
     | No_default_alpn
@@ -348,7 +348,7 @@ module Https : sig
   type t = {
     svc_priority : int ;
     target_name : [ `host ] Domain_name.t ;
-    svc_params : srv_param list ;
+    svc_params : svc_param list ;
   }
   (** The type for a service binding and parameter specification record. *)
 

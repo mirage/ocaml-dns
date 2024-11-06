@@ -720,7 +720,7 @@ end
 (* SVCB *)
 module Svcb = struct
 
-  type srv_param =
+  type svc_param =
     | Mandatory of int list
     | Alpn of string list
     | No_default_alpn
@@ -732,25 +732,39 @@ module Svcb = struct
   type t = {
     svc_priority : int ;
     target_name : [ `host ] Domain_name.t ;
-    svc_params : srv_param list ;
+    svc_params : svc_param list ;
   }
 
   let canonical t =
     { t with target_name = Domain_name.canonical t.target_name }
 
-  (* for encoding, do the mandatory first *)
+  (* for encoding, need to do the mandatory first *)
+  (* order non-mandatories *)
   let separate_mandatory t =
+    let priority = function
+    | Mandatory _ -> 0
+    | Alpn _ -> 1
+    | No_default_alpn -> 2
+    | Port _ -> 3
+    | Ipv4_hint _ -> 4
+    | Ipv6_hint  _ -> 6
+    | Key (i,_s) -> i
+    in
+    let mandatory, non_mandatories =
     List.fold_left (fun (mandatory,non_mandatory) svc_p ->
         match svc_p with
         | Mandatory mandatory_list -> (mandatory_list::mandatory,non_mandatory)
         | _ ->           (mandatory,svc_p::non_mandatory)
       ) ([],[]) t.svc_params
+    in
+    let non_mandatories = List.sort (fun a b -> (priority a) - (priority b)) non_mandatories in
+    mandatory, non_mandatories
 
   let pp ppf t =
     Fmt.pf ppf "SVCB svc_priority %d target_name %a svc_params (%a)"
       t.svc_priority Domain_name.pp t.target_name 
       Fmt.(list ~sep:(any " ")
-        (using (fun (s:srv_param) ->
+        (using (fun (s:svc_param) ->
             match s with
             | Mandatory mandatories -> (
               let rec loop first s l =
@@ -980,15 +994,18 @@ module Svcb = struct
     (* TODO : ADD STACKED GUARDS *)
 
   let encode t names buf off =
-    Bytes.set_uint8 buf off t.svc_priority;
-    let names, off = Name.encode ~compress:false t.target_name names buf (succ off) in
+    Bytes.set_uint16_be buf off t.svc_priority;
+    let off = off + 2 in
+    let names, off = Name.encode ~compress:false t.target_name names buf off in
     let mandatory, non_mandatory = separate_mandatory t in
     (* if there is a mandatory, do this first *)
     let off =
       if List.length mandatory > 0 then (
         let mandatory_list = List.hd mandatory in
         Bytes.set_uint16_be buf off 0;
+        let off = off + 2 in
         Bytes.set_uint16_be buf off (2 * List.length mandatory_list);
+        let off = off + 2 in
         let rec loop off keys =
           match keys with
           | hd::tl -> (
@@ -1015,8 +1032,8 @@ module Svcb = struct
               let alpns_param_length, len_val_list =
                 List.fold_left (fun (len,len_val_list) alpn ->
                   let alpn_len = String.length alpn in
-                  (len + (2 + String.length alpn)),
-                    (alpn_len,alpn)::len_val_list) (0,[]) alpns in
+                  (len + (1 + String.length alpn)),
+                    (alpn_len,alpn)::len_val_list) (0,[]) (List.rev alpns) in
               Bytes.set_uint16_be buf off alpns_param_length;
               let off = off + 2 in
               let rec loop1 off len_val_list =
@@ -1031,11 +1048,11 @@ module Svcb = struct
                 )
               in
               let off = loop1 off len_val_list in
-              loop off params
+              off
             )
             | No_default_alpn -> (
               Bytes.set_uint16_be buf off 2;
-              succ off
+              off + 2
             )
             | Port port -> (
               Bytes.set_uint16_be buf off 3;
@@ -1096,7 +1113,7 @@ end
 (* HTTPS *)
 module Https = struct
 
-  type srv_param =
+  type svc_param =
     | Mandatory of int list
     | Alpn of string list
     | No_default_alpn
@@ -1108,25 +1125,41 @@ module Https = struct
   type t = {
     svc_priority : int ;
     target_name : [ `host ] Domain_name.t ;
-    svc_params : srv_param list ;
+    svc_params : svc_param list ;
   }
 
   let canonical t =
     { t with target_name = Domain_name.canonical t.target_name }
 
-  (* for encoding, do the mandatory first *)
+  (* for encoding, need to do the mandatory first *)
+  (* order non-mandatories *)
   let separate_mandatory t =
+    let priority = function
+    | Mandatory _ -> 0
+    | Alpn _ -> 1
+    | No_default_alpn -> 2
+    | Port _ -> 3
+    | Ipv4_hint _ -> 4
+    | Ipv6_hint  _ -> 6
+    | Key (i,_s) -> i
+    in
+    let mandatory, non_mandatories =
     List.fold_left (fun (mandatory,non_mandatory) svc_p ->
         match svc_p with
-        | Mandatory mandatory_list -> (mandatory_list::mandatory,non_mandatory)
-        | _ ->           (mandatory,svc_p::non_mandatory)
+        | Mandatory mandatory_list ->
+          (mandatory_list::mandatory,non_mandatory)
+        | _ ->
+          (mandatory,svc_p::non_mandatory)
       ) ([],[]) t.svc_params
+    in
+    let non_mandatories = List.sort (fun a b -> (priority a) - (priority b)) non_mandatories in
+    mandatory, non_mandatories
 
   let pp ppf t =
     Fmt.pf ppf "HTTPS svc_priority %d target_name %a svc_params (%a)"
       t.svc_priority Domain_name.pp t.target_name 
       Fmt.(list ~sep:(any " ")
-        (using (fun (s:srv_param) ->
+        (using (fun (s:svc_param) ->
             match s with
             | Mandatory mandatories -> (
               let rec loop first s l =
@@ -1356,15 +1389,18 @@ module Https = struct
     (* TODO : ADD STACKED GUARDS *)
 
   let encode t names buf off =
-    Bytes.set_uint8 buf off t.svc_priority;
-    let names, off = Name.encode ~compress:false t.target_name names buf (succ off) in
+    Bytes.set_uint16_be buf off t.svc_priority;
+    let off = off + 2 in
+    let names, off = Name.encode ~compress:false t.target_name names buf off in
     let mandatory, non_mandatory = separate_mandatory t in
     (* if there is a mandatory, do this first *)
     let off =
       if List.length mandatory > 0 then (
         let mandatory_list = List.hd mandatory in
         Bytes.set_uint16_be buf off 0;
+        let off = off + 2 in
         Bytes.set_uint16_be buf off (2 * List.length mandatory_list);
+        let off = off + 2 in
         let rec loop off keys =
           match keys with
           | hd::tl -> (
@@ -1391,8 +1427,8 @@ module Https = struct
               let alpns_param_length, len_val_list =
                 List.fold_left (fun (len,len_val_list) alpn ->
                   let alpn_len = String.length alpn in
-                  (len + (2 + String.length alpn)),
-                    (alpn_len,alpn)::len_val_list) (0,[]) alpns in
+                  (len + (1 + String.length alpn)),
+                    (alpn_len,alpn)::len_val_list) (0,[]) (List.rev alpns) in
               Bytes.set_uint16_be buf off alpns_param_length;
               let off = off + 2 in
               let rec loop1 off len_val_list =
@@ -1407,11 +1443,11 @@ module Https = struct
                 )
               in
               let off = loop1 off len_val_list in
-              loop off params
+              off
             )
             | No_default_alpn -> (
               Bytes.set_uint16_be buf off 2;
-              succ off
+              off + 2
             )
             | Port port -> (
               Bytes.set_uint16_be buf off 3;
@@ -3085,7 +3121,7 @@ module Rr_map = struct
   end = struct
     type t = int
     let of_int ?(off = 0) i = match i with
-      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 46 | 47 | 48 | 50 | 52 | 250 | 251 | 252 | 255 | 257 ->
+      | 1 | 2 | 5 | 6 | 12 | 15 | 16 | 28 | 33 | 41 | 43 | 44 | 46 | 47 | 48 | 50 | 52 | 64 | 65 | 250 | 251 | 252 | 255 | 257 ->
         Error (`Malformed (off, "reserved and supported RTYPE not Unknown"))
       | x -> if x >= 0 && x < 1 lsl 16 then Ok x else Error (`Malformed (off, "RTYPE exceeds 16 bit"))
     let to_int t = t
@@ -3200,7 +3236,7 @@ module Rr_map = struct
     | 12 -> Ok (K Ptr) | 15 -> Ok (K Mx) | 16 -> Ok (K Txt) | 28 -> Ok (K Aaaa)
     | 29 -> Ok (K Loc) | 33 -> Ok (K Srv) | 43 -> Ok (K Ds) | 44 -> Ok (K Sshfp)
     | 46 -> Ok (K Rrsig) | 47 -> Ok (K Nsec) | 48 -> Ok (K Dnskey)
-    | 50 -> Ok (K Nsec3) | 52 -> Ok (K Tlsa) | 257 -> Ok (K Caa)
+    | 50 -> Ok (K Nsec3) | 52 -> Ok (K Tlsa) | 64 -> Ok (K Svcb) | 65 -> Ok (K Https) | 257 -> Ok (K Caa)
     | x ->
       let* i = I.of_int ~off x in
       Ok (K (Unknown i))
