@@ -419,15 +419,20 @@ module Dnskey : sig
 
   val of_string : string -> (t, [> `Msg of string ]) result
   (** [of_string str] attempts to parse [str] to a dnskey. The colon character
-      ([:]) is used as separator, supported format is: [algo:keydata] where
-      keydata is a base64 string. *)
+      ([:]) is used as separator, supported format is: [algorithm:keydata].
+      Flags are not supported. *)
+
+  val to_string : t -> string
+  (** [to_string key] is a string where the colon character ([:]) is used as
+      separator. The output is [algorithm:keydata]. Flags are not supported. *)
 
   val name_key_of_string : string -> ([ `raw ] Domain_name.t * t, [> `Msg of string ]) result
   (** [name_key_of_string str] attempts to parse [str] to a domain name and a
       dnskey. The colon character ([:]) is used as separator. *)
 
-  val pp_name_key : ([ `raw ] Domain_name.t * t) Fmt.t
-  (** [pp_name_key (name, key)] pretty-prints the dnskey and name pair. *)
+  val name_key_to_string : [ `raw ] Domain_name.t * t -> string
+  (** [name_key_to_string (name, key)] is a string [name:algorithm:keydata].
+      The colon character ([:]) is used as separater. *)
 
   val digest_prep : [ `raw ] Domain_name.t -> t -> string
   (** [digest_prep name key] encodes name and key into a buffer, as preparation
@@ -852,7 +857,7 @@ end
 (** Loc
 
     A locator record (LOC) is used to express location information associated with domain.
-    
+
     See RFC 1876. *)
 module Loc : sig
   type t = {

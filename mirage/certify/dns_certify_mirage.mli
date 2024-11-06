@@ -2,12 +2,13 @@
 module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (T : Mirage_time.S) (S : Tcpip.Stack.V4V6) : sig
 
   val retrieve_certificate :
-    S.t -> dns_key:string -> hostname:[ `host ] Domain_name.t ->
+    S.t -> ([`raw ] Domain_name.t * Dns.Dnskey.t) ->
+    hostname:[ `host ] Domain_name.t ->
     ?additional_hostnames:[ `raw ] Domain_name.t list ->
     ?key_type:X509.Key_type.t -> ?key_data:string -> ?key_seed:string ->
     ?bits:int -> S.TCP.ipaddr -> int ->
     (X509.Certificate.t list * X509.Private_key.t, [ `Msg of string ]) result Lwt.t
-  (** [retrieve_certificate stack ~dns_key ~hostname ~key_type ~key_data ~key_seed ~bits server_ip port]
+  (** [retrieve_certificate stack dns_key ~hostname ~key_type ~key_data ~key_seed ~bits server_ip port]
       generates a private key (using [key_type], [key_data], [key_seed], and
       [bits]), a certificate signing request for the given [hostname] and
       [additional_hostnames], and sends [server_ip] an nsupdate (DNS-TSIG with

@@ -1652,6 +1652,10 @@ module Dnskey = struct
     | [ algo ; key ] -> parse algo key
     | _ -> Error (`Msg ("invalid DNSKEY string " ^ key))
 
+  let to_string key =
+    let algo = algorithm_to_string key.algorithm in
+    algo ^ ":" ^ key.key
+
   let name_key_of_string str =
     match String.split_on_char ':' str with
     | name :: key ->
@@ -1660,8 +1664,8 @@ module Dnskey = struct
       Ok (name, dnskey)
     | [] -> Error (`Msg ("couldn't parse name:key in " ^ str))
 
-  let pp_name_key ppf (name, key) =
-    Fmt.pf ppf "%a %a" Domain_name.pp name pp key
+  let name_key_to_string (name, key) =
+    Domain_name.to_string name ^ ":" ^ to_string key
 end
 
 (** RRSIG *)
