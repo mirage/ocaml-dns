@@ -1,6 +1,8 @@
 
 open Dns
 
+(* a useful reference : https://kalfeher.com/https-records-simple/*)
+
 let n_of_s = Domain_name.of_string_exn
 
 
