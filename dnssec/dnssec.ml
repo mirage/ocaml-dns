@@ -28,12 +28,38 @@ let root_ds =
   <Digest>
   E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
   </Digest>
-  </KeyDigest> *)
-  { Ds.key_tag = 20326 ;
+  <PublicKey>
+AwEAAaz/tAm8yTn4Mfeh5eyI96WSVexTBAvkMgJzkKTOiW1vkIbzxeF3+/4RgWOq7HrxRixHlFlExOLAJr5emLvN7SWXgnLh4+B5xQlNVz8Og8kvArMtNROxVQuCaSnIDdD5LKyWbRd2n9WGe2R8PzgCmr3EgVLrjyBxWezF0jLHwVN8efS3rCj/EWgvIWgb9tarpVUDK/b58Da+sqqls3eNbuv7pr+eoZG+SrDK6nWeL3c6H5Apxz7LjVc1uTIdsIXxuOLYA4/ilBmSVIzuDWfdRUfhHdY6+cn8HFRm+2hM8AnXGXws9555KrUB5qihylGa8subX2Nn6UwNR1AkUTV74bU=
+  </PublicKey>
+  <Flags>257</Flags>
+  </KeyDigest>
+  <KeyDigest id="Kmyv6jo" validFrom="2024-07-18T00:00:00+00:00">
+  <KeyTag>38696</KeyTag>
+  <Algorithm>8</Algorithm>
+  <DigestType>2</DigestType>
+  <Digest>
+  683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16
+  </Digest>
+  <PublicKey>
+  AwEAAa96jeuknZlaeSrvyAJj6ZHv28hhOKkx3rLGXVaC6rXTsDc449/cidltpkyGwCJNnOAlFNKF2jBosZBU5eeHspaQWOmOElZsjICMQMC3aeHbGiShvZsx4wMYSjH8e7Vrhbu6irwCzVBApESjbUdpWWmEnhathWu1jo+siFUiRAAxm9qyJNg/wOZqqzL/dL/q8PkcRU5oUKEpUge71M3ej2/7CPqpdVwuMoTvoB+ZOT4YeGyxMvHmbrxlFzGOHOijtzN+u1TQNatX2XBuzZNQ1K+s2CXkPIZo7s6JgZyvaBevYtxPvYLw4z9mR7K2vaF18UYH9Z9GNUUeayffKC73PYc=
+  </PublicKey>
+  <Flags>257</Flags>
+  </KeyDigest>
+  *)
+  let ds2017 = {
+    Ds.key_tag = 20326 ;
     algorithm = Dnskey.RSA_SHA256 ;
     digest_type = SHA256 ;
     digest = Ohex.decode "E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D" ;
-  } |> Rr_map.Ds_set.singleton
+  }
+  and ds2024 = {
+    Ds.key_tag = 38696 ;
+    algorithm = Dnskey.RSA_SHA256 ;
+    digest_type = SHA256 ;
+    digest = Ohex.decode "683D2D0ACB8C9B712A1948B27F741219298D0A450D612C483AF444A4C0FB2B16" ;
+  }
+  in
+  Rr_map.Ds_set.(add ds2024 (singleton ds2017))
 
 type pub = [
   | `P256 of Mirage_crypto_ec.P256.Dsa.pub
