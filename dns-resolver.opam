@@ -38,3 +38,4 @@ description: """
 Forwarding and recursive resolvers as value-passing functions. To be used with
 an effectful layer.
 """
+x-maintenance-intent: [ "(latest)" ]

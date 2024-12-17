@@ -37,3 +37,4 @@ description: """
 A function to retrieve a certificate when providing a hostname, TSIG key, server
 IP, and an optional key seed. Best used with an letsencrypt unikernel.
 """
+x-maintenance-intent: [ "(latest)" ]

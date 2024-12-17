@@ -38,3 +38,4 @@ description: """
 Primary and secondary DNS server implemented in value-passing style. Needs an
 effectful layer to be useful.
 """
+x-maintenance-intent: [ "(latest)" ]

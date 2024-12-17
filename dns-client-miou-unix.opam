@@ -27,3 +27,4 @@ synopsis: "DNS client API for Miou"
 description: """
 A client implementation using uDNS using Miou.
 """
+x-maintenance-intent: [ "(latest)" ]

@@ -26,3 +26,4 @@ synopsis: "TSIG support for DNS"
 description: """
 TSIG is used to authenticate nsupdate frames using a HMAC.
 """
+x-maintenance-intent: [ "(latest)" ]
