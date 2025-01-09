@@ -312,7 +312,7 @@ let handle_reply t now ts proto sender packet reply =
                             match Dnssec.validate_ds zone dnskeys ds with
                             | Ok key -> Rr_map.Dnskey_set.add key acc
                             | Error `Msg msg ->
-                              Log.warn (fun m -> m "couldn't validate DS (for %a): %s"
+                              Log.debug (fun m -> m "couldn't validate DS (for %a): %s"
                                             Domain_name.pp zone msg);
                               acc)
                           ds_set Rr_map.Dnskey_set.empty)
@@ -331,17 +331,18 @@ let handle_reply t now ts proto sender packet reply =
                   None
             in
             let* packet, signed =
-              Option.fold
-                ~none:(Ok (packet, false))
-                ~some:(fun dnskeys ->
-                    let* packet =
-                      Result.map_error (fun (`Msg msg) ->
-                          Log.err (fun m -> m "error %s verifying reply %a"
-                                       msg Packet.pp_reply reply))
-                        (Dnssec.verify_packet now dnskeys packet)
-                    in
-                    Ok (packet, true))
-                dnskeys
+              match dnskeys with
+              | None ->
+                Log.warn (fun m -> m "no DNSKEY present, couldn't validate packet");
+                Ok (packet, false)
+              | Some dnskeys ->
+                let* packet =
+                  Result.map_error (fun (`Msg msg) ->
+                      Log.err (fun m -> m "error %s verifying reply %a"
+                                   msg Packet.pp_reply reply))
+                    (Dnssec.verify_packet now dnskeys packet)
+                in
+                Ok (packet, true)
             in
             Ok (t, packet, signed)
           else
