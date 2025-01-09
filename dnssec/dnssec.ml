@@ -212,11 +212,11 @@ let validate_ds zone dnskeys ds =
     if Rr_map.Dnskey_set.cardinal key_signing_keys = 1 then
       Ok (Rr_map.Dnskey_set.choose key_signing_keys)
     else
-      Error (`Msg "none or multiple key signing keys")
+      Error (`Msg (string_of_int (Rr_map.Dnskey_set.cardinal key_signing_keys) ^ " key signing keys for " ^ string_of_int ds.key_tag))
   in
   let* dgst = digest ds.Ds.digest_type zone used_dnskey in
   if String.equal ds.Ds.digest dgst then begin
-    Log.debug (fun m -> m "DS for %a is good (key tag %u)"
+    Log.debug (fun m -> m "Found DNSKEY for DS for zone %a (key tag %u)"
                   Domain_name.pp zone ds.Ds.key_tag);
     Ok used_dnskey
   end else
