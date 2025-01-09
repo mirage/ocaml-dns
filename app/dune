@@ -51,7 +51,5 @@
 
 (executable
   (name         resolver)
-  (public_name  resolver)
   (modules      resolver)
-  (package      dns-cli)
   (libraries    dns-resolver dns-resolver.mirage lwt.unix tcpip.stack-socket mirage-clock-unix mirage-unix logs.fmt mirage-crypto-rng.unix))
