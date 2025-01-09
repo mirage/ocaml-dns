@@ -108,7 +108,8 @@ let maybe_query ?recursion_desired t ts await retry ip name typ =
     None, t
   else
     (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
-    let edns = Some (Edns.create ~dnssec_ok:t.dnssec ()) in
+    let payload_size = if t.dnssec then Some 1220 (* from RFC 4035 4.1 *) else None in
+    let edns = Some (Edns.create ~dnssec_ok:t.dnssec ?payload_size ()) in
     let t, packet = build_query ?recursion_desired t ts `Udp k retry await.zone edns ip in
     let t = { t with queried = QM.add k [await] t.queried } in
     Log.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip pp_key k) ;
@@ -301,23 +302,11 @@ let handle_reply t now ts proto sender packet reply =
                 { t with cache },
                 begin match ds with
                   | Ok (`Entry (_, ds_set), _) ->
-                    let keys = match packet.data with
+                    let keys = match reply with
                       | `Answer (a, _) -> Name_rr_map.find zone Rr_map.Dnskey a
                       | _ -> None
                     in
-                    let ds_set =
-                      (* RFC 4509 - drop SHA1 DS if SHA2 DS are present *)
-                      if Rr_map.Ds_set.exists (fun ds ->
-                          match ds.Ds.digest_type with
-                          | Ds.SHA256 | Ds.SHA384 -> true | _ -> false)
-                          ds_set
-                      then
-                        Rr_map.Ds_set.filter
-                          (fun ds -> not (ds.Ds.digest_type = SHA1))
-                          ds_set
-                      else
-                        ds_set
-                    in
+                    let ds_set = Dnssec.filter_ds_if_sha2_present ds_set in
                     Option.map (fun (_, dnskeys) ->
                         Rr_map.Ds_set.fold (fun ds acc ->
                             match Dnssec.validate_ds zone dnskeys ds with
@@ -382,7 +371,7 @@ let handle_reply t now ts proto sender packet reply =
           let t, cs = build_query ~recursion_desired t ts `Tcp key 1 zone None sender in
           Log.debug (fun m -> m "resolve: upgrade to tcp %a %a"
                          Ipaddr.pp sender pp_key key) ;
-        Ok (t, out_a, (`Tcp, sender, cs) :: out_q)
+          Ok (t, out_a, (`Tcp, sender, cs) :: out_q)
         | `Try_another_ns ->
           (* is this the right behaviour? by luck we'll use another path *)
           Ok (handle_awaiting_queries t ts key)

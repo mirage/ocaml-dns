@@ -188,6 +188,19 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
     in
     ok_if_true (Mirage_crypto_pk.Rsa.PKCS1.verify ~hashp ~key ~signature msg)
 
+let filter_ds_if_sha2_present ds_set =
+  (* RFC 4509 - drop SHA1 DS if SHA2 DS are present *)
+  if Rr_map.Ds_set.exists (fun ds ->
+      match ds.Ds.digest_type with
+      | Ds.SHA256 | Ds.SHA384 -> true | _ -> false)
+      ds_set
+  then
+    Rr_map.Ds_set.filter
+      (fun ds -> not (ds.Ds.digest_type = SHA1))
+      ds_set
+  else
+    ds_set
+
 let validate_ds zone dnskeys ds =
   let* used_dnskey =
     let key_signing_keys =
@@ -199,11 +212,12 @@ let validate_ds zone dnskeys ds =
     if Rr_map.Dnskey_set.cardinal key_signing_keys = 1 then
       Ok (Rr_map.Dnskey_set.choose key_signing_keys)
     else
-      Error (`Msg "none or multiple key singing keys")
+      Error (`Msg "none or multiple key signing keys")
   in
   let* dgst = digest ds.Ds.digest_type zone used_dnskey in
   if String.equal ds.Ds.digest dgst then begin
-    Log.info (fun m -> m "DS for %a is good" Domain_name.pp zone);
+    Log.debug (fun m -> m "DS for %a is good (key tag %u)"
+                  Domain_name.pp zone ds.Ds.key_tag);
     Ok used_dnskey
   end else
     Error (`Msg "key signing key couldn't be validated")
