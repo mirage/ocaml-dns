@@ -23,8 +23,8 @@ depends: [
   "mirage-crypto" {>= "1.0.0"}
   "mirage-crypto-pk" {>= "1.0.0"}
   "mirage-crypto-rng" {>= "1.2.0"}
-  "mirage-unix"
-  "mirage-clock-unix"
+  "mirage-unix" {>= "5.0.0"}
+  "mirage-clock-unix" {>= "4.0.0"}
   "tcpip" {>= "8.2.0"}
   "ohex" {>= "0.2.0"}
   "ptime" {>= "0.8.5"}
