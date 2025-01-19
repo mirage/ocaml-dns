@@ -33,3 +33,4 @@ synopsis: "DNS client API for MirageOS"
 description: """
 A client implementation using uDNS using MirageOS.
 """
+x-maintenance-intent: [ "(latest)" ]

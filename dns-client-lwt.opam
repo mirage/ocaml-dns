@@ -30,3 +30,4 @@ synopsis: "DNS client API using lwt"
 description: """
 A client implementation using uDNS and lwt for side effects.
 """
+x-maintenance-intent: [ "(latest)" ]

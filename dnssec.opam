@@ -30,3 +30,4 @@ description: """
 DNSSec (DNS security extensions) for OCaml-DNS, including
 signing and verifying of RRSIG records.
 """
+x-maintenance-intent: [ "(latest)" ]

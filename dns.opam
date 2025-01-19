@@ -44,3 +44,4 @@ of the hash algorithm is used).
 Please read [the blog article](https://hannes.robur.coop/Posts/DNS) for a more
 detailed overview.
 """
+x-maintenance-intent: [ "(latest)" ]

@@ -28,3 +28,4 @@ synopsis: "DNS client API"
 description: """
 A client implementation using uDNS.
 """
+x-maintenance-intent: [ "(latest)" ]

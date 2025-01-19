@@ -48,3 +48,4 @@ For authentication via TSIG, a hmac secret needs to be provided.
 'ocertify' updates DNS with a certificate signing request, and polls a matching
 certificate. Best used with an letsencrypt unikernel.
 """
+x-maintenance-intent: [ "(latest)" ]
