@@ -5,13 +5,13 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_certify_mirage" ~doc:"effectful DNS certify"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (TIME : Mirage_time.S) (S : Tcpip.Stack.V4V6) = struct
+module Make (S : Tcpip.Stack.V4V6) = struct
 
   module D = Dns_mirage.Make(S)
 
   let nsupdate_csr flow host keyname zone dnskey csr =
     match
-      Dns_certify.nsupdate R.generate (fun () -> Ptime.v (P.now_d_ps ()))
+      Dns_certify.nsupdate Mirage_crypto_rng.generate Mirage_ptime.now
         ~host ~keyname ~zone dnskey csr
     with
     | Error s -> Lwt.return (Error s)
@@ -25,7 +25,7 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (TIME : M
           | Ok () -> Ok ()
 
   let query_certificate flow name csr =
-    match Dns_certify.query R.generate (Ptime.v (P.now_d_ps ())) name csr with
+    match Dns_certify.query Mirage_crypto_rng.generate (Mirage_ptime.now ()) name csr with
     | Error e -> Lwt.return (Error e)
     | Ok (out, cb) ->
       D.send_tcp (D.flow flow) (Cstruct.of_string out) >>= function
@@ -68,7 +68,7 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (TIME : M
               Lwt.return (Error (`Msg msg))
             | Error (#Dns_certify.q_err as q) ->
               Log.info (fun m -> m "still waiting for certificate, got error %a" Dns_certify.pp_q_err q) ;
-              TIME.sleep_ns (Duration.of_sec 2) >>= fun () ->
+              Mirage_sleep.ns (Duration.of_sec 2) >>= fun () ->
               wait_for_cert ~retry:(pred retry) ()
         in
         wait_for_cert ()

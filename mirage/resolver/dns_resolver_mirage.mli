@@ -1,6 +1,6 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (T : Mirage_time.S) (S : Tcpip.Stack.V4V6) : sig
+module Make (S : Tcpip.Stack.V4V6) : sig
 
   val resolver : S.t -> ?root:bool -> ?timer:int -> ?udp:bool -> ?tcp:bool -> ?tls:Tls.Config.server -> ?port:int -> ?tls_port:int -> Dns_resolver.t -> unit
   (** [resolver stack ~root ~timer ~udp ~tcp ~tls ~port ~tls_port resolver]
