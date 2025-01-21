@@ -20,14 +20,14 @@ depends: [
   "ipaddr" {>= "5.3.0"}
   "lwt" {>= "4.2.1"}
   "tcpip" {>= "8.2.0"}
-  "mirage-time" {>= "2.0.0"}
-  "mirage-clock" {>= "3.0.0"}
+  "mirage-sleep" {>= "4.0.0"}
+  "mirage-mtime" {>= "4.0.0"}
   "happy-eyeballs-mirage" {>= "1.1.0"}
   "happy-eyeballs" {>= "1.0.0"}
   "tls-mirage" {>= "1.0.0"}
   "x509" {>= "1.0.0"}
   "ca-certs-nss" {>= "3.101-1"}
-  "mirage-crypto-rng-mirage" {>= "1.0.0"}
+  "mirage-crypto-rng" {>= "1.0.0"}
 ]
 synopsis: "DNS client API for MirageOS"
 description: """
