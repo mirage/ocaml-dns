@@ -1,5 +1,5 @@
 let () =
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
+  Mirage_crypto_rng_unix.use_default ();
   let t = Dns_client_unix.create () in
   let domain = Domain_name.(host_exn (of_string_exn Sys.argv.(1))) in
   let ipv4 =

@@ -37,7 +37,7 @@ let nsupdate_csr sock host keyname zone dnskey csr =
     | Error e -> Error (`Msg (Fmt.str "nsupdate reply error %a" Dns_certify.pp_u_err e))
 
 let jump _ server_ip port hostname more_hostnames dns_key_opt csr key keytype keydata seed bits cert force =
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
+  Mirage_crypto_rng_unix.use_default ();
   let fn suffix = function
     | None -> Fpath.(v (Domain_name.to_string hostname) + suffix)
     | Some x -> Fpath.v x
