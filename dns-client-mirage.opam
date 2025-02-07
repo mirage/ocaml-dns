@@ -22,11 +22,11 @@ depends: [
   "tcpip" {>= "8.2.0"}
   "mirage-sleep" {>= "4.0.0"}
   "mirage-mtime" {>= "4.0.0"}
-  "happy-eyeballs-mirage" {>= "1.1.0"}
-  "happy-eyeballs" {>= "1.0.0"}
-  "tls-mirage" {>= "1.0.0"}
+  "happy-eyeballs-mirage" {>= "2.0.0"}
+  "happy-eyeballs" {>= "2.0.0"}
+  "tls-mirage" {>= "2.0.0"}
   "x509" {>= "1.0.0"}
-  "ca-certs-nss" {>= "3.101-1"}
+  "ca-certs-nss" {>= "3.108-1"}
   "mirage-crypto-rng" {>= "1.0.0"}
 ]
 synopsis: "DNS client API for MirageOS"
