@@ -21,7 +21,8 @@ depends: [
   "lwt" {>= "4.2.1"}
   "tcpip" {>= "8.2.0"}
   "mirage-sleep" {>= "4.0.0"}
-  "mirage-mtime" {>= "4.0.0"}
+  "mirage-mtime" {>= "5.0.0"}
+  "mirage-ptime" {>= "5.0.0"}
   "happy-eyeballs-mirage" {>= "2.0.0"}
   "happy-eyeballs" {>= "2.0.0"}
   "tls-mirage" {>= "2.0.0"}

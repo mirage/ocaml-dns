@@ -19,8 +19,8 @@ depends: [
   "randomconv" {>= "0.2.0"}
   "lwt" {>= "4.2.1"}
   "mirage-sleep" {>= "4.0.0"}
-  "mirage-mtime" {>= "4.0.0"}
-  "mirage-ptime" {>= "4.0.0"}
+  "mirage-mtime" {>= "5.0.0"}
+  "mirage-ptime" {>= "5.0.0"}
   "tcpip" {>= "8.2.0"}
   "alcotest" {with-test}
   "tls" {>= "1.0.0"}

@@ -17,8 +17,8 @@ depends: [
   "duration" {>= "0.1.2"}
   "lwt" {>= "4.2.1"}
   "mirage-sleep" {>= "4.0.0"}
-  "mirage-mtime" {>= "4.0.0"}
-  "mirage-ptime" {>= "4.0.0"}
+  "mirage-mtime" {>= "5.0.0"}
+  "mirage-ptime" {>= "5.0.0"}
   "tcpip" {>= "8.2.0"}
   "mirage-crypto-rng" {with-test & >= "1.2.0"}
   "alcotest" {with-test}
