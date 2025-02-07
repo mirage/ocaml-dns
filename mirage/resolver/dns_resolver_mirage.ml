@@ -5,7 +5,7 @@ open Lwt.Infix
 let src = Logs.Src.create "dns_resolver_mirage" ~doc:"effectful DNS resolver"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (TIME : Mirage_time.S) (S : Tcpip.Stack.V4V6) = struct
+module Make (S : Tcpip.Stack.V4V6) = struct
 
   module Dns = Dns_mirage.Make(S)
 
@@ -25,7 +25,7 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (M : Mira
 
   let resolver stack ?(root = false) ?(timer = 500) ?(udp = true) ?(tcp = true) ?tls ?(port = 53) ?(tls_port = 853) t =
     (* according to RFC5452 4.5, we can chose source port between 1024-49152 *)
-    let sport () = 1024 + Randomconv.int ~bound:48128 R.generate in
+    let sport () = 1024 + Randomconv.int ~bound:48128 Mirage_crypto_rng.generate in
     let state = ref t in
     let tcp_in = ref FM.empty in
     let tcp_out = ref Ipaddr.Map.empty in
@@ -61,8 +61,8 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (M : Mira
                 tcp_out := Ipaddr.Map.remove dst !tcp_out ;
                 Lwt.return_unit
               | Ok data ->
-                let now = Ptime.v (P.now_d_ps ()) in
-                let ts = M.elapsed_ns () in
+                let now = Mirage_ptime.now () in
+                let ts = Mirage_mtime.elapsed_ns () in
                 let new_state, answers, queries =
                   let data = Cstruct.to_string data in
                   Dns_resolver.handle_buf !state now ts false `Tcp dst port data
@@ -120,8 +120,8 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (M : Mira
            | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in)
     and udp_cb lport req ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
-      let now = Ptime.v (P.now_d_ps ())
-      and ts = M.elapsed_ns ()
+      let now = Mirage_ptime.now ()
+      and ts = Mirage_mtime.elapsed_ns ()
       in
       let new_state, answers, queries =
         Dns_resolver.handle_buf !state now ts req `Udp src src_port buf
@@ -150,8 +150,8 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (M : Mira
           Lwt.return_unit
         | Ok data ->
           let data = Cstruct.to_string data in
-          let now = Ptime.v (P.now_d_ps ()) in
-          let ts = M.elapsed_ns () in
+          let now = Mirage_ptime.now () in
+          let ts = Mirage_mtime.elapsed_ns () in
           let new_state, answers, queries =
             Dns_resolver.handle_buf !state now ts query `Tcp dst_ip dst_port data
           in
@@ -206,8 +206,8 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (M : Mira
             Lwt.return_unit
           | Ok data ->
             let data = Cstruct.to_string data in
-            let now = Ptime.v (P.now_d_ps ()) in
-            let ts = M.elapsed_ns () in
+            let now = Mirage_ptime.now () in
+            let ts = Mirage_mtime.elapsed_ns () in
             let new_state, answers, queries =
               Dns_resolver.handle_buf !state now ts true `Tcp dst_ip dst_port data
             in
@@ -226,22 +226,22 @@ module Make (R : Mirage_crypto_rng_mirage.S) (P : Mirage_clock.PCLOCK) (M : Mira
 
     let rec time () =
       let new_state, answers, queries =
-        Dns_resolver.timer !state (M.elapsed_ns ())
+        Dns_resolver.timer !state (Mirage_mtime.elapsed_ns ())
       in
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
       Lwt_list.iter_p handle_query queries >>= fun () ->
-      TIME.sleep_ns (Duration.of_ms timer) >>= fun () ->
+      Mirage_sleep.ns (Duration.of_ms timer) >>= fun () ->
       time ()
     in
     Lwt.async time ;
 
     if root then
       let rec root () =
-        let new_state, q = Dns_resolver.query_root !state (M.elapsed_ns ()) `Tcp in
+        let new_state, q = Dns_resolver.query_root !state (Mirage_mtime.elapsed_ns ()) `Tcp in
         state := new_state ;
         handle_query q >>= fun () ->
-        TIME.sleep_ns (Duration.of_day 6) >>= fun () ->
+        Mirage_sleep.ns (Duration.of_day 6) >>= fun () ->
         root ()
       in
       Lwt.async root

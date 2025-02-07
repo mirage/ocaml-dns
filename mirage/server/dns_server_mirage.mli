@@ -1,6 +1,6 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
-module Make (P : Mirage_clock.PCLOCK) (M : Mirage_clock.MCLOCK) (T : Mirage_time.S) (S : Tcpip.Stack.V4V6) : sig
+module Make (S : Tcpip.Stack.V4V6) : sig
 
   val primary :
     ?on_update:(old:Dns_trie.t -> authenticated_key:[`raw] Domain_name.t option -> update_source:Ipaddr.t -> Dns_server.Primary.s -> unit Lwt.t) ->

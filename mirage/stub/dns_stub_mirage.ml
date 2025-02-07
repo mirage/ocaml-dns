@@ -6,7 +6,7 @@ open Dns
 let src = Logs.Src.create "dns_stub_mirage" ~doc:"effectful DNS stub layer"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Make (R : Mirage_crypto_rng_mirage.S) (T : Mirage_time.S) (P : Mirage_clock.PCLOCK) (C : Mirage_clock.MCLOCK) (S : Tcpip.Stack.V4V6) = struct
+module Make (S : Tcpip.Stack.V4V6) = struct
 
   (* data in the wild:
      - a request comes in hdr, q
@@ -58,8 +58,8 @@ module Make (R : Mirage_crypto_rng_mirage.S) (T : Mirage_time.S) (P : Mirage_clo
     let metrics = Dns.counter_metrics ~f "stub-resolver" in
     (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
 
-  module H = Happy_eyeballs_mirage.Make(T)(C)(S)
-  module Client = Dns_client_mirage.Make(R)(T)(C)(P)(S)(H)
+  module H = Happy_eyeballs_mirage.Make(S)
+  module Client = Dns_client_mirage.Make(S)(H)
 
   (* likely this should contain:
      - a primary server (handling updates)
@@ -101,7 +101,7 @@ module Make (R : Mirage_crypto_rng_mirage.S) (T : Mirage_time.S) (P : Mirage_clo
       Some (build_reply ?additional:None data)
 
   let tsig_decode_sign server proto packet buf build_reply =
-    let now = Ptime.v (P.now_d_ps ()) in
+    let now = Mirage_ptime.now () in
     match Dns_server.handle_tsig server now packet buf with
     | Error _ ->
       let data =
@@ -236,7 +236,7 @@ module Make (R : Mirage_crypto_rng_mirage.S) (T : Mirage_time.S) (P : Mirage_clo
   let create ?(cache_size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let server = Dns_server.Primary.server primary in
-    let reserved = Dns_server.create Dns_resolver_root.reserved R.generate in
+    let reserved = Dns_server.create Dns_resolver_root.reserved Mirage_crypto_rng.generate in
     let t = { client ; reserved ; server ; on_update } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in

@@ -21,9 +21,9 @@ depends: [
   "lwt" {>= "4.2.1"}
   "mtime" {>= "1.2.0"}
   "mirage-crypto-rng" {>= "1.2.0"}
-  "happy-eyeballs-lwt" {>= "1.1.0"}
-  "happy-eyeballs" {>= "1.0.0"}
-  "tls-lwt" {>= "1.0.0"}
+  "happy-eyeballs-lwt" {>= "2.0.0"}
+  "happy-eyeballs" {>= "2.0.0"}
+  "tls-lwt" {>= "2.0.0"}
   "ca-certs" {>= "1.0.0"}
 ]
 synopsis: "DNS client API using lwt"
