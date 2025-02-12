@@ -18,7 +18,7 @@ let main () =
     Dns_resolver.create ~dnssec:true ~ip_protocol:`Ipv4_only
       (Mirage_mtime.elapsed_ns ()) Mirage_crypto_rng.generate primary_t
   in 
-  Resolver.resolver ~port:5353 stack resolver;
+  Resolver.resolver ~port:53530 stack resolver;
   Tcpip_stack_socket.V4V6.listen stack
 
 let () =
