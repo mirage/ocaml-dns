@@ -3329,9 +3329,11 @@ module Name_rr_map = struct
     Domain_name.Map.equal (Rr_map.equal { f = Rr_map.equal_rr }) a b
 
   let pp ppf map =
-    List.iter (fun (name, rr_map) ->
-        Fmt.(list ~sep:(any "@.") string) ppf
-          (List.map (Rr_map.text_b name) (Rr_map.bindings rr_map)))
+    Fmt.(list ~sep:(any "@."))
+      (fun ppf (name, rr_map) ->
+         Fmt.(list ~sep:(any "@.") string) ppf
+           (List.map (Rr_map.text_b name) (Rr_map.bindings rr_map)))
+      ppf
       (Domain_name.Map.bindings map)
 
   let add name k v dmap =
