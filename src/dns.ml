@@ -2952,7 +2952,7 @@ module Rr_map = struct
           srvs []
       | Dnskey, (ttl, keys) ->
         Dnskey_set.fold (fun key acc ->
-            Fmt.str "%s%a\tDNSKEY\t%u\t3\t%d\t%s"
+            Fmt.str "%s\t%a\tDNSKEY\t%u\t3\t%d\t%s"
               str_name ttl_fmt (ttl_opt ttl)
               (Dnskey.encode_flags key.flags)
               (Dnskey.algorithm_to_int key.algorithm)
