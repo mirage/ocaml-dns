@@ -24,6 +24,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     end)
 
   let resolver stack ?(root = false) ?(timer = 500) ?(udp = true) ?(tcp = true) ?tls ?(port = 53) ?(tls_port = 853) t =
+    let server_port = 53 in
     (* according to RFC5452 4.5, we can chose source port between 1024-49152 *)
     let sport () = 1024 + Randomconv.int ~bound:48128 Mirage_crypto_rng.generate in
     let state = ref t in
@@ -101,8 +102,8 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         S.UDP.listen (S.udp stack) ~port:sport (udp_cb sport false) ;
         Dns.send_udp stack sport dst port (Cstruct.of_string data)
     and handle_query (proto, dst, data) = match proto with
-      | `Udp -> maybe_tcp dst port data
-      | `Tcp -> client_tcp dst port data
+      | `Udp -> maybe_tcp dst server_port data
+      | `Tcp -> client_tcp dst server_port data
     and handle_answer (proto, dst, dst_port, data) = match proto with
       | `Udp -> Dns.send_udp stack port dst dst_port (Cstruct.of_string data)
       | `Tcp -> match try Some (FM.find (dst, dst_port) !tcp_in) with Not_found -> None with
@@ -127,7 +128,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         Dns_resolver.handle_buf !state now ts req `Udp src src_port buf
       in
       if not req then
-        (Log.app (fun m -> m "unlisten on UDP %d" src_port);
+        (Log.app (fun m -> m "unlisten on UDP %d" lport);
          S.UDP.unlisten (S.udp stack) ~port:lport);
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
