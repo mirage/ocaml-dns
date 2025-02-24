@@ -52,10 +52,6 @@ module type S = sig
 end
 
 module Make
-  (R : Mirage_crypto_rng_mirage.S)
-  (T : Mirage_time.S)
-  (M : Mirage_clock.MCLOCK)
-  (P : Mirage_clock.PCLOCK)
   (S : Tcpip.Stack.V4V6)
   (H : Happy_eyeballs_mirage.S with type stack = S.t
                                 and type flow = S.TCP.flow)

@@ -3898,7 +3898,7 @@ module Rr_map = struct
               httpss []
       | Dnskey, (ttl, keys) ->
         Dnskey_set.fold (fun key acc ->
-            Fmt.str "%s%a\tDNSKEY\t%u\t3\t%d\t%s"
+            Fmt.str "%s\t%a\tDNSKEY\t%u\t3\t%d\t%s"
               str_name ttl_fmt (ttl_opt ttl)
               (Dnskey.encode_flags key.flags)
               (Dnskey.algorithm_to_int key.algorithm)
@@ -4299,9 +4299,11 @@ module Name_rr_map = struct
     Domain_name.Map.equal (Rr_map.equal { f = Rr_map.equal_rr }) a b
 
   let pp ppf map =
-    List.iter (fun (name, rr_map) ->
-        Fmt.(list ~sep:(any "@.") string) ppf
-          (List.map (Rr_map.text_b name) (Rr_map.bindings rr_map)))
+    Fmt.(list ~sep:(any "@."))
+      (fun ppf (name, rr_map) ->
+         Fmt.(list ~sep:(any "@.") string) ppf
+           (List.map (Rr_map.text_b name) (Rr_map.bindings rr_map)))
+      ppf
       (Domain_name.Map.bindings map)
 
   let add name k v dmap =

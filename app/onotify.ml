@@ -20,7 +20,7 @@ let notify zone serial key now =
     | Error e -> Error e
 
 let jump _ serverip port zone key serial =
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
+  Mirage_crypto_rng_unix.use_default ();
   let now = Ptime_clock.now () in
   Logs.app (fun m -> m "notifying to %a:%d zone %a serial %lu"
                Ipaddr.pp serverip port Domain_name.pp zone serial) ;

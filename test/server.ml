@@ -2159,5 +2159,5 @@ let tests = [
 ]
 
 let () =
-  Mirage_crypto_rng_unix.initialize (module Mirage_crypto_rng.Fortuna);
+  Mirage_crypto_rng_unix.use_default ();
   Alcotest.run "DNS server tests" tests

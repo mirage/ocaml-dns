@@ -365,4 +365,4 @@ let create ?cache_size ?edns ?nameservers ?timeout happy_eyeballs =
   dns
 
 (* initialize the RNG *)
-let () = Mirage_crypto_rng_lwt.initialize (module Mirage_crypto_rng.Fortuna)
+let () = Mirage_crypto_rng_unix.use_default ()
