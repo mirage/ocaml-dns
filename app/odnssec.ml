@@ -162,12 +162,12 @@ let to_presult = function
   | Error s -> `Error s
 
 let parse_domain : [ `raw ] Domain_name.t Arg.conv =
-  (fun name ->
-     Result.map_error
-       (function `Msg m -> Fmt.str "Invalid domain: %S: %s" name m)
-       (Domain_name.of_string name)
-     |> to_presult),
-  Domain_name.pp
+  Arg.conv'
+    ((fun name ->
+        Result.map_error
+          (function `Msg m -> Fmt.str "Invalid domain: %S: %s" name m)
+          (Domain_name.of_string name)),
+     Domain_name.pp)
 
 let arg_domain : [ `raw ] Domain_name.t Term.t =
   let doc = "Host to operate on" in
@@ -175,8 +175,12 @@ let arg_domain : [ `raw ] Domain_name.t Term.t =
        & info [ "host" ] ~docv:"HOST" ~doc)
 
 let parse_ip =
-  (fun ip -> Result.map_error (function `Msg m -> m) (Ipaddr.of_string ip) |> to_presult),
-  Ipaddr.pp
+  Arg.conv'
+    ((fun s ->
+        match Ipaddr.of_string s with
+        | Ok ip -> Ok ip
+        | Error (`Msg m) -> Error ("failed to parse IP address: " ^ m)),
+     Ipaddr.pp)
 
 let nameserver : Ipaddr.t option Term.t =
   let doc = "Nameserver to use" in
