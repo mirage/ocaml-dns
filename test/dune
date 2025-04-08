@@ -19,7 +19,7 @@
 (test
  (name resolver)
  (package dns-resolver)
- (libraries dns-resolver alcotest)
+ (libraries dns-resolver alcotest logs.fmt)
  (modules resolver))
 
 (test
