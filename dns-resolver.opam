@@ -23,6 +23,7 @@ depends: [
   "mirage-ptime" {>= "5.0.0"}
   "tcpip" {>= "8.2.0"}
   "alcotest" {with-test}
+  "logs"
   "tls" {>= "1.0.0"}
   "tls-mirage" {>= "1.0.0"}
   "mirage-crypto-rng" {>= "1.0.0"}
