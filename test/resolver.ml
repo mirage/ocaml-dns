@@ -939,8 +939,28 @@ let loop_between_domains () =
               (Error (`Msg ""))
               (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A))))
 
+let missing_glue () =
+  (* we have domain foo.com pointing to NS ns.foo.com, and lack glue *)
+  (* we should query .com for NS foo.com again *)
+  let cache =
+    let ns_foo = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns.foo.com")) in
+    let ns_com = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns1.com")) in
+    let a = 300l, Ipaddr.V4.Set.singleton (ip4 "127.0.0.1") in
+    let cache =
+      Dns_cache.set empty 0L (name "foo.com") Ns (AuthoritativeAnswer false) (`Entry ns_foo)
+    in
+    let cache =
+      Dns_cache.set cache 0L (name "com") Ns (AuthoritativeAnswer false) (`Entry ns_com)
+    in
+    Dns_cache.set cache 0L (name "ns1.com") A (AuthoritativeAnswer false) (`Entry a)
+  in
+  Alcotest.(check (result handle_query_res msg) "..."
+              (Ok (`Query (name "com", (name "www.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache))
+              (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A))))
+
 let resolver_well_behaved = [
-  "loop between domains", `Quick,  loop_between_domains;
+  "loop between domains", `Quick, loop_between_domains;
+  "missing glue", `Quick, missing_glue;
 ]
 
 let tests = [
