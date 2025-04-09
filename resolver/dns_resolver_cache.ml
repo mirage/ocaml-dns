@@ -126,7 +126,7 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
           (* we actually need glue *)
           or_root go nam
         else
-          `NeedAddress host
+          `NeedAddress (nam, host)
       | Some ip ->
         (* Log.warn (fun m -> m "go address for NS %a (for %a): %a (dnskey %B)"
                       Domain_name.pp host
@@ -153,21 +153,24 @@ let resolve t ~dnssec ~rng ip_proto ts name typ =
      ---> we may have unsigned NS (+ glue), and need to ask the NS for NS (+dnssec)
      ---> we may have unsigned glue, and need to go down for signed A/AAAA
   *)
-  let rec go t visited types name =
-    Log.debug (fun m -> m "go %a" Domain_name.pp name) ;
-    if N.mem name visited then
-      (* we need to break the cycle if there's one domain pointing to NS in
-         another domain, and this other domain NS pointing to one domain. *)
-      (* if we lack glue here, we should query .. for NS again with the hope to
-         get some glue *)
-      Error (`Msg "cycle detected")
-    else
-      match find_nearest_ns rng ip_proto dnssec ts t (Domain_name.raw name) with
-      | `NeedAddress ns -> go t (N.add name visited) addresses ns
-      | `NeedDnskey (zone, ip) -> Ok (zone, zone, [`K (Rr_map.K Dnskey)], ip, t)
-      | `HaveIP (zone, ip) -> Ok (zone, name, types, ip, t)
+  let rec go t visited types zone name =
+    Log.debug (fun m -> m "go %a (zone %a)" Domain_name.pp name Domain_name.pp zone) ;
+    let t =
+      if N.mem zone visited then
+        (* we need to break the cycle if there's one domain pointing to NS in
+           another domain, and this other domain NS pointing to one domain. *)
+        (* if we lack glue here, we should query .. for NS again with the hope
+           to get some glue *)
+        Dns_cache.remove t zone
+      else
+        t
+    in
+    match find_nearest_ns rng ip_proto dnssec ts t (Domain_name.raw name) with
+    | `NeedAddress (zone, ns) -> go t (N.add zone visited) addresses zone ns
+    | `NeedDnskey (zone, ip) -> zone, zone, [`K (Rr_map.K Dnskey)], ip, t
+    | `HaveIP (zone, ip) -> zone, name, types, ip, t
   in
-  go t N.empty [typ] name
+  go t N.empty [typ] Domain_name.root name
 
 let is_signed = function
   | Dns_cache.AuthoritativeAnswer signed
@@ -280,13 +283,12 @@ let answer t ts name typ =
       `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
 
 let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
-  let ( let* ) = Result.bind in
   Log.info (fun m -> m "handle query %a (%a)"
                 Domain_name.pp qname Packet.Question.pp_qtype qtype);
   match answer t ts qname qtype with
   | `Packet (flags, data), t ->
     Log.info (fun m -> m "reply for %a (%a)" Domain_name.pp qname Packet.Question.pp_qtype qtype);
-    Ok (`Reply (flags, data), t)
+    `Reply (flags, data), t
   | `Query name, t ->
     Log.info (fun m -> m "query for %a (%a): %a" Domain_name.pp qname Packet.Question.pp_qtype qtype Domain_name.pp name);
     (* DS should be requested at the parent *)
@@ -297,10 +299,10 @@ let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
       else
         name, Fun.id
     in
-    let* zone, name'', types, ip, t = resolve t ~dnssec ~rng ip_proto ts name' qtype in
+    let zone, name'', types, ip, t = resolve t ~dnssec ~rng ip_proto ts name' qtype in
     let name'' = recover name'' in
     Log.info (fun m -> m "resolve returned zone %a query %a (%a), ip %a"
                    Domain_name.pp zone Domain_name.pp name''
                    Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) types
                    Ipaddr.pp ip);
-    Ok (`Query (zone, (name'', types), ip), t)
+    `Query (zone, (name'', types), ip), t

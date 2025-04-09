@@ -348,3 +348,6 @@ let set cache ts name query_type rank entry  =
     match update_ttl query_type entry ~created ~now:ts, compare_rank rank' rank with
     | Ok _, 1 -> cache
     | _ -> metrics cache `Insert; cache' map
+
+let remove cache name =
+  LRU.remove name cache

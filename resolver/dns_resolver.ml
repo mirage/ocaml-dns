@@ -143,43 +143,37 @@ let handle_query ?(retry = 0) t ts awaiting =
                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
     `Nothing, t
   end else
-    match Dns_resolver_cache.handle_query t.cache ~dnssec:t.dnssec ~rng:t.rng t.ip_protocol ts awaiting.question with
-    | Error `Msg msg ->
-      Log.warn (fun m -> m "dropping q %a from %a:%d (%s)"
-                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port msg);
+    let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec:t.dnssec ~rng:t.rng t.ip_protocol ts awaiting.question in
+    let t = { t with cache } in
+    match r with
+    | `Query _ when awaiting.retry >= 30 ->
+      Log.warn (fun m -> m "dropping q %a from %a:%d (already sent 30 packets)"
+                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
       (* TODO reply with error! *)
       `Nothing, t
-    | Ok (r, cache) ->
-      let t = { t with cache } in
-      match r with
-      | `Query _ when awaiting.retry >= 30 ->
-        Log.warn (fun m -> m "dropping q %a from %a:%d (already sent 30 packets)"
-                     pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
-        (* TODO reply with error! *)
-        `Nothing, t
-      | `Query (zone, (nam, types), ip) ->
-        Log.debug (fun m -> m "have to query (zone %a) %a using ip %a"
-                      Domain_name.pp zone
-                      Fmt.(list ~sep:(any ", ") pp_key)
-                      (List.map (fun t -> (nam, t)) types)
-                      Ipaddr.pp ip);
-        let await = { awaiting with zone } in
-        let r, t =
-          List.fold_left (fun (acc, t) typ ->
-              let r, t = maybe_query t ts await retry ip nam typ in
-              Option.fold ~none:acc ~some:(fun a -> a :: acc) r, t)
-            ([], t) types
-        in
-        `Query r, t
-      | `Reply (flags, a) ->
-        let time = Int64.sub ts awaiting.ts in
-        let max_size, edns = Edns.reply awaiting.edns in
-        let packet = Packet.create ?edns (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (a :> Packet.data) in
-        Log.debug (fun m -> m "answering %a after %a %d out packets: %a"
-                      pp_key awaiting.question Duration.pp time awaiting.retry
-                      Packet.pp packet) ;
-        let cs, _ = Packet.encode ?max_size awaiting.proto packet in
-        `Answer cs, t
+    | `Query (zone, (nam, types), ip) ->
+      Log.debug (fun m -> m "have to query (zone %a) %a using ip %a"
+                    Domain_name.pp zone
+                    Fmt.(list ~sep:(any ", ") pp_key)
+                    (List.map (fun t -> (nam, t)) types)
+                    Ipaddr.pp ip);
+      let await = { awaiting with zone } in
+      let r, t =
+        List.fold_left (fun (acc, t) typ ->
+            let r, t = maybe_query t ts await retry ip nam typ in
+            Option.fold ~none:acc ~some:(fun a -> a :: acc) r, t)
+          ([], t) types
+      in
+      `Query r, t
+    | `Reply (flags, a) ->
+      let time = Int64.sub ts awaiting.ts in
+      let max_size, edns = Edns.reply awaiting.edns in
+      let packet = Packet.create ?edns (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (a :> Packet.data) in
+      Log.debug (fun m -> m "answering %a after %a %d out packets: %a"
+                    pp_key awaiting.question Duration.pp time awaiting.retry
+                    Packet.pp packet) ;
+      let cs, _ = Packet.encode ?max_size awaiting.proto packet in
+      `Answer cs, t
 
 let scrub_it t proto zone edns ts ~signed qtype p =
   match Dns_resolver_utils.scrub zone ~signed qtype p, edns with

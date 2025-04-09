@@ -887,14 +887,6 @@ let handle_query_res =
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
-let msg =
-  let module M = struct
-    type t = [ `Msg of string ]
-    let pp ppf = function `Msg str -> Fmt.string ppf str
-    let equal _ _ = true
-    end in
-  (module M: Alcotest.TESTABLE with type t = M.t)
-
 let handle_query_with_cname () =
   let cache =
     let cname = 300l, name "reynir.dk" in
@@ -916,9 +908,9 @@ let handle_query_with_cname () =
     Dns_cache.set cache 0L (name "reynir.dk") Ds (AuthoritativeAnswer false)
       (`No_data (name "reynir.dk", invalid_soa (name "reynir.dk")))
   in
-  Alcotest.(check (result handle_query_res msg) "..."
-              (Ok (`Query (name "reynir.dk", (name "reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache))
-              (Dns_resolver_cache.handle_query cache ~dnssec:true ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K A))))
+  Alcotest.check handle_query_res "..."
+    (`Query (name "reynir.dk", (name "reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:true ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K A)))
 
 let handle_query_tests = [
   "cname", `Quick, handle_query_with_cname ;
@@ -930,14 +922,22 @@ let loop_between_domains () =
   let cache =
     let ns_bar = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns.bar.com")) in
     let ns_foo = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns.foo.com")) in
+    let ns_root = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns.root")) in
+    let a = 300l, Ipaddr.V4.Set.singleton (ip4 "127.0.0.1") in
     let cache =
       Dns_cache.set empty 0L (name "foo.com") Ns (AuthoritativeAnswer false) (`Entry ns_bar)
     in
-    Dns_cache.set cache 0L (name "bar.com") Ns (AuthoritativeAnswer false) (`Entry ns_foo)
+    let cache =
+      Dns_cache.set cache 0L (name "bar.com") Ns (AuthoritativeAnswer false) (`Entry ns_foo)
+    in
+    let cache =
+      Dns_cache.set cache 0L Domain_name.root Ns (AuthoritativeAnswer false) (`Entry ns_root)
+    in
+    Dns_cache.set cache 0L (name "ns.root") A (AuthoritativeAnswer false) (`Entry a)
   in
-  Alcotest.(check (result handle_query_res msg) "..."
-              (Error (`Msg ""))
-              (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A))))
+  Alcotest.check handle_query_res "..."
+    (`Query (name "", (name "ns.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A)))
 
 let missing_glue () =
   (* we have domain foo.com pointing to NS ns.foo.com, and lack glue *)
@@ -954,9 +954,9 @@ let missing_glue () =
     in
     Dns_cache.set cache 0L (name "ns1.com") A (AuthoritativeAnswer false) (`Entry a)
   in
-  Alcotest.(check (result handle_query_res msg) "..."
-              (Ok (`Query (name "com", (name "www.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache))
-              (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A))))
+  Alcotest.check handle_query_res "..."
+    (`Query (name "com", (name "www.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A)))
 
 let resolver_well_behaved = [
   "loop between domains", `Quick, loop_between_domains;
