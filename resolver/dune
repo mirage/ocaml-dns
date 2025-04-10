@@ -1,5 +1,7 @@
 (library
  (name dns_resolver)
  (public_name dns-resolver)
+ (instrumentation
+  (backend bisect_ppx))
  (wrapped false)
  (libraries dns dns.cache dns-server lru duration randomconv dnssec logs))
