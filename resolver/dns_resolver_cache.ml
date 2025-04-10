@@ -254,10 +254,10 @@ let answer t ts name typ =
     match r with
     | Error _e ->
       (* Log.warn (fun m -> m "error %a while looking up %a, query"
-                    pp_err e pp_question (name, typ)); *)
+                    _pp_err _e pp_question (name, typ)); *)
       `Query name, t
     | Ok (`No_domain res, r) ->
-      Log.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
+      Log.debug (fun m -> m "no domain while looking up %a" pp_question (name, typ));
       `Packet (packet t false Rcode.NXDomain ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t
     | Ok (`No_data res, r) ->
       Log.debug (fun m -> m "no data while looking up %a" pp_question (name, typ));
