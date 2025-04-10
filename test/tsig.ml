@@ -14,7 +14,7 @@ let msg =
     let pp ppf = function `Msg str -> Fmt.string ppf str
     let equal _ _ = true
     end in
-    (module M: Alcotest.TESTABLE with type t = M.t)
+  (module M: Alcotest.TESTABLE with type t = M.t)
 
 let key =
   match Base64.decode "GSnQJ+fHuzwj5yKzCOkXdISyGQXBUxMrjEjL4Kr1WIs=" with

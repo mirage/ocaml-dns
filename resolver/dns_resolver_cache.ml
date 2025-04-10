@@ -126,7 +126,7 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
           (* we actually need glue *)
           or_root go nam
         else
-          `NeedAddress host
+          `NeedAddress (nam, host)
       | Some ip ->
         (* Log.warn (fun m -> m "go address for NS %a (for %a): %a (dnskey %B)"
                       Domain_name.pp host
@@ -153,14 +153,24 @@ let resolve t ~dnssec ~rng ip_proto ts name typ =
      ---> we may have unsigned NS (+ glue), and need to ask the NS for NS (+dnssec)
      ---> we may have unsigned glue, and need to go down for signed A/AAAA
   *)
-  let rec go t types name =
-    Log.debug (fun m -> m "go %a" Domain_name.pp name) ;
+  let rec go t visited types zone name =
+    Log.debug (fun m -> m "go %a (zone %a)" Domain_name.pp name Domain_name.pp zone) ;
+    let t =
+      if N.mem zone visited then
+        (* we need to break the cycle if there's one domain pointing to NS in
+           another domain, and this other domain NS pointing to one domain. *)
+        (* if we lack glue here, we should query .. for NS again with the hope
+           to get some glue *)
+        Dns_cache.remove t zone
+      else
+        t
+    in
     match find_nearest_ns rng ip_proto dnssec ts t (Domain_name.raw name) with
-    | `NeedAddress ns -> go t addresses ns
+    | `NeedAddress (zone, ns) -> go t (N.add zone visited) addresses zone ns
     | `NeedDnskey (zone, ip) -> zone, zone, [`K (Rr_map.K Dnskey)], ip, t
     | `HaveIP (zone, ip) -> zone, name, types, ip, t
   in
-  go t [typ] name
+  go t N.empty [typ] Domain_name.root name
 
 let is_signed = function
   | Dns_cache.AuthoritativeAnswer signed
@@ -244,10 +254,10 @@ let answer t ts name typ =
     match r with
     | Error _e ->
       (* Log.warn (fun m -> m "error %a while looking up %a, query"
-                    pp_err e pp_question (name, typ)); *)
+                    _pp_err _e pp_question (name, typ)); *)
       `Query name, t
     | Ok (`No_domain res, r) ->
-      Log.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
+      Log.debug (fun m -> m "no domain while looking up %a" pp_question (name, typ));
       `Packet (packet t false Rcode.NXDomain ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t
     | Ok (`No_data res, r) ->
       Log.debug (fun m -> m "no data while looking up %a" pp_question (name, typ));

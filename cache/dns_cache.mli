@@ -85,3 +85,6 @@ val set : t -> int64 -> [ `raw ] Domain_name.t -> 'a Rr_map.key -> rank ->
 (** [set cache timestamp type name rank value] attempts to insert
     [type, name, value] into the [cache] using the [timestamp] and [rank]. If
     an entry already exists with a higher [rank], the [cache] is unchanged. *)
+
+val remove : t -> [ `raw ] Domain_name.t -> t
+(** [remove cache name] removes [name] from [cache]. *)

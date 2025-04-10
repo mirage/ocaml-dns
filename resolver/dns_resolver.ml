@@ -148,15 +148,15 @@ let handle_query ?(retry = 0) t ts awaiting =
     match r with
     | `Query _ when awaiting.retry >= 30 ->
       Log.warn (fun m -> m "dropping q %a from %a:%d (already sent 30 packets)"
-                    pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
+                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
       (* TODO reply with error! *)
       `Nothing, t
     | `Query (zone, (nam, types), ip) ->
       Log.debug (fun m -> m "have to query (zone %a) %a using ip %a"
-                     Domain_name.pp zone
-                     Fmt.(list ~sep:(any ", ") pp_key)
-                     (List.map (fun t -> (nam, t)) types)
-                     Ipaddr.pp ip);
+                    Domain_name.pp zone
+                    Fmt.(list ~sep:(any ", ") pp_key)
+                    (List.map (fun t -> (nam, t)) types)
+                    Ipaddr.pp ip);
       let await = { awaiting with zone } in
       let r, t =
         List.fold_left (fun (acc, t) typ ->
@@ -170,8 +170,8 @@ let handle_query ?(retry = 0) t ts awaiting =
       let max_size, edns = Edns.reply awaiting.edns in
       let packet = Packet.create ?edns (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (a :> Packet.data) in
       Log.debug (fun m -> m "answering %a after %a %d out packets: %a"
-                     pp_key awaiting.question Duration.pp time awaiting.retry
-                     Packet.pp packet) ;
+                    pp_key awaiting.question Duration.pp time awaiting.retry
+                    Packet.pp packet) ;
       let cs, _ = Packet.encode ?max_size awaiting.proto packet in
       `Answer cs, t
 
