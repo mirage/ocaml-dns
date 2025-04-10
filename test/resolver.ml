@@ -1041,9 +1041,49 @@ let missing_glue () =
     (`Query (name "com", (name "www.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A)))
 
+let loop_cname_1 () =
+  (* we have a.foo.com CNAME a.foo.com *)
+  let cache =
+    let a_cname = 300l, name "a.foo.com" in
+    Dns_cache.set empty 0L (name "a.foo.com") Cname (AuthoritativeAnswer false) (`Entry a_cname)
+  in
+  let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
+  Alcotest.check handle_query_res "..."
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "a.foo.com"), Domain_name.Map.empty)), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "a.foo.com", `K (Rr_map.K Cname)));
+  Alcotest.check handle_query_res "..."
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "a.foo.com"), Domain_name.Map.empty)), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "a.foo.com", `K (Rr_map.K A)))
+
+let loop_cname_2 () =
+  (* we have a.foo.com CNAME b.foo.com, and b.foo.com CNAME a.foo.com *)
+  let cache =
+    let b_cname = 300l, name "b.foo.com" in
+    let a_cname = 300l, name "a.foo.com" in
+    let cache =
+      Dns_cache.set empty 0L (name "a.foo.com") Cname (AuthoritativeAnswer false) (`Entry b_cname)
+    in
+    Dns_cache.set cache 0L (name "b.foo.com") Cname (AuthoritativeAnswer false) (`Entry a_cname)
+  in
+  let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
+  Alcotest.check handle_query_res "..."
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "b.foo.com"), Domain_name.Map.empty)), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "a.foo.com", `K (Rr_map.K Cname)));
+  Alcotest.check handle_query_res "..."
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "b.foo.com") Cname (300l, name "a.foo.com"), Domain_name.Map.empty)), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "b.foo.com", `K (Rr_map.K Cname)));
+  Alcotest.check handle_query_res "..."
+    (`Reply (f, `Answer (Name_rr_map.add (name "b.foo.com") Cname (300l, name "a.foo.com") (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "b.foo.com")), Domain_name.Map.empty)), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "a.foo.com", `K (Rr_map.K A)));
+  Alcotest.check handle_query_res "..."
+    (`Reply (f, `Answer (Name_rr_map.add (name "a.foo.com") Cname (300l, name "b.foo.com") (Name_rr_map.singleton (name "b.foo.com") Cname (300l, name "a.foo.com")), Domain_name.Map.empty)), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "b.foo.com", `K (Rr_map.K A)))
+
 let resolver_well_behaved = [
   "loop between domains", `Quick, loop_between_domains;
   "missing glue", `Quick, missing_glue;
+  "loop using cname", `Quick, loop_cname_1;
+  "loop using cname with two entries", `Quick, loop_cname_2;
 ]
 
 let tests = [
