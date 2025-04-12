@@ -12,5 +12,5 @@ val scrub : [ `raw ] Domain_name.t -> signed:bool -> Packet.Question.qtype ->
     [packet]. The purpose is to avoid cache poisoning by not accepting all
     resource records. *)
 
-val invalid_soa : [ `raw ] Domain_name.t -> Soa.t (** [invalid_soa name] returns a stub
-   SOA for [name]. *)
+val invalid_soa : [ `raw ] Domain_name.t -> Soa.t
+(** [invalid_soa name] returns a stub SOA for [name]. *)

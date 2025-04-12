@@ -1,3 +1,11 @@
+### v10.0.0 (2025-02-07)
+
+* dns-certify: use a pair instead of two separate arguments for the dns-key
+  (#357 @hannesm)
+* add KSK 2024 (#358 @hannesm)
+* update to mirage-crypto 1.2.0 API changes (#362 @hannesm)
+* use dune variants, avoid functors (#363 @hannesm)
+
 ### v9.1.0 (2024-10-22)
 
 * Dns.Dnskey: provide to_string and name_key_to_string (@hannesm, @dinosaure,

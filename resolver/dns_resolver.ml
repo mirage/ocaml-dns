@@ -108,7 +108,8 @@ let maybe_query ?recursion_desired t ts await retry ip name typ =
     None, t
   else
     (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
-    let edns = Some (Edns.create ~dnssec_ok:t.dnssec ()) in
+    let payload_size = if t.dnssec then Some 1220 (* from RFC 4035 4.1 *) else None in
+    let edns = Some (Edns.create ~dnssec_ok:t.dnssec ?payload_size ()) in
     let t, packet = build_query ?recursion_desired t ts `Udp k retry await.zone edns ip in
     let t = { t with queried = QM.add k [await] t.queried } in
     Log.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip pp_key k) ;
@@ -147,15 +148,15 @@ let handle_query ?(retry = 0) t ts awaiting =
     match r with
     | `Query _ when awaiting.retry >= 30 ->
       Log.warn (fun m -> m "dropping q %a from %a:%d (already sent 30 packets)"
-                    pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
+                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
       (* TODO reply with error! *)
       `Nothing, t
     | `Query (zone, (nam, types), ip) ->
       Log.debug (fun m -> m "have to query (zone %a) %a using ip %a"
-                     Domain_name.pp zone
-                     Fmt.(list ~sep:(any ", ") pp_key)
-                     (List.map (fun t -> (nam, t)) types)
-                     Ipaddr.pp ip);
+                    Domain_name.pp zone
+                    Fmt.(list ~sep:(any ", ") pp_key)
+                    (List.map (fun t -> (nam, t)) types)
+                    Ipaddr.pp ip);
       let await = { awaiting with zone } in
       let r, t =
         List.fold_left (fun (acc, t) typ ->
@@ -169,8 +170,8 @@ let handle_query ?(retry = 0) t ts awaiting =
       let max_size, edns = Edns.reply awaiting.edns in
       let packet = Packet.create ?edns (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (a :> Packet.data) in
       Log.debug (fun m -> m "answering %a after %a %d out packets: %a"
-                     pp_key awaiting.question Duration.pp time awaiting.retry
-                     Packet.pp packet) ;
+                    pp_key awaiting.question Duration.pp time awaiting.retry
+                    Packet.pp packet) ;
       let cs, _ = Packet.encode ?max_size awaiting.proto packet in
       `Answer cs, t
 
@@ -301,29 +302,17 @@ let handle_reply t now ts proto sender packet reply =
                 { t with cache },
                 begin match ds with
                   | Ok (`Entry (_, ds_set), _) ->
-                    let keys = match packet.data with
+                    let keys = match reply with
                       | `Answer (a, _) -> Name_rr_map.find zone Rr_map.Dnskey a
                       | _ -> None
                     in
-                    let ds_set =
-                      (* RFC 4509 - drop SHA1 DS if SHA2 DS are present *)
-                      if Rr_map.Ds_set.exists (fun ds ->
-                          match ds.Ds.digest_type with
-                          | Ds.SHA256 | Ds.SHA384 -> true | _ -> false)
-                          ds_set
-                      then
-                        Rr_map.Ds_set.filter
-                          (fun ds -> not (ds.Ds.digest_type = SHA1))
-                          ds_set
-                      else
-                        ds_set
-                    in
+                    let ds_set = Dnssec.filter_ds_if_sha2_present ds_set in
                     Option.map (fun (_, dnskeys) ->
                         Rr_map.Ds_set.fold (fun ds acc ->
                             match Dnssec.validate_ds zone dnskeys ds with
                             | Ok key -> Rr_map.Dnskey_set.add key acc
                             | Error `Msg msg ->
-                              Log.warn (fun m -> m "couldn't validate DS (for %a): %s"
+                              Log.debug (fun m -> m "couldn't validate DS (for %a): %s"
                                             Domain_name.pp zone msg);
                               acc)
                           ds_set Rr_map.Dnskey_set.empty)
@@ -342,17 +331,18 @@ let handle_reply t now ts proto sender packet reply =
                   None
             in
             let* packet, signed =
-              Option.fold
-                ~none:(Ok (packet, false))
-                ~some:(fun dnskeys ->
-                    let* packet =
-                      Result.map_error (fun (`Msg msg) ->
-                          Log.err (fun m -> m "error %s verifying reply %a"
-                                       msg Packet.pp_reply reply))
-                        (Dnssec.verify_packet now dnskeys packet)
-                    in
-                    Ok (packet, true))
-                dnskeys
+              match dnskeys with
+              | None ->
+                Log.warn (fun m -> m "no DNSKEY present, couldn't validate packet");
+                Ok (packet, false)
+              | Some dnskeys ->
+                let* packet =
+                  Result.map_error (fun (`Msg msg) ->
+                      Log.err (fun m -> m "error %s verifying reply %a"
+                                   msg Packet.pp_reply reply))
+                    (Dnssec.verify_packet now dnskeys packet)
+                in
+                Ok (packet, true)
             in
             Ok (t, packet, signed)
           else
@@ -382,7 +372,7 @@ let handle_reply t now ts proto sender packet reply =
           let t, cs = build_query ~recursion_desired t ts `Tcp key 1 zone None sender in
           Log.debug (fun m -> m "resolve: upgrade to tcp %a %a"
                          Ipaddr.pp sender pp_key key) ;
-        Ok (t, out_a, (`Tcp, sender, cs) :: out_q)
+          Ok (t, out_a, (`Tcp, sender, cs) :: out_q)
         | `Try_another_ns ->
           (* is this the right behaviour? by luck we'll use another path *)
           Ok (handle_awaiting_queries t ts key)

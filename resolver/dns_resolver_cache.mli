@@ -13,7 +13,8 @@ val answer : Dns_cache.t -> int64 -> [ `raw ] Domain_name.t -> Packet.Question.q
   | `Packet of Packet.Flags.t * Packet.reply ] * Dns_cache.t
 
 val resolve : Dns_cache.t -> dnssec:bool -> rng:(int -> string) -> [`Both | `Ipv4_only | `Ipv6_only] -> int64 -> [ `raw ] Domain_name.t ->
-  Packet.Question.qtype -> [ `raw ] Domain_name.t * [ `raw ] Domain_name.t * Packet.Question.qtype list * Ipaddr.t * Dns_cache.t
+  Packet.Question.qtype ->
+  [ `raw ] Domain_name.t * [ `raw ] Domain_name.t * Packet.Question.qtype list * Ipaddr.t * Dns_cache.t
 
 val handle_query : Dns_cache.t -> dnssec:bool -> rng:(int -> string) ->
   [`Both | `Ipv4_only | `Ipv6_only ] ->

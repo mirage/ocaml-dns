@@ -70,12 +70,12 @@ let hostname =
   Arg.(required & pos 2 (some Dns_cli.domain_name_c) None & info [] ~doc ~docv:"HOSTNAME")
 
 let ipv4_c =
-  let parse s =
-    match Ipaddr.V4.of_string s with
-    | Ok ip -> `Ok ip
-    | Error (`Msg m) -> `Error ("failed to parse IP address: " ^ m)
-  in
-  parse, Ipaddr.V4.pp
+  Arg.conv'
+    ((fun s ->
+        match Ipaddr.V4.of_string s with
+        | Ok ip -> Ok ip
+        | Error (`Msg m) -> Error ("failed to parse IP address: " ^ m)),
+     Ipaddr.V4.pp)
 
 let ip_address =
   let doc = "New IP address" in
