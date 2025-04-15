@@ -157,10 +157,6 @@ let jump () hostname typ ns =
 
 open Cmdliner
 
-let to_presult = function
-  | Ok a -> `Ok a
-  | Error s -> `Error s
-
 let parse_domain : [ `raw ] Domain_name.t Arg.conv =
   Arg.conv'
     ((fun name ->
