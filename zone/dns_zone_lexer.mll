@@ -40,6 +40,8 @@ let kw_or_cs s = match (String.uppercase_ascii s) with
   | "TXT" -> TYPE_TXT s
   | "AAAA" -> TYPE_AAAA s
   | "SRV" -> TYPE_SRV s
+  | "SVCB" -> TYPE_SVCB s
+  | "HTTPS" -> TYPE_HTTPS s
   | "DNSKEY" -> TYPE_DNSKEY s
   | "CAA" -> TYPE_CAA s
   | "TLSA" -> TYPE_TLSA s
@@ -73,6 +75,22 @@ let meters = ('-'? ['0'-'9']+ ('.' ['0'-'9']? ['0'-'9']?)? as contents) 'm'
 let openpar = [' ''\t']* '(' ([' ''\t''\n'] | eol)*
 let closepar = (eol | [' ''\t''\n'])* ')' [' ''\t']*
 let typefoo = (['T''t']['Y''y']['P''p']['E''e'] number) as contents
+
+(* Rfc9460 Appendix A *)
+let svcb_non_special = '!' | ['#'-'\''] | ['*'-':'] | ['<'-'['] | [']'-'~']
+let svcb_non_digit = ['!'-'/'] | [':'-'~']
+let svcb_dec_octet = (('0' | '1') ['0'-'9'] ['0'-'9']) | ('2' ((['0'-'4'] ['0'-'9']) ('5' ['0'-'5'])))
+let svcb_escaped = '\\' (svcb_non_digit | svcb_dec_octet)
+let svcb_contigious = (svcb_non_special | svcb_escaped)+
+let svcb_quoted = '"' (svcb_contigious | (['\\']? ' ')) '"' 
+let svcb_char_string = svcb_contigious | svcb_quoted
+
+(* Rfc9460 2.1 *)
+let svcbkey = (['a'-'z']|['0'-'9']|'-')*
+let svcbval = svcb_char_string
+let svcbvalq = '"' svcbval '"'
+let svcbparam = (svcbkey '=' (svcbval | svcbvalq)) as contents
+
 rule token = parse
   eol           { state.lineno <- state.lineno + 1;
 	          if state.paren > 0 then SPACE else EOL }
@@ -92,6 +110,7 @@ rule token = parse
 | meters        { METERS contents }
 | typefoo       { TYPE_GENERIC contents }
 | qstring       { count_linebreaks contents; CHARSTRING contents }
+| svcbparam     { count_linebreaks contents; SVCBPARAM contents }
 | label         { count_linebreaks contents; kw_or_cs contents }
 | [' ''\t']+    { SPACE }
 | eof           { EOF }

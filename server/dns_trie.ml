@@ -337,6 +337,16 @@ let check trie =
             else if Rr_map.Srv_set.is_empty srvs then
               Error (`Empty (name, K Srv))
             else Ok ()
+          | B (Svcb, (ttl, svcbs)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Svcb_set.is_empty svcbs then
+              Error (`Empty (name, K Svcb))
+            else Ok ()
+          | B (Https, (ttl, httpss)) ->
+            if ttl < 0l then Error (`Bad_ttl (name, v))
+            else if Rr_map.Https_set.is_empty httpss then
+              Error (`Empty (name, K Https))
+            else Ok ()
           | B (Caa, (ttl, caas)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Caa_set.is_empty caas then
