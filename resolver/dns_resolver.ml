@@ -486,7 +486,7 @@ let handle_buf t now ts query proto sender sport buf =
           Log.debug (fun m -> m "handled delegation %a:%d" Ipaddr.pp sender sport) ;
           handle_delegation t ts proto sender sport res dele
         | `None ->
-          Log.info (fun m -> m "resolving %a:%d" Ipaddr.pp sender sport) ;
+          Log.debug (fun m -> m "resolving %a:%d" Ipaddr.pp sender sport) ;
           (* DNSSEC request DS / DNSKEY / NS from auth *)
           resolve t ts proto sender sport res
       end

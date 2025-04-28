@@ -128,20 +128,19 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         Dns_resolver.handle_buf !state now ts req `Udp src src_port buf
       in
       if not req then
-        (Log.app (fun m -> m "unlisten on UDP %d" lport);
-         S.UDP.unlisten (S.udp stack) ~port:lport);
+        S.UDP.unlisten (S.udp stack) ~port:lport;
       state := new_state ;
       Lwt_list.iter_p handle_answer answers >>= fun () ->
       Lwt_list.iter_p handle_query queries
     in
     if udp then begin
       S.UDP.listen (S.udp stack) ~port (udp_cb port true);
-      Log.app (fun f -> f "DNS resolver listening on UDP port %d" port);
+      Log.info (fun f -> f "DNS resolver listening on UDP port %d" port);
     end;
 
     let tcp_cb query flow =
       let dst_ip, dst_port = T.dst flow in
-      Log.info (fun m -> m "tcp connection from %a:%d" Ipaddr.pp dst_ip dst_port) ;
+      Log.debug (fun m -> m "tcp connection from %a:%d" Ipaddr.pp dst_ip dst_port) ;
       tcp_in := FM.add (dst_ip, dst_port) (`Tcp flow) !tcp_in ;
       let f = Dns.of_flow flow in
       let rec loop () =
@@ -197,7 +196,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
           TLS.pp_write_error e);
         Lwt.return_unit
       | Ok tls ->
-        Log.info (fun m -> m "tls connection from %a:%d" Ipaddr.pp dst_ip dst_port);
+        Log.debug (fun m -> m "tls connection from %a:%d" Ipaddr.pp dst_ip dst_port);
         tcp_in := FM.add (dst_ip, dst_port) (`Tls tls) !tcp_in ;
         let tls_and_linger = { tls_flow = tls ; linger = Cstruct.empty } in
         let rec loop () =

@@ -283,14 +283,12 @@ let answer t ts name typ =
       `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
 
 let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
-  Log.info (fun m -> m "handle query %a (%a)"
-                Domain_name.pp qname Packet.Question.pp_qtype qtype);
   match answer t ts qname qtype with
   | `Packet (flags, data), t ->
-    Log.info (fun m -> m "reply for %a (%a)" Domain_name.pp qname Packet.Question.pp_qtype qtype);
+    Log.debug (fun m -> m "handle_query: reply %a (%a)" Domain_name.pp qname
+                  Packet.Question.pp_qtype qtype);
     `Reply (flags, data), t
   | `Query name, t ->
-    Log.info (fun m -> m "query for %a (%a): %a" Domain_name.pp qname Packet.Question.pp_qtype qtype Domain_name.pp name);
     (* DS should be requested at the parent *)
     let name', recover =
       if Domain_name.count_labels name > 1 && qtype = `K (Rr_map.K Ds) then
@@ -301,8 +299,9 @@ let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
     in
     let zone, name'', types, ip, t = resolve t ~dnssec ~rng ip_proto ts name' qtype in
     let name'' = recover name'' in
-    Log.info (fun m -> m "resolve returned zone %a query %a (%a), ip %a"
-                   Domain_name.pp zone Domain_name.pp name''
-                   Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) types
-                   Ipaddr.pp ip);
+    Log.debug (fun m -> m "handle_query %a (%a) query %a, resolve zone %a query %a (%a), ip %a"
+                  Domain_name.pp qname Packet.Question.pp_qtype qtype
+                  Domain_name.pp name Domain_name.pp zone Domain_name.pp name''
+                  Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) types
+                  Ipaddr.pp ip);
     `Query (zone, (name'', types), ip), t
