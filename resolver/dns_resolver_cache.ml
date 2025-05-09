@@ -68,8 +68,12 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
     | Ok _ -> true
     | _ -> false
   and need_to_query_for_ds name = match snd (Dns_cache.get t ts name Ds) with
-    | Ok _ -> true
-    | Error _ -> nsec_no_ds t ts name || nsec3_covering t ts name
+    | Ok _ -> false
+    | Error _ -> not (nsec_no_ds t ts name || nsec3_covering t ts name)
+  and have_ds name =
+    match snd (Dns_cache.get t ts name Ds) with
+    | Ok (`Entry _, _) -> true
+    | _ -> false
   and find_address name =
     let ip4s =
       Result.fold
@@ -94,7 +98,7 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
     | `Ipv6_only -> ip6s
   in
   let have_ip_or_dnskey name ip =
-    if dnssec && not (find_dnskey name) then
+    if dnssec && not (find_dnskey name) && have_ds name then
       `NeedDnskey (name, ip)
     else
       `HaveIP (name, ip)
@@ -113,8 +117,10 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
     | None ->
       (* Log.warn (fun m -> m "go no NS for %a" Domain_name.pp nam); *)
       or_root go nam
-    | Some _ when dnssec && not (need_to_query_for_ds nam) ->
-      or_root go nam
+    | Some _ when dnssec && need_to_query_for_ds nam ->
+      (match or_root go nam with
+       | `HaveIP (_name, ip) -> `NeedDs (nam, ip)
+       | `NeedDnskey _ | `NeedAddress _ | `NeedDs _ as r -> r)
     | Some ns ->
       let host = Domain_name.raw ns in
       match pick (find_address host) with
@@ -168,6 +174,7 @@ let resolve t ~dnssec ~rng ip_proto ts name typ =
     match find_nearest_ns rng ip_proto dnssec ts t (Domain_name.raw name) with
     | `NeedAddress (zone, ns) -> go t (N.add zone visited) addresses zone ns
     | `NeedDnskey (zone, ip) -> zone, zone, [`K (Rr_map.K Dnskey)], ip, t
+    | `NeedDs (zone, ip) -> zone, zone, [`K (Rr_map.K Ds)], ip, t
     | `HaveIP (zone, ip) -> zone, name, types, ip, t
   in
   go t N.empty [typ] Domain_name.root name

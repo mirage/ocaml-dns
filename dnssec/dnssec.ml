@@ -119,8 +119,6 @@ let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
   | MD5 | SHA1 | SHA224 | SHA256 | SHA384 | SHA512 | Unknown _ ->
     Error (`Msg (Fmt.str "unsupported key algorithm %a" Dnskey.pp_algorithm algorithm))
 
-let ( % ) f g = fun x -> f (g x)
-
 let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
   a Rr_map.key -> a ->
   ([`raw] Domain_name.t * [`raw] Domain_name.t, [ `Msg of string ]) result =
@@ -140,15 +138,15 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
     | Dnskey.ED25519 -> Ok `SHA512
     | a -> Error (`Msg (Fmt.str "unsupported signature algorithm %a"
                           Dnskey.pp_algorithm a)) in
-  let digest =
+  let digest data =
     match rrsig.Rrsig.algorithm with
-    | Dnskey.RSA_SHA1 -> Digestif.(to_raw_string SHA1 % digest_string SHA1)
-    | Dnskey.RSASHA1_NSEC3_SHA1 -> Digestif.(to_raw_string SHA1 % digest_string SHA1)
-    | Dnskey.RSA_SHA256 -> Digestif.(to_raw_string SHA256 % digest_string SHA256)
-    | Dnskey.RSA_SHA512 -> Digestif.(to_raw_string SHA512 % digest_string SHA512)
-    | Dnskey.P256_SHA256 -> Digestif.(to_raw_string SHA256 % digest_string SHA256)
-    | Dnskey.P384_SHA384 -> Digestif.(to_raw_string SHA384 % digest_string SHA384)
-    | Dnskey.ED25519 -> Digestif.(to_raw_string SHA512 % digest_string SHA512)
+    | Dnskey.RSA_SHA1 -> Digestif.SHA1.(digest_string data |> to_raw_string)
+    | Dnskey.RSASHA1_NSEC3_SHA1 -> Digestif.SHA1.(digest_string data |> to_raw_string)
+    | Dnskey.RSA_SHA256 -> Digestif.SHA256.(digest_string data |> to_raw_string)
+    | Dnskey.RSA_SHA512 -> Digestif.SHA512.(digest_string data |> to_raw_string)
+    | Dnskey.P256_SHA256 -> Digestif.SHA256.(digest_string data |> to_raw_string)
+    | Dnskey.P384_SHA384 -> Digestif.SHA384.(digest_string data |> to_raw_string)
+    | Dnskey.ED25519 -> Digestif.SHA512.(digest_string data |> to_raw_string)
     | _ -> assert false (* NOTE(dinosaure): prevent by [algorithm] and [let*]. *)
   in
   let* () =
@@ -343,8 +341,8 @@ let wildcard_non_existence ~soa_name name auth =
 let nsec3_hash salt iterations name =
   let cs_name = Rr_map.canonical_encoded_name name in
   let rec more = function
-    | 0 -> Digestif.SHA1.(to_raw_string % digest_string) (cs_name ^ salt)
-    | k -> Digestif.SHA1.(to_raw_string % digest_string) ((more (k - 1)) ^ salt)
+    | 0 -> Digestif.SHA1.(digest_string (cs_name ^ salt) |> to_raw_string)
+    | k -> Digestif.SHA1.(digest_string ((more (k - 1)) ^ salt) |> to_raw_string)
   in
   more iterations
 
