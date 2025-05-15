@@ -81,12 +81,12 @@ let pick rng = function
 let build_query ?id ?(recursion_desired = false) ?(checking_disabled = false) ?(dnssec_ok = true) t ts proto question retry zone edns ip =
   let id = match id with Some id -> id | None -> Randomconv.int16 t.rng in
   let header =
-    (* TODO not clear about this.. *)
     let flags =
+      let flags = Packet.Flags.singleton `Checking_disabled in
       if recursion_desired then
-        Packet.Flags.singleton `Recursion_desired
+        Packet.Flags.add `Recursion_desired flags
       else
-        Packet.Flags.empty
+        flags
     in
     id, flags
   in
@@ -143,7 +143,7 @@ let handle_query ?(retry = 0) t ts awaiting =
                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
     `Nothing, t
   end else
-    let dnssec = t.dnssec && not awaiting.checking_disabled && awaiting.dnssec_ok in
+    let dnssec = t.dnssec && not awaiting.checking_disabled in
     let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec ~rng:t.rng t.ip_protocol ts awaiting.question in
     let t = { t with cache } in
     match r with
@@ -391,8 +391,7 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
   match req.Packet.data, Packet.Question.qtype req.question with
   | `Query, Some qtype ->
     let dnssec =
-      t.dnssec && not (Packet.Flags.mem `Checking_disabled (snd req.header)) &&
-      match req.edns with None -> false | Some edns -> edns.Edns.dnssec_ok
+      t.dnssec && not (Packet.Flags.mem `Checking_disabled (snd req.header))
     in
     let r, cache = Dns_resolver_cache.answer ~dnssec t.cache ts (fst req.question) qtype in
     let t = { t with cache } in
