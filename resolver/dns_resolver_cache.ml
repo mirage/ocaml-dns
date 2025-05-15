@@ -99,6 +99,8 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
   in
   let have_ip_or_dnskey name ip =
     if dnssec && not (find_dnskey name) && have_ds name then
+      (* if dnssec is enabled, and have a DS record, and we don't have a dnskey,
+         request it -- avoiding loops by only asking for dnskey if there's DS *)
       `NeedDnskey (name, ip)
     else
       `HaveIP (name, ip)
@@ -118,6 +120,11 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
       (* Log.warn (fun m -> m "go no NS for %a" Domain_name.pp nam); *)
       or_root go nam
     | Some _ when dnssec && need_to_query_for_ds nam ->
+      (* dnssec enabled, and no DS -> query for DS (which is always provided by
+         the domain above: "." has it for ".coop" / ".com" for "example/com"
+         -> this also avoids loops, if we get a negative reply for DS, we move
+            on (and run into the case below)
+      *)
       (match or_root go nam with
        | `HaveIP (_name, ip) -> `NeedDs (nam, ip)
        | `NeedDnskey _ | `NeedAddress _ | `NeedDs _ as r -> r)
