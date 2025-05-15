@@ -228,7 +228,7 @@ let follow_cname t ts typ ~name ttl ~alias =
   let initial = Name_rr_map.singleton name Cname (ttl, alias) in
   follow t initial alias
 
-let answer t ts name typ =
+let answer ~dnssec t ts name typ =
   let packet _t _add rcode ~signed answer authority =
     let data = (answer, authority) in
     let flags =
@@ -245,7 +245,12 @@ let answer t ts name typ =
         let data = if Packet.Answer.is_empty data then None else Some data in
         `Rcode_error (x, Opcode.Query, data)
     in
-    flags, data
+    flags,
+    if dnssec && not signed then
+      (* from RFC 4035 3.2.2 *)
+      `Rcode_error (Rcode.ServFail, Opcode.Query, None)
+    else
+      data
   in
   match typ with
   | `Any ->
@@ -297,7 +302,7 @@ let answer t ts name typ =
       `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
 
 let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
-  match answer t ts qname qtype with
+  match answer ~dnssec t ts qname qtype with
   | `Packet (flags, data), t ->
     Log.debug (fun m -> m "handle_query: reply %a (%a)" Domain_name.pp qname
                   Packet.Question.pp_qtype qtype);

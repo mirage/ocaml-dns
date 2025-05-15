@@ -8,7 +8,7 @@ val follow_cname : Dns_cache.t -> int64 -> 'a Rr_map.key -> name:[ `raw ] Domain
   [ `Out of Rcode.t * bool * Name_rr_map.t * Name_rr_map.t
   | `Query of [ `raw ] Domain_name.t ] * Dns_cache.t
 
-val answer : Dns_cache.t -> int64 -> [ `raw ] Domain_name.t -> Packet.Question.qtype ->
+val answer : dnssec:bool -> Dns_cache.t -> int64 -> [ `raw ] Domain_name.t -> Packet.Question.qtype ->
   [ `Query of [ `raw ] Domain_name.t
   | `Packet of Packet.Flags.t * Packet.reply ] * Dns_cache.t
 

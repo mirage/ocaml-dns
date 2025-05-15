@@ -887,7 +887,36 @@ let handle_query_res =
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
 
-let handle_query_with_cname () =
+let handle_query_with_cname_dnssec_good () =
+  let cache =
+    let cname = 300l, name "reynir.dk" in
+    let ns = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns.reynir.dk")) in
+    let a = 300l, Ipaddr.V4.Set.singleton (ip4 "127.0.0.1") in
+    let cache =
+      Dns_cache.set empty 0L (name "www.reynir.dk") Cname (AuthoritativeAnswer true) (`Entry cname)
+    in
+    let cache =
+      Dns_cache.set cache 0L (name "reynir.dk") Ns (AuthoritativeAnswer true) (`Entry ns)
+    in
+    let cache =
+      Dns_cache.set cache 0L (name "ns.reynir.dk") A (AuthoritativeAnswer true) (`Entry a)
+    in
+    let cache =
+      Dns_cache.set cache 0L (name "reynir.dk") Dnskey (AuthoritativeAnswer true)
+        (`No_data (name "reynir.dk", invalid_soa (name "reynir.dk")))
+    in
+    Dns_cache.set cache 0L (name "reynir.dk") Ds (AuthoritativeAnswer true)
+      (`No_data (name "reynir.dk", invalid_soa (name "reynir.dk")))
+  in
+  Alcotest.check handle_query_res "..."
+    (`Query (name "reynir.dk", (name "reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:true ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K A)));
+  let f = Packet.Flags.(add `Authentic_data (add `Recursion_available (singleton `Recursion_desired))) in
+  Alcotest.check handle_query_res "..."
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "www.reynir.dk") Cname (300l, name "reynir.dk"), Domain_name.Map.empty)), cache)
+    (Dns_resolver_cache.handle_query cache ~dnssec:true ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K Cname)))
+
+let handle_query_with_cname_dnssec_bad () =
   let cache =
     let cname = 300l, name "reynir.dk" in
     let ns = 300l, Domain_name.Host_set.singleton (Domain_name.host_exn (name "ns.reynir.dk")) in
@@ -913,7 +942,7 @@ let handle_query_with_cname () =
     (Dns_resolver_cache.handle_query cache ~dnssec:true ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K A)));
   let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.singleton (name "www.reynir.dk") Cname (300l, name "reynir.dk"), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Rcode_error (Rcode.ServFail, Opcode.Query, None)), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:true ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K Cname)))
 
 let handle_query_with_a () =
@@ -995,7 +1024,8 @@ let handle_query_with_a () =
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~rng `Ipv4_only 0L (name "cname.reynir.dk", `K (Rr_map.K A)))
 
 let handle_query_tests = [
-  "cname", `Quick, handle_query_with_cname ;
+  "cname dnssec ok", `Quick, handle_query_with_cname_dnssec_good ;
+  "cname dnssec bad", `Quick, handle_query_with_cname_dnssec_bad ;
   "a", `Quick, handle_query_with_a ;
 ]
 

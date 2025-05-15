@@ -2,8 +2,6 @@
 
 open Dns
 
-let ( let* ) = Result.bind
-
 type key = [ `raw ] Domain_name.t * Packet.Question.qtype
 
 let pp_key = Dns_resolver_cache.pp_question
@@ -295,9 +293,7 @@ let handle_reply t now ts proto sender packet reply =
       | None -> Ok (t, [], [])
       | Some (zone, edns) ->
         (* (b) DNSSec verification of RRs *)
-        let* t, packet, signed =
-          (* only part of the story, if we received CD, we shouldn't verify
-             -> this also means our cache will contain invalid dnssec entries *)
+        let t, packet, signed =
           if t.dnssec then
             let t, dnskeys =
               match qtype with
@@ -334,23 +330,22 @@ let handle_reply t now ts proto sender packet reply =
                   Log.warn (fun m -> m "no DNSKEYS in cache for %a" Domain_name.pp zone);
                   None
             in
-            let* packet, signed =
+            let packet, signed =
               match dnskeys with
               | None ->
                 Log.warn (fun m -> m "no DNSKEY present, couldn't validate packet");
-                Ok (packet, false)
+                packet, false
               | Some dnskeys ->
-                let* packet =
-                  Result.map_error (fun (`Msg msg) ->
-                      Log.err (fun m -> m "error %s verifying reply %a"
-                                   msg Packet.pp_reply reply))
-                    (Dnssec.verify_packet now dnskeys packet)
-                in
-                Ok (packet, true)
+                match Dnssec.verify_packet now dnskeys packet with
+                | Ok packet -> packet, true
+                | Error `Msg msg ->
+                  Log.err (fun m -> m "error %s verifying reply %a"
+                              msg Packet.pp_reply reply);
+                  packet, false
             in
-            Ok (t, packet, signed)
+            t, packet, signed
           else
-            Ok (t, packet, false)
+            t, packet, false
         in
         (* (c) now we scrub and either *)
         match scrub_it t.cache proto zone edns ts ~signed qtype packet with
@@ -392,7 +387,8 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
   Log.debug (fun m -> m "handling delegation %a (for %a)" Packet.Answer.pp delegation Packet.pp req) ;
   match req.Packet.data, Packet.Question.qtype req.question with
   | `Query, Some qtype ->
-    let r, cache = Dns_resolver_cache.answer t.cache ts (fst req.question) qtype in
+    let dnssec = t.dnssec && not (Packet.Flags.mem `Checking_disabled (snd req.header)) in
+    let r, cache = Dns_resolver_cache.answer ~dnssec t.cache ts (fst req.question) qtype in
     let t = { t with cache } in
     begin match r with
       | `Query name ->
