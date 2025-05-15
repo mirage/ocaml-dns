@@ -99,6 +99,8 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
   in
   let have_ip_or_dnskey name ip =
     if dnssec && not (find_dnskey name) && have_ds name then
+      (* if dnssec is enabled, and have a DS record, and we don't have a dnskey,
+         request it -- avoiding loops by only asking for dnskey if there's DS *)
       `NeedDnskey (name, ip)
     else
       `HaveIP (name, ip)
@@ -118,6 +120,11 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
       (* Log.warn (fun m -> m "go no NS for %a" Domain_name.pp nam); *)
       or_root go nam
     | Some _ when dnssec && need_to_query_for_ds nam ->
+      (* dnssec enabled, and no DS -> query for DS (which is always provided by
+         the domain above: "." has it for ".coop" / ".com" for "example/com"
+         -> this also avoids loops, if we get a negative reply for DS, we move
+            on (and run into the case below)
+      *)
       (match or_root go nam with
        | `HaveIP (_name, ip) -> `NeedDs (nam, ip)
        | `NeedDnskey _ | `NeedAddress _ | `NeedDs _ as r -> r)
@@ -221,8 +228,10 @@ let follow_cname t ts typ ~name ttl ~alias =
   let initial = Name_rr_map.singleton name Cname (ttl, alias) in
   follow t initial alias
 
-let answer t ts name typ =
+let answer ~dnssec:_ ~dnssec_ok:_ t ts name typ =
   let packet _t _add rcode ~signed answer authority =
+    (* TODO if we receive dnssec_ok, we need to include RRSIG from our cache
+       (and potentially NSEC/NSEC3) *)
     let data = (answer, authority) in
     let flags =
       let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
@@ -238,7 +247,14 @@ let answer t ts name typ =
         let data = if Packet.Answer.is_empty data then None else Some data in
         `Rcode_error (x, Opcode.Query, data)
     in
-    flags, data
+    flags,
+    (* TODO when we enable this, we need to be better at finding authenticated
+       entries *)
+(*    if dnssec && not signed then
+      (* from RFC 4035 3.2.2 *)
+      `Rcode_error (Rcode.ServFail, Opcode.Query, None)
+      else *)
+      data
   in
   match typ with
   | `Any ->
@@ -289,8 +305,8 @@ let answer t ts name typ =
       let data = Name_rr_map.singleton name ty v in
       `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
 
-let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
-  match answer t ts qname qtype with
+let handle_query t ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
+  match answer ~dnssec ~dnssec_ok t ts qname qtype with
   | `Packet (flags, data), t ->
     Log.debug (fun m -> m "handle_query: reply %a (%a)" Domain_name.pp qname
                   Packet.Question.pp_qtype qtype);
