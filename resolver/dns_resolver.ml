@@ -31,6 +31,7 @@ type awaiting = {
   port : int;
   question : key;
   id : int;
+  cd : bool;
 }
 
 let retry_interval = Duration.of_ms 500
@@ -78,7 +79,7 @@ let pick rng = function
   | [ x ] -> Some x
   | xs -> Some (List.nth xs (Randomconv.int ~bound:(List.length xs) rng))
 
-let build_query ?id ?(recursion_desired = false) t ts proto question retry zone edns ip =
+let build_query ?id ?(recursion_desired = false) ?(cd = false) t ts proto question retry zone edns ip =
   let id = match id with Some id -> id | None -> Randomconv.int16 t.rng in
   let header =
     (* TODO not clear about this.. *)
@@ -90,7 +91,7 @@ let build_query ?id ?(recursion_desired = false) t ts proto question retry zone 
     in
     id, flags
   in
-  let el = { ts; retry; proto; zone; edns; ip; port = 53; question; id } in
+  let el = { ts; retry; proto; zone; edns; ip; port = 53; question; id; cd } in
   let transit =
     if QM.mem question t.transit then
       Log.warn (fun m -> m "overwriting transit of %a" pp_key question) ;
@@ -110,7 +111,7 @@ let maybe_query ?recursion_desired t ts await retry ip name typ =
     (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
     let payload_size = if t.dnssec then Some 1220 (* from RFC 4035 4.1 *) else None in
     let edns = Some (Edns.create ~dnssec_ok:t.dnssec ?payload_size ()) in
-    let t, packet = build_query ?recursion_desired t ts `Udp k retry await.zone edns ip in
+    let t, packet = build_query ?recursion_desired ~cd:await.cd t ts `Udp k retry await.zone edns ip in
     let t = { t with queried = QM.add k [await] t.queried } in
     Log.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip pp_key k) ;
     Some (packet, ip), t
@@ -143,7 +144,7 @@ let handle_query ?(retry = 0) t ts awaiting =
                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
     `Nothing, t
   end else
-    let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec:t.dnssec ~rng:t.rng t.ip_protocol ts awaiting.question in
+    let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec:(t.dnssec && not awaiting.cd) ~rng:t.rng t.ip_protocol ts awaiting.question in
     let t = { t with cache } in
     match r with
     | `Query _ when awaiting.retry >= 30 ->
@@ -257,7 +258,8 @@ let resolve t ts proto sender sport req =
     if not (Packet.Flags.mem `Recursion_desired (snd req.Packet.header)) then
       Log.warn (fun m -> m "recursion not desired") ;
     (* ask the cache *)
-    let awaiting = { ts; retry = 0; proto; zone = Domain_name.root ; edns = req.edns; ip = sender; port = sport; question = (fst req.question, q_type); id = fst req.header; } in
+    let cd = Packet.Flags.mem `Checking_disabled (snd req.header) in
+    let awaiting = { ts; retry = 0; proto; zone = Domain_name.root ; edns = req.edns; ip = sender; port = sport; question = (fst req.question, q_type); id = fst req.header; cd } in
     begin match handle_query t ts awaiting with
       | `Answer pkt, t ->
         Log.debug (fun m -> m "answer %a" Packet.Question.pp req.question) ;
@@ -294,6 +296,8 @@ let handle_reply t now ts proto sender packet reply =
       | Some (zone, edns) ->
         (* (b) DNSSec verification of RRs *)
         let* t, packet, signed =
+          (* only part of the story, if we received CD, we shouldn't verify
+             -> this also means our cache will contain invalid dnssec entries *)
           if t.dnssec then
             let t, dnskeys =
               match qtype with
@@ -421,7 +425,7 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
             Log.debug (fun m -> m "found ip %a, maybe querying %a"
                            Ipaddr.pp ip pp_key (name, qtype)) ;
             (* TODO is Domain_name.root correct here? *)
-            let await = { ts; retry = 0; proto; zone = Domain_name.root; edns = req.edns; ip = sender; port = sport; question = (fst req.question, qtype); id = fst req.header; } in
+            let await = { ts; retry = 0; proto; zone = Domain_name.root; edns = req.edns; ip = sender; port = sport; question = (fst req.question, qtype); id = fst req.header; cd = Packet.Flags.mem `Checking_disabled (snd req.header) } in
             begin match maybe_query ~recursion_desired:true t ts await 0 ip name qtype with
               | None, t ->
                 Log.warn (fun m -> m "maybe_query for %a at %a returned nothing"
@@ -530,9 +534,10 @@ let query_root t now proto =
   let question = Domain_name.root, `K (Rr_map.K Ns)
   and id = Randomconv.int16 t.rng
   and edns = Some (Edns.create ())
+  and cd = false
   in
   let el =
-    { ts = now; retry = 0; proto; zone = Domain_name.root; edns; ip; port = 53; question; id; }
+    { ts = now; retry = 0; proto; zone = Domain_name.root; edns; ip; port = 53; question; id; cd }
   in
   let t = { t with transit = QM.add question el t.transit } in
   let packet = Packet.create ?edns (id, Packet.Flags.empty) question `Query in
