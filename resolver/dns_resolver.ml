@@ -144,7 +144,7 @@ let handle_query ?(retry = 0) t ts awaiting =
     `Nothing, t
   end else
     let dnssec = t.dnssec && not awaiting.checking_disabled in
-    let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec ~rng:t.rng t.ip_protocol ts awaiting.question in
+    let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec ~dnssec_ok:awaiting.dnssec_ok ~rng:t.rng t.ip_protocol ts awaiting.question in
     let t = { t with cache } in
     match r with
     | `Query _ when awaiting.retry >= 30 ->
@@ -390,10 +390,10 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
   Log.debug (fun m -> m "handling delegation %a (for %a)" Packet.Answer.pp delegation Packet.pp req) ;
   match req.Packet.data, Packet.Question.qtype req.question with
   | `Query, Some qtype ->
-    let dnssec =
-      t.dnssec && not (Packet.Flags.mem `Checking_disabled (snd req.header))
+    let dnssec = t.dnssec && not (Packet.Flags.mem `Checking_disabled (snd req.header))
+    and dnssec_ok = match req.edns with None -> false | Some edns -> edns.Edns.dnssec_ok
     in
-    let r, cache = Dns_resolver_cache.answer ~dnssec t.cache ts (fst req.question) qtype in
+    let r, cache = Dns_resolver_cache.answer ~dnssec ~dnssec_ok t.cache ts (fst req.question) qtype in
     let t = { t with cache } in
     begin match r with
       | `Query name ->

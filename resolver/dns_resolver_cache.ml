@@ -228,8 +228,10 @@ let follow_cname t ts typ ~name ttl ~alias =
   let initial = Name_rr_map.singleton name Cname (ttl, alias) in
   follow t initial alias
 
-let answer ~dnssec t ts name typ =
+let answer ~dnssec:_ ~dnssec_ok:_ t ts name typ =
   let packet _t _add rcode ~signed answer authority =
+    (* TODO if we receive dnssec_ok, we need to include RRSIG from our cache
+       (and potentially NSEC/NSEC3) *)
     let data = (answer, authority) in
     let flags =
       let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
@@ -246,10 +248,12 @@ let answer ~dnssec t ts name typ =
         `Rcode_error (x, Opcode.Query, data)
     in
     flags,
-    if dnssec && not signed then
+    (* TODO when we enable this, we need to be better at finding authenticated
+       entries *)
+(*    if dnssec && not signed then
       (* from RFC 4035 3.2.2 *)
       `Rcode_error (Rcode.ServFail, Opcode.Query, None)
-    else
+      else *)
       data
   in
   match typ with
@@ -301,8 +305,8 @@ let answer ~dnssec t ts name typ =
       let data = Name_rr_map.singleton name ty v in
       `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
 
-let handle_query t ~dnssec ~rng ip_proto ts (qname, qtype) =
-  match answer ~dnssec t ts qname qtype with
+let handle_query t ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
+  match answer ~dnssec ~dnssec_ok t ts qname qtype with
   | `Packet (flags, data), t ->
     Log.debug (fun m -> m "handle_query: reply %a (%a)" Domain_name.pp qname
                   Packet.Question.pp_qtype qtype);
