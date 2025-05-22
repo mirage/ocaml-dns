@@ -76,6 +76,17 @@ let nsec3_covering t ts typ name =
   Log.info (fun m -> m "nsec3 covering %u %a %B" (Rr_map.to_int typ) Domain_name.pp name r);
   r
 
+let upwards_ds_nonexisting t ts name =
+  let rec go name =
+    if nsec_no t ts Ds name || nsec3_covering t ts Ds name then
+      true
+    else
+      match Domain_name.drop_label name with
+      | Error _ -> false
+      | Ok name -> go name
+  in
+  go name
+
 let find_nearest_ns rng ip_proto dnssec ts t name =
   let pick = function
     | [] -> None
@@ -90,10 +101,13 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
     | _ -> false
   and dnskey_nonexisting name = match snd (Dns_cache.get t ts name Dnskey) with
     | Ok _ -> false
-    | Error _ -> nsec_no t ts Dnskey name || nsec3_covering t ts Dnskey name
+    | Error _ ->
+      (* no need to check for Ds nonexistance upwards, since we're only called
+         if we have a Ds *)
+      nsec_no t ts Dnskey name || nsec3_covering t ts Dnskey name
   and need_to_query_for_ds name = match snd (Dns_cache.get t ts name Ds) with
     | Ok _ -> false
-    | Error _ -> not (nsec_no t ts Ds name || nsec3_covering t ts Ds name)
+    | Error _ -> not (upwards_ds_nonexisting t ts name)
   and have_ds name =
     match snd (Dns_cache.get t ts name Ds) with
     | Ok (`Entry _, _) -> true
@@ -270,6 +284,13 @@ let follow_cname t ts typ ~name ttl ~alias =
   let initial = Name_rr_map.singleton name Cname (ttl, alias) in
   follow t initial alias
 
+let signed_or_nonexisting ~dnssec t ts ty name r =
+  if dnssec then
+    is_signed r || nsec_no t ts ty name || nsec3_covering t ts ty name ||
+    upwards_ds_nonexisting t ts name
+  else
+    true
+
 let answer ~dnssec ~dnssec_ok:_ t ts name typ =
   let packet _t _add rcode ~signed answer authority =
     (* TODO if we receive dnssec_ok, we need to include RRSIG from our cache
@@ -315,19 +336,19 @@ let answer ~dnssec ~dnssec_ok:_ t ts name typ =
                     _pp_err _e pp_question (name, typ)); *)
       `Query name, t
     | Ok (`No_domain res, r) ->
-      if not (is_signed r || nsec_no t ts ty name || nsec3_covering t ts ty name) then `Query name, t else (
+      if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else (
         Log.debug (fun m -> m "no domain while looking up %a" pp_question (name, typ));
         `Packet (packet t false Rcode.NXDomain ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t)
     | Ok (`No_data res, r) ->
-      if not (is_signed r || nsec_no t ts ty name || nsec3_covering t ts ty name) then `Query name, t else (
+      if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else (
         Log.debug (fun m -> m "no data while looking up %a" pp_question (name, typ));
         `Packet (packet t false Rcode.NoError ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t)
     | Ok (`Serv_fail res, r) ->
-      if not (is_signed r || nsec_no t ts ty name || nsec3_covering t ts ty name) then `Query name, t else (
+      if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else (
         Log.debug (fun m -> m "serv fail while looking up %a" pp_question (name, typ));
         `Packet (packet t false Rcode.ServFail ~signed:false Domain_name.Map.empty (to_map res)), t)
     | Ok (`Alias (ttl, alias), r) ->
-      if not (is_signed r || nsec_no t ts ty name || nsec3_covering t ts ty name) then `Query name, t else
+      if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else
       begin
         Log.debug (fun m -> m "alias while looking up %a" pp_question (name, typ));
         match ty with
@@ -340,7 +361,7 @@ let answer ~dnssec ~dnssec_ok:_ t ts name typ =
           | `Query n, t -> `Query n, t
       end
     | Ok (`Entry v, r) ->
-      if not (is_signed r || nsec_no t ts ty name || nsec3_covering t ts ty name) then `Query name, t else
+      if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else
         (Log.debug (fun m -> m "entry while looking up %a" pp_question (name, typ));
          let data = Name_rr_map.singleton name ty v in
          `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t)
