@@ -864,11 +864,11 @@ let scrub_tests = [
 let handle_query_res =
   let module M = struct
     type t = [
-      | `Reply of Packet.Flags.t * Packet.reply
+      | `Reply of Packet.Flags.t * Packet.reply * Name_rr_map.t option
       | `Query of [`raw] Domain_name.t * ([`raw] Domain_name.t * Packet.Question.qtype list) * Ipaddr.t
     ] * Dns_cache.t
     let pp ppf = function
-      | `Reply (flags, reply), _ ->
+      | `Reply (flags, reply, _additional), _ ->
         Fmt.pf ppf "reply flags %a, %a"
           Fmt.(list ~sep:(any ", ") Packet.Flag.pp_short) (Packet.Flags.elements flags)
           Packet.pp_reply reply
@@ -877,8 +877,12 @@ let handle_query_res =
           Domain_name.pp zone Domain_name.pp qname
           Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) qtypes Ipaddr.pp ip
     let equal a b = match fst a, fst b with
-      | `Reply (f1, r1), `Reply (f2, r2) ->
-        Packet.Flags.equal f1 f2 && Packet.equal_reply r1 r2
+      | `Reply (f1, r1, a1), `Reply (f2, r2, a2) ->
+        Packet.Flags.equal f1 f2 && Packet.equal_reply r1 r2 &&
+        (match a1, a2 with
+         | None, None -> true
+         | Some a, Some b -> Name_rr_map.equal a b
+         | None, _ | _, None -> false)
       | `Query (z1, (q1, t1), ip1), `Query (z2, (q2, t2), ip2) ->
         Domain_name.equal z1 z2 && Domain_name.equal q1 q2 &&
         List.for_all2 (fun t1 t2 -> Packet.Question.compare_qtype t1 t2 = 0) t1 t2 &&
@@ -913,7 +917,7 @@ let handle_query_with_cname_dnssec_good () =
     (Dns_resolver_cache.handle_query cache ~dnssec:true ~dnssec_ok:false ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K A)));
   let f = Packet.Flags.(add `Authentic_data (add `Recursion_available (singleton `Recursion_desired))) in
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.singleton (name "www.reynir.dk") Cname (300l, name "reynir.dk"), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "www.reynir.dk") Cname (300l, name "reynir.dk"), Domain_name.Map.empty), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:true ~dnssec_ok:false ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K Cname)))
 
 let handle_query_with_cname_dnssec_bad () =
@@ -978,16 +982,16 @@ let handle_query_with_a () =
   in
   let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.singleton (name "ns.reynir.dk") A (300l, Ipaddr.V4.Set.singleton (ip4 "127.0.0.1")), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "ns.reynir.dk") A (300l, Ipaddr.V4.Set.singleton (ip4 "127.0.0.1")), Domain_name.Map.empty), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "ns.reynir.dk", `K (Rr_map.K A)));
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Rcode_error (Rcode.NXDomain, Opcode.Query, Some (Domain_name.Map.empty, Name_rr_map.singleton (name "reynir.dk") Soa (invalid_soa (name "reynir.dk"))))), cache)
+    (`Reply (f, `Rcode_error (Rcode.NXDomain, Opcode.Query, Some (Domain_name.Map.empty, Name_rr_map.singleton (name "reynir.dk") Soa (invalid_soa (name "reynir.dk")))), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "nx.reynir.dk", `K (Rr_map.K A)));
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Rcode_error (Rcode.ServFail, Opcode.Query, Some (Domain_name.Map.empty, Name_rr_map.singleton (name "sf.reynir.dk") Soa (invalid_soa (name "reynir.dk"))))), cache)
+    (`Reply (f, `Rcode_error (Rcode.ServFail, Opcode.Query, Some (Domain_name.Map.empty, Name_rr_map.singleton (name "sf.reynir.dk") Soa (invalid_soa (name "reynir.dk")))), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "sf.reynir.dk", `K (Rr_map.K A)));
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Domain_name.Map.empty, Name_rr_map.singleton (name "no.reynir.dk") Soa (invalid_soa (name "reynir.dk")))), cache)
+    (`Reply (f, `Answer (Domain_name.Map.empty, Name_rr_map.singleton (name "no.reynir.dk") Soa (invalid_soa (name "reynir.dk"))), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "no.reynir.dk", `K (Rr_map.K A)));
   Alcotest.check handle_query_res "..."
     (`Query (name "reynir.dk", (name "r.reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
@@ -997,14 +1001,14 @@ let handle_query_with_a () =
     Dns_cache.set cache 0L (name "r.reynir.dk") A (AuthoritativeAnswer false) (`Entry a)
   in
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.add (name "r.reynir.dk") A a (Name_rr_map.singleton (name "cname.reynir.dk") Cname (300l, name "r.reynir.dk")), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Answer (Name_rr_map.add (name "r.reynir.dk") A a (Name_rr_map.singleton (name "cname.reynir.dk") Cname (300l, name "r.reynir.dk")), Domain_name.Map.empty), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "cname.reynir.dk", `K (Rr_map.K A)));
   let cname = 300l, name "nx.reynir.dk" in
   let cache =
     Dns_cache.set cache 0L (name "cname.reynir.dk") Cname (AuthoritativeAnswer false) (`Entry cname)
   in
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Rcode_error (Rcode.NXDomain, Opcode.Query, Some (Name_rr_map.singleton (name "cname.reynir.dk") Cname cname, Name_rr_map.singleton (name "reynir.dk") Soa (invalid_soa (name "reynir.dk"))))), cache)
+    (`Reply (f, `Rcode_error (Rcode.NXDomain, Opcode.Query, Some (Name_rr_map.singleton (name "cname.reynir.dk") Cname cname, Name_rr_map.singleton (name "reynir.dk") Soa (invalid_soa (name "reynir.dk")))), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "cname.reynir.dk", `K (Rr_map.K A)));
   let cname = 300l, name "no.reynir.dk" in
   let cache =
@@ -1012,14 +1016,14 @@ let handle_query_with_a () =
   in
   Alcotest.check handle_query_res "..."
     (`Reply (f, `Answer ((Name_rr_map.singleton (name "cname.reynir.dk") Cname cname,
-                          Name_rr_map.singleton (name "no.reynir.dk") Soa (invalid_soa (name "reynir.dk"))))), cache)
+                          Name_rr_map.singleton (name "no.reynir.dk") Soa (invalid_soa (name "reynir.dk")))), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "cname.reynir.dk", `K (Rr_map.K A)));
   let cname = 300l, name "sf.reynir.dk" in
   let cache =
     Dns_cache.set cache 0L (name "cname.reynir.dk") Cname (AuthoritativeAnswer false) (`Entry cname)
   in
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Rcode_error (Rcode.ServFail, Opcode.Query, Some (Name_rr_map.singleton (name "cname.reynir.dk") Cname cname, Name_rr_map.singleton (name "sf.reynir.dk") Soa (invalid_soa (name "reynir.dk"))))), cache)
+    (`Reply (f, `Rcode_error (Rcode.ServFail, Opcode.Query, Some (Name_rr_map.singleton (name "cname.reynir.dk") Cname cname, Name_rr_map.singleton (name "sf.reynir.dk") Soa (invalid_soa (name "reynir.dk")))), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "cname.reynir.dk", `K (Rr_map.K A)))
 
 let handle_query_tests = [
@@ -1078,10 +1082,10 @@ let loop_cname_1 () =
   in
   let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "a.foo.com"), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "a.foo.com"), Domain_name.Map.empty), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "a.foo.com", `K (Rr_map.K Cname)));
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "a.foo.com"), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "a.foo.com"), Domain_name.Map.empty), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "a.foo.com", `K (Rr_map.K A)))
 
 let loop_cname_2 () =
@@ -1096,16 +1100,16 @@ let loop_cname_2 () =
   in
   let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "b.foo.com"), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "b.foo.com"), Domain_name.Map.empty), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "a.foo.com", `K (Rr_map.K Cname)));
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.singleton (name "b.foo.com") Cname (300l, name "a.foo.com"), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Answer (Name_rr_map.singleton (name "b.foo.com") Cname (300l, name "a.foo.com"), Domain_name.Map.empty), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "b.foo.com", `K (Rr_map.K Cname)));
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.add (name "b.foo.com") Cname (300l, name "a.foo.com") (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "b.foo.com")), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Answer (Name_rr_map.add (name "b.foo.com") Cname (300l, name "a.foo.com") (Name_rr_map.singleton (name "a.foo.com") Cname (300l, name "b.foo.com")), Domain_name.Map.empty), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "a.foo.com", `K (Rr_map.K A)));
   Alcotest.check handle_query_res "..."
-    (`Reply (f, `Answer (Name_rr_map.add (name "a.foo.com") Cname (300l, name "b.foo.com") (Name_rr_map.singleton (name "b.foo.com") Cname (300l, name "a.foo.com")), Domain_name.Map.empty)), cache)
+    (`Reply (f, `Answer (Name_rr_map.add (name "a.foo.com") Cname (300l, name "b.foo.com") (Name_rr_map.singleton (name "b.foo.com") Cname (300l, name "a.foo.com")), Domain_name.Map.empty), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "b.foo.com", `K (Rr_map.K A)))
 
 let resolver_well_behaved = [

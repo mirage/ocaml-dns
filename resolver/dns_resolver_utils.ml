@@ -75,6 +75,11 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
           Dns_cache.NonAuthoritativeAnswer
       in
       (* collect those rrsets which are of interest depending on q_type! *)
+      let rrsigs =
+        match Rr_map.find Rrsig rr_map with
+        | Some v -> [ q_name, E (Rrsig, `Entry v), rank ]
+        | None -> []
+      in
       match q_type with
       | `Any ->
         Rr_map.fold (fun (B (k, v)) (acc, names) ->
@@ -85,7 +90,7 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
           rr_map ([], Domain_name.Set.empty)
       | `K (Rr_map.K Cname) ->
         begin match Rr_map.find Cname rr_map with
-          | Some v -> [ q_name, E (Cname, `Entry v), rank ],
+          | Some v -> [ q_name, E (Cname, `Entry v), rank ] @ rrsigs,
                       Domain_name.Host_set.fold (fun n acc ->
                           Domain_name.Set.add (Domain_name.raw n) acc)
                         (Rr_map.names Cname v) Domain_name.Set.empty
@@ -98,7 +103,7 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
         end
       | `K (Rr_map.K k) -> match Rr_map.find k rr_map with
         | Some v ->
-          [ q_name, E (k, `Entry v), rank ],
+          [ q_name, E (k, `Entry v), rank ] @ rrsigs,
           Domain_name.Host_set.fold (fun n acc ->
               Domain_name.Set.add (Domain_name.raw n) acc)
             (Rr_map.names k v) Domain_name.Set.empty
@@ -107,12 +112,12 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
             (* case neither TYP nor cname *)
             Log.warn (fun m -> m "noerror answer with right name, but not TYP nor cname in %a, invalid soa for %a"
                           Name_rr_map.pp answer pp_question (q_name, q_type));
-            [ q_name, E (k, `No_data (q_name, invalid_soa q_name)), rank ],
+            [ q_name, E (k, `No_data (q_name, invalid_soa q_name)), rank ] @ rrsigs,
             Domain_name.Set.empty
           | Some cname ->
             (* explicitly register as CNAME so it'll be found *)
             (* should we try to find further records for the new alias? *)
-            [ q_name, E (Cname, `Entry cname), rank ],
+            [ q_name, E (Cname, `Entry cname), rank ] @ rrsigs,
             Domain_name.Set.singleton (snd cname)
   in
 

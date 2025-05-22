@@ -19,45 +19,40 @@ let is_signed = function
   | AuthoritativeAuthority signed -> signed
   | _ -> false
 
-let nsec_no t ts typ name =
+let find_nsec t ts typ name =
   let rec up name =
     match snd (Dns_cache.get t ts name Nsec) with
-    | Ok (`Entry (_, nsec), _) ->
-      not (Bit_map.mem (Rr_map.to_int typ) nsec.Nsec.types)
+    | Ok (`Entry (ttl, nsec), _) ->
+      if Bit_map.mem (Rr_map.to_int typ) nsec.Nsec.types then
+        Some (name, (ttl, nsec))
+      else
+        None
     | _ ->
       if Domain_name.count_labels name >= 1 then
         up (Domain_name.drop_label_exn name)
       else
-        false
+        None
   in
-  let r = up name in
-  Log.info (fun m -> m "nsec no %u %a: %B" (Rr_map.to_int typ) Domain_name.pp name r);
-  r
+  up name
 
-let nsec3_covering t ts typ name =
+let nsec_no t ts typ name =
+  match find_nsec t ts typ name with
+  | Some _ -> true
+  | None -> false
+
+let find_nsec3 t ts typ name =
   let rec up name =
     match snd (Dns_cache.get_nsec3 t ts name) with
     | Ok nsec3 ->
-      let Nsec3.{ iterations ; salt ; _ } = snd (List.hd nsec3) in
+      let (_, Nsec3.{ iterations ; salt ; _ }) = List.hd nsec3 in
       let soa_name = Domain_name.drop_label_exn name in
-      Log.info (fun m -> m "nsec3 covering with %u soa %a" (List.length nsec3)
-                   Domain_name.pp soa_name);
       let hashed_name = Dnssec.nsec3_hashed_name salt iterations ~soa_name name in
-      List.exists (fun (name, nsec3) ->
+      List.find_opt (fun (name, nsec3) ->
           let name = Domain_name.drop_label_exn ~rev:true name in
           let hashed_next_owner =
             Domain_name.prepend_label_exn soa_name
               (Base32.encode nsec3.Nsec3.next_owner_hashed)
           in
-          Log.info (fun m -> m "compare %a %a = %u, compare %a %a = %u"
-                       Domain_name.pp name Domain_name.pp hashed_name
-                       (Domain_name.compare name hashed_name)
-                       Domain_name.pp hashed_name
-                       Domain_name.pp hashed_next_owner
-                       (Domain_name.compare hashed_name hashed_next_owner));
-          Log.info (fun m -> m "bit map %a"
-                       Fmt.(list ~sep:(any ", ") int)
-                       (Bit_map.elements nsec3.types));
           (* TODO non-wc-expanded nsec3 only?? *)
           (Domain_name.compare name hashed_name < 0 &&
            Domain_name.compare hashed_name hashed_next_owner < 0) ||
@@ -65,16 +60,19 @@ let nsec3_covering t ts typ name =
           (Domain_name.compare name hashed_name = 0 &&
            not (Bit_map.mem (Rr_map.to_int typ) nsec3.types))
         )
-        nsec3
+          nsec3
     | Error _ ->
       if Domain_name.count_labels name > 1 then
         up (Domain_name.drop_label_exn name)
       else
-        false
+        None
   in
-  let r = up name in
-  Log.info (fun m -> m "nsec3 covering %u %a %B" (Rr_map.to_int typ) Domain_name.pp name r);
-  r
+  up name
+
+let nsec3_covering t ts typ name =
+  match find_nsec3 t ts typ name with
+  | None -> false
+  | Some _ -> true
 
 let upwards_ds_nonexisting t ts name =
   let rec go name =
@@ -291,10 +289,21 @@ let signed_or_nonexisting ~dnssec t ts ty name r =
   else
     true
 
-let answer ~dnssec ~dnssec_ok:_ t ts name typ =
+let find_rrsig t ts name =
+  match snd (Dns_cache.get t ts name Rrsig) with
+  | Ok (`Entry v, _r) -> Some v
+  | _ -> None
+
+let answer ~dnssec ~dnssec_ok t ts name (typ : Packet.Question.qtype) =
   let packet _t _add rcode ~signed answer authority =
-    (* TODO if we receive dnssec_ok, we need to include RRSIG from our cache
-       (and potentially NSEC/NSEC3) *)
+    let answer =
+      if dnssec_ok then
+        match find_rrsig t ts name with
+        | Some rrsig -> Name_rr_map.add name Rrsig rrsig answer
+        | None -> answer
+      else
+        answer
+    in
     let data = (answer, authority) in
     let flags =
       let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
@@ -310,7 +319,7 @@ let answer ~dnssec ~dnssec_ok:_ t ts name typ =
         let data = if Packet.Answer.is_empty data then None else Some data in
         `Rcode_error (x, Opcode.Query, data)
     in
-    flags, data
+    flags, data, None
   in
   match typ with
   | `Any ->
@@ -368,10 +377,10 @@ let answer ~dnssec ~dnssec_ok:_ t ts name typ =
 
 let handle_query t ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
   match answer ~dnssec ~dnssec_ok t ts qname qtype with
-  | `Packet (flags, data), t ->
+  | `Packet (flags, data, additional), t ->
     Log.debug (fun m -> m "handle_query: reply %a (%a)" Domain_name.pp qname
                   Packet.Question.pp_qtype qtype);
-    `Reply (flags, data), t
+    `Reply (flags, data, additional), t
   | `Query name, t ->
     (* DS should be requested at the parent *)
     let name', recover =

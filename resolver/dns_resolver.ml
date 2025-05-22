@@ -166,10 +166,10 @@ let handle_query ?(retry = 0) t ts awaiting =
           ([], t) types
       in
       `Query r, t
-    | `Reply (flags, a) ->
+    | `Reply (flags, answer, additional) ->
       let time = Int64.sub ts awaiting.ts in
       let max_size, edns = Edns.reply awaiting.edns in
-      let packet = Packet.create ?edns (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (a :> Packet.data) in
+      let packet = Packet.create ?edns ?additional (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (answer :> Packet.data) in
       Log.info (fun m -> m "answering %a after %a %d out packets: %a"
                     pp_key awaiting.question Duration.pp time awaiting.retry
                     Packet.pp packet) ;
@@ -439,11 +439,11 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
               | Some (cs, ip), t -> t, [], [ `Udp, ip, cs ]
             end
         end
-      | `Packet (flags, reply) ->
+      | `Packet (flags, reply, additional) ->
         let max_size, edns = Edns.reply req.edns in
         Log.debug (fun m -> m "delegation reply for %a from cache: %a"
                        Packet.pp req Packet.pp_reply reply) ;
-        let packet = Packet.create ?edns (fst req.header, flags) req.question (reply :> Packet.data) in
+        let packet = Packet.create ?edns ?additional (fst req.header, flags) req.question (reply :> Packet.data) in
         let pkt, _ = Packet.encode ?max_size proto packet in
         t, [ proto, sender, sport, pkt ], []
         (* send it out! we've a cache hit here! *)
