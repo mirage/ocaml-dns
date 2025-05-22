@@ -350,7 +350,6 @@ let handle_reply t now ts proto sender packet reply =
           else
             t, packet, false
         in
-        Log.info (fun m -> m "signed %B" signed);
         (* (c) now we scrub and either *)
         match scrub_it t.cache proto zone edns ts ~signed qtype packet with
         | `Query_without_edns ->

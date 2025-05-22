@@ -17,14 +17,14 @@ let pp_question ppf (name, typ) =
 let is_signed = function
   | Dns_cache.AuthoritativeAnswer signed
   | AuthoritativeAuthority signed -> signed
-  | _ -> false
+  | _ -> None
 
 let find_nsec t ts typ name =
   let rec up name =
     match snd (Dns_cache.get t ts name Nsec) with
-    | Ok (`Entry (ttl, nsec), _) ->
+    | Ok (`Entry (ttl, nsec), rank) ->
       if Bit_map.mem (Rr_map.to_int typ) nsec.Nsec.types then
-        Some (name, (ttl, nsec))
+        Some (name, (ttl, nsec), rank)
       else
         None
     | _ ->
@@ -44,10 +44,10 @@ let find_nsec3 t ts typ name =
   let rec up name =
     match snd (Dns_cache.get_nsec3 t ts name) with
     | Ok nsec3 ->
-      let (_, Nsec3.{ iterations ; salt ; _ }) = List.hd nsec3 in
+      let (_, _, Nsec3.{ iterations ; salt ; _ }, _) = List.hd nsec3 in
       let soa_name = Domain_name.drop_label_exn name in
       let hashed_name = Dnssec.nsec3_hashed_name salt iterations ~soa_name name in
-      List.find_opt (fun (name, nsec3) ->
+      List.find_opt (fun (name, _, nsec3, _) ->
           let name = Domain_name.drop_label_exn ~rev:true name in
           let hashed_next_owner =
             Domain_name.prepend_label_exn soa_name
@@ -93,7 +93,7 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
   in
   let find_ns name = match snd (Dns_cache.get t ts name Ns) with
     | Ok (`Entry (_, names), r) -> Domain_name.Host_set.elements names, is_signed r
-    | _ -> [], false
+    | _ -> [], None
   and find_dnskey name = match snd (Dns_cache.get t ts name Dnskey) with
     | Ok _ -> true
     | _ -> false
@@ -191,9 +191,9 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
                      Domain_name.pp host
                      Domain_name.pp nam
                      Ipaddr.pp ip
-                     dnssec signed_ns (have_ds nam)
+                     dnssec (Option.is_some signed_ns) (have_ds nam)
                      (find_dnskey nam));
-        if dnssec && not signed_ns && have_ds nam then
+        if dnssec && Option.is_none signed_ns && have_ds nam then
           if find_dnskey nam then
             `NeedSignedNs (nam, ip)
           else if dnskey_nonexisting nam then (
@@ -284,30 +284,68 @@ let follow_cname t ts typ ~name ttl ~alias =
 
 let signed_or_nonexisting ~dnssec t ts ty name r =
   if dnssec then
-    is_signed r || nsec_no t ts ty name || nsec3_covering t ts ty name ||
+    Option.is_some (is_signed r) || nsec_no t ts ty name || nsec3_covering t ts ty name ||
     upwards_ds_nonexisting t ts name
   else
     true
 
-let find_rrsig t ts name =
-  match snd (Dns_cache.get t ts name Rrsig) with
-  | Ok (`Entry v, _r) -> Some v
-  | _ -> None
+let ttl = function
+  | Ok (`Entry _, _) -> 0l
+  | Ok ((`No_data (_, soa), _) | (`No_domain (_, soa), _) | (`Serv_fail (_, soa), _)) ->
+    soa.Soa.minimum
+  | Ok (`Alias (ttl, _), _) -> ttl
+  | Error _ -> 0l
 
 let answer ~dnssec ~dnssec_ok t ts name (typ : Packet.Question.qtype) =
-  let packet _t _add rcode ~signed answer authority =
+  let packet _t _add ty rcode ~ttl ~rrsig answer authority =
     let answer =
       if dnssec_ok then
-        match find_rrsig t ts name with
-        | Some rrsig -> Name_rr_map.add name Rrsig rrsig answer
-        | None -> answer
+        if Domain_name.Map.cardinal answer > 0 then
+          match rrsig with
+          | Some rrsig -> Name_rr_map.add name Rrsig (ttl, Rr_map.Rrsig_set.singleton rrsig) answer
+          | None -> answer
+        else
+          answer
       else
         answer
+    in
+    let authority =
+      if dnssec_ok then
+        if Domain_name.Map.cardinal authority = 1 then
+          let name, rr_map = Domain_name.Map.choose authority in
+          match Rr_map.find Soa rr_map with
+          | None -> authority
+          | Some _soa ->
+            let authority =
+              match rrsig with
+              | None -> authority
+              | Some rrsig ->
+                Name_rr_map.add name Rrsig (ttl, Rr_map.Rrsig_set.singleton rrsig) authority
+            in
+            match ty with
+            | None -> authority
+            | Some ty ->
+              match find_nsec t ts ty name, find_nsec3 t ts ty name with
+              | Some (name, (ttl, nsec), rank), _ ->
+                let authority = Name_rr_map.add name Nsec (ttl, nsec) authority in
+                (match is_signed rank with
+                 | Some rrsig -> Name_rr_map.add name Rrsig (ttl, Rr_map.Rrsig_set.singleton rrsig) authority
+                 | None -> authority)
+              | _, Some (name, ttl, nsec3, rank) ->
+                let authority = Name_rr_map.add name Nsec3 (ttl, nsec3) authority in
+                (match is_signed rank with
+                 | Some rrsig -> Name_rr_map.add name Rrsig (ttl, Rr_map.Rrsig_set.singleton rrsig) authority
+                 | None -> authority)
+              | None, _ -> authority
+        else
+          authority
+      else
+        authority
     in
     let data = (answer, authority) in
     let flags =
       let f = Packet.Flags.(add `Recursion_available (singleton `Recursion_desired)) in
-      if dnssec && signed then
+      if dnssec && match rrsig with Some _ -> true | None -> false then
         Packet.Flags.add `Authentic_data f
       else
         f
@@ -324,6 +362,11 @@ let answer ~dnssec ~dnssec_ok t ts name (typ : Packet.Question.qtype) =
   match typ with
   | `Any ->
     let t, r = Dns_cache.get_any t ts name in
+    let ttl = match r with
+      | Ok (`No_domain (_, soa), _) -> soa.Soa.minimum
+      | Ok (`Entries _rrs, _) -> 0l
+      | Error _ -> 0l
+    in
     begin match r with
       | Error _e ->
         (* Log.warn (fun m -> m "error %a while looking up %a, query"
@@ -331,14 +374,15 @@ let answer ~dnssec ~dnssec_ok t ts name (typ : Packet.Question.qtype) =
         `Query name, t
       | Ok (`No_domain res, r) ->
         Log.debug (fun m -> m "no domain while looking up %a, query" pp_question (name, typ));
-        `Packet (packet t false Rcode.NXDomain ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t
+        `Packet (packet t false None Rcode.NXDomain ~ttl ~rrsig:(is_signed r) Domain_name.Map.empty (to_map res)), t
       | Ok (`Entries rr_map, r) ->
         Log.debug (fun m -> m "entries while looking up %a" pp_question (name, typ));
         let data = Domain_name.Map.singleton name rr_map in
-        `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
+        `Packet (packet t true None Rcode.NoError ~ttl ~rrsig:(is_signed r) data Domain_name.Map.empty), t
     end
   | `K (Rr_map.K ty) ->
     let t, r = Dns_cache.get_or_cname t ts name ty in
+    let ttl = ttl r in
     match r with
     | Error _e ->
       (* Log.warn (fun m -> m "error %a while looking up %a, query"
@@ -347,15 +391,15 @@ let answer ~dnssec ~dnssec_ok t ts name (typ : Packet.Question.qtype) =
     | Ok (`No_domain res, r) ->
       if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else (
         Log.debug (fun m -> m "no domain while looking up %a" pp_question (name, typ));
-        `Packet (packet t false Rcode.NXDomain ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t)
+        `Packet (packet t false (Some ty) Rcode.NXDomain ~ttl ~rrsig:(is_signed r) Domain_name.Map.empty (to_map res)), t)
     | Ok (`No_data res, r) ->
       if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else (
         Log.debug (fun m -> m "no data while looking up %a" pp_question (name, typ));
-        `Packet (packet t false Rcode.NoError ~signed:(is_signed r) Domain_name.Map.empty (to_map res)), t)
+        `Packet (packet t false (Some ty) Rcode.NoError ~ttl ~rrsig:(is_signed r) Domain_name.Map.empty (to_map res)), t)
     | Ok (`Serv_fail res, r) ->
       if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else (
         Log.debug (fun m -> m "serv fail while looking up %a" pp_question (name, typ));
-        `Packet (packet t false Rcode.ServFail ~signed:false Domain_name.Map.empty (to_map res)), t)
+        `Packet (packet t false (Some ty) Rcode.ServFail ~ttl ~rrsig:None Domain_name.Map.empty (to_map res)), t)
     | Ok (`Alias (ttl, alias), r) ->
       if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else
       begin
@@ -363,17 +407,17 @@ let answer ~dnssec ~dnssec_ok t ts name (typ : Packet.Question.qtype) =
         match ty with
         | Cname ->
           let data = Name_rr_map.singleton name Cname (ttl, alias) in
-          `Packet (packet t false Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t
+          `Packet (packet t false (Some ty) Rcode.NoError ~ttl ~rrsig:(is_signed r) data Domain_name.Map.empty), t
         | ty ->
           match follow_cname t ts ty ~name ttl ~alias with
-          | `Out (rcode, signed, an, au), t -> `Packet (packet t true rcode ~signed an au), t
+          | `Out (rcode, rrsig, an, au), t -> `Packet (packet t true (Some ty) rcode ~ttl ~rrsig an au), t
           | `Query n, t -> `Query n, t
       end
     | Ok (`Entry v, r) ->
       if not (signed_or_nonexisting ~dnssec t ts ty name r) then `Query name, t else
         (Log.debug (fun m -> m "entry while looking up %a" pp_question (name, typ));
          let data = Name_rr_map.singleton name ty v in
-         `Packet (packet t true Rcode.NoError ~signed:(is_signed r) data Domain_name.Map.empty), t)
+         `Packet (packet t true (Some ty) Rcode.NoError ~ttl ~rrsig:(is_signed r) data Domain_name.Map.empty), t)
 
 let handle_query t ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
   match answer ~dnssec ~dnssec_ok t ts qname qtype with

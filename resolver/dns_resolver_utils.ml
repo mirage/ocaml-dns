@@ -21,6 +21,14 @@ let invalid_soa name =
     expiry = 1048576l ; minimum = 300l
   }
 
+let rrsig rr_map ty =
+  match Rr_map.find Rrsig rr_map with
+  | Some v ->
+    Rr_map.Rrsig_set.find_first_opt (fun rrsig ->
+        rrsig.Rrsig.type_covered = Rr_map.to_int ty)
+      (snd v)
+  | None -> None
+
 let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) additional =
   (* maybe should be passed explicitly (when we don't do qname minimisation) *)
   let in_bailiwick name = Domain_name.is_subdomain ~domain:bailiwick ~subdomain:name in
@@ -38,9 +46,9 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
            asking for AAAA coffee.soup.io, get empty answer + authority *)
         (* the "sub" should be relaxed - for dig ns mail.mehnert.org I get soa in mehnert.org!
            --> but how to discover SOA/zone boundaries? *)
-        let rank =
+        let rank rrsig =
           if Packet.Flags.mem `Authoritative flags then
-            Dns_cache.AuthoritativeAuthority signed
+            Dns_cache.AuthoritativeAuthority (if signed then rrsig else None)
           else
             Dns_cache.Additional
         in
@@ -48,16 +56,16 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
           Domain_name.Map.fold (fun name rr_map acc ->
               if Domain_name.is_subdomain ~subdomain:q_name ~domain:name then
                 match Rr_map.find Soa rr_map with
-                | Some soa -> (name, soa) :: acc
+                | Some soa -> (name, soa, rr_map) :: acc
                 | None -> acc
               else
                 acc)
             authority []
         with
-        | (name, soa)::_ ->
+        | (name, soa, rr_map)::_ ->
           begin match q_type with
             | `Any -> [] (* i really don't know how to handle ANY NoDATA*)
-            | `K Rr_map.K k -> [ q_name, E (k, `No_data (name, soa)), rank ]
+            | `K Rr_map.K k -> [ q_name, E (k, `No_data (name, soa)), rank (rrsig rr_map Soa) ]
         (* this is wrong for the normal iterative algorithm:
             it asks for foo.com @root, and get .com NS in AU and A in AD
         | [] when not (Packet.Header.FS.mem `Truncation flags) ->
@@ -68,29 +76,24 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
         | [] -> [] (* general case when we get an answer from root server *)
       end, Domain_name.Set.empty
     | Some rr_map ->
-      let rank =
+      let rank rrsig =
         if Packet.Flags.mem `Authoritative flags then
-          Dns_cache.AuthoritativeAnswer signed
+          Dns_cache.AuthoritativeAnswer (if signed then rrsig else None)
         else
           Dns_cache.NonAuthoritativeAnswer
       in
       (* collect those rrsets which are of interest depending on q_type! *)
-      let rrsigs =
-        match Rr_map.find Rrsig rr_map with
-        | Some v -> [ q_name, E (Rrsig, `Entry v), rank ]
-        | None -> []
-      in
       match q_type with
       | `Any ->
         Rr_map.fold (fun (B (k, v)) (acc, names) ->
-            (q_name, E (k, `Entry v), rank) :: acc,
+            (q_name, E (k, `Entry v), rank (rrsig rr_map k)) :: acc,
             Domain_name.Host_set.fold (fun n acc ->
                 Domain_name.Set.add (Domain_name.raw n) acc)
               (Rr_map.names k v) names)
           rr_map ([], Domain_name.Set.empty)
       | `K (Rr_map.K Cname) ->
         begin match Rr_map.find Cname rr_map with
-          | Some v -> [ q_name, E (Cname, `Entry v), rank ] @ rrsigs,
+          | Some v -> [ q_name, E (Cname, `Entry v), rank (rrsig rr_map Cname) ],
                       Domain_name.Host_set.fold (fun n acc ->
                           Domain_name.Set.add (Domain_name.raw n) acc)
                         (Rr_map.names Cname v) Domain_name.Set.empty
@@ -98,12 +101,12 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
             (* case no cname *)
             Log.warn (fun m -> m "noerror answer with right name, but no cname in %a, invalid soa for %a"
                           Name_rr_map.pp answer pp_question (q_name, q_type));
-            [ q_name, E (Cname, `No_data (q_name, invalid_soa q_name)), rank ],
+            [ q_name, E (Cname, `No_data (q_name, invalid_soa q_name)), rank None ],
             Domain_name.Set.empty
         end
       | `K (Rr_map.K k) -> match Rr_map.find k rr_map with
         | Some v ->
-          [ q_name, E (k, `Entry v), rank ] @ rrsigs,
+          [ q_name, E (k, `Entry v), rank (rrsig rr_map k) ],
           Domain_name.Host_set.fold (fun n acc ->
               Domain_name.Set.add (Domain_name.raw n) acc)
             (Rr_map.names k v) Domain_name.Set.empty
@@ -112,12 +115,12 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
             (* case neither TYP nor cname *)
             Log.warn (fun m -> m "noerror answer with right name, but not TYP nor cname in %a, invalid soa for %a"
                           Name_rr_map.pp answer pp_question (q_name, q_type));
-            [ q_name, E (k, `No_data (q_name, invalid_soa q_name)), rank ] @ rrsigs,
+            [ q_name, E (k, `No_data (q_name, invalid_soa q_name)), rank None ],
             Domain_name.Set.empty
           | Some cname ->
             (* explicitly register as CNAME so it'll be found *)
             (* should we try to find further records for the new alias? *)
-            [ q_name, E (Cname, `Entry cname), rank ] @ rrsigs,
+            [ q_name, E (Cname, `Entry cname), rank (rrsig rr_map Cname) ],
             Domain_name.Set.singleton (snd cname)
   in
 
@@ -128,7 +131,7 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
     (* TODO need to be more careful, q: foo.com a: foo.com a 1.2.3.4 au: foo.com ns blablubb.com ad: blablubb.com A 1.2.3.4 *)
     let rank s =
       if Packet.Flags.mem `Authoritative flags then
-        Dns_cache.AuthoritativeAuthority (signed && s)
+        Dns_cache.AuthoritativeAuthority (if signed then s else None)
       else
         Dns_cache.Additional
     in
@@ -145,15 +148,15 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
             in
             let others = match Rr_map.find Nsec map with
               | None -> other_acc
-              | Some n -> (name, E (Nsec, `Entry n), rank true) :: other_acc
+              | Some n -> (name, E (Nsec, `Entry n), rank (rrsig map Nsec)) :: other_acc
             in
             let others = match Rr_map.find Nsec3 map with
               | None -> others
-              | Some n -> (name, E (Nsec3, `Entry n), rank true) :: others
+              | Some n -> (name, E (Nsec3, `Entry n), rank (rrsig map Nsec3)) :: others
             in
             let others = match Rr_map.find Ds map with
               | None -> others
-              | Some n -> (name, E (Ds, `Entry n), rank true) :: others
+              | Some n -> (name, E (Ds, `Entry n), rank (rrsig map Ds)) :: others
             in
             ns, others, s
           else
@@ -162,7 +165,7 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
         ([], [], Domain_name.Set.empty)
     in
     List.fold_left (fun acc (name, ns) ->
-        (name, E (Ns, `Entry ns), rank false) :: acc)
+        (name, E (Ns, `Entry ns), rank None) :: acc)
       others ns, names
   in
 
@@ -218,7 +221,7 @@ let find_soa name authority =
     | None -> go (Domain_name.drop_label_exn name)
     | Some rrmap -> match Rr_map.(find Soa rrmap) with
       | None -> go (Domain_name.drop_label_exn name)
-      | Some soa -> name, soa
+      | Some soa -> name, soa, rrsig rrmap Soa
   in
   try Some (go name) with Invalid_argument _ -> None
 
@@ -237,15 +240,15 @@ let nxdomain (_, flags) ~signed name data =
       | None -> acc
       | Some rrmap -> match Rr_map.(find Cname rrmap) with
         | None -> acc
-        | Some (ttl, alias) -> go ((name, (ttl, alias)) :: acc) alias
+        | Some (ttl, alias) -> go ((name, (ttl, alias), rrsig rrmap Cname) :: acc) alias
     in
     go [] name
   in
   let soa = find_soa name authority in
   (* since NXDomain have CNAME semantics, we store them as CNAME *)
-  let rank =
+  let rank rrsig =
     if Packet.Flags.mem `Authoritative flags then
-      Dns_cache.AuthoritativeAnswer signed
+      Dns_cache.AuthoritativeAnswer (if signed then rrsig else None)
     else
       Dns_cache.NonAuthoritativeAnswer
   in
@@ -255,16 +258,16 @@ let nxdomain (_, flags) ~signed name data =
      _, a matching cname -> NoErr q_name with cname
   *)
   let entries =
-    let soa = match soa with
-      | None -> name, invalid_soa name
+    let soa_name, soa, rrsig = match soa with
+      | None -> name, invalid_soa name, None
       | Some x -> x
     in
     match cnames with
-    | [] -> [ name, E (Cname, `No_domain soa) ]
-    | rrs -> List.map (fun (name, cname) -> (name, E (Cname, `Entry cname))) rrs
+    | [] -> [ name, E (Cname, `No_domain (soa_name, soa)), rrsig ]
+    | rrs -> List.map (fun (name, cname, rrsig) -> (name, E (Cname, `Entry cname), rrsig)) rrs
   in
   (* the cname does not matter *)
-  List.map (fun (name, res) -> name, res, rank) entries
+  List.map (fun (name, res, rrsig) -> name, res, rank rrsig) entries
 
 let scrub zone ~signed qtype p =
   Log.debug (fun m -> m "scrubbing (bailiwick %a) data %a"

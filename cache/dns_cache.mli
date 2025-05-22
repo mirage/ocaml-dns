@@ -15,8 +15,8 @@ open Dns
 type rank =
   | ZoneFile
   | ZoneTransfer
-  | AuthoritativeAnswer of bool
-  | AuthoritativeAuthority of bool
+  | AuthoritativeAnswer of Rrsig.t option
+  | AuthoritativeAuthority of Rrsig.t option
   | ZoneGlue
   | NonAuthoritativeAnswer
   | Additional
@@ -76,7 +76,7 @@ val get_any : t -> int64 -> [ `raw ] Domain_name.t ->
     in [cache]. *)
 
 val get_nsec3 : t -> int64 -> [ `raw ] Domain_name.t ->
-  t * (([`raw] Domain_name.t * Nsec3.t) list, [ `Cache_miss | `Cache_drop ]) result
+  t * (([`raw] Domain_name.t * int32 * Nsec3.t * rank) list, [ `Cache_miss | `Cache_drop ]) result
 (** [get_nsec3 cache timestamp name] retrieves all nsec3 resource records for
     the zone [name]. *)
 
