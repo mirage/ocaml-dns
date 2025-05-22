@@ -23,11 +23,24 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         | x -> x
     end)
 
-  let resolver stack ?(root = false) ?(timer = 500) ?(udp = true) ?(tcp = true) ?tls ?(port = 53) ?(tls_port = 853) t =
+  type nonrec t = Dns_resolver.t ref
+
+  let connect (t : Dns_resolver.t) : t = { contents= t }
+
+  let handle ~dst ~port data state =
+    let now = Mirage_ptime.now () in
+    let ts = Mirage_mtime.elapsed_ns () in
+    let new_state, answers, queries =
+      Dns_resolver.handle_buf !state now ts true `Tcp dst port data
+    in
+    state := new_state;
+    answers, queries
+
+
+  let resolver stack ?(root = false) ?(timer = 500) ?(udp = true) ?(tcp = true) ?tls ?(port = 53) ?(tls_port = 853) state =
     let server_port = 53 in
     (* according to RFC5452 4.5, we can chose source port between 1024-49152 *)
     let sport () = 1024 + Randomconv.int ~bound:48128 Mirage_crypto_rng.generate in
-    let state = ref t in
     let tcp_in = ref FM.empty in
     let tcp_out = ref Ipaddr.Map.empty in
 
