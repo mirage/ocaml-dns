@@ -147,13 +147,13 @@ let handle_query ?(retry = 0) t ts awaiting =
     let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec ~dnssec_ok:awaiting.dnssec_ok ~rng:t.rng t.ip_protocol ts awaiting.question in
     let t = { t with cache } in
     match r with
-    | `Query _ when awaiting.retry >= 30 ->
-      Log.warn (fun m -> m "dropping q %a from %a:%d (already sent 30 packets)"
+    | `Query _ when awaiting.retry >= 10 ->
+      Log.warn (fun m -> m "dropping q %a from %a:%d (already sent 10 packets)"
                    pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
       (* TODO reply with error! *)
       `Nothing, t
     | `Query (zone, (nam, types), ip) ->
-      Log.debug (fun m -> m "have to query (zone %a) %a using ip %a"
+      Log.info (fun m -> m "have to query (zone %a) %a using ip %a"
                     Domain_name.pp zone
                     Fmt.(list ~sep:(any ", ") pp_key)
                     (List.map (fun t -> (nam, t)) types)
@@ -170,7 +170,7 @@ let handle_query ?(retry = 0) t ts awaiting =
       let time = Int64.sub ts awaiting.ts in
       let max_size, edns = Edns.reply awaiting.edns in
       let packet = Packet.create ?edns (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (a :> Packet.data) in
-      Log.debug (fun m -> m "answering %a after %a %d out packets: %a"
+      Log.info (fun m -> m "answering %a after %a %d out packets: %a"
                     pp_key awaiting.question Duration.pp time awaiting.retry
                     Packet.pp packet) ;
       let cs, _ = Packet.encode ?max_size awaiting.proto packet in
@@ -287,7 +287,7 @@ let handle_reply t now ts proto sender packet reply =
   | `Rcode_error (Rcode.NXDomain, Opcode.Query, _), Some qtype
   | `Rcode_error (Rcode.ServFail, Opcode.Query, _), Some qtype ->
     begin
-      Log.debug (fun m -> m "handling reply to %a" Packet.Question.pp packet.question);
+      Log.info (fun m -> m "handling reply to %a" Packet.Question.pp packet.question);
       (* (a) first check whether frame was in transit! *)
       let key = fst packet.question, qtype in
       let r, transit = was_in_transit t.transit key (fst packet.header) sender in
@@ -350,6 +350,7 @@ let handle_reply t now ts proto sender packet reply =
           else
             t, packet, false
         in
+        Log.info (fun m -> m "signed %B" signed);
         (* (c) now we scrub and either *)
         match scrub_it t.cache proto zone edns ts ~signed qtype packet with
         | `Query_without_edns ->

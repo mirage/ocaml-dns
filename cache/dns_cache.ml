@@ -174,6 +174,8 @@ let find cache name query_type =
     | None -> Error `Cache_miss
 
 let insert cache ?map ts name query_type rank entry =
+  Log.info (fun m -> m "adding %a (typ %a)" Domain_name.pp name
+               Rr_map.ppk (K query_type));
   let meta = ts, rank in
   let cache = match entry with
     | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) cache
