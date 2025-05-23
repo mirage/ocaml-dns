@@ -153,7 +153,7 @@ let handle_query ?(retry = 0) t ts awaiting =
       (* TODO reply with error! *)
       `Nothing, t
     | `Query (zone, (nam, types), ip) ->
-      Log.info (fun m -> m "have to query (zone %a) %a using ip %a"
+      Log.debug (fun m -> m "have to query (zone %a) %a using ip %a"
                     Domain_name.pp zone
                     Fmt.(list ~sep:(any ", ") pp_key)
                     (List.map (fun t -> (nam, t)) types)
@@ -170,7 +170,7 @@ let handle_query ?(retry = 0) t ts awaiting =
       let time = Int64.sub ts awaiting.ts in
       let max_size, edns = Edns.reply awaiting.edns in
       let packet = Packet.create ?edns ?additional (awaiting.id, flags) (awaiting.question :> Packet.Question.t) (answer :> Packet.data) in
-      Log.info (fun m -> m "answering %a after %a %d out packets: %a"
+      Log.debug (fun m -> m "answering %a after %a %d out packets: %a"
                     pp_key awaiting.question Duration.pp time awaiting.retry
                     Packet.pp packet) ;
       let cs, _ = Packet.encode ?max_size awaiting.proto packet in
@@ -287,7 +287,7 @@ let handle_reply t now ts proto sender packet reply =
   | `Rcode_error (Rcode.NXDomain, Opcode.Query, _), Some qtype
   | `Rcode_error (Rcode.ServFail, Opcode.Query, _), Some qtype ->
     begin
-      Log.info (fun m -> m "handling reply to %a" Packet.Question.pp packet.question);
+      Log.debug (fun m -> m "handling reply to %a" Packet.Question.pp packet.question);
       (* (a) first check whether frame was in transit! *)
       let key = fst packet.question, qtype in
       let r, transit = was_in_transit t.transit key (fst packet.header) sender in

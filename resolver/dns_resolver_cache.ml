@@ -169,7 +169,7 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
          -> this also avoids loops, if we get a negative reply for DS, we move
             on (and run into the case below)
       *)
-      Log.info (fun m -> m "need to query for DS %a" Domain_name.pp nam);
+      (* Log.info (fun m -> m "need to query for DS %a" Domain_name.pp nam); *)
       (match or_root go nam with
        | `HaveIP (_name, ip) -> `NeedDs (nam, ip)
        | `NeedDnskey _ | `NeedAddress _ | `NeedDs _
@@ -178,28 +178,27 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
       let host = Domain_name.raw ns in
       match pick (find_address host) with
       | None ->
-        Log.info (fun m -> m "go no address for NS %a (for %a)"
+        (* Log.info (fun m -> m "go no address for NS %a (for %a)"
                      Domain_name.pp host
-                     Domain_name.pp nam);
+                     Domain_name.pp nam); *)
         if Domain_name.is_subdomain ~subdomain:ns ~domain:nam then
           (* we actually need glue *)
           or_root go nam
         else
           `NeedAddress (nam, host)
       | Some ip ->
-        Log.info (fun m -> m "go address for NS %a (for %a): %a (dnssec %B signed_ns %B have_ds %B find_dnskey %B)"
+        (* Log.info (fun m -> m "go address for NS %a (for %a): %a (dnssec %B signed_ns %B have_ds %B find_dnskey %B)"
                      Domain_name.pp host
                      Domain_name.pp nam
                      Ipaddr.pp ip
                      dnssec (Option.is_some signed_ns) (have_ds nam)
-                     (find_dnskey nam));
+                     (find_dnskey nam)); *)
         if dnssec && Option.is_none signed_ns && have_ds nam then
           if find_dnskey nam then
             `NeedSignedNs (nam, ip)
           else if dnskey_nonexisting nam then (
-            (* is this correct? we have a DS, no signed NS, and a nonexisting DNSKEY *)
-            Log.warn (fun m -> m "DS present for %a, but NSEC/NSEC3 for DNSKEY"
-                         Domain_name.pp nam);
+            (* Log.warn (fun m -> m "DS present for %a, but NSEC/NSEC3 for DNSKEY"
+                         Domain_name.pp nam); *)
             have_ip_or_dnskey nam ip)
           else
             `NeedDnskey (nam, ip)

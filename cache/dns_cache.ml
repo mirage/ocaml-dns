@@ -176,8 +176,6 @@ let find cache name query_type =
     | None -> Error `Cache_miss
 
 let insert cache ?map ts name query_type rank entry =
-  Log.info (fun m -> m "adding %a (typ %a)" Domain_name.pp name
-               Rr_map.ppk (K query_type));
   let meta = ts, rank in
   let cache = match entry with
     | `No_domain (name', soa) -> LRU.add name (No_domain (meta, name', soa)) cache
@@ -340,11 +338,6 @@ let pp_query ppf (name, query_type) =
   Fmt.pf ppf "%a (%a)" Domain_name.pp name Packet.Question.pp_qtype query_type
 
 let set cache ts name query_type rank entry  =
- (if Rr_map.to_int query_type = 46 then
-    Log.warn (fun m -> m "set: %a %a"
-                 pp_query (name, `K (K query_type))
-                 (pp_entry query_type) entry)
-  else ());
   let entry' = clip_ttl_to_week query_type entry in
   let cache' map = insert cache ?map ts name query_type rank entry' in
   match find cache name query_type with
