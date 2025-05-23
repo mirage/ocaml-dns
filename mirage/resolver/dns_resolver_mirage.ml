@@ -13,6 +13,8 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   module TLS = Tls_mirage.Make(T)
 
+  type t = (Ipaddr.t * int * string * string Lwt.u) option -> unit
+
   type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
 
   module FM = Map.Make(struct
@@ -272,9 +274,10 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         root ()
       in
       Lwt.async root end ;
-    let fn (dst_ip, dst_port) data =
+    push
+
+  let resolve_external push (dst_ip, dst_port) data =
       let th, wk = Lwt.wait () in
       push (Some (dst_ip, dst_port, data, wk));
-      th in
-    fn
+      th
 end
