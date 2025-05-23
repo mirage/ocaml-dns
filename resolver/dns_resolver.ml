@@ -82,11 +82,17 @@ let build_query ?id ?(recursion_desired = false) ?(checking_disabled = false) ?(
   let id = match id with Some id -> id | None -> Randomconv.int16 t.rng in
   let header =
     let flags =
-      let flags = Packet.Flags.singleton `Checking_disabled in
-      if recursion_desired then
-        Packet.Flags.add `Recursion_desired flags
-      else
-        flags
+        (* tell the NS we will do the checking.
+           See: https://www.rfc-editor.org/rfc/rfc4035#section-4.6 *)
+        let flags =
+          if t.dnssec then
+            Packet.Flags.singleton `Checking_disabled
+          else Packet.Flags.empty
+        in
+        if recursion_desired then
+          Packet.Flags.add `Recursion_desired flags
+        else
+          flags
     in
     id, flags
   in
