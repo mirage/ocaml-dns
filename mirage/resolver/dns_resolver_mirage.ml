@@ -109,8 +109,8 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     and handle_answer (proto, dst, dst_port, data) = match proto with
       | `Udp -> Dns.send_udp stack port dst dst_port (Cstruct.of_string data)
       | `Tcp ->
-        let from_tcp = try Some (FM.find (dst, dst_port) !tcp_in) with Not_found -> None in
-        let from_ocaml = try Some (FM.find (dst, dst_port) !ocaml_in) with Not_found -> None in
+        let from_tcp = FM.find_opt (dst, dst_port) !tcp_in in
+        let from_ocaml = FM.find_opt (dst, dst_port) !ocaml_in in
 
         match from_tcp, from_ocaml with
         | None, None ->
