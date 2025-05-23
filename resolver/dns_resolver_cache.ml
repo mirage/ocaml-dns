@@ -289,8 +289,8 @@ let signed_or_nonexisting ~dnssec t ts ty name r =
   else
     true
 
-let ttl = function
-  | Ok (`Entry _, _) -> 0l
+let ttl k = function
+  | Ok (`Entry v, _) -> Rr_map.ttl k v
   | Ok ((`No_data (_, soa), _) | (`No_domain (_, soa), _) | (`Serv_fail (_, soa), _)) ->
     soa.Soa.minimum
   | Ok (`Alias (ttl, _), _) -> ttl
@@ -382,7 +382,7 @@ let answer ~dnssec ~dnssec_ok t ts name (typ : Packet.Question.qtype) =
     end
   | `K (Rr_map.K ty) ->
     let t, r = Dns_cache.get_or_cname t ts name ty in
-    let ttl = ttl r in
+    let ttl = ttl ty r in
     match r with
     | Error _e ->
       (* Log.warn (fun m -> m "error %a while looking up %a, query"
