@@ -25,7 +25,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   type nonrec t = Dns_resolver.t ref
 
-  let connect (t : Dns_resolver.t) : t = { contents= t }
+  let connect (t : Dns_resolver.t) : t = ref t
 
   let handle ~dst ~port data state =
     let now = Mirage_ptime.now () in
