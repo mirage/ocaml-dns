@@ -376,8 +376,8 @@ let handle_reply t now ts proto sender packet reply =
           let (t, out_a, out_q), recursion_desired =
             handle_awaiting_queries t ts key, false
           in
-          (* TODO why is edns none here?  is edns bad over tcp? *)
-          let t, cs = build_query ~recursion_desired t ts `Tcp key 1 zone None sender in
+          let edns = Some (Edns.create ~dnssec_ok:t.dnssec ()) in
+          let t, cs = build_query ~recursion_desired t ts `Tcp key 1 zone edns sender in
           Log.debug (fun m -> m "resolve: upgrade to tcp %a %a"
                          Ipaddr.pp sender pp_key key) ;
           Ok (t, out_a, (`Tcp, sender, cs) :: out_q)
