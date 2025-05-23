@@ -14,6 +14,14 @@ type rank =
   | NonAuthoritativeAnswer
   | Additional
 
+let compare_rrsig_opt a b =
+  match a, b with
+  | None, None -> 0
+  | Some _, None -> 1
+  | None, Some _ -> -1
+  | Some a, Some b ->
+    Ptime.compare a.Rrsig.signature_expiration b.Rrsig.signature_expiration
+
 let compare_rank a b = match a, b with
   | ZoneFile, ZoneFile -> 0
   | ZoneFile, _ -> 1
@@ -22,11 +30,11 @@ let compare_rank a b = match a, b with
   | ZoneTransfer, _ -> 1
   | _, ZoneTransfer -> -1
   | AuthoritativeAnswer signed, AuthoritativeAnswer signed' ->
-    Bool.compare (Option.is_some signed) (Option.is_some signed')
+    compare_rrsig_opt signed signed'
   | AuthoritativeAnswer _, _ -> 1
   | _, AuthoritativeAnswer _ -> -1
   | AuthoritativeAuthority signed, AuthoritativeAuthority signed' ->
-    Bool.compare (Option.is_some signed) (Option.is_some signed')
+    compare_rrsig_opt signed signed'
   | AuthoritativeAuthority _, _ -> 1
   | _, AuthoritativeAuthority _ -> -1
   | ZoneGlue, ZoneGlue -> 0
