@@ -8,11 +8,19 @@ module Log = (val Logs.src_log src : Logs.LOG)
 type rank =
   | ZoneFile
   | ZoneTransfer
-  | AuthoritativeAnswer of bool
-  | AuthoritativeAuthority of bool
+  | AuthoritativeAnswer of Rrsig.t option
+  | AuthoritativeAuthority of Rrsig.t option
   | ZoneGlue
   | NonAuthoritativeAnswer
   | Additional
+
+let compare_rrsig_opt a b =
+  match a, b with
+  | None, None -> 0
+  | Some _, None -> 1
+  | None, Some _ -> -1
+  | Some a, Some b ->
+    Ptime.compare a.Rrsig.signature_expiration b.Rrsig.signature_expiration
 
 let compare_rank a b = match a, b with
   | ZoneFile, ZoneFile -> 0
@@ -22,11 +30,11 @@ let compare_rank a b = match a, b with
   | ZoneTransfer, _ -> 1
   | _, ZoneTransfer -> -1
   | AuthoritativeAnswer signed, AuthoritativeAnswer signed' ->
-    Bool.compare signed signed'
+    compare_rrsig_opt signed signed'
   | AuthoritativeAnswer _, _ -> 1
   | _, AuthoritativeAnswer _ -> -1
   | AuthoritativeAuthority signed, AuthoritativeAuthority signed' ->
-    Bool.compare signed signed'
+    compare_rrsig_opt signed signed'
   | AuthoritativeAuthority _, _ -> 1
   | _, AuthoritativeAuthority _ -> -1
   | ZoneGlue, ZoneGlue -> 0
@@ -41,9 +49,11 @@ let pp_rank ppf = function
   | ZoneFile -> Fmt.string ppf "zone file data"
   | ZoneTransfer -> Fmt.string ppf "zone transfer data"
   | AuthoritativeAnswer signed ->
-    Fmt.pf ppf "authoritative answer data (signed: %B)" signed
+    Fmt.pf ppf "authoritative answer data (signed: %a)"
+      Fmt.(option ~none:(any "no") Rrsig.pp) signed
   | AuthoritativeAuthority signed ->
-    Fmt.pf ppf "authoritative authority data (signed: %B)" signed
+    Fmt.pf ppf "authoritative authority data (signed: %a)"
+      Fmt.(option ~none:(any "no") Rrsig.pp) signed
   | ZoneGlue -> Fmt.string ppf "zone file glue"
   | NonAuthoritativeAnswer -> Fmt.string ppf "non-authoritative answer"
   | Additional -> Fmt.string ppf "additional data"
@@ -280,9 +290,10 @@ let get_nsec3 cache ts name =
           | Rr_map rrs ->
             begin
             match RRMap.find_opt (K Nsec3) rrs with
-              | Some ((created, _), (Entry (B (Nsec3, v)) as e)) ->
+              | Some ((created, r), (Entry (B (Nsec3, v)) as e)) ->
                 begin match update_ttl Nsec3 (Entry.to_entry Nsec3 e) ~created ~now:ts with
-                  | Ok _ -> (ename, snd v) :: acc
+                  | Ok `Entry (ttl, _) -> (ename, ttl, snd v, r) :: acc
+                  | Ok _ -> acc
                   | Error _ -> acc
                 end
               | _ -> acc
@@ -298,7 +309,7 @@ let get_nsec3 cache ts name =
     cache, Error `Cache_miss
   | xs ->
     metrics cache `Hit;
-    List.fold_right LRU.promote (List.map fst xs) cache,
+    List.fold_right LRU.promote (List.map (fun (a, _, _, _) -> a) xs) cache,
     Ok xs
 
 (* XXX: we may want to define a minimum as well (5 minutes? 30 minutes?
