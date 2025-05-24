@@ -180,7 +180,7 @@ let handle_query ?(retry = 0) t ts awaiting =
                     pp_key awaiting.question Duration.pp time awaiting.retry
                     Packet.pp packet) ;
       let cs, _ = Packet.encode ?max_size awaiting.proto packet in
-      let ttl = Packet.minimum_ttl (a :> Packet.data) in
+      let ttl = Packet.minimum_ttl (answer :> Packet.data) in
       `Answer (ttl, cs), t
 
 let scrub_it t proto zone edns ts ~signed qtype p =
