@@ -12,7 +12,7 @@ module Make (S : Tcpip.Stack.V4V6) : sig
      to 853) using the [resolver] configuration. The [timer] is in milliseconds
      and defaults to 500 milliseconds.*)
 
-  val resolve_external : t -> Ipaddr.t * int -> string -> string Lwt.t
+  val resolve_external : t -> Ipaddr.t * int -> string -> (int32 * string) Lwt.t
   (** [resolve_external t (ip, port) data] resolves for [(ip, port)] the query
-      [data] and returns a response. *)
+      [data] and returns a pair of the minimum TTL and a response. *)
 end

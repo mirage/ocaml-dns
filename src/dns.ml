@@ -4174,6 +4174,9 @@ module Rr_map = struct
     let txt = text Domain_name.root k v in
     Fmt.string ppf txt
 
+  let minimum_ttl t =
+    fold (fun (B (k, v)) acc -> Int32.min (ttl k v) acc) t 0l
+
   let names : type a. a key -> a -> Domain_name.Host_set.t = fun k v ->
     match k, v with
     | Cname, (_, alias) ->
@@ -4305,6 +4308,11 @@ module Name_rr_map = struct
            (List.map (Rr_map.text_b name) (Rr_map.bindings rr_map)))
       ppf
       (Domain_name.Map.bindings map)
+
+  let minimum_ttl t =
+    Domain_name.Map.fold (fun _key rr_map acc ->
+        Int32.min (Rr_map.minimum_ttl rr_map) acc)
+      t 0l
 
   let add name k v dmap =
     let m = match Domain_name.Map.find name dmap with
@@ -5361,6 +5369,17 @@ module Packet = struct
     { header ; question ; data ; additional ; edns ; tsig }
 
   let with_edns t edns = { t with edns }
+
+  let minimum_ttl = function
+    | #request -> 0l
+    | `Notify_ack -> 0l
+    | `Update_ack -> 0l
+    | `Axfr_reply _ -> 0l
+    | `Axfr_partial_reply _ -> 0l
+    | `Ixfr_reply _ -> 0l
+    | `Rcode_error (_, _, None) -> 0l
+    | `Rcode_error (_, _, Some (ans, aut))
+    | `Answer (ans, aut) -> Int32.min (Name_rr_map.minimum_ttl ans) (Name_rr_map.minimum_ttl aut)
 
   let pp_header ppf t =
     let opcode = opcode_data t.data

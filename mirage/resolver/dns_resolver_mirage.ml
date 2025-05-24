@@ -13,7 +13,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   module TLS = Tls_mirage.Make(T)
 
-  type t = (Ipaddr.t * int * string * string Lwt.u) option -> unit
+  type t = (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit
 
   type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
 
@@ -108,7 +108,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     and handle_query (proto, dst, data) = match proto with
       | `Udp -> maybe_tcp dst server_port data
       | `Tcp -> client_tcp dst server_port data
-    and handle_answer (proto, dst, dst_port, data) = match proto with
+    and handle_answer (proto, dst, dst_port, ttl, data) = match proto with
       | `Udp -> Dns.send_udp stack port dst dst_port (Cstruct.of_string data)
       | `Tcp ->
         let from_tcp = FM.find_opt (dst, dst_port) !tcp_in in
@@ -129,7 +129,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
            | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in)
         | None, Some wk -> begin
             ocaml_in := FM.remove (dst, dst_port) !ocaml_in;
-            Lwt.wakeup wk data;
+            Lwt.wakeup wk (ttl, data);
             Lwt.return_unit end
         | Some _, Some _ -> assert false
 
