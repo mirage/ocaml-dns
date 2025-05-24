@@ -6,15 +6,18 @@
   <span><span class="label">name</span>:<span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
   <span>int32 <span class="arrow">&#45;&gt;</span></span>
   <span><span class="label">alias</span>:<span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
-  <span>[ <span>`Out of <a href="../../dns/Dns/Rcode/index.html#type-t">Dns.Rcode.t</a> * bool * <a href="../../dns/Dns/Name_rr_map/index.html#type-t">Dns.Name_rr_map.t</a> * <a href="../../dns/Dns/Name_rr_map/index.html#type-t">Dns.Name_rr_map.t</a></span>
+  <span>[ <span>`Out of
+      <a href="../../dns/Dns/Rcode/index.html#type-t">Dns.Rcode.t</a> * <span><a href="../../dns/Dns/Rrsig/index.html#type-t">Dns.Rrsig.t</a> option</span> * <a href="../../dns/Dns/Name_rr_map/index.html#type-t">Dns.Name_rr_map.t</a> * <a href="../../dns/Dns/Name_rr_map/index.html#type-t">Dns.Name_rr_map.t</a></span>
   <span><span>| `Query</span> of <span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span></span> ]</span>
   * <a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-answer"><a href="#val-answer" class="anchor"></a><code><span><span class="keyword">val</span> answer : 
+  <span><span class="label">dnssec</span>:bool <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">dnssec_ok</span>:bool <span class="arrow">&#45;&gt;</span></span>
   <span><a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a> <span class="arrow">&#45;&gt;</span></span>
   <span>int64 <span class="arrow">&#45;&gt;</span></span>
   <span><span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> <span class="arrow">&#45;&gt;</span></span>
   <span><a href="../../dns/Dns/Packet/Question/index.html#type-qtype">Dns.Packet.Question.qtype</a> <span class="arrow">&#45;&gt;</span></span>
   <span>[ <span>`Query of <span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span></span>
-  <span><span>| `Packet</span> of <span class="xref-unresolved">Dns</span>.Packet.Flags.t * <a href="../../dns/Dns/Packet/index.html#type-reply">Dns.Packet.reply</a></span> ]</span>
+  <span><span>| `Packet</span> of <span class="xref-unresolved">Dns</span>.Packet.Flags.t * <a href="../../dns/Dns/Packet/index.html#type-reply">Dns.Packet.reply</a> * <span><a href="../../dns/Dns/Name_rr_map/index.html#type-t">Dns.Name_rr_map.t</a> option</span></span> ]</span>
   * <a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-resolve"><a href="#val-resolve" class="anchor"></a><code><span><span class="keyword">val</span> resolve : 
   <span><a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a> <span class="arrow">&#45;&gt;</span></span>
   <span><span class="label">dnssec</span>:bool <span class="arrow">&#45;&gt;</span></span>
@@ -30,11 +33,12 @@
   * <a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-handle_query"><a href="#val-handle_query" class="anchor"></a><code><span><span class="keyword">val</span> handle_query : 
   <span><a href="../../dns/Dns_cache/index.html#type-t">Dns_cache.t</a> <span class="arrow">&#45;&gt;</span></span>
   <span><span class="label">dnssec</span>:bool <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">dnssec_ok</span>:bool <span class="arrow">&#45;&gt;</span></span>
   <span><span class="label">rng</span>:<span>(<span>int <span class="arrow">&#45;&gt;</span></span> string)</span> <span class="arrow">&#45;&gt;</span></span>
   <span><span>[ `Both <span>| `Ipv4_only</span> <span>| `Ipv6_only</span> ]</span> <span class="arrow">&#45;&gt;</span></span>
   <span>int64 <span class="arrow">&#45;&gt;</span></span>
   <span><span>(<span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> * <a href="../../dns/Dns/Packet/Question/index.html#type-qtype">Dns.Packet.Question.qtype</a>)</span> <span class="arrow">&#45;&gt;</span></span>
-  <span>[ <span>`Reply of <span class="xref-unresolved">Dns</span>.Packet.Flags.t * <a href="../../dns/Dns/Packet/index.html#type-reply">Dns.Packet.reply</a></span>
+  <span>[ <span>`Reply of <span class="xref-unresolved">Dns</span>.Packet.Flags.t * <a href="../../dns/Dns/Packet/index.html#type-reply">Dns.Packet.reply</a> * <span><a href="../../dns/Dns/Name_rr_map/index.html#type-t">Dns.Name_rr_map.t</a> option</span></span>
   <span><span>| `Query</span> of
     <span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span>
     * <span>(<span><span>[ `raw ]</span> <span class="xref-unresolved">Domain_name</span>.t</span> * <span><a href="../../dns/Dns/Packet/Question/index.html#type-qtype">Dns.Packet.Question.qtype</a> list</span>)</span>
