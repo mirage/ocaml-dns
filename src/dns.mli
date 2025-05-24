@@ -1318,6 +1318,9 @@ module Packet : sig
     Header.t -> Question.t -> data -> t
   (** [create ~max_size ~additional ~edns ~tsig hdr q data] is a DNS packet. *)
 
+  val minimum_ttl : data -> int32
+  (** [minimum_ttl data] returns the minimum TTL of [data]. *)
+
   val with_edns : t -> Edns.t option -> t
   (** [with_edns t edns] is [t] with the edns field set to [edns]. *)
 

@@ -13,6 +13,8 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   module TLS = Tls_mirage.Make(T)
 
+  type t = (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit
+
   type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
 
   module FM = Map.Make(struct
@@ -25,11 +27,13 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   let resolver stack ?(root = false) ?(timer = 500) ?(udp = true) ?(tcp = true) ?tls ?(port = 53) ?(tls_port = 853) t =
     let server_port = 53 in
+    let state = ref t in
     (* according to RFC5452 4.5, we can chose source port between 1024-49152 *)
     let sport () = 1024 + Randomconv.int ~bound:48128 Mirage_crypto_rng.generate in
-    let state = ref t in
     let tcp_in = ref FM.empty in
+    let ocaml_in = ref FM.empty in
     let tcp_out = ref Ipaddr.Map.empty in
+    let stream, push = Lwt_stream.create () in
 
     let send_tls flow data =
       let len = Cstruct.create 2 in
@@ -104,21 +108,31 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     and handle_query (proto, dst, data) = match proto with
       | `Udp -> maybe_tcp dst server_port data
       | `Tcp -> client_tcp dst server_port data
-    and handle_answer (proto, dst, dst_port, data) = match proto with
+    and handle_answer (proto, dst, dst_port, ttl, data) = match proto with
       | `Udp -> Dns.send_udp stack port dst dst_port (Cstruct.of_string data)
-      | `Tcp -> match try Some (FM.find (dst, dst_port) !tcp_in) with Not_found -> None with
-        | None ->
+      | `Tcp ->
+        let from_tcp = FM.find_opt (dst, dst_port) !tcp_in in
+        let from_ocaml = FM.find_opt (dst, dst_port) !ocaml_in in
+
+        match from_tcp, from_ocaml with
+        | None, None ->
           Log.err (fun m -> m "wanted to answer %a:%d via TCP, but couldn't find a flow"
                        Ipaddr.pp dst dst_port) ;
           Lwt.return_unit
-        | Some `Tcp flow ->
+        | Some (`Tcp flow), None ->
           (Dns.send_tcp flow (Cstruct.of_string data) >|= function
            | Ok () -> ()
            | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in)
-        | Some `Tls flow ->
+        | Some (`Tls flow), None ->
           (send_tls flow (Cstruct.of_string data) >|= function
            | Ok () -> ()
            | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in)
+        | None, Some wk -> begin
+            ocaml_in := FM.remove (dst, dst_port) !ocaml_in;
+            Lwt.wakeup wk (ttl, data);
+            Lwt.return_unit end
+        | Some _, Some _ -> assert false
+
     and udp_cb lport req ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
       let now = Mirage_ptime.now ()
@@ -137,6 +151,21 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       S.UDP.listen (S.udp stack) ~port (udp_cb port true);
       Log.info (fun f -> f "DNS resolver listening on UDP port %d" port);
     end;
+
+    let rec ocaml_cb () =
+      Lwt_stream.get stream >>= function
+      | Some (dst_ip, dst_port, data, wk) ->
+          ocaml_in := FM.add (dst_ip, dst_port) wk !ocaml_in;
+          let now = Mirage_ptime.now () in
+          let ts = Mirage_mtime.elapsed_ns () in
+          let new_state, answers, queries =
+            Dns_resolver.handle_buf !state now ts true `Tcp dst_ip dst_port data in
+          state := new_state ;
+          Lwt_list.iter_p handle_answer answers >>= fun () ->
+          Lwt_list.iter_p handle_query queries >>= fun () ->
+          ocaml_cb ()
+      | None -> Lwt.return_unit in
+    Lwt.async ocaml_cb;
 
     let tcp_cb query flow =
       let dst_ip, dst_port = T.dst flow in
@@ -236,7 +265,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     in
     Lwt.async time ;
 
-    if root then
+    if root then begin
       let rec root () =
         let new_state, q = Dns_resolver.query_root !state (Mirage_mtime.elapsed_ns ()) `Tcp in
         state := new_state ;
@@ -244,5 +273,11 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         Mirage_sleep.ns (Duration.of_day 6) >>= fun () ->
         root ()
       in
-      Lwt.async root
+      Lwt.async root end ;
+    push
+
+  let resolve_external push (dst_ip, dst_port) data =
+      let th, wk = Lwt.wait () in
+      push (Some (dst_ip, dst_port, data, wk));
+      th
 end
