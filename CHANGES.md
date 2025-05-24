@@ -1,3 +1,15 @@
+### v10.1.0 (2025-05-24)
+
+* dns-mirage-resolver: adapt API to prepare for DoH (#373 @dinosaure @PizieDust
+  @reynir @hannesm)
+* resolver: support DNSSEC
+  - #372 @reynir @hannesm
+  - #361 @reynir @hannesm
+* dns: support SVCB and HTTPS resource records (RFC 9460, #359 @nickbetteridge)
+* dns-cli: avoid deprecated cmdliner values (#367 @hannesm, fixes #366),
+  add app/resolver (#366)
+* resolver: add further tests, fix the loop of a cyclic NS (#368 @hannesm)
+
 ### v10.0.0 (2025-02-07)
 
 * dns-certify: use a pair instead of two separate arguments for the dns-key
