@@ -805,6 +805,24 @@ module Tsig : sig
      matches [ts]. *)
 end
 
+(** Extended DNS errors
+
+    Standardized in RFC 8914, this is a payload for Edns with a additional
+    information about the cause of a DNS error.
+*)
+module Extended_error : sig
+  type t =
+    [ `Other | `Unsupported_Dnskey_algorithm | `Unsupported_Ds_digest
+    | `Stale_answer | `Forged_answer | `Dnssec_indeterminate
+    | `Dnssec_bogus | `Signature_expired | `Signature_not_yet_valid
+    | `Dnskey_missing | `Rrsigs_missing | `No_zone_key_bit_set
+    | `Nsec_missing | `Cached_error | `Not_ready | `Blocked
+    | `Censored | `Filtered | `Prohibited | `Stale_Nxdomain_answer
+    | `Not_authoritative | `Not_supported | `No_reachable_authority
+    | `Network_error | `Invalid_data | `Unknown of int ] *
+    string option
+end
+
 (** Extensions to DNS
 
     An extension record (EDNS) is extendable, includes a version number, payload
@@ -817,6 +835,7 @@ module Edns : sig
     | Cookie of string
     | Tcp_keepalive of int option
     | Padding of int
+    | Extended_error of Extended_error.t
     | Extension of int * string
   (** The type of supported extensions. *)
 
@@ -829,9 +848,10 @@ module Edns : sig
   }
   (** The type of an EDNS record. *)
 
-  val create : ?extended_rcode:int -> ?version:int -> ?dnssec_ok:bool ->
-    ?payload_size:int -> ?extensions:extension list -> unit -> t
-  (** [create ~extended_rcode ~version ~dnssec_ok ~payload_size ~extensions ()]
+  val create : ?extended_error:Extended_error.t -> ?extended_rcode:int ->
+    ?version:int -> ?dnssec_ok:bool -> ?payload_size:int ->
+    ?extensions:extension list -> unit -> t
+  (** [create ~extended_erro ~extended_rcode ~version ~dnssec_ok ~payload_size ~extensions ()]
      constructs an EDNS record with the optionally provided data. The
      [extended_rcode] defaults to 0, [version] defaults to 0, [dnssec_ok] to
      false, [payload_size] to the minimum payload size (512 byte), [extensions]
