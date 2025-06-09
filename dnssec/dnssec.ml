@@ -15,11 +15,6 @@ let pp_km_name_rr_map ppf rrs =
 
 let guard a e = if a then Ok () else Error e
 
-let open_err : ('a, [ `Msg of string ]) result ->
-  ('a, [> `Msg of string ]) result = function
-  | Ok _ as a -> a
-  | Error (`Msg _) as b -> b
-
 let root_ds =
   (* <KeyDigest id="Klajeyz" validFrom="2017-02-02T00:00:00+00:00">
   <KeyTag>20326</KeyTag>
