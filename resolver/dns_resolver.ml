@@ -325,6 +325,11 @@ let handle_reply t now ts proto sender packet reply =
                             | Error `Msg msg ->
                               Log.debug (fun m -> m "couldn't validate DS (for %a): %s"
                                             Domain_name.pp zone msg);
+                              acc
+                            | Error `Extended e ->
+                              Log.debug (fun m -> m "couldn't validate DS (for %a): %a"
+                                            Domain_name.pp zone
+                                            Extended_error.pp e);
                               acc)
                           ds_set Rr_map.Dnskey_set.empty)
                       keys

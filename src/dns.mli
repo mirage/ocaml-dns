@@ -387,7 +387,7 @@ module Dnskey : sig
   (** [int_to_algorithm i] decodes [i] to an [algorithm].
 
       @raise Invalid_argument if [i] does not fit in one octet.
- *)
+  *)
 
   val algorithm_to_int : algorithm -> int
   (** [algorithm_to_int a] encodes [a] to an integer. *)
@@ -821,6 +821,9 @@ module Extended_error : sig
     | `Not_authoritative | `Not_supported | `No_reachable_authority
     | `Network_error | `Invalid_data | `Unknown of int ] *
     string option
+
+  val pp : t Fmt.t
+  (** [pp ppf e] pretty-prints the error. *)
 end
 
 (** Extensions to DNS
@@ -1056,7 +1059,7 @@ module Rr_map : sig
   (** [with_ttl k v ttl] updates [ttl] in [v]. *)
 
   val prep_for_sig : [`raw] Domain_name.t -> Rrsig.t -> 'a key -> 'a ->
-    ([`raw] Domain_name.t * string, [ `Msg of string ]) result
+    ([`raw] Domain_name.t * string, [> `Msg of string ]) result
 
   val canonical_encoded_name : [`raw] Domain_name.t -> string
 
