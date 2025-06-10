@@ -153,24 +153,29 @@ let handle_query ?(retry = 0) t ts awaiting =
     let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec ~dnssec_ok:awaiting.dnssec_ok ~rng:t.rng t.ip_protocol ts awaiting.question in
     let t = { t with cache } in
     match r with
-    | `Query _ when awaiting.retry >= 10 ->
+    | `Queries _ when awaiting.retry >= 10 ->
       Log.warn (fun m -> m "dropping q %a from %a:%d (already sent 10 packets)"
                    pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
       (* TODO reply with error! *)
       `Nothing, t
-    | `Query (zone, (nam, types), ip) ->
-      Log.debug (fun m -> m "have to query (zone %a) %a using ip %a"
-                    Domain_name.pp zone
-                    Fmt.(list ~sep:(any ", ") pp_key)
-                    (List.map (fun t -> (nam, t)) types)
-                    Ipaddr.pp ip);
-      let await = { awaiting with zone } in
-      let r, t =
+    | `Queries [] ->
+      Log.warn (fun m -> m "dropping q %a from %a:%d (queries is empty)"
+                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
+      `Nothing, t
+    | `Queries qs ->
+      let query_one (acc, t) (zone, (nam, types), ip) =
+        Log.debug (fun m -> m "have to query (zone %a) %a using ip %a"
+                      Domain_name.pp zone
+                      Fmt.(list ~sep:(any ", ") pp_key)
+                      (List.map (fun t -> (nam, t)) types)
+                      Ipaddr.pp ip);
+        let await = { awaiting with zone } in
         List.fold_left (fun (acc, t) typ ->
             let r, t = maybe_query t ts await retry ip nam typ in
             Option.fold ~none:acc ~some:(fun a -> a :: acc) r, t)
-          ([], t) types
+          (acc, t) types
       in
+      let r, t = List.fold_left query_one ([], t) qs in
       `Query r, t
     | `Reply (flags, answer, additional) ->
       let time = Int64.sub ts awaiting.ts in

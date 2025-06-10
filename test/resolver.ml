@@ -870,17 +870,21 @@ let handle_query_res =
   let module M = struct
     type t = [
       | `Reply of Packet.Flags.t * Packet.reply * Name_rr_map.t option
-      | `Query of [`raw] Domain_name.t * ([`raw] Domain_name.t * Packet.Question.qtype list) * Ipaddr.t
+      | `Queries of ([`raw] Domain_name.t * ([`raw] Domain_name.t * Packet.Question.qtype list) * Ipaddr.t) list
     ] * Dns_cache.t
     let pp ppf = function
       | `Reply (flags, reply, _additional), _ ->
         Fmt.pf ppf "reply flags %a, %a"
           Fmt.(list ~sep:(any ", ") Packet.Flag.pp_short) (Packet.Flags.elements flags)
           Packet.pp_reply reply
-      | `Query (zone, (qname, qtypes), ip), _ ->
-        Fmt.pf ppf "zone %a, query %a (%a), IP %a"
-          Domain_name.pp zone Domain_name.pp qname
-          Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) qtypes Ipaddr.pp ip
+      | `Queries qs, _ ->
+        let pp_query ppf (zone, (qname, qtypes), ips) =
+          Fmt.pf ppf "zone %a, query %a (%a), IP %a"
+            Domain_name.pp zone Domain_name.pp qname
+            Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) qtypes
+            Ipaddr.pp ips
+        in
+        Fmt.(list ~sep:(any ", ") pp_query) ppf qs
     let equal a b = match fst a, fst b with
       | `Reply (f1, r1, a1), `Reply (f2, r2, a2) ->
         Packet.Flags.equal f1 f2 && Packet.equal_reply r1 r2 &&
@@ -888,10 +892,13 @@ let handle_query_res =
          | None, None -> true
          | Some a, Some b -> Name_rr_map.equal a b
          | None, _ | _, None -> false)
-      | `Query (z1, (q1, t1), ip1), `Query (z2, (q2, t2), ip2) ->
-        Domain_name.equal z1 z2 && Domain_name.equal q1 q2 &&
-        List.for_all2 (fun t1 t2 -> Packet.Question.compare_qtype t1 t2 = 0) t1 t2 &&
-        Ipaddr.compare ip1 ip2 = 0
+      | `Queries a, `Queries b ->
+        let eq_query (z1, (q1, t1), ip1)  (z2, (q2, t2), ip2) =
+          Domain_name.equal z1 z2 && Domain_name.equal q1 q2 &&
+          List.for_all2 (fun t1 t2 -> Packet.Question.compare_qtype t1 t2 = 0) t1 t2 &&
+          Ipaddr.compare ip1 ip2 = 0
+        in
+        List.for_all2 eq_query a b
       | _ -> false
     end in
     (module M: Alcotest.TESTABLE with type t = M.t)
@@ -948,10 +955,10 @@ let handle_query_with_cname_dnssec_bad () =
       (`No_data (name "reynir.dk", invalid_soa (name "reynir.dk")))
   in
   Alcotest.check handle_query_res "..."
-    (`Query (name "reynir.dk", (name "www.reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
+    (`Queries [ name "reynir.dk", (name "www.reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1" ], cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:true ~dnssec_ok:false ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K A)));
   Alcotest.check handle_query_res "..."
-    (`Query (name "reynir.dk", (name "www.reynir.dk", [ `K (Rr_map.K Cname) ]), ip "127.0.0.1"), cache)
+    (`Queries [ name "reynir.dk", (name "www.reynir.dk", [ `K (Rr_map.K Cname) ]), ip "127.0.0.1" ], cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:true ~dnssec_ok:false ~rng `Ipv4_only 0L (name "www.reynir.dk", `K (Rr_map.K Cname)))
 
 let handle_query_with_a () =
@@ -1000,7 +1007,7 @@ let handle_query_with_a () =
     (`Reply (f, `Answer (Domain_name.Map.empty, Name_rr_map.singleton (name "no.reynir.dk") Soa (invalid_soa (name "reynir.dk"))), None), cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "no.reynir.dk", `K (Rr_map.K A)));
   Alcotest.check handle_query_res "..."
-    (`Query (name "reynir.dk", (name "r.reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
+    (`Queries [ name "reynir.dk", (name "r.reynir.dk", [ `K (Rr_map.K A) ]), ip "127.0.0.1" ], cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "cname.reynir.dk", `K (Rr_map.K A)));
   let a = 300l, Ipaddr.V4.Set.singleton (ip4 "127.0.0.1") in
   let cache =
@@ -1058,7 +1065,7 @@ let loop_between_domains () =
     Dns_cache.set cache 0L (name "ns.root") A (AuthoritativeAnswer None) (`Entry a)
   in
   Alcotest.check handle_query_res "..."
-    (`Query (name "", (name "ns.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
+    (`Queries [ name "", (name "ns.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1" ], cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A)))
 
 let missing_glue () =
@@ -1077,7 +1084,7 @@ let missing_glue () =
     Dns_cache.set cache 0L (name "ns1.com") A (AuthoritativeAnswer None) (`Entry a)
   in
   Alcotest.check handle_query_res "..."
-    (`Query (name "com", (name "www.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1"), cache)
+    (`Queries [ name "com", (name "www.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1" ], cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A)))
 
 let loop_cname_1 () =
