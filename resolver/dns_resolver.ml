@@ -33,6 +33,13 @@ type awaiting = {
   dnssec_ok : bool;
 }
 
+let awaiting_eq a b =
+  Ipaddr.compare a.ip b.ip = 0 &&
+  Int.equal a.port b.port &&
+  Domain_name.equal (fst a.question) (fst b.question) &&
+  Packet.Question.compare_qtype (snd a.question) (snd b.question) = 0 &&
+  Int.equal a.id b.id
+
 let retry_interval = Duration.of_ms 500
 
 type t = {
@@ -109,17 +116,17 @@ let build_query ?id ?(recursion_desired = false) ?(checking_disabled = false) ?(
 let maybe_query ?recursion_desired t ts await retry ip name typ =
   let k = (name, typ) in
   let await = { await with retry = succ await.retry } in
-  if QM.mem k t.queried then
-    let t = { t with queried = QM.add k (await :: QM.find k t.queried) t.queried } in
-    None, t
-  else
-    (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
-    let payload_size = if t.dnssec then Some 1220 (* from RFC 4035 4.1 *) else None in
-    let edns = Some (Edns.create ~dnssec_ok:t.dnssec ?payload_size ()) in
-    let t, packet = build_query ?recursion_desired ~checking_disabled:await.checking_disabled ~dnssec_ok:await.dnssec_ok t ts `Udp k retry await.zone edns ip in
-    let t = { t with queried = QM.add k [await] t.queried } in
-    Log.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip pp_key k) ;
-    Some (packet, ip), t
+  (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
+  let payload_size = if t.dnssec then Some 1220 (* from RFC 4035 4.1 *) else None in
+  let edns = Some (Edns.create ~dnssec_ok:t.dnssec ?payload_size ()) in
+  let t, packet = build_query ?recursion_desired ~checking_disabled:await.checking_disabled ~dnssec_ok:await.dnssec_ok t ts `Udp k retry await.zone edns ip in
+  let queried =
+    let q = Option.value ~default:[] (QM.find_opt k t.queried) in
+    if List.exists (awaiting_eq await) q then q else await :: q
+  in
+  let t = { t with queried = QM.add k queried t.queried } in
+  Log.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip pp_key k) ;
+  Some (packet, ip), t
 
 let was_in_transit t key id sender =
   match QM.find key t with
