@@ -40,6 +40,17 @@ let awaiting_eq a b =
   Packet.Question.compare_qtype (snd a.question) (snd b.question) = 0 &&
   Int.equal a.id b.id
 
+module TM = Map.Make(struct
+    type t = key * Ipaddr.t * int * int
+    let compare ((n, t), ip, port, id) ((n', t'), ip', port', id') =
+      let andThen v f = match v with 0 -> f () | x -> x in
+      andThen (Domain_name.compare n n')
+        (fun () -> andThen (Packet.Question.compare_qtype t t')
+            (fun () -> andThen (Ipaddr.compare ip ip')
+                (fun () -> andThen (Int.compare port port')
+                    (fun () -> Int.compare id id'))))
+  end)
+
 let retry_interval = Duration.of_ms 500
 
 type t = {
@@ -48,7 +59,7 @@ type t = {
   rng : int -> string ;
   primary : Dns_server.Primary.s ;
   cache : Dns_cache.t ;
-  transit : awaiting QM.t ;
+  transit : awaiting TM.t ;
   queried : awaiting list QM.t ;
 }
 
@@ -78,7 +89,7 @@ let create ?(cache_size = 10000) ?(ip_protocol = `Both) ?(dnssec = true) now rng
       Domain_name.root Ds Dns_cache.Additional
       (`Entry (Int32.max_int, Dnssec.root_ds))
   in
-  { ip_protocol ; dnssec ; rng ; cache ; primary ; transit = QM.empty ; queried = QM.empty }
+  { ip_protocol ; dnssec ; rng ; cache ; primary ; transit = TM.empty ; queried = QM.empty }
 
 let pick rng = function
   | [] -> None
@@ -104,10 +115,11 @@ let build_query ?id ?(recursion_desired = false) ?(checking_disabled = false) ?(
     id, flags
   in
   let el = { ts; retry; proto; zone; edns; ip; port = 53; question; id; checking_disabled; dnssec_ok } in
+  let key = question, ip, el.port, id in
   let transit =
-    if QM.mem question t.transit then
+    if TM.mem key t.transit then
       Log.warn (fun m -> m "overwriting transit of %a" pp_key question) ;
-    QM.add question el t.transit
+    TM.add key el t.transit
   in
   let packet = Packet.create ?edns header (question :> Packet.Question.t) `Query in
   let cs, _ = Packet.encode proto packet in
@@ -128,15 +140,16 @@ let maybe_query ?recursion_desired t ts await retry ip name typ =
   Log.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip pp_key k) ;
   Some (packet, ip), t
 
-let was_in_transit t key id sender =
-  match QM.find key t with
+let was_in_transit t key id sender sport =
+  let tm_key = key, sender, sport, id in
+  match TM.find tm_key t with
   | exception Not_found ->
     Log.warn (fun m -> m "key %a not present in set (likely retransmitted)"
                   pp_key key);
     None, t
   | awaiting ->
     if Ipaddr.compare sender awaiting.ip = 0 && id = awaiting.id then
-      Some (awaiting.zone, awaiting.edns), QM.remove key t
+      Some (awaiting.zone, awaiting.edns), TM.remove tm_key t
     else
       (Log.warn (fun m -> m "unsolicited reply for %a (id %04X vs o_id %04X, sender %a vs o_sender %a)"
                     pp_key key id awaiting.id Ipaddr.pp sender Ipaddr.pp awaiting.ip);
@@ -301,7 +314,7 @@ let resolve t ts proto sender sport req =
     let buf, _ = Packet.encode proto pkt in
     t, [ proto, sender, sport, 0l, buf ], []
 
-let handle_reply t now ts proto sender packet reply =
+let handle_reply t now ts proto sender sport packet reply =
   match reply, Packet.Question.qtype packet.Packet.question with
   | `Answer _, Some qtype
   | `Rcode_error (Rcode.NXDomain, Opcode.Query, _), Some qtype
@@ -310,7 +323,7 @@ let handle_reply t now ts proto sender packet reply =
       Log.debug (fun m -> m "handling reply to %a" Packet.Question.pp packet.question);
       (* (a) first check whether frame was in transit! *)
       let key = fst packet.question, qtype in
-      let r, transit = was_in_transit t.transit key (fst packet.header) sender in
+      let r, transit = was_in_transit t.transit key (fst packet.header) sender sport in
       let t = { t with transit } in
       match r with
       | None -> Ok (t, [], [])
@@ -503,7 +516,7 @@ let handle_buf t now ts query proto sender sport buf =
     match res.Packet.data with
     | #Packet.reply as reply ->
       begin
-        match handle_reply t now ts proto sender res reply with
+        match handle_reply t now ts proto sender sport res reply with
         | Ok a ->
           Log.debug (fun m -> m "handled reply %a:%d"
                         Ipaddr.pp sender sport) ;
@@ -570,7 +583,8 @@ let query_root t now proto =
   let el =
     { ts = now; retry = 0; proto; zone = Domain_name.root; edns; ip; port = 53; question; id; checking_disabled; dnssec_ok }
   in
-  let t = { t with transit = QM.add question el t.transit } in
+  let key = question, ip, el.port, id in
+  let t = { t with transit = TM.add key el t.transit } in
   let packet = Packet.create ?edns (id, Packet.Flags.empty) question `Query in
   let cs, _ = Packet.encode proto packet in
   t, (proto, ip, cs)
@@ -591,15 +605,15 @@ let err_retries t question =
 
 let timer t ts =
   let transit, rem =
-    QM.partition
+    TM.partition
       (fun _ awaiting -> Int64.sub ts awaiting.ts < retry_interval)
       t.transit
   in
   let t = { t with transit } in
-  if not (QM.is_empty transit && QM.is_empty rem) then
+  if not (TM.is_empty transit && TM.is_empty rem) then
     Log.debug (fun m -> m "try_other timer wheel -- keeping %d, running over %d"
-                   (QM.cardinal transit) (QM.cardinal rem)) ;
-  QM.fold (fun (name, typ) awaiting (t, out_a, out_q) ->
+                   (TM.cardinal transit) (TM.cardinal rem)) ;
+  TM.fold (fun ((name, typ), _ip, _port, _id) awaiting (t, out_a, out_q) ->
       let retry = succ awaiting.retry in
       if retry < max_retries then begin
         let t, outa, outq = handle_awaiting_queries ~retry t ts (name, typ) in
