@@ -15,11 +15,6 @@ let pp_km_name_rr_map ppf rrs =
 
 let guard a e = if a then Ok () else Error e
 
-let open_err : ('a, [ `Msg of string ]) result ->
-  ('a, [> `Msg of string ]) result = function
-  | Ok _ as a -> a
-  | Error (`Msg _) as b -> b
-
 let root_ds =
   (* <KeyDigest id="Klajeyz" validFrom="2017-02-02T00:00:00+00:00">
   <KeyTag>20326</KeyTag>
@@ -84,10 +79,11 @@ let digest algorithm owner dnskey =
   | Ds.SHA256 -> digest Digestif.SHA256
   | Ds.SHA384 -> digest Digestif.SHA384
   | dt ->
-    Error (`Msg (Fmt.str "Unsupported hash algorithm %a"
-                   Ds.pp_digest_type dt))
+    Error (`Extended (`Unsupported_Ds_digest,
+                      Some (Fmt.str "DS %a: unkown digest type: %a"
+                              Domain_name.pp owner Ds.pp_digest_type dt)))
 
-let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
+let dnskey_to_pk req_dom { Dnskey.algorithm ; key ; _ } =
   let map_ec_err r =
     Result.map_error (fun e -> `Msg (Fmt.to_to_string Mirage_crypto_ec.pp_error e)) r
   in
@@ -117,11 +113,13 @@ let dnskey_to_pk { Dnskey.algorithm ; key ; _ } =
     let* pub = map_ec_err (Mirage_crypto_ec.Ed25519.pub_of_octets key) in
     Ok (`ED25519 pub)
   | MD5 | SHA1 | SHA224 | SHA256 | SHA384 | SHA512 | Unknown _ ->
-    Error (`Msg (Fmt.str "unsupported key algorithm %a" Dnskey.pp_algorithm algorithm))
+    Error (`Extended (`Unsupported_Dnskey_algorithm,
+                      Some (Fmt.str "%a DNSKEY unsupported algorithm: %a"
+                              Domain_name.pp req_dom Dnskey.pp_algorithm algorithm)))
 
 let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
   a Rr_map.key -> a ->
-  ([`raw] Domain_name.t * [`raw] Domain_name.t, [ `Msg of string ]) result =
+  ([`raw] Domain_name.t * [`raw] Domain_name.t, [> `Msg of string | `Extended of Extended_error.t ]) result =
   fun now key name rrsig t v ->
   (* from RFC 4034 section 3.1.8.1 *)
   Log.debug (fun m -> m "verifying for %a (with %a / %a)" Domain_name.pp name
@@ -136,8 +134,12 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
     | Dnskey.P256_SHA256 -> Ok `SHA256
     | Dnskey.P384_SHA384 -> Ok `SHA384
     | Dnskey.ED25519 -> Ok `SHA512
-    | a -> Error (`Msg (Fmt.str "unsupported signature algorithm %a"
-                          Dnskey.pp_algorithm a)) in
+    | a ->
+      let msg =
+        Fmt.str "unsupported signature algorithm %a" Dnskey.pp_algorithm a
+      in
+      Error (`Extended (`Other, Some msg))
+  in
   let digest data =
     match rrsig.Rrsig.algorithm with
     | Dnskey.RSA_SHA1 -> Digestif.SHA1.(digest_string data |> to_raw_string)
@@ -151,11 +153,11 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
   in
   let* () =
     guard (Ptime.is_later ~than:now rrsig.Rrsig.signature_expiration)
-      (`Msg "signature timestamp expired")
+      (`Extended (`Signature_expired, None))
   in
   let* () =
     guard (Ptime.is_later ~than:rrsig.Rrsig.signature_inception now)
-      (`Msg "signature not yet incepted")
+      (`Extended (`Signature_not_yet_valid, None))
   in
   let* (used_name, data) = Rr_map.prep_for_sig name rrsig t v in
   let hashed () = digest data in
@@ -235,8 +237,8 @@ let validate_rrsig_keys now dnskeys rrsigs requested_domain t v =
   in
   Log.debug (fun m -> m "found %d key-rrsig pairs" (List.length keys_rrsigs));
   let verify_signature (key, rrsig) =
-    let* pkey = dnskey_to_pk key in
-    open_err (verify now pkey requested_domain rrsig t v)
+    let* pkey = dnskey_to_pk requested_domain key in
+    verify now pkey requested_domain rrsig t v
   in
   match List.partition Result.is_ok (List.map verify_signature keys_rrsigs) with
   | r :: _, _ -> r
@@ -817,7 +819,13 @@ let check_signatures now dnskeys map =
             | Error `Msg msg ->
               Log.warn (fun m -> m "RRSIG verification for %a %a failed: %s"
                            Domain_name.pp name Rr_map.pp_b b msg);
-              acc) rr_map (signer_name, (Rr_map.empty, KM.empty))
+              acc
+            | Error `Extended e ->
+              Log.warn (fun m -> m "RRSIG verification for %a %a failed: %a"
+                           Domain_name.pp name Rr_map.pp_b b
+                           Extended_error.pp e);
+              acc)
+          rr_map (signer_name, (Rr_map.empty, KM.empty))
       in
       signer_name,
       if Rr_map.is_empty (fst rrs) then
