@@ -452,8 +452,8 @@ let handle_query t ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
     in
     let actions = resolve t ~dnssec ip_proto ts name' qtype in
     let up_to_three = pick_n rng 3 actions in
-    let ip1 = 4 - List.length actions in
-    let ip2 = max 1 (3 - List.length actions) in
+    let ip1 = 4 - List.length up_to_three in
+    let ip2 = max 1 (3 - List.length up_to_three) in
     let _i, queries, t' =
       List.fold_left (fun (i, acc, _t) (zone, name'', types, ips, t) ->
           let name'' = recover name'' in
