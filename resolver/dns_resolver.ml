@@ -125,7 +125,7 @@ let build_query ?id ?(recursion_desired = false) ?(checking_disabled = false) ?(
   let cs, _ = Packet.encode proto packet in
   { t with transit }, cs
 
-let maybe_query ?recursion_desired t ts await retry ip name typ =
+let query ?recursion_desired t ts await retry ip name typ =
   let k = (name, typ) in
   let await = { await with retry = succ await.retry } in
   (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
@@ -137,8 +137,8 @@ let maybe_query ?recursion_desired t ts await retry ip name typ =
     if List.exists (awaiting_eq await) q then q else await :: q
   in
   let t = { t with queried = QM.add k queried t.queried } in
-  Log.debug (fun m -> m "maybe_query: query %a %a" Ipaddr.pp ip pp_key k) ;
-  Some (packet, ip), t
+  Log.debug (fun m -> m "query: query %a %a" Ipaddr.pp ip pp_key k) ;
+  (packet, ip), t
 
 let was_in_transit t key id sender sport =
   let tm_key = key, sender, sport, id in
@@ -191,8 +191,8 @@ let handle_query ?(retry = 0) t ts awaiting =
                       Ipaddr.pp ip);
         let await = { awaiting with zone } in
         List.fold_left (fun (acc, t) typ ->
-            let r, t = maybe_query t ts await retry ip nam typ in
-            Option.fold ~none:acc ~some:(fun a -> a :: acc) r, t)
+            let r, t = query t ts await retry ip nam typ in
+            r :: acc, t)
           (acc, t) types
       in
       let r, t = List.fold_left query_one ([], t) qs in
@@ -468,13 +468,8 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
             and dnssec_ok = match req.edns with None -> false | Some edns -> edns.Edns.dnssec_ok
             in
             let await = { ts; retry = 0; proto; zone = Domain_name.root; edns = req.edns; ip = sender; port = sport; question = (fst req.question, qtype); id = fst req.header; checking_disabled; dnssec_ok } in
-            begin match maybe_query ~recursion_desired:true t ts await 0 ip name qtype with
-              | None, t ->
-                Log.warn (fun m -> m "maybe_query for %a at %a returned nothing"
-                              Domain_name.pp name Ipaddr.pp ip) ;
-                t, [], []
-              | Some (cs, ip), t -> t, [], [ `Udp, ip, cs ]
-            end
+            let (cs, ip), t = query ~recursion_desired:true t ts await 0 ip name qtype in
+            t, [], [ `Udp, ip, cs ]
         end
       | `Packet (flags, reply, additional) ->
         let max_size, edns = Edns.reply req.edns in
@@ -494,7 +489,7 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
     in
     t, [ proto, sender, sport, 0l, fst (Packet.encode proto pkt) ], []
 
-let handle_buf t now ts query proto sender sport buf =
+let handle_buf t now ts query_allowed proto sender sport buf =
   match Packet.decode buf with
 (*  | Error (`Bad_edns_version v) ->
     Log.err (fun m -> m "bad edns version (from %a:%d) %u for@.%a"
@@ -523,7 +518,7 @@ let handle_buf t now ts query proto sender sport buf =
           a
         | Error () -> t, [], []
       end
-    | #Packet.request as req when query ->
+    | #Packet.request as req when query_allowed ->
       begin
         match handle_primary t.primary now ts proto sender sport res req buf with
         | `Reply (primary, ttl, pkt) ->
@@ -538,7 +533,7 @@ let handle_buf t now ts query proto sender sport buf =
           resolve t ts proto sender sport res
       end
     | _ ->
-      Log.err (fun m -> m "ignoring unsolicited packet (query allowed? %b) %a" query Packet.pp res);
+      Log.err (fun m -> m "ignoring unsolicited packet (query allowed? %b) %a" query_allowed Packet.pp res);
       t, [], []
 
 let query_root t now proto =
