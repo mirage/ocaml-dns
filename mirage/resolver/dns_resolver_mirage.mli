@@ -15,4 +15,6 @@ module Make (S : Tcpip.Stack.V4V6) : sig
   val resolve_external : t -> Ipaddr.t * int -> string -> (int32 * string) Lwt.t
   (** [resolve_external t (ip, port) data] resolves for [(ip, port)] the query
       [data] and returns a pair of the minimum TTL and a response. *)
+
+  val stats : t -> Dns_resolver.stats
 end
