@@ -234,14 +234,13 @@ let resolve t ~dnssec ip_proto ts name typ =
       else
         t
     in
-    List.flatten
-      (List.map (function
-           | `NeedAddress (zone, ns) -> go t (N.add zone visited) addresses zone ns
-           | `NeedDnskey (zone, ip) -> [ zone, zone, [`K (Rr_map.K Dnskey)], ip, t ]
-           | `NeedDs (zone, ips) -> [ zone, zone, [`K (Rr_map.K Ds)], ips, t ]
-           | `HaveIPs (zone, ips) -> [ zone, name, types, ips, t ]
-           | `NeedSignedNs (domain, ips) -> [ domain, domain, [ `K (Rr_map.K Ns) ], ips, t ])
-          (find_nearest_ns ip_proto dnssec ts t (Domain_name.raw name)))
+    List.concat_map (function
+        | `NeedAddress (zone, ns) -> go t (N.add zone visited) addresses zone ns
+        | `NeedDnskey (zone, ip) -> [ zone, zone, [`K (Rr_map.K Dnskey)], ip, t ]
+        | `NeedDs (zone, ips) -> [ zone, zone, [`K (Rr_map.K Ds)], ips, t ]
+        | `HaveIPs (zone, ips) -> [ zone, name, types, ips, t ]
+        | `NeedSignedNs (domain, ips) -> [ domain, domain, [ `K (Rr_map.K Ns) ], ips, t ])
+      (find_nearest_ns ip_proto dnssec ts t (Domain_name.raw name))
   in
   go t N.empty [typ] Domain_name.root name
 
