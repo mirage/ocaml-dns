@@ -16,7 +16,16 @@ let main () =
     Dns_resolver.create ~dnssec:true ~ip_protocol:`Ipv4_only
       (Mirage_mtime.elapsed_ns ()) Mirage_crypto_rng.generate primary_t
   in
-  let _fn = Resolver.resolver ~port:53530 stack resolver in
+  let resolver = Resolver.resolver ~port:53530 stack resolver in
+  let _ : Sys.signal_behavior =
+    Sys.signal Sys.sigint
+      (Signal_handle
+         (fun _ ->
+            let stats = Resolver.stats resolver in
+            Fmt.pr "Queries %u@ Errors %u@ Clients %u@ Blocked %u\n%!"
+              stats.queries stats.errors (Ipaddr.Set.cardinal stats.clients) stats.blocked;
+            exit 0))
+  in
   Tcpip_stack_socket.V4V6.listen stack >|= fun () ->
   Ok ()
 
