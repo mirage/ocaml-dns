@@ -85,12 +85,7 @@ let upwards_ds_nonexisting t ts name =
   in
   go name
 
-let find_nearest_ns rng ip_proto dnssec ts t name =
-  let pick = function
-    | [] -> None
-    | [ x ] -> Some x
-    | xs -> Some (List.nth xs (Randomconv.int ~bound:(List.length xs) rng))
-  in
+let find_nearest_ns ip_proto dnssec ts t name =
   let find_ns name = match snd (Dns_cache.get t ts name Ns) with
     | Ok (`Entry (_, names), r) -> Domain_name.Host_set.elements names, is_signed r
     | _ -> [], None
@@ -133,36 +128,31 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
     | `Ipv4_only -> ip4s
     | `Ipv6_only -> ip6s
   in
-  let have_ip_or_dnskey name ip =
+  let have_ips_or_dnskey name ips =
     if dnssec && not (find_dnskey name) && have_ds name then
       if dnskey_nonexisting name then (
         (* this is tricky, and likely bad - we have a DS but no DNSKEY *)
         Log.warn (fun m -> m "DS present for %a, but nonexisting DNSKEY (NSEC/NSEC3)"
                      Domain_name.pp name);
-        `HaveIP (name, ip))
+        `HaveIPs (name, ips))
       else
         (* if dnssec is enabled, and have a DS record, and we don't have a dnskey,
            request it -- avoiding loops by only asking for dnskey if there's DS *)
-        `NeedDnskey (name, ip)
+        `NeedDnskey (name, ips)
     else
-      `HaveIP (name, ip)
-  in
-  let or_root f nam =
-    if Domain_name.(equal root nam) then
-      match pick (Dns_resolver_root.ips ip_proto) with
-      | None -> assert false
-      | Some ip -> have_ip_or_dnskey nam ip
-    else
-      f (Domain_name.drop_label_exn nam)
+      `HaveIPs (name, ips)
   in
   let rec go nam =
     (* Log.warn (fun m -> m "go %a" Domain_name.pp nam); *)
     let ns, signed_ns = find_ns nam in
-    match pick ns with
-    | None ->
+    match ns with
+    | [] ->
       (* Log.warn (fun m -> m "go no NS for %a" Domain_name.pp nam); *)
-      or_root go nam
-    | Some _ when dnssec && need_to_query_for_ds nam ->
+      if Domain_name.(equal root nam) then
+        [ have_ips_or_dnskey nam (Dns_resolver_root.ips ip_proto) ]
+      else
+        go (Domain_name.drop_label_exn nam)
+    | _ when dnssec && need_to_query_for_ds nam ->
       (* dnssec enabled, and no DS (and no nonexistance proof for DS) ->
          query for DS (which is always provided by the domain above:
          "." has it for ".coop" / ".com" for "example/com"
@@ -170,44 +160,53 @@ let find_nearest_ns rng ip_proto dnssec ts t name =
             on (and run into the case below)
       *)
       (* Log.info (fun m -> m "need to query for DS %a" Domain_name.pp nam); *)
-      (match or_root go nam with
-       | `HaveIP (_name, ip) -> `NeedDs (nam, ip)
+      List.map (function
+       | `HaveIPs (_name, ips) -> `NeedDs (nam, ips)
        | `NeedDnskey _ | `NeedAddress _ | `NeedDs _
        | `NeedSignedNs _ as r -> r)
-    | Some ns ->
-      let host = Domain_name.raw ns in
-      match pick (find_address host) with
-      | None ->
-        (* Log.info (fun m -> m "go no address for NS %a (for %a)"
+        (if Domain_name.(equal root nam) then
+           [ have_ips_or_dnskey name (Dns_resolver_root.ips ip_proto) ]
+         else
+           go (Domain_name.drop_label_exn nam))
+    | name_servers ->
+      List.fold_left (fun acc ns ->
+          let host = Domain_name.raw ns in
+          match find_address host with
+          | [] ->
+            (* Log.info (fun m -> m "go no address for NS %a (for %a)"
                      Domain_name.pp host
                      Domain_name.pp nam); *)
-        if Domain_name.is_subdomain ~subdomain:ns ~domain:nam then
-          (* we actually need glue *)
-          or_root go nam
-        else
-          `NeedAddress (nam, host)
-      | Some ip ->
-        (* Log.info (fun m -> m "go address for NS %a (for %a): %a (dnssec %B signed_ns %B have_ds %B find_dnskey %B)"
+            if Domain_name.is_subdomain ~subdomain:ns ~domain:nam then
+              (* we actually need glue *)
+              if Domain_name.(equal root nam) then
+                have_ips_or_dnskey nam (Dns_resolver_root.ips ip_proto) :: acc
+              else
+                (go (Domain_name.drop_label_exn nam)) @ acc
+            else
+              `NeedAddress (nam, host) :: acc
+          | ips ->
+            (* Log.info (fun m -> m "go address for NS %a (for %a): %a (dnssec %B signed_ns %B have_ds %B find_dnskey %B)"
                      Domain_name.pp host
                      Domain_name.pp nam
                      Ipaddr.pp ip
                      dnssec (Option.is_some signed_ns) (have_ds nam)
                      (find_dnskey nam)); *)
-        if dnssec && Option.is_none signed_ns && have_ds nam then
-          if find_dnskey nam then
-            `NeedSignedNs (nam, ip)
-          else if dnskey_nonexisting nam then (
-            (* Log.warn (fun m -> m "DS present for %a, but NSEC/NSEC3 for DNSKEY"
+            if dnssec && Option.is_none signed_ns && have_ds nam then
+              if find_dnskey nam then
+                `NeedSignedNs (nam, ips) :: acc
+              else if dnskey_nonexisting nam then (
+                (* Log.warn (fun m -> m "DS present for %a, but NSEC/NSEC3 for DNSKEY"
                          Domain_name.pp nam); *)
-            have_ip_or_dnskey nam ip)
-          else
-            `NeedDnskey (nam, ip)
-        else
-          have_ip_or_dnskey nam ip
+                have_ips_or_dnskey nam ips :: acc)
+              else
+                `NeedDnskey (nam, ips) :: acc
+            else
+              have_ips_or_dnskey nam ips :: acc)
+        [] name_servers
   in
   go name
 
-let resolve t ~dnssec ~rng ip_proto ts name typ =
+let resolve t ~dnssec ip_proto ts name typ =
   (* the standard recursive algorithm *)
   let addresses = match ip_proto with
     | `Both -> [`K (Rr_map.K A); `K (Rr_map.K Aaaa)]
@@ -235,12 +234,13 @@ let resolve t ~dnssec ~rng ip_proto ts name typ =
       else
         t
     in
-    match find_nearest_ns rng ip_proto dnssec ts t (Domain_name.raw name) with
-    | `NeedAddress (zone, ns) -> go t (N.add zone visited) addresses zone ns
-    | `NeedDnskey (zone, ip) -> zone, zone, [`K (Rr_map.K Dnskey)], ip, t
-    | `NeedDs (zone, ip) -> zone, zone, [`K (Rr_map.K Ds)], ip, t
-    | `HaveIP (zone, ip) -> zone, name, types, ip, t
-    | `NeedSignedNs (domain, ip) -> domain, domain, [ `K (Rr_map.K Ns) ], ip, t
+    List.concat_map (function
+        | `NeedAddress (zone, ns) -> go t (N.add zone visited) addresses zone ns
+        | `NeedDnskey (zone, ips) -> [ zone, zone, [`K (Rr_map.K Dnskey)], ips, t ]
+        | `NeedDs (zone, ips) -> [ zone, zone, [`K (Rr_map.K Ds)], ips, t ]
+        | `HaveIPs (zone, ips) -> [ zone, name, types, ips, t ]
+        | `NeedSignedNs (domain, ips) -> [ domain, domain, [ `K (Rr_map.K Ns) ], ips, t ])
+      (find_nearest_ns ip_proto dnssec ts t (Domain_name.raw name))
   in
   go t N.empty [typ] Domain_name.root name
 
@@ -418,6 +418,22 @@ let answer ~dnssec ~dnssec_ok t ts name (typ : Packet.Question.qtype) =
          let data = Name_rr_map.singleton name ty v in
          `Packet (packet t true (Some ty) Rcode.NoError ~ttl ~rrsig:(is_signed r) data Domain_name.Map.empty), t)
 
+let pick_n rng n xs =
+  let l = List.length xs in
+  if n >= l then
+    xs
+  else
+    let rec pick amount bound =
+      if amount = 0 then
+        []
+      else
+        let e = Randomconv.int ~bound rng in
+        let ips'' = pick (amount - 1) (bound - 1) in
+        e :: List.map (fun idx -> if idx < e then idx else succ idx) ips''
+    in
+    let idx = pick n l in
+    List.map (List.nth xs) idx
+
 let handle_query t ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
   match answer ~dnssec ~dnssec_ok t ts qname qtype with
   | `Packet (flags, data, additional), t ->
@@ -433,11 +449,24 @@ let handle_query t ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
       else
         name, Fun.id
     in
-    let zone, name'', types, ip, t = resolve t ~dnssec ~rng ip_proto ts name' qtype in
-    let name'' = recover name'' in
-    Log.debug (fun m -> m "handle_query %a (%a) query %a, resolve zone %a query %a (%a), ip %a"
-                  Domain_name.pp qname Packet.Question.pp_qtype qtype
-                  Domain_name.pp name Domain_name.pp zone Domain_name.pp name''
-                  Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) types
-                  Ipaddr.pp ip);
-    `Query (zone, (name'', types), ip), t
+    let actions = resolve t ~dnssec ip_proto ts name' qtype in
+    let up_to_three = pick_n rng 3 actions in
+    let ip1 = 4 - List.length up_to_three in
+    let ip2 = max 1 (3 - List.length up_to_three) in
+    let _i, queries, t' =
+      List.fold_left (fun (i, acc, _t) (zone, name'', types, ips, t) ->
+          let name'' = recover name'' in
+          let number_of_ips = if i = 0 then ip1 else ip2 in
+          let ips = pick_n rng number_of_ips ips in
+          Log.debug (fun m -> m "handle_query %a (%a) query %a, resolve zone %a query %a (%a), ips %a"
+                        Domain_name.pp qname Packet.Question.pp_qtype qtype
+                        Domain_name.pp name Domain_name.pp zone Domain_name.pp name''
+                        Fmt.(list ~sep:(any ", ") Packet.Question.pp_qtype) types
+                        Fmt.(list ~sep:(any ", ") Ipaddr.pp) ips);
+          let actions =
+            List.map (fun ip -> (zone, (name'', types), ip)) ips
+          in
+          succ i, acc @ actions, Some t)
+        (0, [], None) up_to_three
+    in
+    `Queries queries, Option.value ~default:t t'
