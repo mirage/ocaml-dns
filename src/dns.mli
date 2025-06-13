@@ -1460,5 +1460,4 @@ end
 
 (**/**)
 val counter_metrics : f:('a -> string) ->
-  ?static:(unit -> Metrics.field list) ->
   string -> (Metrics.field list, 'a -> Metrics.Data.t) Metrics.src

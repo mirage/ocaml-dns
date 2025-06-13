@@ -5919,10 +5919,9 @@ let create ~f =
   (fun () ->
      Hashtbl.fold (fun key value acc -> Metrics.uint key value :: acc) data [])
 
-let counter_metrics ~f ?static name =
+let counter_metrics ~f name =
   let open Metrics in
   let doc = "Counter metrics" in
   let incr, get = create ~f in
-  let static = Option.value ~default:(fun () -> []) static in
-  let data thing = incr thing; Data.v (static () @ get ()) in
+  let data thing = incr thing; Data.v (get ()) in
   Src.v ~doc ~tags:Metrics.Tags.[] ~data name
