@@ -3,15 +3,6 @@
 type t
 (** The type of a DNS resolver. *)
 
-type stats = {
-  mutable queries : int ;
-  mutable errors : int ;
-  mutable clients : Ipaddr.Set.t ;
-  mutable blocked : int ;
-}
-
-val stats : t -> stats
-
 val create : ?cache_size:int ->
   ?ip_protocol:[ `Both | `Ipv4_only | `Ipv6_only ] ->
   ?dnssec:bool ->
