@@ -2,6 +2,16 @@
 
 open Dns
 
+let resolver_stats =
+  let f = function
+    | `Error -> "error"
+    | `Queries -> "queries"
+    | `Blocked -> "blocked"
+    | `Clients -> "clients"
+  in
+  let src = Dns.counter_metrics ~f "dns-resolver" in
+  (fun r -> Metrics.add src (fun x -> x) (fun d -> d r))
+
 type key = [ `raw ] Domain_name.t * Packet.Question.qtype
 
 let pp_key = Dns_resolver_cache.pp_question
@@ -61,9 +71,11 @@ type t = {
   cache : Dns_cache.t ;
   transit : awaiting TM.t ;
   queried : awaiting list QM.t ;
+  mutable clients : Ipaddr.Set.t ;
+  record_clients : bool ;
 }
 
-let create ?(cache_size = 10000) ?(ip_protocol = `Both) ?(dnssec = true) now rng primary =
+let create ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both) ?(dnssec = true) now rng primary =
   let cache = Dns_cache.empty cache_size in
   let cache =
     List.fold_left (fun cache (name, b) ->
@@ -89,7 +101,8 @@ let create ?(cache_size = 10000) ?(ip_protocol = `Both) ?(dnssec = true) now rng
       Domain_name.root Ds Dns_cache.Additional
       (`Entry (Int32.max_int, Dnssec.root_ds))
   in
-  { ip_protocol ; dnssec ; rng ; cache ; primary ; transit = TM.empty ; queried = QM.empty }
+  { ip_protocol ; dnssec ; rng ; cache ; primary ; transit = TM.empty ; queried = QM.empty ;
+    clients = Ipaddr.Set.empty ; record_clients }
 
 let pick rng = function
   | [] -> None
@@ -497,6 +510,7 @@ let handle_buf t now ts query_allowed proto sender sport buf =
                  v Cstruct.hexdump_pp buf) ;
     t, handle_error ~error:Dns_enum.BadVersOrSig proto sender sport buf, [] *)
   | Error e ->
+    resolver_stats `Error;
     Log.err (fun m -> m "decode error (from %a:%d) %a for@.%a"
                  Ipaddr.pp sender sport
                  Packet.pp_err e Ohex.pp buf) ;
@@ -519,6 +533,12 @@ let handle_buf t now ts query_allowed proto sender sport buf =
         | Error () -> t, [], []
       end
     | #Packet.request as req when query_allowed ->
+      resolver_stats `Queries;
+      if t.record_clients then
+        if not (Ipaddr.Set.mem sender t.clients) then begin
+          t.clients <- Ipaddr.Set.add sender t.clients;
+          resolver_stats `Clients
+        end;
       begin
         match handle_primary t.primary now ts proto sender sport res req buf with
         | `Reply (primary, ttl, pkt) ->
