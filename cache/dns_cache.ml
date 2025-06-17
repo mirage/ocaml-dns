@@ -133,15 +133,14 @@ let metrics =
   let incr, get = create_counter ~f in
   let data (cache, thing) =
     incr thing;
-    Metrics.Data.v (
-     Metrics.uint "size" (LRU.size cache) ::
-     Metrics.uint "weight" (LRU.weight cache) ::
-     Metrics.uint "capacity" (LRU.capacity cache) ::
-     get ())
+    Metrics.Data.v
+      (Metrics.uint "size" (LRU.size cache) ::
+       Metrics.uint "weight" (LRU.weight cache) ::
+       Metrics.uint "capacity" (LRU.capacity cache) ::
+       get ())
   in
   let src = Metrics.Src.v ~tags:Metrics.Tags.[] ~data "dns-cache" in
-  (fun cache r ->
-    Metrics.add src (fun x -> x) (fun d -> d (cache, r)))
+  (fun cache r -> Metrics.add src (fun x -> x) (fun d -> d (cache, r)))
 
 let empty = LRU.empty
 
