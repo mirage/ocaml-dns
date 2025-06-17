@@ -13,10 +13,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   module TLS = Tls_mirage.Make(T)
 
-  type t = Dns_resolver.t ref * ((Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit)
-
-  let stats (t, _) =
-    Dns_resolver.stats !t
+  type t = (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit
 
   type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
 
@@ -37,7 +34,6 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     let ocaml_in = ref FM.empty in
     let tcp_out = ref Ipaddr.Map.empty in
     let stream, push = Lwt_stream.create () in
-    let t = state, push in
 
     let send_tls flow data =
       let len = Cstruct.create 2 in
@@ -278,9 +274,9 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         root ()
       in
       Lwt.async root end ;
-    t
+    push
 
-  let resolve_external (_, push) (dst_ip, dst_port) data =
+  let resolve_external push (dst_ip, dst_port) data =
       let th, wk = Lwt.wait () in
       push (Some (dst_ip, dst_port, data, wk));
       th
