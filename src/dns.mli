@@ -1459,5 +1459,6 @@ module Tsig_op : sig
 end
 
 (**/**)
+val create_counter : f:('a -> string) -> ('a -> unit) * (unit -> Metrics.field list)
 val counter_metrics : f:('a -> string) ->
   string -> (Metrics.field list, 'a -> Metrics.Data.t) Metrics.src

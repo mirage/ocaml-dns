@@ -34,6 +34,7 @@ depends: [
   "ipaddr" {>= "4.0.0"}
   "lwt" {>= "4.0.0"}
   "randomconv" {>= "0.2.0"}
+  "metrics" {>= "0.2.0"}
   "alcotest" {with-test}
 ]
 

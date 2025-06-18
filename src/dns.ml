@@ -5910,7 +5910,7 @@ module Tsig_op = struct
   let no_sign ?mac:_ ?max_size:_ _ _ ~key:_ _ _ = None
 end
 
-let create ~f =
+let create_counter ~f =
   let data : (string, int) Hashtbl.t = Hashtbl.create 7 in
   (fun x ->
      let key = f x in
@@ -5922,6 +5922,6 @@ let create ~f =
 let counter_metrics ~f name =
   let open Metrics in
   let doc = "Counter metrics" in
-  let incr, get = create ~f in
+  let incr, get = create_counter ~f in
   let data thing = incr thing; Data.v (get ()) in
   Src.v ~doc ~tags:Metrics.Tags.[] ~data name

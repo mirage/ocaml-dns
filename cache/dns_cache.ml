@@ -130,8 +130,17 @@ let metrics =
     | `Drop -> "drops"
     | `Insert -> "insertions"
   in
-  let src = Dns.counter_metrics ~f "dns-cache" in
-  (fun r -> Metrics.add src (fun x -> x) (fun d -> d r))
+  let incr, get = create_counter ~f in
+  let data (cache, thing) =
+    incr thing;
+    Metrics.Data.v
+      (Metrics.uint "size" (LRU.size cache) ::
+       Metrics.uint "weight" (LRU.weight cache) ::
+       Metrics.uint "capacity" (LRU.capacity cache) ::
+       get ())
+  in
+  let src = Metrics.Src.v ~tags:Metrics.Tags.[] ~data "dns-cache" in
+  (fun cache r -> Metrics.add src (fun x -> x) (fun d -> d (cache, r)))
 
 let empty = LRU.empty
 
@@ -196,13 +205,13 @@ let update_ttl typ entry ~created ~now =
   if updated_ttl < 0l then Error `Cache_drop else Ok (with_ttl typ updated_ttl entry)
 
 let get cache ts name query_type =
-  metrics `Lookup;
+  metrics cache `Lookup;
   match snd (find cache name query_type) with
-  | Error e -> metrics `Miss; cache, Error e
+  | Error e -> metrics cache `Miss; cache, Error e
   | Ok ((created, rank), entry) ->
     match update_ttl query_type entry ~created ~now:ts with
-    | Ok entry' -> metrics `Hit; LRU.promote name cache, Ok (entry', rank)
-    | Error e -> metrics `Drop; cache, Error e
+    | Ok entry' -> metrics cache `Hit; LRU.promote name cache, Ok (entry', rank)
+    | Error e -> metrics cache `Drop; cache, Error e
 
 let find_any cache name =
   match LRU.find name cache with
@@ -211,9 +220,9 @@ let find_any cache name =
   | Some Rr_map rrs -> Ok (`Entries rrs)
 
 let get_any cache ts name =
-  metrics `Lookup;
+  metrics cache `Lookup;
   match find_any cache name with
-  | Error e -> metrics `Miss; cache, Error e
+  | Error e -> metrics cache `Miss; cache, Error e
   | Ok r ->
     let ttl created curr =
       let ttl = compute_updated_ttl ~created ~now:ts curr in
@@ -223,9 +232,9 @@ let get_any cache ts name =
     match r with
     | `No_domain ((created, rank), name, soa) ->
       begin match ttl created soa.Soa.minimum with
-        | Error _ as e -> metrics `Drop; e
+        | Error _ as e -> metrics cache `Drop; e
         | Ok minimum ->
-          metrics `Hit;
+          metrics cache `Hit;
           Ok (`No_domain (name, { soa with Soa.minimum }), rank)
       end
     | `Entries rrs ->
@@ -242,20 +251,20 @@ let get_any cache ts name =
             | _ -> acc, r) rrs (Rr_map.empty, Additional)
       in
       match Rr_map.is_empty rrs with
-      | true -> metrics `Drop; Error `Cache_drop
-      | false -> metrics `Hit; Ok (`Entries rrs, r)
+      | true -> metrics cache `Drop; Error `Cache_drop
+      | false -> metrics cache `Hit; Ok (`Entries rrs, r)
 
 let get_or_cname : type a . t -> int64 -> [`raw] Domain_name.t -> a Rr_map.key ->
   t * ([ a entry | `Alias of int32 * [`raw] Domain_name.t] * rank,
        [ `Cache_drop | `Cache_miss ]) result =
   fun cache ts name query_type ->
-  metrics `Lookup;
+  metrics cache `Lookup;
   let map_result : _ -> t * ([ a entry | `Alias of int32 * [`raw] Domain_name.t] * rank, [ `Cache_drop | `Cache_miss ]) result = function
-    | Error e -> metrics `Miss; cache, Error e
+    | Error e -> metrics cache `Miss; cache, Error e
     | Ok ((created, rank), entry) ->
       match update_ttl query_type entry ~created ~now:ts with
-      | Ok entry' -> metrics `Hit; LRU.promote name cache, Ok ((entry', rank) :> [ _ entry | `Alias of int32 * [`raw] Domain_name.t ] * rank)
-      | Error e -> metrics `Drop; cache, Error e
+      | Ok entry' -> metrics cache `Hit; LRU.promote name cache, Ok ((entry', rank) :> [ _ entry | `Alias of int32 * [`raw] Domain_name.t ] * rank)
+      | Error e -> metrics cache `Drop; cache, Error e
   in
   match find cache name query_type with
   | Some map, r ->
@@ -265,7 +274,7 @@ let get_or_cname : type a . t -> int64 -> [`raw] Domain_name.t -> a Rr_map.key -
         if ttl < 0l then
           map_result r
         else begin
-          metrics `Hit;
+          metrics cache `Hit;
           LRU.promote name cache, Ok (`Alias (ttl, name), rank)
         end
       | _ -> map_result r
@@ -273,7 +282,7 @@ let get_or_cname : type a . t -> int64 -> [`raw] Domain_name.t -> a Rr_map.key -
   | _, e -> map_result e
 
 let get_nsec3 cache ts name =
-  metrics `Lookup;
+  metrics cache `Lookup;
   let zone_labels = Domain_name.count_labels name in
   let nsec3_rrs =
     LRU.fold (fun ename entry acc ->
@@ -300,10 +309,10 @@ let get_nsec3 cache ts name =
   in
   match nsec3_rrs with
   | [] ->
-    metrics `Miss;
+    metrics cache `Miss;
     cache, Error `Cache_miss
   | xs ->
-    metrics `Hit;
+    metrics cache `Hit;
     List.fold_right LRU.promote (List.map (fun (a, _, _, _) -> a) xs) cache,
     Ok xs
 
@@ -347,13 +356,13 @@ let set cache ts name query_type rank entry  =
   | map, Error _ ->
     Log.debug (fun m -> m "set: %a nothing found, adding: %a"
                    pp_query (name, `K (K query_type)) (pp_entry query_type) entry');
-    metrics `Insert; cache' map
+    metrics cache `Insert; cache' map
   | map, Ok ((created, rank'), entry) ->
     Log.debug (fun m -> m "set: %a found rank %a insert rank %a: %d"
                    pp_query (name, `K (K query_type)) pp_rank rank' pp_rank rank (compare_rank rank' rank));
     match update_ttl query_type entry ~created ~now:ts, compare_rank rank' rank with
     | Ok _, 1 -> cache
-    | _ -> metrics `Insert; cache' map
+    | _ -> metrics cache `Insert; cache' map
 
 let remove cache name =
   LRU.remove name cache
