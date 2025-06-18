@@ -257,7 +257,6 @@ let scrub_it t proto zone edns ts ~signed qtype p =
 let likely_blocked reply =
   match reply.Packet.data with
   | `Answer (answ, _auth) ->
-    (* TODO: check auth? *)
     (* HACK! We assume blocked domains have a certain shape. *)
     Domain_name.Map.for_all
       (fun _domain rr ->
@@ -270,6 +269,14 @@ let likely_blocked reply =
              | _ -> false)
            rr)
       answ
+  | `Rcode_error (Rcode.NXDomain, _, Some (_answ, auth)) ->
+    Domain_name.Map.cardinal auth > 0 &&
+    Domain_name.Map.for_all (fun _domain rr ->
+        match Rr_map.find Rr_map.Soa rr with
+        | None -> false
+        | Some soa ->
+          Domain_name.equal soa.nameserver (Domain_name.of_string_exn "localhost"))
+      auth
   | _ -> false
 
 let handle_primary t now ts proto sender sport packet _request buf =
