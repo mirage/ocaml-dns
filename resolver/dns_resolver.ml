@@ -254,6 +254,24 @@ let scrub_it t proto zone edns ts ~signed qtype p =
     Log.warn (fun m -> m "NS didn't like us %a" Rcode.pp e) ;
     `Try_another_ns
 
+let likely_blocked reply =
+  match reply.Packet.data with
+  | `Answer (answ, _auth) ->
+    (* TODO: check auth? *)
+    (* HACK! We assume blocked domains have a certain shape. *)
+    Domain_name.Map.for_all
+      (fun _domain rr ->
+         Rr_map.for_all
+           (function
+             | Rr_map.B (Rr_map.A, (3600l, ips)) ->
+               Ipaddr.V4.Set.equal ips (Ipaddr.V4.(Set.singleton localhost))
+             | Rr_map.B (Rr_map.Aaaa, (3600l, ips)) ->
+               Ipaddr.V6.Set.equal ips (Ipaddr.V6.(Set.singleton localhost))
+             | _ -> false)
+           rr)
+      answ
+  | _ -> false
+
 let handle_primary t now ts proto sender sport packet _request buf =
   (* makes only sense to ask primary for query=true since we'll never issue questions from primary *)
   let handle_inner name =
@@ -264,6 +282,26 @@ let handle_primary t now ts proto sender sport packet _request buf =
       (* delegation if authoritative is not set! *)
       if Packet.Flags.mem `Authoritative (snd reply.header) then begin
         Log.debug (fun m -> m "authoritative reply %a" Packet.pp reply) ;
+        let reply =
+          if likely_blocked reply then
+            (* After guessing that a domain is blocked we add [`Filtered]
+               extended error code and emit a [`Blocked] metrics event. *)
+            let edns =
+              match reply.edns with
+              | None ->
+                (* reynir: other candidates: `Blocked, `Censored, `Prohibited *)
+                Some (Edns.create ~extended_error:(`Filtered, None) ())
+              | Some ({ Edns.extensions = []; extended_rcode; version; dnssec_ok; payload_size }) ->
+                Some (Edns.create ~extended_error:(`Filtered, None) ~extended_rcode ~version ~dnssec_ok ~payload_size ())
+              | Some edns ->
+                Log.warn (fun m -> m "don't know how to extend edns to add extended error; not doing anything:@ %a" Edns.pp edns);
+                Some edns
+            in
+            resolver_stats `Blocked;
+            Dns.Packet.with_edns reply edns
+          else
+            reply
+        in
         let r = Packet.encode proto reply in
         let ttl = Packet.minimum_ttl reply.data in
         `Reply (t, (reply, ttl, r))
