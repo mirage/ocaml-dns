@@ -266,7 +266,18 @@ let likely_blocked reply =
       auth
   in
   match reply.Packet.data with
-  | `Answer (_answ, auth) -> localhost_soa auth
+  | `Answer (answ, _auth) ->
+    Domain_name.Map.for_all
+      (fun _domain rr ->
+         Rr_map.for_all
+           (function
+             | Rr_map.B (Rr_map.A, (_, ips)) ->
+               Ipaddr.V4.Set.equal ips (Ipaddr.V4.(Set.singleton localhost))
+             | Rr_map.B (Rr_map.Aaaa, (_, ips)) ->
+               Ipaddr.V6.Set.equal ips (Ipaddr.V6.(Set.singleton localhost))
+             | _ -> false)
+           rr)
+      answ
   | `Rcode_error (Rcode.NXDomain, _, Some (_answ, auth)) -> localhost_soa auth
   | _ -> false
 
