@@ -13,7 +13,11 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   module TLS = Tls_mirage.Make(T)
 
-  type t = (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit
+  type t = {
+    push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
+    primary_data : unit -> Dns_trie.t ;
+    with_primary_data : Dns_trie.t -> unit Lwt.t ;
+  }
 
   type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
 
@@ -265,6 +269,22 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     in
     Lwt.async time ;
 
+    let primary_data () =
+      Dns_resolver.primary_data !state
+    in
+    let with_primary_data data =
+      let (t, outs) =
+        Dns_resolver.with_primary_data !state
+          (Mirage_ptime.now ())
+          (Mirage_mtime.elapsed_ns ())
+          data
+      in
+      state := t;
+      if outs <> [] then
+        Log.err (fun m -> m "Outgoing notify's but reynir was lazy and didn't implement it");
+      Lwt.return_unit
+    in
+
     if root then begin
       let rec root () =
         let new_state, q = Dns_resolver.query_root !state (Mirage_mtime.elapsed_ns ()) `Tcp in
@@ -274,10 +294,14 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         root ()
       in
       Lwt.async root end ;
-    push
+    { push; primary_data; with_primary_data }
 
-  let resolve_external push (dst_ip, dst_port) data =
+  let resolve_external { push; _ } (dst_ip, dst_port) data =
       let th, wk = Lwt.wait () in
       push (Some (dst_ip, dst_port, data, wk));
       th
+
+  let primary_data { primary_data; _ } = primary_data ()
+
+  let update_primary_data { with_primary_data; _ } data = with_primary_data data
 end
