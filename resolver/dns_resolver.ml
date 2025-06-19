@@ -255,21 +255,8 @@ let scrub_it t proto zone edns ts ~signed qtype p =
     `Try_another_ns
 
 let likely_blocked reply =
-  match reply.Packet.data with
-  | `Answer (answ, _auth) ->
-    (* HACK! We assume blocked domains have a certain shape. *)
-    Domain_name.Map.for_all
-      (fun _domain rr ->
-         Rr_map.for_all
-           (function
-             | Rr_map.B (Rr_map.A, (3600l, ips)) ->
-               Ipaddr.V4.Set.equal ips (Ipaddr.V4.(Set.singleton localhost))
-             | Rr_map.B (Rr_map.Aaaa, (3600l, ips)) ->
-               Ipaddr.V6.Set.equal ips (Ipaddr.V6.(Set.singleton localhost))
-             | _ -> false)
-           rr)
-      answ
-  | `Rcode_error (Rcode.NXDomain, _, Some (_answ, auth)) ->
+  (* HACK! We assume blocked domains have a certain shape. *)
+  let localhost_soa auth =
     Domain_name.Map.cardinal auth > 0 &&
     Domain_name.Map.for_all (fun _domain rr ->
         match Rr_map.find Rr_map.Soa rr with
@@ -277,6 +264,10 @@ let likely_blocked reply =
         | Some soa ->
           Domain_name.equal soa.nameserver (Domain_name.of_string_exn "localhost"))
       auth
+  in
+  match reply.Packet.data with
+  | `Answer (_answ, auth) -> localhost_soa auth
+  | `Rcode_error (Rcode.NXDomain, _, Some (_answ, auth)) -> localhost_soa auth
   | _ -> false
 
 let handle_primary t now ts proto sender sport packet _request buf =
