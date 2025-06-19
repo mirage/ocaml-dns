@@ -25,8 +25,8 @@ let print_resolver_stats () =
     | None ->
       print_endline "no dns-resolver found";
       []
-    | Some ((_tags, data) :: _) -> Metrics.Data.fields data
-    | Some [] -> []
+    | Some ms ->
+      List.concat_map (fun (_tags, data) -> Metrics.Data.fields data) ms
   in
   List.iter (fun field ->
       Logs.app (fun m -> m "%s %a" (Metrics.key field) pp_val field))
