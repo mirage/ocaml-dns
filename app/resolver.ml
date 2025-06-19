@@ -15,8 +15,8 @@ let pp_val ppf f =
   | V (Uint64, u64) -> Fmt.pf ppf "%Lu" u64
   | _ -> pp_value ppf f
 
-let print_resolver_stats metrics_cache =
-  let map = metrics_cache () in
+let print_resolver_stats () =
+  let map = Metrics.get_cache () in
   let dns_resolver_src =
     List.find (fun src -> Metrics.Src.name src = "dns-resolver") (Metrics.Src.list ())
   in
@@ -25,7 +25,8 @@ let print_resolver_stats metrics_cache =
     | None ->
       print_endline "no dns-resolver found";
       []
-    | Some (_tags, data) -> Metrics.Data.fields data
+    | Some ms ->
+      List.concat_map (fun (_tags, data) -> Metrics.Data.fields data) ms
   in
   List.iter (fun field ->
       Logs.app (fun m -> m "%s %a" (Metrics.key field) pp_val field))
@@ -34,7 +35,7 @@ let print_resolver_stats metrics_cache =
 
 let main () =
   Mirage_crypto_rng_unix.use_default ();
-  let get_cache, reporter = Metrics.cache_reporter () in
+  let reporter = Metrics.cache_reporter () in
   Metrics.set_reporter reporter;
   Metrics.enable_all ();
   Udpv4v6_socket.connect ~ipv4_only:true ~ipv6_only:false Ipaddr.V4.Prefix.global None >>= fun udp ->
@@ -52,8 +53,7 @@ let main () =
   let _ : Sys.signal_behavior =
     Sys.signal Sys.sigint
       (Signal_handle
-         (fun _ ->
-            print_resolver_stats get_cache))
+         (fun _ -> print_resolver_stats ()))
   in
   Tcpip_stack_socket.V4V6.listen stack >|= fun () ->
   Ok ()
