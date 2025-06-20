@@ -19,10 +19,10 @@ module Make (S : Tcpip.Stack.V4V6) : sig
   val primary_data : t -> Dns_trie.t
   (** [primary_data t] is the DNS trie of the primary for the resolver [t]. *)
 
-  val update_primary_data : t -> Dns_trie.t -> unit Lwt.t
+  val update_primary_data : t -> Dns_trie.t -> unit
   (** [update_primary_data t data] updates the primary for the resolver [t]
-      with the DNS trie [data]. The Lwt promise resolves once all secondaries
-      are notified (if any). *)
+      with the DNS trie [data]. Any 'notify's to secondaries are discarded -
+      secondary name servers are not supported in this setup. *)
 
   val update_tls : t -> Tls.Config.server -> unit
   (** [update_tls t tls_config] updates the tls configuration to [tls_config].

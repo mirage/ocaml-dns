@@ -16,7 +16,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
   type t = {
     push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
     primary_data : unit -> Dns_trie.t ;
-    with_primary_data : Dns_trie.t -> unit Lwt.t ;
+    with_primary_data : Dns_trie.t -> unit ;
     update_tls : Tls.Config.server -> unit ;
   }
 
@@ -285,8 +285,9 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       in
       state := t;
       if outs <> [] then
-        Log.err (fun m -> m "Outgoing notify's but reynir was lazy and didn't implement it");
-      Lwt.return_unit
+        Log.warn (fun m -> m "Updating resolver's primary name server resulted
+        in 'notify's. Secondaries in the resolver's primary DNS is *not*
+        supported. The 'notify's are discarded.")
     in
 
     if root then begin
