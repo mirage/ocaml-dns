@@ -652,3 +652,9 @@ let timer t ts =
         ({ t with queried }, out_as @ out_a, out_q)
       end)
     rem (t, [], [])
+
+let primary_data t = Dns_server.Primary.data t.primary
+
+let with_primary_data t now ts data =
+  let primary, outs = Dns_server.Primary.with_data t.primary now ts data in
+  { t with primary }, outs

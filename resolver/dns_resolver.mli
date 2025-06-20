@@ -37,3 +37,11 @@ val timer : t -> int64 ->
     * (Dns.proto * Ipaddr.t * string) list
 (** [timer t now] potentially retransmits DNS requests and/or sends NXDomain
     answers. *)
+
+val primary_data : t -> Dns_trie.t
+(** [primary_data t] is the DNS trie of the primary. *)
+
+val with_primary_data : t -> Ptime.t -> int64 -> Dns_trie.t -> t * (Ipaddr.t * string list) list
+(** [with_primary_data t now ts data] is a pair [(t', outs)] where [t'] is [t]
+    updated with the [data] DNS trie, and [outs] is the data to send out (if
+    any). *)
