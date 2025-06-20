@@ -23,4 +23,9 @@ module Make (S : Tcpip.Stack.V4V6) : sig
   (** [update_primary_data t data] updates the primary for the resolver [t]
       with the DNS trie [data]. The Lwt promise resolves once all secondaries
       are notified (if any). *)
+
+  val update_tls : t -> Tls.Config.server -> unit
+  (** [update_tls t tls_config] updates the tls configuration to [tls_config].
+      If the resolver wasn't already listening for TLS connections it will
+      start listening. *)
 end

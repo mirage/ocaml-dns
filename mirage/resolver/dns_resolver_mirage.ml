@@ -17,6 +17,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
     primary_data : unit -> Dns_trie.t ;
     with_primary_data : Dns_trie.t -> unit Lwt.t ;
+    update_tls : Tls.Config.server -> unit ;
   }
 
   type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
@@ -251,10 +252,13 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         in
         loop ()
     in
+    let update_tls tls_cfg =
+       S.TCP.listen (S.tcp stack) ~port:tls_port (tls_cb tls_cfg);
+    in
     (match tls with
      | None -> ()
      | Some cfg ->
-       S.TCP.listen (S.tcp stack) ~port:tls_port (tls_cb cfg);
+       update_tls cfg;
        Log.info (fun m -> m "DNS resolver listening on TLS port %d" tls_port));
 
     let rec time () =
@@ -294,7 +298,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         root ()
       in
       Lwt.async root end ;
-    { push; primary_data; with_primary_data }
+    { push; primary_data; with_primary_data; update_tls }
 
   let resolve_external { push; _ } (dst_ip, dst_port) data =
       let th, wk = Lwt.wait () in
@@ -304,4 +308,6 @@ module Make (S : Tcpip.Stack.V4V6) = struct
   let primary_data { primary_data; _ } = primary_data ()
 
   let update_primary_data { with_primary_data; _ } data = with_primary_data data
+
+  let update_tls { update_tls; _ } tls_config = update_tls tls_config
 end
