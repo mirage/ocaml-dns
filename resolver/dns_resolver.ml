@@ -256,15 +256,17 @@ let scrub_it t proto zone edns ts ~signed qtype p =
 
 let likely_blocked reply =
   (* HACK! We assume blocked domains have a certain shape. *)
-  let localhost_soa auth =
+  let blocked_soa auth =
     Domain_name.Map.cardinal auth > 0 &&
     Domain_name.Map.for_all (fun _domain rr ->
         match Rr_map.find Rr_map.Soa rr with
         | None -> false
         | Some soa ->
-          Domain_name.equal soa.nameserver (Domain_name.of_string_exn "localhost"))
+          Domain_name.equal soa.nameserver (Domain_name.of_string_exn "localhost") ||
+          Domain_name.equal soa.nameserver (Domain_name.of_string_exn "blocked"))
       auth
   in
+
   match reply.Packet.data with
   | `Answer (answ, _auth) ->
     Domain_name.Map.for_all
@@ -272,13 +274,15 @@ let likely_blocked reply =
          Rr_map.for_all
            (function
              | Rr_map.B (Rr_map.A, (_, ips)) ->
-               Ipaddr.V4.Set.equal ips (Ipaddr.V4.(Set.singleton localhost))
+               Ipaddr.V4.Set.equal ips (Ipaddr.V4.(Set.singleton localhost)) ||
+               Ipaddr.V4.Set.equal ips (Ipaddr.V4.(Set.singleton any))
              | Rr_map.B (Rr_map.Aaaa, (_, ips)) ->
-               Ipaddr.V6.Set.equal ips (Ipaddr.V6.(Set.singleton localhost))
+               Ipaddr.V6.Set.equal ips (Ipaddr.V6.(Set.singleton localhost)) ||
+               Ipaddr.V6.Set.equal ips (Ipaddr.V6.(Set.singleton unspecified))
              | _ -> false)
            rr)
       answ
-  | `Rcode_error (Rcode.NXDomain, _, Some (_answ, auth)) -> localhost_soa auth
+  | `Rcode_error (Rcode.NXDomain, _, Some (_answ, auth)) -> blocked_soa auth
   | _ -> false
 
 let handle_primary t now ts proto sender sport packet _request buf =
