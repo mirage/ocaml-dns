@@ -301,10 +301,9 @@ let handle_primary t now ts proto sender sport packet _request buf =
             let edns =
               match reply.edns with
               | None ->
-                (* reynir: other candidates: `Blocked, `Censored, `Prohibited *)
-                Some (Edns.create ~extended_error:(`Filtered, None) ())
+                Some (Edns.create ~extended_error:(`Blocked, None) ())
               | Some ({ Edns.extensions = []; extended_rcode; version; dnssec_ok; payload_size }) ->
-                Some (Edns.create ~extended_error:(`Filtered, None) ~extended_rcode ~version ~dnssec_ok ~payload_size ())
+                Some (Edns.create ~extended_error:(`Blocked, None) ~extended_rcode ~version ~dnssec_ok ~payload_size ())
               | Some edns ->
                 Log.warn (fun m -> m "don't know how to extend edns to add extended error; not doing anything:@ %a" Edns.pp edns);
                 Some edns
