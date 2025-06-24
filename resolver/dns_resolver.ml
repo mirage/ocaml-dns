@@ -284,6 +284,36 @@ let likely_blocked reply =
   | `Rcode_error (Rcode.NXDomain, _, Some (_answ, auth)) -> blocked_soa auth
   | _ -> false
 
+let blocking_reason reply =
+  let find_soa_hostmaster rr =
+    let soa = Rr_map.find Rr_map.Soa rr in
+    Option.map (fun soa -> Domain_name.to_string soa.Soa.hostmaster) soa
+  in
+  let find_soa_hostmaster_in_domain_map map =
+    Domain_name.Map.fold (fun _domain rr acc ->
+        match acc, find_soa_hostmaster rr with
+        | None, x -> x
+        | Some x, None -> Some x
+        | Some x, Some y ->
+          if not (String.equal x y) then
+            Log.info (fun m -> m "finding blocklist resulted in %S and %S, using the first" x y);
+          Some x) map None
+  in
+  let find_soa_hostmaster_in_reply answer authority =
+    match find_soa_hostmaster_in_domain_map answer, find_soa_hostmaster_in_domain_map authority with
+    | None, x -> x
+    | Some x, None -> Some x
+    | Some x, Some y ->
+      if not (String.equal x y) then
+        Log.info (fun m -> m "finding blocklist resulted in %S (answer) and %S (authority), using the first" x y);
+      Some x
+  in
+  match reply.Packet.data with
+  | `Answer (answ, auth) -> find_soa_hostmaster_in_reply answ auth
+  | `Rcode_error (Rcode.NXDomain, _, Some (answ, auth)) ->
+    find_soa_hostmaster_in_reply answ auth
+  | _ -> None
+
 let handle_primary t now ts proto sender sport packet _request buf =
   (* makes only sense to ask primary for query=true since we'll never issue questions from primary *)
   let handle_inner name =
@@ -299,11 +329,12 @@ let handle_primary t now ts proto sender sport packet _request buf =
             (* After guessing that a domain is blocked we add [`Filtered]
                extended error code and emit a [`Blocked] metrics event. *)
             let edns =
+              let reason = blocking_reason reply in
               match reply.edns with
               | None ->
-                Some (Edns.create ~extended_error:(`Blocked, None) ())
+                Some (Edns.create ~extended_error:(`Blocked, reason) ())
               | Some ({ Edns.extensions = []; extended_rcode; version; dnssec_ok; payload_size }) ->
-                Some (Edns.create ~extended_error:(`Blocked, None) ~extended_rcode ~version ~dnssec_ok ~payload_size ())
+                Some (Edns.create ~extended_error:(`Blocked, reason) ~extended_rcode ~version ~dnssec_ok ~payload_size ())
               | Some edns ->
                 Log.warn (fun m -> m "don't know how to extend edns to add extended error; not doing anything:@ %a" Edns.pp edns);
                 Some edns
