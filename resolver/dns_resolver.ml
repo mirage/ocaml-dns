@@ -254,6 +254,36 @@ let scrub_it t proto zone edns ts ~signed qtype p =
     Log.warn (fun m -> m "NS didn't like us %a" Rcode.pp e) ;
     `Try_another_ns
 
+let likely_blocked reply =
+  (* HACK! We assume blocked domains have a certain shape. *)
+  let blocked_soa auth =
+    Domain_name.Map.cardinal auth > 0 &&
+    Domain_name.Map.for_all (fun _domain rr ->
+        match Rr_map.find Rr_map.Soa rr with
+        | None -> false
+        | Some soa ->
+          Domain_name.equal soa.nameserver (Domain_name.of_string_exn "localhost") ||
+          Domain_name.equal soa.nameserver (Domain_name.of_string_exn "blocked"))
+      auth
+  in
+  match reply.Packet.data with
+  | `Answer (answ, _auth) ->
+    Domain_name.Map.for_all
+      (fun _domain rr ->
+         Rr_map.for_all
+           (function
+             | Rr_map.B (Rr_map.A, (_, ips)) ->
+               Ipaddr.V4.Set.equal ips (Ipaddr.V4.(Set.singleton localhost)) ||
+               Ipaddr.V4.Set.equal ips (Ipaddr.V4.(Set.singleton any))
+             | Rr_map.B (Rr_map.Aaaa, (_, ips)) ->
+               Ipaddr.V6.Set.equal ips (Ipaddr.V6.(Set.singleton localhost)) ||
+               Ipaddr.V6.Set.equal ips (Ipaddr.V6.(Set.singleton unspecified))
+             | _ -> false)
+           rr)
+      answ
+  | `Rcode_error (Rcode.NXDomain, _, Some (_answ, auth)) -> blocked_soa auth
+  | _ -> false
+
 let handle_primary t now ts proto sender sport packet _request buf =
   (* makes only sense to ask primary for query=true since we'll never issue questions from primary *)
   let handle_inner name =
@@ -264,6 +294,26 @@ let handle_primary t now ts proto sender sport packet _request buf =
       (* delegation if authoritative is not set! *)
       if Packet.Flags.mem `Authoritative (snd reply.header) then begin
         Log.debug (fun m -> m "authoritative reply %a" Packet.pp reply) ;
+        let reply =
+          if likely_blocked reply then
+            (* After guessing that a domain is blocked we add [`Filtered]
+               extended error code and emit a [`Blocked] metrics event. *)
+            let edns =
+              match reply.edns with
+              | None ->
+                (* reynir: other candidates: `Blocked, `Censored, `Prohibited *)
+                Some (Edns.create ~extended_error:(`Filtered, None) ())
+              | Some ({ Edns.extensions = []; extended_rcode; version; dnssec_ok; payload_size }) ->
+                Some (Edns.create ~extended_error:(`Filtered, None) ~extended_rcode ~version ~dnssec_ok ~payload_size ())
+              | Some edns ->
+                Log.warn (fun m -> m "don't know how to extend edns to add extended error; not doing anything:@ %a" Edns.pp edns);
+                Some edns
+            in
+            resolver_stats `Blocked;
+            Dns.Packet.with_edns reply edns
+          else
+            reply
+        in
         let r = Packet.encode proto reply in
         let ttl = Packet.minimum_ttl reply.data in
         `Reply (t, (reply, ttl, r))
