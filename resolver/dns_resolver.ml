@@ -266,7 +266,6 @@ let likely_blocked reply =
           Domain_name.equal soa.nameserver (Domain_name.of_string_exn "blocked"))
       auth
   in
-
   match reply.Packet.data with
   | `Answer (answ, _auth) ->
     Domain_name.Map.for_all
