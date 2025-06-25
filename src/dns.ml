@@ -5590,8 +5590,9 @@ module Packet = struct
     | `Full (off, additional, edns, tsig) ->
       (if String.length buf > off then
          let n = String.length buf - off in
-         Log.warn (fun m -> m "received %d extra bytes %a"
-                      n Ohex.pp (String.sub buf off n))) ;
+         let data = String.sub buf off n in
+         Log.debug (fun m -> m "(ignoring) received %u extra bytes %a at the end of additional"
+                       n Ohex.pp data)) ;
       Ok (additional, edns, tsig)
 
   let ext_rcode ?off rcode = function
