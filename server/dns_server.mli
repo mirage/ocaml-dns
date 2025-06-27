@@ -145,13 +145,16 @@ module Primary : sig
   val trie_cache : s -> trie_cache
   (** [trie_cache s] is the trie cache of the server. *)
 
-  val create : ?keys:('a Domain_name.t * Dnskey.t) list ->
+  val create : ?trie_cache_entries:int -> ?keys:('a Domain_name.t * Dnskey.t) list ->
     ?unauthenticated_zone_transfer:bool ->
     ?tsig_verify:Tsig_op.verify -> ?tsig_sign:Tsig_op.sign ->
     rng:(int -> string) -> Dns_trie.t -> s
-  (** [create ~keys ~unauthenticated_zone_transfer ~tsig_verify ~tsig_sign ~rng
-     data] creates a primary server. If [unauthenticated_zone_transfer] is
-     provided and [true] (defaults to [false]), anyone can transfer the zones. *)
+  (** [create ~trie_cache_entries ~keys ~unauthenticated_zone_transfer
+      ~tsig_verify ~tsig_sign ~rng data] creates a primary server. If
+      [unauthenticated_zone_transfer] is provided and [true] (defaults to
+      [false]), anyone can transfer the zones. [trie_cache_entries] is the
+      backlog to keep in memory for incremental transfers (default is 5). This
+      affects memory usage. *)
 
   val handle_packet : ?packet_callback:packet_callback -> s -> Ptime.t -> int64
     -> proto -> Ipaddr.t -> int -> Packet.t -> 'a Domain_name.t option ->
