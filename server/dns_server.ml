@@ -827,10 +827,9 @@ module Trie_cache = struct
     cache : Dns_trie.t IM.t Domain_name.Map.t;
   }
 
-  (* TODO: not entirely sure how many old ones to keep. This keeps for each
-     zone the most recent 5 serials. It does _not_ remove removed zones.
-     since it updates all zones with the new trie, there should be at most
-     5 (well, 6) tries alive in memory *)
+  (* TODO: not entirely sure how many old ones to keep. It does _not_ remove
+     removed zones. Since it updates all zones with the new trie, there should
+     be at most [entries] (well, [succ entries]) tries alive in memory *)
   let update_trie_cache { entries; cache } trie =
     if entries = 0 then { entries; cache }
     else
@@ -839,7 +838,7 @@ module Trie_cache = struct
             let recorded = match Domain_name.Map.find name m with
               | None -> IM.empty
               | Some xs ->
-                (* keep last 5 references around *)
+                (* keep last [entries] references around *)
                 if IM.cardinal xs >= entries then
                   IM.remove (fst (IM.min_binding xs)) xs
                 else
