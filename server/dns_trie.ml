@@ -2,9 +2,19 @@
 
 open Dns
 
+module Canonical : sig
+  type 'a t
+  val v : 'a Domain_name.t -> 'a t
+  val d : 'a t -> 'a Domain_name.t
+end = struct
+  type 'a t = 'a Domain_name.t
+  let v n = Domain_name.canonical n
+  let d n = n
+end
+
 module O = struct
   type t = string
-  let compare = Domain_name.compare_label
+  let compare = String.compare
 end
 module M = Map.Make(O)
 
@@ -85,6 +95,7 @@ let lookup_res zone ty m =
     | Some cname -> Ok (B (Cname, cname), to_ns z zmap)
 
 let lookup_aux name t =
+  let name = Canonical.d name in
   let k = Domain_name.to_array name in
   let l = Array.length k in
   let fzone idx map =
@@ -117,28 +128,28 @@ let lookup_aux name t =
   go 0 None t
 
 let lookup_with_cname name ty t =
-  let* zone, _sub, map = lookup_aux name t in
+  let* zone, _sub, map = lookup_aux (Canonical.v name) t in
   lookup_res zone ty map
 
 let lookup name key t =
-  let* zone, _sub, map = lookup_aux name t in
+  let* zone, _sub, map = lookup_aux (Canonical.v name) t in
   let* z, zmap = check_zone zone in
   Option.to_result ~none:(ent z zmap) (Rr_map.find key map)
 
 let lookup_any name t =
-  match lookup_aux name t with
+  match lookup_aux (Canonical.v name) t with
   | Error e -> Error e
   | Ok (zone, _sub, m) ->
     let* z, zmap = check_zone zone in
     Ok (m, to_ns z zmap)
 
 let lookup_glue name t =
-  match lookup_aux name t with
+  match lookup_aux (Canonical.v name) t with
   | Error _ -> None, None
   | Ok (_zone, _sub, map) -> Rr_map.find A map, Rr_map.find Aaaa map
 
 let zone name t =
-  match lookup_aux name t with
+  match lookup_aux (Canonical.v name) t with
   | Error (`NotFound (zone, soa)) -> Ok (zone, soa)
   | Error e -> Error e
   | Ok (zone, _, _) ->
@@ -201,7 +212,7 @@ let collect_entries name sub map =
   let ttlsoa =
     match Rr_map.find Soa map with
     | Some v -> Some v
-    | None when Domain_name.(equal root name) ->
+    | None when Domain_name.count_labels name = 0 ->
       Some { Soa.nameserver = Domain_name.root ;
              hostmaster = Domain_name.root ;
              serial = 0l ; refresh = 0l ; retry = 0l ;
@@ -220,7 +231,7 @@ let collect_entries name sub map =
 
 let entries name t =
   let name = Domain_name.raw name in
-  let* zone, sub, map = lookup_aux name t in
+  let* zone, sub, map = lookup_aux (Canonical.v name) t in
   match zone with
   | None -> Error `NotAuthoritative
   | Some (`Delegation (name, (ttl, ns))) ->
@@ -403,6 +414,7 @@ let check trie =
   check_sub [] `None sub map
 
 let find f name t =
+  let name = Canonical.d name in
   let lbls = Domain_name.to_array name in
   let l = Array.length lbls in
   let rec go idx (N (sub, map)) =
@@ -424,9 +436,10 @@ let find f name t =
   go 0 t
 
 let replace name k v t =
-  find (fun sub map -> sub, Rr_map.add k v map) name t
+  find (fun sub map -> sub, Rr_map.add k v map) (Canonical.v name) t
 
 let insert name k v t =
+  let name = Canonical.v name in
   let merge sub map =
     let new_v = match Rr_map.find k map with
       | None -> v
@@ -438,12 +451,12 @@ let insert name k v t =
 
 let replace_map m t =
   Domain_name.Map.fold (fun name map trie ->
-      find (fun sub _ -> sub, map) name trie) m t
+      find (fun sub _ -> sub, map) (Canonical.v name) trie) m t
 
 let insert_map m t =
   Domain_name.Map.fold (fun name map trie ->
       let union sub old = sub, Rr_map.union { f = Rr_map.unionee } old map in
-      find union name trie)
+      find union (Canonical.v name) trie)
     m t
 
 let remove k ty v t =
@@ -456,15 +469,15 @@ let remove k ty v t =
     in
     sub, map'
   in
-  find remove k t
+  find remove (Canonical.v k) t
 
 let remove_ty k ty t =
   let remove sub map = sub, Rr_map.remove ty map in
-  find remove k t
+  find remove (Canonical.v k) t
 
 let remove_all k t =
   let remove sub _ = sub, Rr_map.empty in
-  find remove k t
+  find remove (Canonical.v k) t
 
 let remove_map m t =
   let merge k present remove = match present, remove with
@@ -475,7 +488,7 @@ let remove_map m t =
   in
   Domain_name.Map.fold (fun name map trie ->
       let remove sub old = sub, Rr_map.merge { f = merge } old map in
-      find remove name trie)
+      find remove (Canonical.v name) trie)
     m t
 
 let remove_zone name t =
@@ -497,7 +510,7 @@ let remove_zone name t =
     in
     fold_sub sub, Rr_map.empty (* drop the initial RRmap in any case! *)
   in
-  find remove name t
+  find remove (Canonical.v name) t
 
 let diff zone req_soa ~old current =
   match entries zone current with
