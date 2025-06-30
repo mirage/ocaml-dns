@@ -153,7 +153,7 @@ module Primary : sig
       ~tsig_verify ~tsig_sign ~rng data] creates a primary server. If
       [unauthenticated_zone_transfer] is provided and [true] (defaults to
       [false]), anyone can transfer the zones. [trie_cache_entries] is the
-      backlog to keep in memory for incremental transfers (default is 5). This
+      backlog to keep in memory for incremental zone transfers (IXFR, default is 5). This
       affects memory usage. *)
 
   val handle_packet : ?packet_callback:packet_callback -> s -> Ptime.t -> int64
