@@ -46,7 +46,10 @@ let main () =
       (* setup DNS server state: *)
       Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate Dns_trie.empty
     in
-    Dns_resolver.create ~dnssec:true ~ip_protocol:`Ipv4_only
+    let features =
+      [ `Dnssec ; `Qname_minimisation ; `Opportunistic_tls_authoritative ]
+    in
+    Dns_resolver.create features ~ip_protocol:`Ipv4_only
       (Mirage_mtime.elapsed_ns ()) Mirage_crypto_rng.generate primary_t
   in
   let _resolver = Resolver.resolver ~port:53530 stack resolver in

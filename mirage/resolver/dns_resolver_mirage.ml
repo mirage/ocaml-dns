@@ -42,6 +42,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     let auth = ref Ipaddr.Map.empty in
     let tls_auth = ref Ipaddr.Map.empty in
     let stream, push = Lwt_stream.create () in
+    let opportunistic = List.mem `Opportunistic_tls_authoritative (Dns_resolver.features t) in
 
     let send_tls flow data =
       let len = Cstruct.create 2 in
@@ -186,8 +187,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       match Ipaddr.Map.find_opt dst !auth with
       | None ->
         begin
-          let should = Ipaddr.Map.find_opt dst !tls_auth in
-          let try_it = match should with
+          let try_it = match Ipaddr.Map.find_opt dst !tls_auth with
             | None -> Some None
             | Some `Tls_succeeded cfg -> Some (Some cfg)
             | Some `Tls_tried ts ->
@@ -197,7 +197,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
                 None
           in
           (match try_it with
-           | Some cfg ->
+           | Some cfg when opportunistic ->
              let cfg =
                match cfg with
                | None ->
@@ -206,7 +206,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
                | Some cfg -> cfg
              in
              client_tls_out cfg dst tls_port
-           | None ->
+           | _ ->
              client_tcp_out dst port) >>= function
           | Error () ->
             let sport = sport () in
