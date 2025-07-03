@@ -143,7 +143,7 @@ let find_nearest_ns ip_proto dnssec ts t name =
       `HaveIPs (name, ips)
   in
   let rec go nam =
-    (* Log.warn (fun m -> m "go %a" Domain_name.pp nam); *)
+    (* Log.info (fun m -> m "go %a" Domain_name.pp nam); *)
     let ns, signed_ns = find_ns nam in
     match ns with
     | [] ->
@@ -238,7 +238,26 @@ let resolve t ~dnssec ip_proto ts name typ =
         | `NeedAddress (zone, ns) -> go t (N.add zone visited) addresses zone ns
         | `NeedDnskey (zone, ips) -> [ zone, zone, [`K (Rr_map.K Dnskey)], ips, t ]
         | `NeedDs (zone, ips) -> [ zone, zone, [`K (Rr_map.K Ds)], ips, t ]
-        | `HaveIPs (zone, ips) -> [ zone, name, types, ips, t ]
+        | `HaveIPs (zone, ips) ->
+          (* qname minimisation: if we can, query minimal qname (and NS)
+             this is possible as long as we haven't received a negative reply on
+             the NS query -- that's why we have another Dns_cache.get NS below *)
+          let name' =
+            let n = Domain_name.count_labels name
+            and z = Domain_name.count_labels zone
+            in
+            let n' =
+              if succ z < n then
+                Domain_name.drop_label_exn ~amount:(n - succ z) name
+              else
+                name
+            in
+            match snd (Dns_cache.get t ts n' Ns) with
+            | Ok (`Entry _, _) -> n'
+            | _ -> name
+          in
+          let types = if Domain_name.equal name' name then types else [ `K (Rr_map.K Ns) ] in
+          [ zone, name', types, ips, t ]
         | `NeedSignedNs (domain, ips) -> [ domain, domain, [ `K (Rr_map.K Ns) ], ips, t ])
       (find_nearest_ns ip_proto dnssec ts t (Domain_name.raw name))
   in

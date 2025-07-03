@@ -1084,7 +1084,7 @@ let missing_glue () =
     Dns_cache.set cache 0L (name "ns1.com") A (AuthoritativeAnswer None) (`Entry a)
   in
   Alcotest.check handle_query_res "..."
-    (`Queries [ name "com", (name "www.foo.com", [ `K (Rr_map.K A) ]), ip "127.0.0.1" ], cache)
+    (`Queries [ name "com", (name "foo.com", [ `K (Rr_map.K Ns) ]), ip "127.0.0.1" ], cache)
     (Dns_resolver_cache.handle_query cache ~dnssec:false ~dnssec_ok:false ~rng `Ipv4_only 0L (name "www.foo.com", `K (Rr_map.K A)))
 
 let loop_cname_1 () =
