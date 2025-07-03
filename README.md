@@ -72,6 +72,7 @@ This library is published under the 2 clause BSD license.
 * [RFC 8020](https://tools.ietf.org/html/rfc8020) NXDOMAIN: There Really Is Nothing Underneath
 * [RFC 8080](https://tools.ietf.org/html/rfc8080) Edwards-Curve Digital Security Algorithm (EdDSA) for DNSSEC
 * [RFC 8109](https://tools.ietf.org/html/rfc8109) Initializing a DNS Resolver with Priming Queries
+* [RFC 8914](https://tools.ietf.org/html/rfc8914) Extended DNS Errors
 * [draft-ietf-dnsop-let-localhost-be-localhost-02](https://tools.ietf.org/html/draft-ietf-dnsop-let-localhost-be-localhost-02) Let 'localhost' be localhost.
 
 `*`: Please note that the RFCs marked with `*` are only partially implemented
