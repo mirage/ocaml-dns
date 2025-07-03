@@ -177,9 +177,19 @@ let with_ttl : type a . a Rr_map.key -> int32 -> a entry -> a entry = fun k ttl 
   | `No_domain (name, soa) -> `No_domain (name, { soa with Soa.minimum = ttl })
   | `Serv_fail (name, soa) -> `Serv_fail (name, { soa with Soa.minimum = ttl })
 
+let rec no_dom_upwards cache name =
+  if Domain_name.count_labels name > 1 then
+    let name' = Domain_name.drop_label_exn name in
+    match LRU.find name' cache with
+    | None -> no_dom_upwards cache name'
+    | Some No_domain (meta, name, soa) -> None, Ok (meta, `No_domain (name, soa))
+    | Some _ -> None, Error `Cache_miss
+  else
+    None, Error `Cache_miss
+
 let find cache name query_type =
   match LRU.find name cache with
-  | None -> None, Error `Cache_miss
+  | None -> no_dom_upwards cache name
   | Some No_domain (meta, name, soa) -> None, Ok (meta, `No_domain (name, soa))
   | Some Rr_map resource_records ->
     Some resource_records,
@@ -349,7 +359,7 @@ let clip_ttl_to_week query_type entry =
 let pp_query ppf (name, query_type) =
   Fmt.pf ppf "%a (%a)" Domain_name.pp name Packet.Question.pp_qtype query_type
 
-let set cache ts name query_type rank entry  =
+let set cache ts name query_type rank entry =
   let entry' = clip_ttl_to_week query_type entry in
   let cache' map = insert cache ?map ts name query_type rank entry' in
   match find cache name query_type with
