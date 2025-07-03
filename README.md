@@ -69,6 +69,7 @@ This library is published under the 2 clause BSD license.
 * [RFC 7828](https://tools.ietf.org/html/rfc7828) The edns-tcp-keepalive EDNS0 Option
 * `*` [RFC 7830](https://tools.ietf.org/html/rfc7830) The EDNS(0) Padding Option
 * `*` [RFC 7873](https://tools.ietf.org/html/rfc7873) Domain Name System (DNS) Cookies
+* [RFC 8020](https://tools.ietf.org/html/rfc8020) NXDOMAIN: There Really Is Nothing Underneath
 * [RFC 8080](https://tools.ietf.org/html/rfc8080) Edwards-Curve Digital Security Algorithm (EdDSA) for DNSSEC
 * [RFC 8109](https://tools.ietf.org/html/rfc8109) Initializing a DNS Resolver with Priming Queries
 * [draft-ietf-dnsop-let-localhost-be-localhost-02](https://tools.ietf.org/html/draft-ietf-dnsop-let-localhost-be-localhost-02) Let 'localhost' be localhost.

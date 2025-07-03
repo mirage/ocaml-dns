@@ -82,10 +82,38 @@ let cache_nodata () =
   Alcotest.check (cached_r Rr_map.A) "cache with A nodata results in nodata"
     (Ok (`Entry a, AuthoritativeAnswer None)) (snd (Dns_cache.get cache 0L subname A))
 
+let cache_nodom () =
+  let cache = Dns_cache.empty 100 in
+  let name = name "an-alias.com"
+  and subname = name "another-domain.an-alias.com"
+  and subsubname = name "fo.another-domain.an-alias.com"
+  in
+  let soa = invalid_soa name in
+  let nodom = `No_domain (subname, soa) in
+  let a = 250l, Ipaddr.V4.Set.singleton (ip "1.2.3.4") in
+  let cache = Dns_cache.set cache 0L name A (AuthoritativeAnswer None) (`Entry a) in
+  let cache = Dns_cache.set cache 0L subname A (AuthoritativeAnswer None) nodom in
+  Alcotest.check (cached_r Rr_map.A) "cache with A nodom results in nodom"
+    (Ok (nodom, AuthoritativeAnswer None)) (snd (Dns_cache.get cache 0L subname A)) ;
+  Alcotest.check (cached_r Rr_map.Ns) "cache with A nodom results in nodom for NS"
+    (Ok (nodom, AuthoritativeAnswer None)) (snd (Dns_cache.get cache 0L subname Ns)) ;
+  Alcotest.check (cached_r Rr_map.Ns) "cache with A nodom results in nodom for Ns and subsub"
+    (Ok (nodom, AuthoritativeAnswer None)) (snd (Dns_cache.get cache 0L subsubname Ns)) ;
+  Alcotest.check (cached_r Rr_map.A) "cache with A nodom results in nodom for A and subsub"
+    (Ok (nodom, AuthoritativeAnswer None)) (snd (Dns_cache.get cache 0L subsubname A)) ;
+  Alcotest.check (cached_r Rr_map.A) "cache with A nodom results in a record"
+    (Ok (`Entry a, AuthoritativeAnswer None)) (snd (Dns_cache.get cache 0L name A)) ;
+  Alcotest.check (cached_r Rr_map.Ns) "cache with A nodom results in cache miss for NS'"
+    (Error `Cache_miss) (snd (Dns_cache.get cache 0L name Ns)) ;
+  let cache = Dns_cache.set cache 0L subname A (AuthoritativeAnswer None) (`Entry a) in
+  Alcotest.check (cached_r Rr_map.A) "cache with A nodata results in nodom"
+    (Ok (`Entry a, AuthoritativeAnswer None)) (snd (Dns_cache.get cache 0L subname A))
+
 let cache_tests = [
   "empty cache", `Quick, empty_cache ;
   "cache with A", `Quick, cache_a ;
   "cache nodata", `Quick, cache_nodata ;
+  "cache nodom", `Quick, cache_nodom ;
 ]
 
 let entry_or_cname t a b = match a, b with
