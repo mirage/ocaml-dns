@@ -73,6 +73,7 @@ This library is published under the 2 clause BSD license.
 * [RFC 8080](https://tools.ietf.org/html/rfc8080) Edwards-Curve Digital Security Algorithm (EdDSA) for DNSSEC
 * [RFC 8109](https://tools.ietf.org/html/rfc8109) Initializing a DNS Resolver with Priming Queries
 * [RFC 8914](https://tools.ietf.org/html/rfc8914) Extended DNS Errors
+* [RFC 9539](https://tools.ietf.org/html/rfc9539) Unilateral Opportunistic Deployment of Encrypted Recursive‑to‑Authoritative DNS
 * [draft-ietf-dnsop-let-localhost-be-localhost-02](https://tools.ietf.org/html/draft-ietf-dnsop-let-localhost-be-localhost-02) Let 'localhost' be localhost.
 
 `*`: Please note that the RFCs marked with `*` are only partially implemented
