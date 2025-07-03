@@ -27,6 +27,7 @@ depends: [
   "tls" {>= "1.0.0"}
   "tls-mirage" {>= "1.0.0"}
   "mirage-crypto-rng" {>= "1.0.0"}
+  "ca-certs-nss" {>= "3.113.1"}
 ]
 
 build: [
