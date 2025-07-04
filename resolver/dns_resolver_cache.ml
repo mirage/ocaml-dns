@@ -206,7 +206,7 @@ let find_nearest_ns ip_proto dnssec ts t name =
   in
   go name
 
-let resolve t ~dnssec ip_proto ts name typ =
+let resolve t ~qname_minimisation ~dnssec ip_proto ts name typ =
   (* the standard recursive algorithm *)
   let addresses = match ip_proto with
     | `Both -> [`K (Rr_map.K A); `K (Rr_map.K Aaaa)]
@@ -242,22 +242,27 @@ let resolve t ~dnssec ip_proto ts name typ =
           (* qname minimisation: if we can, query minimal qname (and NS)
              this is possible as long as we haven't received a negative reply on
              the NS query -- that's why we have another Dns_cache.get NS below *)
-          let name' =
-            let n = Domain_name.count_labels name
-            and z = Domain_name.count_labels zone
-            in
-            let n' =
-              if succ z < n then
-                Domain_name.drop_label_exn ~amount:(n - succ z) name
-              else
-                name
-            in
-            match snd (Dns_cache.get t ts n' Ns) with
-            | Ok (`Entry _, _) -> n'
-            | _ -> name
+          let name, types =
+            if qname_minimisation then
+              let n = Domain_name.count_labels name
+              and z = Domain_name.count_labels zone
+              in
+              let n' =
+                if succ z < n then
+                  Domain_name.drop_label_exn ~amount:(n - succ z) name
+                else
+                  name
+              in
+              let name' =
+                match snd (Dns_cache.get t ts n' Ns) with
+                | Ok (`Entry _, _) -> n'
+                | _ -> name
+              in
+              name', if Domain_name.equal name' name then types else [ `K (Rr_map.K Ns) ]
+            else
+              name, types
           in
-          let types = if Domain_name.equal name' name then types else [ `K (Rr_map.K Ns) ] in
-          [ zone, name', types, ips, t ]
+          [ zone, name, types, ips, t ]
         | `NeedSignedNs (domain, ips) -> [ domain, domain, [ `K (Rr_map.K Ns) ], ips, t ])
       (find_nearest_ns ip_proto dnssec ts t (Domain_name.raw name))
   in
@@ -453,7 +458,7 @@ let pick_n rng n xs =
     let idx = pick n l in
     List.map (List.nth xs) idx
 
-let handle_query t ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
+let handle_query t ~qname_minimisation ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
   match answer ~dnssec ~dnssec_ok t ts qname qtype with
   | `Packet (flags, data, additional), t ->
     Log.debug (fun m -> m "handle_query: reply %a (%a)" Domain_name.pp qname
@@ -468,7 +473,7 @@ let handle_query t ~dnssec ~dnssec_ok ~rng ip_proto ts (qname, qtype) =
       else
         name, Fun.id
     in
-    let actions = resolve t ~dnssec ip_proto ts name' qtype in
+    let actions = resolve t ~qname_minimisation ~dnssec ip_proto ts name' qtype in
     let up_to_three = pick_n rng 3 actions in
     let ip1 = 4 - List.length up_to_three in
     let ip2 = max 1 (3 - List.length up_to_three) in

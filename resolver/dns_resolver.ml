@@ -72,9 +72,24 @@ module TM = Map.Make(struct
 
 let retry_interval = Duration.of_ms 500
 
+type feature =
+  [ `Dnssec | `Qname_minimisation | `Opportunistic_tls_authoritative ]
+
+module FS = Set.Make(struct
+    type t = feature
+    let compare a b = match a, b with
+      | `Dnssec, `Dnssec -> 0 | `Dnssec, _ -> 1 | _, `Dnssec -> -1
+      | `Qname_minimisation, `Qname_minimisation -> 0
+      | `Qname_minimisation, _ -> 1
+      | _, `Qname_minimisation -> -1
+      | `Opportunistic_tls_authoritative, `Opportunistic_tls_authoritative -> 0
+(*      | `Opportunistic_tls_authoritative, _ -> 1
+        | _, `Opportunistic_tls_authoritative -> -1 *)
+  end)
+
 type t = {
   ip_protocol : [ `Both | `Ipv4_only | `Ipv6_only ];
-  dnssec : bool ;
+  features : FS.t  ;
   rng : int -> string ;
   primary : Dns_server.Primary.s ;
   cache : Dns_cache.t ;
@@ -84,7 +99,7 @@ type t = {
   record_clients : bool ;
 }
 
-let create ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both) ?(dnssec = true) now rng primary =
+let create ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both) features now rng primary =
   let cache = Dns_cache.empty cache_size in
   let cache =
     List.fold_left (fun cache (name, b) ->
@@ -110,8 +125,11 @@ let create ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both)
       Domain_name.root Ds Dns_cache.Additional
       (`Entry (Int32.max_int, Dnssec.root_ds))
   in
-  { ip_protocol ; dnssec ; rng ; cache ; primary ; transit = TM.empty ; queried = QM.empty ;
+  let features = FS.of_list features in
+  { ip_protocol ; features ; rng ; cache ; primary ; transit = TM.empty ; queried = QM.empty ;
     clients = Ipaddr.Set.empty ; record_clients }
+
+let features t = FS.elements t.features
 
 let pick rng = function
   | [] -> None
@@ -125,7 +143,7 @@ let build_query ?id ?(recursion_desired = false) ?(checking_disabled = false) ?(
         (* tell the NS we will do the checking.
            See: https://www.rfc-editor.org/rfc/rfc4035#section-4.6 *)
         let flags =
-          if t.dnssec then
+          if FS.mem `Dnssec t.features then
             Packet.Flags.singleton `Checking_disabled
           else Packet.Flags.empty
         in
@@ -151,8 +169,8 @@ let query ?recursion_desired t ts await retry ip name typ =
   let k = (name, typ) in
   let await = { await with retry = succ await.retry } in
   (* TODO here we may want to use the _default protocol_ (and edns settings) instead of `Udp *)
-  let payload_size = if t.dnssec then Some 1220 (* from RFC 4035 4.1 *) else None in
-  let edns = Some (Edns.create ~dnssec_ok:t.dnssec ?payload_size ()) in
+  let payload_size = if FS.mem `Dnssec t.features then Some 1220 (* from RFC 4035 4.1 *) else None in
+  let edns = Some (Edns.create ~dnssec_ok:(FS.mem `Dnssec t.features) ?payload_size ()) in
   let t, packet = build_query ?recursion_desired ~checking_disabled:await.checking_disabled ~dnssec_ok:await.dnssec_ok t ts `Udp k retry await.zone edns ip in
   let queried =
     let q = Option.value ~default:[] (QM.find_opt k t.queried) in
@@ -191,8 +209,9 @@ let handle_query ?(retry = 0) t ts awaiting =
                   pp_key awaiting.question Ipaddr.pp awaiting.ip awaiting.port);
     `Nothing, t
   end else
-    let dnssec = t.dnssec && not awaiting.checking_disabled in
-    let r, cache = Dns_resolver_cache.handle_query t.cache ~dnssec ~dnssec_ok:awaiting.dnssec_ok ~rng:t.rng t.ip_protocol ts awaiting.question in
+    let dnssec = FS.mem `Dnssec t.features && not awaiting.checking_disabled in
+    let qname_minimisation = FS.mem `Qname_minimisation t.features in
+    let r, cache = Dns_resolver_cache.handle_query t.cache ~qname_minimisation ~dnssec ~dnssec_ok:awaiting.dnssec_ok ~rng:t.rng t.ip_protocol ts awaiting.question in
     let t = { t with cache } in
     match r with
     | `Queries _ when awaiting.retry >= 10 ->
@@ -453,7 +472,7 @@ let handle_reply t now ts proto sender sport packet reply =
       | Some (zone, edns) ->
         (* (b) DNSSec verification of RRs *)
         let t, packet, signed =
-          if t.dnssec then
+          if FS.mem `Dnssec t.features then
             let t, dnskeys =
               match qtype with
               | `K K Rr_map.Dnskey ->
@@ -531,7 +550,7 @@ let handle_reply t now ts proto sender sport packet reply =
           let (t, out_a, out_q), recursion_desired =
             handle_awaiting_queries t ts key, false
           in
-          let edns = Some (Edns.create ~dnssec_ok:t.dnssec ()) in
+          let edns = Some (Edns.create ~dnssec_ok:(FS.mem `Dnssec t.features) ()) in
           let t, cs = build_query ~recursion_desired t ts `Tcp key 1 zone edns sender in
           Log.debug (fun m -> m "resolve: upgrade to tcp %a %a"
                          Ipaddr.pp sender pp_key key) ;
@@ -551,7 +570,7 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
   Log.debug (fun m -> m "handling delegation %a (for %a)" Packet.Answer.pp delegation Packet.pp req) ;
   match req.Packet.data, Packet.Question.qtype req.question with
   | `Query, Some qtype ->
-    let dnssec = t.dnssec && not (Packet.Flags.mem `Checking_disabled (snd req.header))
+    let dnssec = FS.mem `Dnssec t.features && not (Packet.Flags.mem `Checking_disabled (snd req.header))
     and dnssec_ok = match req.edns with None -> false | Some edns -> edns.Edns.dnssec_ok
     in
     let r, cache = Dns_resolver_cache.answer ~dnssec ~dnssec_ok t.cache ts (fst req.question) qtype in

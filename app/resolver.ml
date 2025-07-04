@@ -33,7 +33,7 @@ let print_resolver_stats () =
     dns_resolver_metrics;
   exit 130
 
-let main () =
+let main dnssec qname_min opportunistic =
   Mirage_crypto_rng_unix.use_default ();
   let reporter = Metrics.cache_reporter () in
   Metrics.set_reporter reporter;
@@ -46,7 +46,12 @@ let main () =
       (* setup DNS server state: *)
       Dns_server.Primary.create ~rng:Mirage_crypto_rng.generate Dns_trie.empty
     in
-    Dns_resolver.create ~dnssec:true ~ip_protocol:`Ipv4_only
+    let features =
+      (if dnssec then [ `Dnssec ] else []) @
+      (if qname_min then [ `Qname_minimisation ] else []) @
+      (if opportunistic then [ `Opportunistic_tls_authoritative ] else [])
+    in
+    Dns_resolver.create features ~ip_protocol:`Ipv4_only
       (Mirage_mtime.elapsed_ns ()) Mirage_crypto_rng.generate primary_t
   in
   let _resolver = Resolver.resolver ~port:53530 stack resolver in
@@ -58,14 +63,33 @@ let main () =
   Tcpip_stack_socket.V4V6.listen stack >|= fun () ->
   Ok ()
 
-let jump () =
-  Lwt_main.run (main ())
+let jump () dnssec qname_min opportunistic =
+  Lwt_main.run (main dnssec qname_min opportunistic)
 
 open Cmdliner
 
+let dnssec =
+  let doc =
+    Arg.info ~doc:"Validate DNS replies and cache DNSSEC data." [ "dnssec" ]
+  in
+  Arg.(value & flag doc)
+
+let qname_minimisation =
+  let doc =
+    Arg.info ~doc:"Use qname minimisation (RFC 9156)." [ "qname-minimisation" ]
+  in
+  Arg.(value & flag doc)
+
+let opportunistic_tls =
+  let doc =
+    Arg.info ~doc:"Use opportunistic TLS from recursive resolver to authoriative (RFC 9539)."
+      [ "opportunistic-tls-authoritative" ]
+  in
+  Arg.(value & flag doc)
+
 let cmd =
   let term =
-    Term.(term_result (const jump $ Dns_cli.setup_log))
+    Term.(term_result (const jump $ Dns_cli.setup_log $ dnssec $ qname_minimisation $ opportunistic_tls))
   and info = Cmd.info "resolver" ~version:"%%VERSION_NUM%%"
   in
   Cmd.v info term
