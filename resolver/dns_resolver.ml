@@ -429,7 +429,7 @@ let handle_awaiting_queries ?retry t ts (name, typ) =
 let resolve t ts proto sender sport req =
   match req.Packet.data, Packet.Question.qtype req.Packet.question with
   | `Query, Some q_type ->
-    Log.info (fun m -> m "resolving %a" Packet.Question.pp req.question) ;
+    Log.debug (fun m -> m "resolving %a" Packet.Question.pp req.question) ;
     if not (Packet.Flags.mem `Recursion_desired (snd req.Packet.header)) then
       Log.warn (fun m -> m "recursion not desired") ;
     (* ask the cache *)
