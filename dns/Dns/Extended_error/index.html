@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Extended_error (dns.Dns.Extended_error)</title><meta charset="utf-8"/><link rel="stylesheet" href="../../../odoc.support/odoc.css"/><meta name="generator" content="odoc 3.1.0"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><script src="../../../odoc.support/highlight.pack.js"></script><script>hljs.initHighlightingOnLoad();</script></head><body class="odoc"><nav class="odoc-nav"><a href="../index.html">Up</a> – <a href="../../../index.html">Index</a> &#x00BB; <a href="../../index.html">dns</a> &#x00BB; <a href="../index.html">Dns</a> &#x00BB; Extended_error</nav><header class="odoc-preamble"><h1>Module <code><span>Dns.Extended_error</span></code></h1><p>Extended DNS errors</p><p>Standardized in RFC 8914, this is a payload for Edns with a additional information about the cause of a DNS error.</p></header><div class="odoc-content"><div class="odoc-spec"><div class="spec type anchored" id="type-t"><a href="#type-t" class="anchor"></a><code><span><span class="keyword">type</span> t</span><span> =
+  <span>[ `Other
+  <span>| `Unsupported_Dnskey_algorithm</span>
+  <span>| `Unsupported_Ds_digest</span>
+  <span>| `Stale_answer</span>
+  <span>| `Forged_answer</span>
+  <span>| `Dnssec_indeterminate</span>
+  <span>| `Dnssec_bogus</span>
+  <span>| `Signature_expired</span>
+  <span>| `Signature_not_yet_valid</span>
+  <span>| `Dnskey_missing</span>
+  <span>| `Rrsigs_missing</span>
+  <span>| `No_zone_key_bit_set</span>
+  <span>| `Nsec_missing</span>
+  <span>| `Cached_error</span>
+  <span>| `Not_ready</span>
+  <span>| `Blocked</span>
+  <span>| `Censored</span>
+  <span>| `Filtered</span>
+  <span>| `Prohibited</span>
+  <span>| `Stale_Nxdomain_answer</span>
+  <span>| `Not_authoritative</span>
+  <span>| `Not_supported</span>
+  <span>| `No_reachable_authority</span>
+  <span>| `Network_error</span>
+  <span>| `Invalid_data</span>
+  <span><span>| `Unknown</span> of int</span> ]</span>
+  * <span>string option</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-pp"><a href="#val-pp" class="anchor"></a><code><span><span class="keyword">val</span> pp : <span><a href="#type-t">t</a> <span class="xref-unresolved">Fmt</span>.t</span></span></code></div><div class="spec-doc"><p><code>pp ppf e</code> pretty-prints the error.</p></div></div></div></body></html>
