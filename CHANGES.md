@@ -1,3 +1,24 @@
+### v10.2.0 (2025-08-01)
+
+* dns: add support for extended DNS error (RFC 8914) (#374 @hannesm)
+* dns-resolver: instead of querying a single (ip, query), query up to three
+  (#375 @reynir @hannesm)
+* dns-cache: fix metrics (#377 #379 @hannesm @reynir)
+* dns-cache: support RFC 8020, if there's a NXDomain, nothing is underneath
+  (#390 @hannesm)
+* dns-trie: canonicalize domain name before insertion, reducing allocations
+  (#388 @reynir)
+* dns-server: make number of tries in cache (for IXFR) configurable
+  (#387 @reynir)
+* dns-resolver: add metrics (#376 #378 @hannesm @reynir)
+* dns-resolver: allow update to the primary, and the TLS state (#383 @reynir)
+* dns-resolver: heuristics to detect blocked domains (#380 @reynir)
+* dns-resolver: report extended DNS error when blocking
+  (#385 #384 @reynir @hannesm)
+* dns-resolver: implement opportunistic TLS (#389 @hannesm)
+* dns-resolver: support query name minimisation (RFC 9156) (#391 @hannesm)
+* dns-resolver: features via flags (#392 @hannesm)
+
 ### v10.1.0 (2025-05-24)
 
 * dns-mirage-resolver: adapt API to prepare for DoH (#373 @dinosaure @PizieDust
