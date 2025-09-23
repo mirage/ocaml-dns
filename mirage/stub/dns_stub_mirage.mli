@@ -3,7 +3,12 @@
 module Make (S : Tcpip.Stack.V4V6) : sig
   type t
 
-  module H : Happy_eyeballs_mirage.S with type stack = S.t and type flow = S.TCP.flow
+  module H : sig
+    include Happy_eyeballs_mirage.S with type stack = S.t and type flow = S.TCP.flow
+    val connect_device : ?aaaa_timeout:int64 -> ?connect_delay:int64 ->
+      ?connect_timeout:int64 -> ?resolve_timeout:int64 -> ?resolve_retries:int ->
+      ?timer_interval:int64 -> ?getaddrinfo:getaddrinfo -> stack -> t Lwt.t
+  end
 
   val create : ?cache_size:int -> ?udp:bool -> ?tcp:bool -> ?port:int ->
     ?tls:Tls.Config.server -> ?tls_port:int ->
