@@ -14,6 +14,7 @@ depends: [
   "dns" {= version}
   "dns-client-mirage" {= version}
   "dns-mirage" {= version}
+  "dns-resolver" {= version}
   "dns-tsig" {= version}
   "dns-server" {= version}
   "duration" {>= "0.1.2"}
