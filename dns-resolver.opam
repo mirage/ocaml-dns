@@ -29,6 +29,7 @@ depends: [
   "mirage-crypto-rng" {>= "1.0.0"}
   "ca-certs-nss" {>= "3.113.1"}
   "ipaddr" {>= "5.6.1"}
+  "metrics" {>= "0.5.0"}
 ]
 
 build: [
