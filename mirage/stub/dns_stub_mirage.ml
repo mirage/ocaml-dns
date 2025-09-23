@@ -112,7 +112,17 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     | Ok (_flags, answer, additional) ->
       (* TODO do sth with flags *)
       metrics `Authoritative_answers;
-      let reply = build_reply header question proto ?additional (`Answer answer) in
+      let data = `Answer answer in
+      let ttl = Packet.minimum_ttl data in
+      let packet = Packet.create ?additional header question data in
+      let packet =
+        match Dns_block.edns packet with
+        | None -> packet
+        | Some edns ->
+          Dns_resolver_metrics.resolver_stats `Blocked;
+          Dns.Packet.with_edns packet (Some edns)
+      in
+      let reply = ttl, fst (Packet.encode proto packet) in
       Some reply
     | Error (Rcode.NotAuth, _) -> None
     | Error (rcode, answer) ->
