@@ -41,6 +41,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     let f = function
       | `Udp_queries -> "udp-queries"
       | `Tcp_queries -> "tcp-queries"
+      | `Ocaml_queries -> "ocaml-queries"
       | `Queries -> "queries"
       | `Decoding_errors -> "decoding-errors"
       | `Tcp_connections -> "tcp-connections"
@@ -86,7 +87,22 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     reserved : Dns_server.t ;
     mutable server : Dns_server.t ;
     on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.t -> Dns_trie.t -> unit Lwt.t ;
+    push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
   }
+
+  let primary_data { server ; _ } =
+    server.Dns_server.data
+
+  let update_primary_data t trie =
+    let server = Dns_server.with_data t.server trie in
+    t.server <- server
+
+  let resolve_external { push ; _ } (ip, port) data =
+    let th, wk = Lwt.wait () in
+    push (Some (ip, port, data, wk));
+    th
+
+  let update_tls _t _tls = ()
 
   let query_server trie question data build_reply =
     match Dns_server.handle_question trie question with
@@ -113,15 +129,16 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         match k with None -> None | Some (keyname, _, _, _) -> Some keyname
       in
       let sign data =
+        let ttl = Packet.minimum_ttl data in
         let packet =
           Packet.create packet.Packet.header packet.Packet.question data
         in
         match k with
-        | None -> Some (fst (Packet.encode proto packet))
+        | None -> Some (ttl, fst (Packet.encode proto packet))
         | Some (keyname, _tsig, mac, dnskey) ->
           match Dns_tsig.encode_and_sign ~proto ~mac packet now dnskey keyname with
           | Error s -> Log.err (fun m -> m "error %a while signing answer" Dns_tsig.pp_s s); None
-          | Ok (cs, _) -> Some cs
+          | Ok (cs, _) -> Some (ttl, cs)
       in
       Ok (key, sign)
 
@@ -152,7 +169,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       | Error rcode ->
         Lwt.return (sign (`Rcode_error (rcode, Opcode.Update, None)))
 
-  let server t proto ip packet buf build_reply =
+  let server t proto ip packet buf (build_reply : ?additional:Dns.Rr_map.t Domain_name.Map.t -> Dns.Packet.data -> (int32 * string)) =
     let question, data = packet.Packet.question, packet.Packet.data in
     match data with
     | `Query -> Lwt.return (query_server t.server question data build_reply)
@@ -221,8 +238,9 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       metrics `Queries;
       (* check header flags: recursion desired (and send recursion available) *)
       let build_reply ?additional data =
+        let ttl = Packet.minimum_ttl data in
         let packet = Packet.create ?additional packet.header packet.question data in
-        fst (Packet.encode proto packet)
+        ttl, fst (Packet.encode proto packet)
       in
       server t proto ip packet data build_reply >>= function
       | Some data -> Lwt.return (Some data)
@@ -236,14 +254,15 @@ module Make (S : Tcpip.Stack.V4V6) = struct
   let create ?(cache_size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let server = Dns_server.Primary.server primary in
+    let stream, push = Lwt_stream.create () in
     let reserved = Dns_server.create Dns_resolver_root.reserved Mirage_crypto_rng.generate in
-    let t = { client ; reserved ; server ; on_update } in
+    let t = { client ; reserved ; server ; on_update ; push } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
       metrics `Udp_queries;
       handle t `Udp src buf >>= function
       | None -> Lwt.return_unit
-      | Some data ->
+      | Some (_ttl, data) ->
         let data = Cstruct.of_string data in
         S.UDP.write ~src_port:53 ~dst:src ~dst_port:src_port (S.udp stack) data >|= function
         | Error e -> Log.warn (fun m -> m "udp: failure %a while sending to %a:%d"
@@ -266,7 +285,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
           | None ->
             Log.warn (fun m -> m "no TCP output") ;
             loop ()
-          | Some data ->
+          | Some (_ttl, data) ->
             let data = Cstruct.of_string data in
             Dns_flow.send_tcp flow data >>= function
             | Ok () -> loop ()
@@ -274,6 +293,20 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       in
       loop ()
     in
+    let rec ocaml_cb () =
+      Lwt_stream.get stream >>= function
+      | Some (dst_ip, _dst_port, data, wk) ->
+        metrics `Ocaml_queries;
+        begin
+          handle t `Tcp dst_ip data >|= function
+          | None ->
+            Log.warn (fun m -> m "no TCP output")
+          | Some (ttl, data) ->
+            Lwt.wakeup wk (ttl, data);
+        end >>= fun () ->
+        ocaml_cb ()
+      | None -> Lwt.return_unit in
+    Lwt.async ocaml_cb;
     S.TCP.listen (S.tcp stack) ~port:53 tcp_cb;
     t
 end
