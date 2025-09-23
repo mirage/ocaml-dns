@@ -59,6 +59,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   module H = Happy_eyeballs_mirage.Make(S)
   module Client = Dns_client_mirage.Make(S)(H)
+  module TLS = Tls_mirage.Make(S.TCP)
 
   (* likely this should contain:
      - a primary server (handling updates)
@@ -86,6 +87,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     mutable server : Dns_server.t ;
     on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.t -> Dns_trie.t -> unit Lwt.t ;
     push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
+    mutable update_tls : Tls.Config.server -> unit ;
   }
 
   let primary_data { server ; _ } =
@@ -100,7 +102,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     push (Some (ip, port, data, wk));
     th
 
-  let update_tls _t _tls = ()
+  let update_tls { update_tls ; _ } tls = update_tls tls
 
   let build_reply header question proto ?additional data =
     let ttl = Packet.minimum_ttl data in
@@ -271,12 +273,45 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       Dns_resolver_metrics.response_metric (Int64.sub stop start);
       reply
 
-  let create ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
+  let send_tls flow data =
+    let len = Cstruct.create 2 in
+    Cstruct.BE.set_uint16 len 0 (Cstruct.length data);
+    TLS.writev flow [len; data] >>= function
+    | Ok () -> Lwt.return (Ok ())
+    | Error e ->
+      Log.err (fun m -> m "tls error %a while writing" TLS.pp_write_error e);
+      TLS.close flow >|= fun () ->
+      Error ()
+
+  type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
+
+  let rec read_tls ({ tls_flow ; linger } as f) length =
+    if Cstruct.length linger >= length then
+      let a, b = Cstruct.split linger length in
+      f.linger <- b;
+      Lwt.return (Ok a)
+    else
+      TLS.read tls_flow >>= function
+      | Ok `Eof -> Log.debug (fun m -> m "end of file while reading"); TLS.close tls_flow >|= fun () -> Error ()
+      | Error e -> Log.warn (fun m -> m "error reading TLS: %a" TLS.pp_error e); TLS.close tls_flow >|= fun () -> Error ()
+      | Ok (`Data d) ->
+        f.linger <- Cstruct.append linger d;
+        read_tls f length
+
+  let read_tls_packet f =
+    read_tls f 2 >>= function
+    | Error () -> Lwt.return (Error ())
+    | Ok k ->
+      let len = Cstruct.BE.get_uint16 k 0 in
+      read_tls f len
+
+  let create ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let server = Dns_server.Primary.server primary in
     let stream, push = Lwt_stream.create () in
     let reserved = Dns_server.create Dns_resolver_root.reserved Mirage_crypto_rng.generate in
-    let t = { client ; reserved ; server ; on_update ; push } in
+    let update_tls _ = () in
+    let t = { client ; reserved ; server ; on_update ; push ; update_tls } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
       metrics `Udp_queries;
@@ -330,5 +365,38 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         ocaml_cb ()
       | None -> Lwt.return_unit in
     Lwt.async ocaml_cb;
+    let tls_cb cfg flow =
+      let dst_ip, dst_port = S.TCP.dst flow in
+      TLS.server_of_flow cfg flow >>= function
+      | Error e ->
+        Log.warn (fun m -> m "TLS error (from %a:%d): %a" Ipaddr.pp dst_ip dst_port
+          TLS.pp_write_error e);
+        Lwt.return_unit
+      | Ok tls ->
+        Log.debug (fun m -> m "tls connection from %a:%d" Ipaddr.pp dst_ip dst_port);
+        let tls_and_linger = { tls_flow = tls ; linger = Cstruct.empty } in
+        let rec loop () =
+          read_tls_packet tls_and_linger >>= function
+          | Error () ->
+            Lwt.return_unit
+          | Ok data ->
+            let data = Cstruct.to_string data in
+            handle t `Tcp dst_ip data >>= function
+            | None ->
+              Log.warn (fun m -> m "no TLS output") ;
+              loop ()
+            | Some (_ttl, data) ->
+              let data = Cstruct.of_string data in
+              send_tls tls data >>= function
+              | Ok () -> loop ()
+              | Error () -> Lwt.return_unit
+        in
+        loop ()
+    in
+    let update_tls tls_cfg =
+      S.TCP.listen (S.tcp stack) ~port:tls_port (tls_cb tls_cfg);
+    in
+    t.update_tls <- update_tls;
+    (match tls with None -> () | Some cfg -> update_tls cfg);
     t
 end
