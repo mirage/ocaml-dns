@@ -250,11 +250,11 @@ module Make (S : Tcpip.Stack.V4V6) = struct
   let handle t proto ip buf =
     match Packet.decode buf with
     | Error err ->
-      (* TODO send FormErr back *)
       Log.err (fun m -> m "couldn't decode %a" Packet.pp_err err);
       Dns_resolver_metrics.response_metric 0L;
       Dns_resolver_metrics.resolver_stats `Error;
-      Lwt.return None
+      let answer = Packet.raw_error buf Rcode.FormErr in
+      Lwt.return (Option.map (fun r -> 0l, r) answer)
     | Ok packet ->
       Dns_resolver_metrics.resolver_stats `Queries;
       let start = Mirage_mtime.elapsed_ns () in
