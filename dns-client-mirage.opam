@@ -13,7 +13,7 @@ build: [
 ]
 
 depends: [
-  "dune" {>="2.7.0"}
+  "dune" {>="2.8.0"}
   "ocaml" {>= "4.13.0"}
   "dns-client" {= version}
   "domain-name" {>= "0.4.0"}

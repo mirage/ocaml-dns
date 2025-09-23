@@ -8,13 +8,12 @@ bug-reports: "https://github.com/mirage/ocaml-dns/issues"
 license: "BSD-2-Clause"
 
 depends: [
-  "dune" {>= "2.7.0"}
+  "dune" {>= "2.8.0"}
   "ocaml" {>= "4.13.0"}
   "cstruct" {>= "6.0.0"}
   "dns" {= version}
   "dns-client-mirage" {= version}
   "dns-mirage" {= version}
-  "dns-resolver" {= version}
   "dns-tsig" {= version}
   "dns-server" {= version}
   "duration" {>= "0.1.2"}
