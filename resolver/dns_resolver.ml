@@ -2,25 +2,6 @@
 
 open Dns
 
-let resolver_stats =
-  let f = function
-    | `Error -> "error"
-    | `Queries -> "queries"
-    | `Blocked -> "blocked"
-    | `Clients -> "clients"
-  in
-  let src = Dns.counter_metrics ~f "dns-resolver" in
-  (fun r -> Metrics.add src (fun x -> x) (fun d -> d r))
-
-let response_metric =
-  let store = ref (0L, 0L) in
-  let data dp =
-    store := (Int64.succ (fst !store), Int64.add dp (snd !store));
-    Metrics.Data.v [ Metrics.uint "mean response" (Duration.to_ms (Int64.div (snd !store) (fst !store))) ]
-  in
-  let src = Metrics.Src.v ~tags:Metrics.Tags.[] ~data "dns-resolver-timings" in
-  (fun dp -> Metrics.add src (fun x -> x) (fun d -> d dp))
-
 type key = [ `raw ] Domain_name.t * Packet.Question.qtype
 
 let pp_key = Dns_resolver_cache.pp_question
@@ -245,7 +226,7 @@ let handle_query ?(retry = 0) t ts awaiting =
       Log.debug (fun m -> m "answering %a after %a %d out packets: %a"
                     pp_key awaiting.question Duration.pp time awaiting.retry
                     Packet.pp packet) ;
-      response_metric time;
+      Dns_resolver_metrics.response_metric time;
       let cs, _ = Packet.encode ?max_size awaiting.proto packet in
       let ttl = Packet.minimum_ttl (answer :> Packet.data) in
       `Answer (ttl, cs), t
@@ -287,7 +268,7 @@ let handle_primary t now ts proto sender sport packet _request buf =
           match Dns_block.edns reply with
           | None -> reply
           | Some edns ->
-            resolver_stats `Blocked;
+            Dns_resolver_metrics.resolver_stats `Blocked;
             Dns.Packet.with_edns reply (Some edns)
         in
         let r = Packet.encode proto reply in
@@ -527,7 +508,7 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
         let packet = Packet.create ?edns ?additional (fst req.header, flags) req.question (reply :> Packet.data) in
         let ttl = Packet.minimum_ttl (reply :> Packet.data) in
         let pkt, _ = Packet.encode ?max_size proto packet in
-        response_metric 0L;
+        Dns_resolver_metrics.response_metric 0L;
         t, [ proto, sender, sport, ttl, pkt ], []
         (* send it out! we've a cache hit here! *)
     end
@@ -547,7 +528,7 @@ let handle_buf t now ts query_allowed proto sender sport buf =
                  v Cstruct.hexdump_pp buf) ;
     t, handle_error ~error:Dns_enum.BadVersOrSig proto sender sport buf, [] *)
   | Error e ->
-    resolver_stats `Error;
+    Dns_resolver_metrics.resolver_stats `Error;
     Log.err (fun m -> m "decode error (from %a:%d) %a for@.%a"
                  Ipaddr.pp sender sport
                  Packet.pp_err e Ohex.pp buf) ;
@@ -570,16 +551,16 @@ let handle_buf t now ts query_allowed proto sender sport buf =
         | Error () -> t, [], []
       end
     | #Packet.request as req when query_allowed ->
-      resolver_stats `Queries;
+      Dns_resolver_metrics.resolver_stats `Queries;
       if t.record_clients then
         if not (Ipaddr.Set.mem sender t.clients) then begin
           t.clients <- Ipaddr.Set.add sender t.clients;
-          resolver_stats `Clients
+          Dns_resolver_metrics.resolver_stats `Clients
         end;
       begin
         match handle_primary t.primary now ts proto sender sport res req buf with
         | `Reply (primary, ttl, pkt) ->
-          response_metric 0L;
+          Dns_resolver_metrics.response_metric 0L;
           Log.debug (fun m -> m "handled primary %a:%d" Ipaddr.pp sender sport) ;
           { t with primary }, [ proto, sender, sport, ttl, pkt ], []
         | `Delegation dele ->

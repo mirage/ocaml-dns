@@ -11,5 +11,5 @@
   (name dns_resolver_shared)
   (package dns-resolver)
   (wrapped false)
-  (modules dns_resolver_root dns_block)
-  (libraries dns dns-server))
+  (modules dns_resolver_root dns_block dns_resolver_metrics)
+  (libraries dns dns-server metrics))
