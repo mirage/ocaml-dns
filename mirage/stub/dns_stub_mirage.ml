@@ -42,8 +42,6 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       | `Udp_queries -> "udp-queries"
       | `Tcp_queries -> "tcp-queries"
       | `Ocaml_queries -> "ocaml-queries"
-      | `Queries -> "queries"
-      | `Decoding_errors -> "decoding-errors"
       | `Tcp_connections -> "tcp-connections"
       | `Authoritative_answers -> "authoritative-answers"
       | `Authoritative_errors -> "authoritative-errors"
@@ -230,26 +228,31 @@ module Make (S : Tcpip.Stack.V4V6) = struct
   let handle t proto ip data =
     match Packet.decode data with
     | Error err ->
-      metrics `Decoding_errors;
       (* TODO send FormErr back *)
       Log.err (fun m -> m "couldn't decode %a" Packet.pp_err err);
+      Dns_resolver_metrics.response_metric 0L;
+      Dns_resolver_metrics.resolver_stats `Error;
       Lwt.return None
     | Ok packet ->
-      metrics `Queries;
+      Dns_resolver_metrics.resolver_stats `Queries;
+      let start = Mirage_mtime.elapsed_ns () in
       (* check header flags: recursion desired (and send recursion available) *)
       let build_reply ?additional data =
         let ttl = Packet.minimum_ttl data in
         let packet = Packet.create ?additional packet.header packet.question data in
         ttl, fst (Packet.encode proto packet)
       in
-      server t proto ip packet data build_reply >>= function
-      | Some data -> Lwt.return (Some data)
-      | None ->
-        (* next look in reserved trie! *)
-        let question, data = packet.Packet.question, packet.Packet.data in
-        match query_server t.reserved question data build_reply with
-        | Some data -> metrics `Reserved_answers ; Lwt.return (Some data)
-        | None -> resolve t packet.Packet.question packet.Packet.data build_reply
+      (server t proto ip packet data build_reply >>= function
+        | Some data -> Lwt.return (Some data)
+        | None ->
+          (* next look in reserved trie! *)
+          let question, data = packet.Packet.question, packet.Packet.data in
+          match query_server t.reserved question data build_reply with
+          | Some data -> metrics `Reserved_answers ; Lwt.return (Some data)
+          | None -> resolve t packet.Packet.question packet.Packet.data build_reply) >|= fun reply ->
+      let stop = Mirage_mtime.elapsed_ns () in
+      Dns_resolver_metrics.response_metric (Int64.sub stop start);
+      reply
 
   let create ?(cache_size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
