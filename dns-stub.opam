@@ -24,6 +24,7 @@ depends: [
   "tcpip" {>= "8.2.0"}
   "metrics"
   "mirage-crypto-rng" {>= "1.0.0"}
+  "tls-mirage" {>= "2.0.2"}
 ]
 
 build: [
