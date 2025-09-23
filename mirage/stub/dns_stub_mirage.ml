@@ -271,7 +271,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       Dns_resolver_metrics.response_metric (Int64.sub stop start);
       reply
 
-  let create ?(cache_size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
+  let create ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let server = Dns_server.Primary.server primary in
     let stream, push = Lwt_stream.create () in
@@ -284,12 +284,13 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       | None -> Lwt.return_unit
       | Some (_ttl, data) ->
         let data = Cstruct.of_string data in
-        S.UDP.write ~src_port:53 ~dst:src ~dst_port:src_port (S.udp stack) data >|= function
+        S.UDP.write ~src_port:port ~dst:src ~dst_port:src_port (S.udp stack) data >|= function
         | Error e -> Log.warn (fun m -> m "udp: failure %a while sending to %a:%d"
                                   S.UDP.pp_error e Ipaddr.pp src src_port)
         | Ok () -> ()
     in
-    S.UDP.listen (S.udp stack) ~port:53 udp_cb ;
+    if udp then
+      S.UDP.listen (S.udp stack) ~port udp_cb ;
     let tcp_cb flow =
       metrics `Tcp_connections;
       let dst_ip, dst_port = S.TCP.dst flow in
@@ -313,6 +314,8 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       in
       loop ()
     in
+    if tcp then
+      S.TCP.listen (S.tcp stack) ~port tcp_cb;
     let rec ocaml_cb () =
       Lwt_stream.get stream >>= function
       | Some (dst_ip, _dst_port, data, wk) ->
@@ -327,6 +330,5 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         ocaml_cb ()
       | None -> Lwt.return_unit in
     Lwt.async ocaml_cb;
-    S.TCP.listen (S.tcp stack) ~port:53 tcp_cb;
     t
 end
