@@ -2,25 +2,6 @@
 
 open Dns
 
-let resolver_stats =
-  let f = function
-    | `Error -> "error"
-    | `Queries -> "queries"
-    | `Blocked -> "blocked"
-    | `Clients -> "clients"
-  in
-  let src = Dns.counter_metrics ~f "dns-resolver" in
-  (fun r -> Metrics.add src (fun x -> x) (fun d -> d r))
-
-let response_metric =
-  let store = ref (0L, 0L) in
-  let data dp =
-    store := (Int64.succ (fst !store), Int64.add dp (snd !store));
-    Metrics.Data.v [ Metrics.uint "mean response" (Duration.to_ms (Int64.div (snd !store) (fst !store))) ]
-  in
-  let src = Metrics.Src.v ~tags:Metrics.Tags.[] ~data "dns-resolver-timings" in
-  (fun dp -> Metrics.add src (fun x -> x) (fun d -> d dp))
-
 type key = [ `raw ] Domain_name.t * Packet.Question.qtype
 
 let pp_key = Dns_resolver_cache.pp_question
@@ -245,7 +226,7 @@ let handle_query ?(retry = 0) t ts awaiting =
       Log.debug (fun m -> m "answering %a after %a %d out packets: %a"
                     pp_key awaiting.question Duration.pp time awaiting.retry
                     Packet.pp packet) ;
-      response_metric time;
+      Dns_resolver_metrics.response_metric time;
       let cs, _ = Packet.encode ?max_size awaiting.proto packet in
       let ttl = Packet.minimum_ttl (answer :> Packet.data) in
       `Answer (ttl, cs), t
@@ -273,86 +254,6 @@ let scrub_it t proto zone edns ts ~signed qtype p =
     Log.warn (fun m -> m "NS didn't like us %a" Rcode.pp e) ;
     `Try_another_ns
 
-let blocked_nameserver =
-  let lh = Domain_name.of_string_exn "localhost"
-  and bl = Domain_name.of_string_exn "blocked"
-  in
-  fun ns -> Domain_name.equal ns lh || Domain_name.equal ns bl
-
-let blocked_ipv4 =
-  let lh = Ipaddr.V4.(Set.singleton localhost)
-  and any = Ipaddr.V4.(Set.singleton any)
-  in
-  fun ipv4s -> Ipaddr.V4.Set.equal ipv4s lh || Ipaddr.V4.Set.equal ipv4s any
-
-let blocked_ipv6 =
-  let lh = Ipaddr.V6.(Set.singleton localhost)
-  and un = Ipaddr.V6.(Set.singleton unspecified)
-  in
-  fun ipv6s -> Ipaddr.V6.Set.equal ipv6s lh || Ipaddr.V6.Set.equal ipv6s un
-
-let likely_blocked reply =
-  (* HACK! We assume blocked domains have a certain shape. *)
-  let blocked_soa auth =
-    Domain_name.Map.cardinal auth > 0 &&
-    Domain_name.Map.for_all (fun _domain rr ->
-        match Rr_map.find Rr_map.Soa rr with
-        | None -> false
-        | Some soa -> blocked_nameserver soa.nameserver)
-      auth
-  in
-  match reply.Packet.data with
-  | `Answer (answ, _auth) ->
-    Domain_name.Map.for_all
-      (fun _domain rr ->
-         Rr_map.for_all
-           (function
-             | Rr_map.B (Rr_map.A, (_, ips)) -> blocked_ipv4 ips
-             | Rr_map.B (Rr_map.Aaaa, (_, ips)) -> blocked_ipv6 ips
-             | _ -> false)
-           rr)
-      answ
-  | `Rcode_error (Rcode.NXDomain, _, Some (_answ, auth)) -> blocked_soa auth
-  | _ -> false
-
-let blocking_reason reply =
-  let find_soa_hostmaster rr =
-    match Rr_map.find Rr_map.Soa rr with
-    | None -> None
-    | Some soa ->
-      if blocked_nameserver soa.Soa.nameserver then
-        Some (Domain_name.to_string soa.Soa.hostmaster)
-      else
-        None
-  in
-  let find_soa_hostmaster_in_domain_map map =
-    Domain_name.Map.fold (fun _domain rr acc ->
-        match acc, find_soa_hostmaster rr with
-        | None, x -> x
-        | Some x, None -> Some x
-        | Some x, Some y ->
-          if not (String.equal x y) then
-            Log.info (fun m -> m "finding blocklist resulted in %S and %S, using the first" x y);
-          Some x) map None
-  in
-  let find_soa_hostmaster_in_reply answer authority =
-    match find_soa_hostmaster_in_domain_map answer, find_soa_hostmaster_in_domain_map authority with
-    | None, x -> x
-    | Some x, None -> Some x
-    | Some x, Some y ->
-      if not (String.equal x y) then
-        Log.info (fun m -> m "finding blocklist resulted in %S (answer) and %S (authority), using the first" x y);
-      Some x
-  in
-  let r =
-    match reply.Packet.data with
-    | `Answer (answ, auth) -> find_soa_hostmaster_in_reply answ auth
-    | `Rcode_error (Rcode.NXDomain, _, Some (answ, auth)) ->
-      find_soa_hostmaster_in_reply answ auth
-    | _ -> None
-  in
-  Option.map (fun reason -> "appears in blocklist " ^ reason) r
-
 let handle_primary t now ts proto sender sport packet _request buf =
   (* makes only sense to ask primary for query=true since we'll never issue questions from primary *)
   let handle_inner name =
@@ -364,24 +265,11 @@ let handle_primary t now ts proto sender sport packet _request buf =
       if Packet.Flags.mem `Authoritative (snd reply.header) then begin
         Log.debug (fun m -> m "authoritative reply %a" Packet.pp reply) ;
         let reply =
-          if likely_blocked reply then
-            (* After guessing that a domain is blocked we add [`Filtered]
-               extended error code and emit a [`Blocked] metrics event. *)
-            let edns =
-              let reason = blocking_reason reply in
-              match reply.edns with
-              | None ->
-                Some (Edns.create ~extended_error:(`Blocked, reason) ())
-              | Some ({ Edns.extensions = []; extended_rcode; version; dnssec_ok; payload_size }) ->
-                Some (Edns.create ~extended_error:(`Blocked, reason) ~extended_rcode ~version ~dnssec_ok ~payload_size ())
-              | Some edns ->
-                Log.warn (fun m -> m "don't know how to extend edns to add extended error; not doing anything:@ %a" Edns.pp edns);
-                Some edns
-            in
-            resolver_stats `Blocked;
-            Dns.Packet.with_edns reply edns
-          else
-            reply
+          match Dns_block.edns reply with
+          | None -> reply
+          | Some edns ->
+            Dns_resolver_metrics.resolver_stats `Blocked;
+            Dns.Packet.with_edns reply (Some edns)
         in
         let r = Packet.encode proto reply in
         let ttl = Packet.minimum_ttl reply.data in
@@ -620,7 +508,7 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
         let packet = Packet.create ?edns ?additional (fst req.header, flags) req.question (reply :> Packet.data) in
         let ttl = Packet.minimum_ttl (reply :> Packet.data) in
         let pkt, _ = Packet.encode ?max_size proto packet in
-        response_metric 0L;
+        Dns_resolver_metrics.response_metric 0L;
         t, [ proto, sender, sport, ttl, pkt ], []
         (* send it out! we've a cache hit here! *)
     end
@@ -640,7 +528,7 @@ let handle_buf t now ts query_allowed proto sender sport buf =
                  v Cstruct.hexdump_pp buf) ;
     t, handle_error ~error:Dns_enum.BadVersOrSig proto sender sport buf, [] *)
   | Error e ->
-    resolver_stats `Error;
+    Dns_resolver_metrics.resolver_stats `Error;
     Log.err (fun m -> m "decode error (from %a:%d) %a for@.%a"
                  Ipaddr.pp sender sport
                  Packet.pp_err e Ohex.pp buf) ;
@@ -663,16 +551,16 @@ let handle_buf t now ts query_allowed proto sender sport buf =
         | Error () -> t, [], []
       end
     | #Packet.request as req when query_allowed ->
-      resolver_stats `Queries;
+      Dns_resolver_metrics.resolver_stats `Queries;
       if t.record_clients then
         if not (Ipaddr.Set.mem sender t.clients) then begin
           t.clients <- Ipaddr.Set.add sender t.clients;
-          resolver_stats `Clients
+          Dns_resolver_metrics.resolver_stats `Clients
         end;
       begin
         match handle_primary t.primary now ts proto sender sport res req buf with
         | `Reply (primary, ttl, pkt) ->
-          response_metric 0L;
+          Dns_resolver_metrics.response_metric 0L;
           Log.debug (fun m -> m "handled primary %a:%d" Ipaddr.pp sender sport) ;
           { t with primary }, [ proto, sender, sport, ttl, pkt ], []
         | `Delegation dele ->
