@@ -1,3 +1,8 @@
+### v10.2.1 (2025-09-25)
+
+* dns-stub: provide a shared interface with dns-resolver.mirage
+  (named Dns_resolver_mirage_shared) (#394 @hannesm)
+
 ### v10.2.0 (2025-08-01)
 
 * dns: add support for extended DNS error (RFC 8914) (#374 @hannesm)
