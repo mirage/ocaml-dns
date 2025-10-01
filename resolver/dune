@@ -9,7 +9,7 @@
 
 (library
   (name dns_resolver_shared)
-  (package dns-resolver)
+  (public_name dns-resolver.shared)
   (wrapped false)
-  (modules dns_resolver_root dns_block dns_resolver_metrics)
+  (modules dns_resolver_shared dns_resolver_root dns_block dns_resolver_metrics)
   (libraries dns dns-server metrics))

@@ -3,12 +3,11 @@
  (public_name dns-resolver.mirage)
  (wrapped false)
  (modules dns_resolver_mirage)
- (libraries dns dns-resolver dns-server dns-mirage lwt duration mirage-sleep mirage-ptime mirage-mtime tcpip mirage-crypto-rng tls tls-mirage ca-certs-nss dns-resolver.shared))
+ (libraries dns dns-resolver dns-server dns-mirage lwt duration mirage-sleep mirage-ptime mirage-mtime tcpip mirage-crypto-rng tls tls-mirage ca-certs-nss dns-resolver.mirage.shared))
 
 (library
  (name dns_resolver_mirage_shared)
- (public_name dns-resolver.shared)
+ (public_name dns-resolver.mirage.shared)
  (wrapped false)
  (modules dns_resolver_mirage_shared)
- (modules_without_implementation dns_resolver_mirage_shared)
  (libraries ipaddr dns-server tcpip tls))

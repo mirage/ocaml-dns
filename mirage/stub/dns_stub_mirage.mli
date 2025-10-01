@@ -24,5 +24,5 @@ module Make (S : Tcpip.Stack.V4V6) : sig
       to 853) using the [resolver] configuration. The [timer] is in milliseconds
       and defaults to 500 milliseconds.*)
 
-  include module type of Dns_resolver_mirage_shared with type t := t
+  include Dns_resolver_mirage_shared.S with type t := t
 end
