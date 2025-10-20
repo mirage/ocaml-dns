@@ -1,3 +1,11 @@
+### v10.2.2 (2025-10-20)
+
+* Expose a module type insotead of a module for Dns_mirage_resolver_shared.S,
+  and move it to dns-resolver.mirage.shared ocamlfind library (#396 @dinosaure)
+* Expose dns-resolver.shared with Dns_root, Dns_metrics, Dns_block as a public
+  ocamlfind library (#396 @dinosaure)
+* Mention RFC9460 in README (#397 @nickbetteridge)
+
 ### v10.2.1 (2025-09-25)
 
 * dns-stub: provide a shared interface with dns-resolver.mirage

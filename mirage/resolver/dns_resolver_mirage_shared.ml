@@ -2,7 +2,7 @@
 
 module type S = sig
   type t
-  
+
   val resolve_external : t -> Ipaddr.t * int -> string -> (int32 * string) Lwt.t
   val primary_data : t -> Dns_trie.t
   val update_primary_data : t -> Dns_trie.t -> unit
