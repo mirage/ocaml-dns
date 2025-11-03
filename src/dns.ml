@@ -1057,6 +1057,8 @@ module Svcb = struct
             | Port port -> (
               Bytes.set_uint16_be buf off 3;
               let off = off + 2 in
+              Bytes.set_uint16_be buf off 2;  (* Length: port value is 2 bytes *)
+              let off = off + 2 in
               Bytes.set_uint16_be buf off port;
               off + 2
             )
@@ -1451,6 +1453,8 @@ module Https = struct
             )
             | Port port -> (
               Bytes.set_uint16_be buf off 3;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off 2;  (* Length: port value is 2 bytes *)
               let off = off + 2 in
               Bytes.set_uint16_be buf off port;
               off + 2
