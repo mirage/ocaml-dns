@@ -8,11 +8,19 @@ module Log = (val Logs.src_log src : Logs.LOG)
 type rank =
   | ZoneFile
   | ZoneTransfer
-  | AuthoritativeAnswer of bool
-  | AuthoritativeAuthority of bool
+  | AuthoritativeAnswer of Rrsig.t option
+  | AuthoritativeAuthority of Rrsig.t option
   | ZoneGlue
   | NonAuthoritativeAnswer
   | Additional
+
+let compare_rrsig_opt a b =
+  match a, b with
+  | None, None -> 0
+  | Some _, None -> 1
+  | None, Some _ -> -1
+  | Some a, Some b ->
+    Ptime.compare a.Rrsig.signature_expiration b.Rrsig.signature_expiration
 
 let compare_rank a b = match a, b with
   | ZoneFile, ZoneFile -> 0
@@ -22,11 +30,11 @@ let compare_rank a b = match a, b with
   | ZoneTransfer, _ -> 1
   | _, ZoneTransfer -> -1
   | AuthoritativeAnswer signed, AuthoritativeAnswer signed' ->
-    Bool.compare signed signed'
+    compare_rrsig_opt signed signed'
   | AuthoritativeAnswer _, _ -> 1
   | _, AuthoritativeAnswer _ -> -1
   | AuthoritativeAuthority signed, AuthoritativeAuthority signed' ->
-    Bool.compare signed signed'
+    compare_rrsig_opt signed signed'
   | AuthoritativeAuthority _, _ -> 1
   | _, AuthoritativeAuthority _ -> -1
   | ZoneGlue, ZoneGlue -> 0
@@ -41,9 +49,11 @@ let pp_rank ppf = function
   | ZoneFile -> Fmt.string ppf "zone file data"
   | ZoneTransfer -> Fmt.string ppf "zone transfer data"
   | AuthoritativeAnswer signed ->
-    Fmt.pf ppf "authoritative answer data (signed: %B)" signed
+    Fmt.pf ppf "authoritative answer data (signed: %a)"
+      Fmt.(option ~none:(any "no") Rrsig.pp) signed
   | AuthoritativeAuthority signed ->
-    Fmt.pf ppf "authoritative authority data (signed: %B)" signed
+    Fmt.pf ppf "authoritative authority data (signed: %a)"
+      Fmt.(option ~none:(any "no") Rrsig.pp) signed
   | ZoneGlue -> Fmt.string ppf "zone file glue"
   | NonAuthoritativeAnswer -> Fmt.string ppf "non-authoritative answer"
   | Additional -> Fmt.string ppf "additional data"
@@ -112,7 +122,7 @@ module LRU = Lru.F.Make(Key)(Entry)
 
 type t = LRU.t
 
-let metrics cache =
+let metrics =
   let f = function
     | `Lookup -> "lookups"
     | `Hit -> "hits"
@@ -120,13 +130,17 @@ let metrics cache =
     | `Drop -> "drops"
     | `Insert -> "insertions"
   in
-  let static () = [
-    Metrics.uint "size" (LRU.size cache);
-    Metrics.uint "weight" (LRU.weight cache);
-    Metrics.uint "capacity" (LRU.capacity cache)
-  ] in
-  let metrics = Dns.counter_metrics ~f ~static "dns-cache" in
-  (fun x -> Metrics.add metrics (fun x -> x) (fun d -> d x))
+  let incr, get = create_counter ~f in
+  let data (cache, thing) =
+    incr thing;
+    Metrics.Data.v
+      (Metrics.uint "size" (LRU.size cache) ::
+       Metrics.uint "weight" (LRU.weight cache) ::
+       Metrics.uint "capacity" (LRU.capacity cache) ::
+       get ())
+  in
+  let src = Metrics.Src.v ~tags:Metrics.Tags.[] ~data "dns-cache" in
+  (fun cache r -> Metrics.add src (fun x -> x) (fun d -> d (cache, r)))
 
 let empty = LRU.empty
 
@@ -163,9 +177,19 @@ let with_ttl : type a . a Rr_map.key -> int32 -> a entry -> a entry = fun k ttl 
   | `No_domain (name, soa) -> `No_domain (name, { soa with Soa.minimum = ttl })
   | `Serv_fail (name, soa) -> `Serv_fail (name, { soa with Soa.minimum = ttl })
 
+let rec no_dom_upwards cache name =
+  if Domain_name.count_labels name > 1 then
+    let name' = Domain_name.drop_label_exn name in
+    match LRU.find name' cache with
+    | None -> no_dom_upwards cache name'
+    | Some No_domain (meta, name, soa) -> None, Ok (meta, `No_domain (name, soa))
+    | Some _ -> None, Error `Cache_miss
+  else
+    None, Error `Cache_miss
+
 let find cache name query_type =
   match LRU.find name cache with
-  | None -> None, Error `Cache_miss
+  | None -> no_dom_upwards cache name
   | Some No_domain (meta, name, soa) -> None, Ok (meta, `No_domain (name, soa))
   | Some Rr_map resource_records ->
     Some resource_records,
@@ -280,9 +304,10 @@ let get_nsec3 cache ts name =
           | Rr_map rrs ->
             begin
             match RRMap.find_opt (K Nsec3) rrs with
-              | Some ((created, _), (Entry (B (Nsec3, v)) as e)) ->
+              | Some ((created, r), (Entry (B (Nsec3, v)) as e)) ->
                 begin match update_ttl Nsec3 (Entry.to_entry Nsec3 e) ~created ~now:ts with
-                  | Ok _ -> (ename, snd v) :: acc
+                  | Ok `Entry (ttl, _) -> (ename, ttl, snd v, r) :: acc
+                  | Ok _ -> acc
                   | Error _ -> acc
                 end
               | _ -> acc
@@ -298,7 +323,7 @@ let get_nsec3 cache ts name =
     cache, Error `Cache_miss
   | xs ->
     metrics cache `Hit;
-    List.fold_right LRU.promote (List.map fst xs) cache,
+    List.fold_right LRU.promote (List.map (fun (a, _, _, _) -> a) xs) cache,
     Ok xs
 
 (* XXX: we may want to define a minimum as well (5 minutes? 30 minutes?
@@ -334,7 +359,7 @@ let clip_ttl_to_week query_type entry =
 let pp_query ppf (name, query_type) =
   Fmt.pf ppf "%a (%a)" Domain_name.pp name Packet.Question.pp_qtype query_type
 
-let set cache ts name query_type rank entry  =
+let set cache ts name query_type rank entry =
   let entry' = clip_ttl_to_week query_type entry in
   let cache' map = insert cache ?map ts name query_type rank entry' in
   match find cache name query_type with

@@ -41,8 +41,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     let f = function
       | `Udp_queries -> "udp-queries"
       | `Tcp_queries -> "tcp-queries"
-      | `Queries -> "queries"
-      | `Decoding_errors -> "decoding-errors"
+      | `Ocaml_queries -> "ocaml-queries"
       | `Tcp_connections -> "tcp-connections"
       | `Authoritative_answers -> "authoritative-answers"
       | `Authoritative_errors -> "authoritative-errors"
@@ -60,6 +59,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   module H = Happy_eyeballs_mirage.Make(S)
   module Client = Dns_client_mirage.Make(S)(H)
+  module TLS = Tls_mirage.Make(S.TCP)
 
   (* likely this should contain:
      - a primary server (handling updates)
@@ -86,59 +86,93 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     reserved : Dns_server.t ;
     mutable server : Dns_server.t ;
     on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.t -> Dns_trie.t -> unit Lwt.t ;
+    push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
+    mutable update_tls : Tls.Config.server -> unit ;
   }
 
-  let query_server trie question data build_reply =
+  let primary_data { server ; _ } =
+    server.Dns_server.data
+
+  let update_primary_data t trie =
+    let server = Dns_server.with_data t.server trie in
+    t.server <- server
+
+  let resolve_external { push ; _ } (ip, port) data =
+    let th, wk = Lwt.wait () in
+    push (Some (ip, port, data, wk));
+    th
+
+  let update_tls { update_tls ; _ } tls = update_tls tls
+
+  let build_reply header question proto ?additional data =
+    let ttl = Packet.minimum_ttl data in
+    let packet = Packet.create ?additional header question data in
+    ttl, fst (Packet.encode proto packet)
+
+  let query_server trie question data header proto =
     match Dns_server.handle_question trie question with
     | Ok (_flags, answer, additional) ->
       (* TODO do sth with flags *)
       metrics `Authoritative_answers;
-      Some (build_reply ?additional (`Answer answer))
+      let data = `Answer answer in
+      let ttl = Packet.minimum_ttl data in
+      let packet = Packet.create ?additional header question data in
+      let packet =
+        match Dns_block.edns packet with
+        | None -> packet
+        | Some edns ->
+          Dns_resolver_metrics.resolver_stats `Blocked;
+          Dns.Packet.with_edns packet (Some edns)
+      in
+      let reply = ttl, fst (Packet.encode proto packet) in
+      Some reply
     | Error (Rcode.NotAuth, _) -> None
     | Error (rcode, answer) ->
       metrics `Authoritative_errors;
       let data = `Rcode_error (rcode, Packet.opcode_data data, answer) in
-      Some (build_reply ?additional:None data)
+      let reply = build_reply header question proto data in
+      Some reply
 
-  let tsig_decode_sign server proto packet buf build_reply =
+  let tsig_decode_sign server proto packet buf header question =
     let now = Mirage_ptime.now () in
     match Dns_server.handle_tsig server now packet buf with
     | Error _ ->
       let data =
         `Rcode_error (Rcode.Refused, Packet.opcode_data packet.Packet.data, None)
       in
-      Error (build_reply data)
+      let reply = build_reply header question proto data in
+      Error reply
     | Ok k ->
       let key =
         match k with None -> None | Some (keyname, _, _, _) -> Some keyname
       in
       let sign data =
-        let packet =
-          Packet.create packet.Packet.header packet.Packet.question data
-        in
+        let ttl = Packet.minimum_ttl data in
+        let packet = Packet.create header question data in
         match k with
-        | None -> Some (fst (Packet.encode proto packet))
+        | None -> Some (ttl, fst (Packet.encode proto packet))
         | Some (keyname, _tsig, mac, dnskey) ->
           match Dns_tsig.encode_and_sign ~proto ~mac packet now dnskey keyname with
           | Error s -> Log.err (fun m -> m "error %a while signing answer" Dns_tsig.pp_s s); None
-          | Ok (cs, _) -> Some cs
+          | Ok (cs, _) -> Some (ttl, cs)
       in
       Ok (key, sign)
 
-  let axfr_server server proto packet question buf build_reply =
-    match tsig_decode_sign server proto packet buf build_reply with
+  let axfr_server server proto packet question buf header =
+    match tsig_decode_sign server proto packet buf header question with
     | Error e -> Some e
     | Ok (key, sign) ->
       match Dns_server.handle_axfr_request server proto key question with
       | Error rcode ->
         let err = `Rcode_error (rcode, Packet.opcode_data packet.Packet.data, None) in
-        Some (build_reply err)
+        let reply = build_reply header question proto err in
+        Some reply
       | Ok axfr ->
         sign (`Axfr_reply axfr)
 
-  let update_server t proto ip packet question u buf build_reply =
+  let update_server t proto ip packet question u buf header =
     let server = t.server in
-    match tsig_decode_sign server proto packet buf build_reply with
+    match tsig_decode_sign server proto packet buf header question with
     | Error e -> Lwt.return (Some e)
     | Ok (key, sign) ->
       match Dns_server.handle_update server proto key question u with
@@ -152,21 +186,21 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       | Error rcode ->
         Lwt.return (sign (`Rcode_error (rcode, Opcode.Update, None)))
 
-  let server t proto ip packet buf build_reply =
-    let question, data = packet.Packet.question, packet.Packet.data in
+  let server t proto ip packet header question data buf =
     match data with
-    | `Query -> Lwt.return (query_server t.server question data build_reply)
+    | `Query -> Lwt.return (query_server t.server question data header proto)
     | `Axfr_request ->
-      Lwt.return (axfr_server t.server proto packet question buf (build_reply ?additional:None))
+      Lwt.return (axfr_server t.server proto packet question buf header)
     | `Update u ->
-      update_server t proto ip packet question u buf (build_reply ?additional:None)
+      update_server t proto ip packet question u buf header
     | _ ->
       let data =
         `Rcode_error (Rcode.NotImp, Packet.opcode_data packet.Packet.data, None)
       in
-      Lwt.return (Some (build_reply ?additional:None data))
+      let pkt = build_reply header question proto data in
+      Lwt.return (Some pkt)
 
-  let resolve t question data build_reply =
+  let resolve t question data header proto =
     metrics `Resolver_queries;
     let name = fst question in
     match data, snd question with
@@ -176,22 +210,26 @@ module Make (S : Tcpip.Stack.V4V6) = struct
           Log.err (fun m -> m "couldn't resolve %s" msg);
           let data = `Rcode_error (Rcode.ServFail, Opcode.Query, None) in
           metrics `Resolver_servfail;
-          Some (build_reply data)
+          let reply = build_reply header question proto data in
+          Some reply
         | Error `No_data (domain, soa) ->
           let answer = (Name_rr_map.empty, Name_rr_map.singleton domain Soa soa) in
           let data = `Answer answer in
           metrics `Resolver_nodata;
-          Some (build_reply data)
+          let reply = build_reply header question proto data in
+          Some reply
         | Error `No_domain (domain, soa) ->
           let answer = (Name_rr_map.empty, Name_rr_map.singleton domain Soa soa) in
           let data = `Rcode_error (Rcode.NXDomain, Opcode.Query, Some answer) in
           metrics `Resolver_nodomain;
-          Some (build_reply data)
+          let reply = build_reply header question proto data in
+          Some reply
         | Ok reply ->
           let answer = (Name_rr_map.singleton name key reply, Name_rr_map.empty) in
           let data = `Answer answer in
           metrics `Resolver_answers;
-          Some (build_reply data)
+          let reply = build_reply header question proto data in
+          Some reply
       end
     | _ ->
       Log.err (fun m -> m "not implemented %a, data %a"
@@ -199,7 +237,8 @@ module Make (S : Tcpip.Stack.V4V6) = struct
                    Dns.Packet.pp_data data);
       let data = `Rcode_error (Rcode.NotImp, Packet.opcode_data data, None) in
       metrics `Resolver_notimp;
-      Lwt.return (Some (build_reply data))
+      let reply = build_reply header question proto data in
+      Lwt.return (Some reply)
 
   (* we're now doing up to three lookups for each request:
     - in authoritative server (Dns_trie)
@@ -210,47 +249,83 @@ module Make (S : Tcpip.Stack.V4V6) = struct
      instead, on startup authoritative (from external) could be merged with
      reserved (but that makes data store very big and not easy to understand
      (lots of files for the reserved zones)) *)
-  let handle t proto ip data =
-    match Packet.decode data with
+  let handle t proto ip buf =
+    match Packet.decode buf with
     | Error err ->
-      metrics `Decoding_errors;
-      (* TODO send FormErr back *)
       Log.err (fun m -> m "couldn't decode %a" Packet.pp_err err);
-      Lwt.return None
+      Dns_resolver_metrics.response_metric 0L;
+      Dns_resolver_metrics.resolver_stats `Error;
+      let answer = Packet.raw_error buf Rcode.FormErr in
+      Lwt.return (Option.map (fun r -> 0l, r) answer)
     | Ok packet ->
-      metrics `Queries;
+      Dns_resolver_metrics.resolver_stats `Queries;
+      let start = Mirage_mtime.elapsed_ns () in
+      let header, question, data = packet.Packet.header, packet.question, packet.data in
       (* check header flags: recursion desired (and send recursion available) *)
-      let build_reply ?additional data =
-        let packet = Packet.create ?additional packet.header packet.question data in
-        fst (Packet.encode proto packet)
-      in
-      server t proto ip packet data build_reply >>= function
-      | Some data -> Lwt.return (Some data)
-      | None ->
-        (* next look in reserved trie! *)
-        let question, data = packet.Packet.question, packet.Packet.data in
-        match query_server t.reserved question data build_reply with
-        | Some data -> metrics `Reserved_answers ; Lwt.return (Some data)
-        | None -> resolve t packet.Packet.question packet.Packet.data build_reply
+      (server t proto ip packet header question data buf >>= function
+        | Some data -> Lwt.return (Some data)
+        | None ->
+          (* next look in reserved trie! *)
+          match query_server t.reserved question data header proto with
+          | Some data -> metrics `Reserved_answers ; Lwt.return (Some data)
+          | None -> resolve t question data header proto) >|= fun reply ->
+      let stop = Mirage_mtime.elapsed_ns () in
+      Dns_resolver_metrics.response_metric (Int64.sub stop start);
+      reply
 
-  let create ?(cache_size = 10000) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack =
+  let send_tls flow data =
+    let len = Cstruct.create 2 in
+    Cstruct.BE.set_uint16 len 0 (Cstruct.length data);
+    TLS.writev flow [len; data] >>= function
+    | Ok () -> Lwt.return (Ok ())
+    | Error e ->
+      Log.err (fun m -> m "tls error %a while writing" TLS.pp_write_error e);
+      TLS.close flow >|= fun () ->
+      Error ()
+
+  type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
+
+  let rec read_tls ({ tls_flow ; linger } as f) length =
+    if Cstruct.length linger >= length then
+      let a, b = Cstruct.split linger length in
+      f.linger <- b;
+      Lwt.return (Ok a)
+    else
+      TLS.read tls_flow >>= function
+      | Ok `Eof -> Log.debug (fun m -> m "end of file while reading"); TLS.close tls_flow >|= fun () -> Error ()
+      | Error e -> Log.warn (fun m -> m "error reading TLS: %a" TLS.pp_error e); TLS.close tls_flow >|= fun () -> Error ()
+      | Ok (`Data d) ->
+        f.linger <- Cstruct.append linger d;
+        read_tls f length
+
+  let read_tls_packet f =
+    read_tls f 2 >>= function
+    | Error () -> Lwt.return (Error ())
+    | Ok k ->
+      let len = Cstruct.BE.get_uint16 k 0 in
+      read_tls f len
+
+  let create ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let server = Dns_server.Primary.server primary in
+    let stream, push = Lwt_stream.create () in
     let reserved = Dns_server.create Dns_resolver_root.reserved Mirage_crypto_rng.generate in
-    let t = { client ; reserved ; server ; on_update } in
+    let update_tls _ = () in
+    let t = { client ; reserved ; server ; on_update ; push ; update_tls } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
       metrics `Udp_queries;
       handle t `Udp src buf >>= function
       | None -> Lwt.return_unit
-      | Some data ->
+      | Some (_ttl, data) ->
         let data = Cstruct.of_string data in
-        S.UDP.write ~src_port:53 ~dst:src ~dst_port:src_port (S.udp stack) data >|= function
+        S.UDP.write ~src_port:port ~dst:src ~dst_port:src_port (S.udp stack) data >|= function
         | Error e -> Log.warn (fun m -> m "udp: failure %a while sending to %a:%d"
                                   S.UDP.pp_error e Ipaddr.pp src src_port)
         | Ok () -> ()
     in
-    S.UDP.listen (S.udp stack) ~port:53 udp_cb ;
+    if udp then
+      S.UDP.listen (S.udp stack) ~port udp_cb ;
     let tcp_cb flow =
       metrics `Tcp_connections;
       let dst_ip, dst_port = S.TCP.dst flow in
@@ -266,7 +341,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
           | None ->
             Log.warn (fun m -> m "no TCP output") ;
             loop ()
-          | Some data ->
+          | Some (_ttl, data) ->
             let data = Cstruct.of_string data in
             Dns_flow.send_tcp flow data >>= function
             | Ok () -> loop ()
@@ -274,6 +349,54 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       in
       loop ()
     in
-    S.TCP.listen (S.tcp stack) ~port:53 tcp_cb;
+    if tcp then
+      S.TCP.listen (S.tcp stack) ~port tcp_cb;
+    let rec ocaml_cb () =
+      Lwt_stream.get stream >>= function
+      | Some (dst_ip, _dst_port, data, wk) ->
+        metrics `Ocaml_queries;
+        begin
+          handle t `Tcp dst_ip data >|= function
+          | None ->
+            Log.warn (fun m -> m "no TCP output")
+          | Some (ttl, data) ->
+            Lwt.wakeup wk (ttl, data);
+        end >>= fun () ->
+        ocaml_cb ()
+      | None -> Lwt.return_unit in
+    Lwt.async ocaml_cb;
+    let tls_cb cfg flow =
+      let dst_ip, dst_port = S.TCP.dst flow in
+      TLS.server_of_flow cfg flow >>= function
+      | Error e ->
+        Log.warn (fun m -> m "TLS error (from %a:%d): %a" Ipaddr.pp dst_ip dst_port
+          TLS.pp_write_error e);
+        Lwt.return_unit
+      | Ok tls ->
+        Log.debug (fun m -> m "tls connection from %a:%d" Ipaddr.pp dst_ip dst_port);
+        let tls_and_linger = { tls_flow = tls ; linger = Cstruct.empty } in
+        let rec loop () =
+          read_tls_packet tls_and_linger >>= function
+          | Error () ->
+            Lwt.return_unit
+          | Ok data ->
+            let data = Cstruct.to_string data in
+            handle t `Tcp dst_ip data >>= function
+            | None ->
+              Log.warn (fun m -> m "no TLS output") ;
+              loop ()
+            | Some (_ttl, data) ->
+              let data = Cstruct.of_string data in
+              send_tls tls data >>= function
+              | Ok () -> loop ()
+              | Error () -> Lwt.return_unit
+        in
+        loop ()
+    in
+    let update_tls tls_cfg =
+      S.TCP.listen (S.tcp stack) ~port:tls_port (tls_cb tls_cfg);
+    in
+    t.update_tls <- update_tls;
+    (match tls with None -> () | Some cfg -> update_tls cfg);
     t
 end

@@ -125,7 +125,7 @@ let test_root () =
                             (String.equal ds_root.Ds.digest dgst))
             end;
             begin
-              match Dnssec.dnskey_to_pk used_dnskey with
+              match Dnssec.dnskey_to_pk Domain_name.root used_dnskey with
               | Ok `RSA k ->
                 Alcotest.(check bool (__LOC__ ^ " key successfully extracted") true
                             ((Z.equal key.Mirage_crypto_pk.Rsa.e k.Mirage_crypto_pk.Rsa.e) &&
@@ -137,6 +137,9 @@ let test_root () =
               | Ok _used_name -> ()
               | Error (`Msg m) ->
                 Alcotest.failf "%s signature verification failed %s" __LOC__ m
+              | Error (`Extended e) ->
+                Alcotest.failf "%s signature verification failed %s" __LOC__
+                  (Fmt.to_to_string Extended_error.pp e)
             end
           | _ -> Alcotest.fail (__LOC__ ^ " expected dnskey and rrsig")
       end

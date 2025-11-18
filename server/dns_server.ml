@@ -820,37 +820,53 @@ let handle_tsig ?mac t now p buf =
     let* tsig, mac, key = t.tsig_verify ?mac now p name ?key tsig signed in
     Ok (Some (name, tsig, mac, key))
 
+module Trie_cache = struct
+  (* TODO use LRU here! *)
+  type t = {
+    entries : int;
+    cache : Dns_trie.t IM.t Domain_name.Map.t;
+  }
+
+  (* TODO: not entirely sure how many old ones to keep. It does _not_ remove
+     removed zones. Since it updates all zones with the new trie, there should
+     be at most [entries] (well, [succ entries]) tries alive in memory *)
+  let update_trie_cache { entries; cache } trie =
+    if entries = 0 then { entries; cache }
+    else
+      let cache =
+        Dns_trie.fold Soa trie (fun name soa m ->
+            let recorded = match Domain_name.Map.find name m with
+              | None -> IM.empty
+              | Some xs ->
+                (* keep last [entries] references around *)
+                if IM.cardinal xs >= entries then
+                  IM.remove (fst (IM.min_binding xs)) xs
+                else
+                  xs
+            in
+            let im = IM.add soa.Soa.serial trie recorded in
+            Domain_name.Map.add name im m)
+          cache
+      in { entries; cache }
+
+  let create entries trie =
+    if entries < 0 then invalid_arg "Dns_server.Trie_cache.create";
+    update_trie_cache { entries; cache = Domain_name.Map.empty } trie
+end
+
 module Primary = struct
 
   type s =
-    t * Dns_trie.t IM.t Domain_name.Map.t * Notification.connections *
+    t * Trie_cache.t * Notification.connections *
     Notification.outstanding
 
   let server (t, _, _, _) = t
 
   let data (t, _, _, _) = t.data
 
-  let trie_cache (_, m, _, _) = m
+  let trie_cache (_, m, _, _) = m.Trie_cache.cache
 
-  (* TODO: not entirely sure how many old ones to keep. This keeps for each
-     zone the most recent 5 serials. It does _not_ remove removed zones.
-     since it updates all zones with the new trie, there should be at most
-     5 (well, 6) tries alive in memory *)
-  (* TODO use LRU here! *)
-  let update_trie_cache m trie =
-    Dns_trie.fold Soa trie (fun name soa m ->
-        let recorded = match Domain_name.Map.find name m with
-          | None -> IM.empty
-          | Some xs ->
-            (* keep last 5 references around *)
-            if IM.cardinal xs >= 5 then
-              IM.remove (fst (IM.min_binding xs)) xs
-            else
-              xs
-        in
-        let im = IM.add soa.Soa.serial trie recorded in
-        Domain_name.Map.add name im m)
-        m
+  let update_trie_cache m trie = Trie_cache.update_trie_cache m trie
 
   let with_data (t, m, l, n) now ts data =
     (* need to notify secondaries of new, updated, and removed zones! *)
@@ -960,7 +976,7 @@ module Primary = struct
     in
     (t', m, l', n''), outs
 
-  let create ?(keys = []) ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign ~rng data =
+  let create ?(trie_cache_entries = 5) ?(keys = []) ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign ~rng data =
     let auth = Authentication.of_keys keys in
     let t = create ?unauthenticated_zone_transfer ?tsig_verify ?tsig_sign ~auth data rng in
     let hm_empty = Domain_name.Host_map.empty in
@@ -978,7 +994,7 @@ module Primary = struct
       in
       Dns_trie.fold Rr_map.Soa data f IPM.empty
     in
-    t, update_trie_cache Domain_name.Map.empty data, hm_empty, notifications
+    t, Trie_cache.create trie_cache_entries data, hm_empty, notifications
 
   let tcp_soa_query proto (name, typ) =
     match proto, typ with
@@ -1071,7 +1087,7 @@ module Primary = struct
       let answer = Packet.create (fst p.header, flags) p.question answer in
       (t, m, l, ns), Some answer, [], None
     | `Ixfr_request soa ->
-      let flags, answer = match handle_ixfr_request t m proto key p.question soa with
+      let flags, answer = match handle_ixfr_request t m.cache proto key p.question soa with
         | Ok data -> authoritative, `Ixfr_reply data
         | Error rcode ->
           err_flags rcode, `Rcode_error (rcode, Opcode.Query, None)

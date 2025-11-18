@@ -8,7 +8,7 @@ bug-reports: "https://github.com/mirage/ocaml-dns/issues"
 license: "BSD-2-Clause"
 
 depends: [
-  "dune" {>= "2.7.0"}
+  "dune" {>= "2.8.0"}
   "ocaml" {>= "4.13.0"}
   "cstruct" {>= "6.0.0"}
   "dns" {= version}
@@ -24,6 +24,7 @@ depends: [
   "tcpip" {>= "8.2.0"}
   "metrics"
   "mirage-crypto-rng" {>= "1.0.0"}
+  "tls-mirage" {>= "2.0.2"}
 ]
 
 build: [

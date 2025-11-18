@@ -387,7 +387,7 @@ module Dnskey : sig
   (** [int_to_algorithm i] decodes [i] to an [algorithm].
 
       @raise Invalid_argument if [i] does not fit in one octet.
- *)
+  *)
 
   val algorithm_to_int : algorithm -> int
   (** [algorithm_to_int a] encodes [a] to an integer. *)
@@ -805,6 +805,27 @@ module Tsig : sig
      matches [ts]. *)
 end
 
+(** Extended DNS errors
+
+    Standardized in RFC 8914, this is a payload for Edns with a additional
+    information about the cause of a DNS error.
+*)
+module Extended_error : sig
+  type t =
+    [ `Other | `Unsupported_Dnskey_algorithm | `Unsupported_Ds_digest
+    | `Stale_answer | `Forged_answer | `Dnssec_indeterminate
+    | `Dnssec_bogus | `Signature_expired | `Signature_not_yet_valid
+    | `Dnskey_missing | `Rrsigs_missing | `No_zone_key_bit_set
+    | `Nsec_missing | `Cached_error | `Not_ready | `Blocked
+    | `Censored | `Filtered | `Prohibited | `Stale_Nxdomain_answer
+    | `Not_authoritative | `Not_supported | `No_reachable_authority
+    | `Network_error | `Invalid_data | `Unknown of int ] *
+    string option
+
+  val pp : t Fmt.t
+  (** [pp ppf e] pretty-prints the error. *)
+end
+
 (** Extensions to DNS
 
     An extension record (EDNS) is extendable, includes a version number, payload
@@ -817,6 +838,7 @@ module Edns : sig
     | Cookie of string
     | Tcp_keepalive of int option
     | Padding of int
+    | Extended_error of Extended_error.t
     | Extension of int * string
   (** The type of supported extensions. *)
 
@@ -829,9 +851,10 @@ module Edns : sig
   }
   (** The type of an EDNS record. *)
 
-  val create : ?extended_rcode:int -> ?version:int -> ?dnssec_ok:bool ->
-    ?payload_size:int -> ?extensions:extension list -> unit -> t
-  (** [create ~extended_rcode ~version ~dnssec_ok ~payload_size ~extensions ()]
+  val create : ?extended_error:Extended_error.t -> ?extended_rcode:int ->
+    ?version:int -> ?dnssec_ok:bool -> ?payload_size:int ->
+    ?extensions:extension list -> unit -> t
+  (** [create ~extended_erro ~extended_rcode ~version ~dnssec_ok ~payload_size ~extensions ()]
      constructs an EDNS record with the optionally provided data. The
      [extended_rcode] defaults to 0, [version] defaults to 0, [dnssec_ok] to
      false, [payload_size] to the minimum payload size (512 byte), [extensions]
@@ -1036,7 +1059,7 @@ module Rr_map : sig
   (** [with_ttl k v ttl] updates [ttl] in [v]. *)
 
   val prep_for_sig : [`raw] Domain_name.t -> Rrsig.t -> 'a key -> 'a ->
-    ([`raw] Domain_name.t * string, [ `Msg of string ]) result
+    ([`raw] Domain_name.t * string, [> `Msg of string ]) result
 
   val canonical_encoded_name : [`raw] Domain_name.t -> string
 
@@ -1318,6 +1341,9 @@ module Packet : sig
     Header.t -> Question.t -> data -> t
   (** [create ~max_size ~additional ~edns ~tsig hdr q data] is a DNS packet. *)
 
+  val minimum_ttl : data -> int32
+  (** [minimum_ttl data] returns the minimum TTL of [data]. *)
+
   val with_edns : t -> Edns.t option -> t
   (** [with_edns t edns] is [t] with the edns field set to [edns]. *)
 
@@ -1433,6 +1459,6 @@ module Tsig_op : sig
 end
 
 (**/**)
+val create_counter : f:('a -> string) -> ('a -> unit) * (unit -> Metrics.field list)
 val counter_metrics : f:('a -> string) ->
-  ?static:(unit -> Metrics.field list) ->
   string -> (Metrics.field list, 'a -> Metrics.Data.t) Metrics.src

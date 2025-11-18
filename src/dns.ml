@@ -2896,6 +2896,130 @@ module Tsig = struct
     | Dnskey.Unknown x -> Error (`Msg ("Unknown DNSKEY algorithm " ^ string_of_int x))
 end
 
+module Extended_error = struct
+  type t =
+    [ `Other | `Unsupported_Dnskey_algorithm | `Unsupported_Ds_digest
+    | `Stale_answer | `Forged_answer | `Dnssec_indeterminate
+    | `Dnssec_bogus | `Signature_expired | `Signature_not_yet_valid
+    | `Dnskey_missing | `Rrsigs_missing | `No_zone_key_bit_set
+    | `Nsec_missing | `Cached_error | `Not_ready | `Blocked
+    | `Censored | `Filtered | `Prohibited | `Stale_Nxdomain_answer
+    | `Not_authoritative | `Not_supported | `No_reachable_authority
+    | `Network_error | `Invalid_data | `Unknown of int ] *
+    string option
+
+  let to_int = function
+    | `Other -> 0
+    | `Unsupported_Dnskey_algorithm -> 1
+    | `Unsupported_Ds_digest -> 2
+    | `Stale_answer -> 3
+    | `Forged_answer -> 4
+    | `Dnssec_indeterminate -> 5
+    | `Dnssec_bogus -> 6
+    | `Signature_expired -> 7
+    | `Signature_not_yet_valid -> 8
+    | `Dnskey_missing -> 9
+    | `Rrsigs_missing -> 10
+    | `No_zone_key_bit_set -> 11
+    | `Nsec_missing -> 12
+    | `Cached_error -> 13
+    | `Not_ready -> 14
+    | `Blocked -> 15
+    | `Censored -> 16
+    | `Filtered -> 17
+    | `Prohibited -> 18
+    | `Stale_Nxdomain_answer -> 19
+    | `Not_authoritative -> 20
+    | `Not_supported -> 21
+    | `No_reachable_authority -> 22
+    | `Network_error -> 23
+    | `Invalid_data -> 24
+    | `Unknown i -> i
+
+  let of_int = function
+    | 0 -> `Other
+    | 1 -> `Unsupported_Dnskey_algorithm
+    | 2 -> `Unsupported_Ds_digest
+    | 3 -> `Stale_answer
+    | 4 -> `Forged_answer
+    | 5 -> `Dnssec_indeterminate
+    | 6 -> `Dnssec_bogus
+    | 7 -> `Signature_expired
+    | 8 -> `Signature_not_yet_valid
+    | 9 -> `Dnskey_missing
+    | 10 -> `Rrsigs_missing
+    | 11 -> `No_zone_key_bit_set
+    | 12 -> `Nsec_missing
+    | 13 -> `Cached_error
+    | 14 -> `Not_ready
+    | 15 -> `Blocked
+    | 16 -> `Censored
+    | 17 -> `Filtered
+    | 18 -> `Prohibited
+    | 19 -> `Stale_Nxdomain_answer
+    | 20 -> `Not_authoritative
+    | 21 -> `Not_supported
+    | 22 -> `No_reachable_authority
+    | 23 -> `Network_error
+    | 24 -> `Invalid_data
+    | i -> `Unknown i
+
+  let pp ppf (t, data) =
+    let prefix =
+      match t with
+      | `Other -> "other"
+      | `Unsupported_Dnskey_algorithm -> "unsupported DNSKEY algorithm"
+      | `Unsupported_Ds_digest -> "unsupported DS digest"
+      | `Stale_answer -> "stale answer"
+      | `Forged_answer -> "forged answer"
+      | `Dnssec_indeterminate -> "DNSSEC indeterminate"
+      | `Dnssec_bogus -> "DNSSEC bogus"
+      | `Signature_expired -> "signature expired"
+      | `Signature_not_yet_valid -> "signature not yet valid"
+      | `Dnskey_missing -> "DNSKEY missing"
+      | `Rrsigs_missing -> "RRSIGs missing"
+      | `No_zone_key_bit_set -> "no zone key bit set"
+      | `Nsec_missing -> "NSEC missing"
+      | `Cached_error -> "cached error"
+      | `Not_ready -> "not ready"
+      | `Blocked -> "blocked"
+      | `Censored -> "censored"
+      | `Filtered -> "filtered"
+      | `Prohibited -> "prohibited"
+      | `Stale_Nxdomain_answer -> "stale NXDOMAIN answer"
+      | `Not_authoritative -> "not authoritative"
+      | `Not_supported -> "not supported"
+      | `No_reachable_authority -> "no reachable authority"
+      | `Network_error -> "network error"
+      | `Invalid_data -> "invalid data"
+      | `Unknown t -> "unknown (" ^ string_of_int t ^ ")"
+    in
+    Fmt.pf ppf "%s%s" prefix (match data with None -> "" | Some s -> " " ^ s)
+
+  let compare (t, d) (t', d') =
+    andThen (Int.compare (to_int t) (to_int t'))
+      (match d, d' with
+       | None, None -> 0
+       | None, Some _ -> -1
+       | Some _, None -> 1
+       | Some s, Some s' -> String.compare s s')
+
+  let encode (t, v) =
+    let buf = Bytes.create 2 in
+    Bytes.set_uint16_be buf 0 (to_int t);
+    Bytes.unsafe_to_string buf ^ Option.value ~default:"" v
+
+  let decode buf =
+    let t = of_int (String.get_uint16_be buf 0) in
+    let v =
+      if String.length buf > 2 then
+        Some (String.sub buf 2 (String.length buf - 2))
+      else
+        None
+    in
+    t, v
+end
+
 module Edns = struct
 
   type extension =
@@ -2903,6 +3027,7 @@ module Edns = struct
     | Cookie of string
     | Tcp_keepalive of int option
     | Padding of int
+    | Extended_error of Extended_error.t
     | Extension of int * string
 
   let pp_extension ppf = function
@@ -2910,6 +3035,7 @@ module Edns = struct
     | Cookie cs -> Fmt.pf ppf "cookie %a" (Ohex.pp_hexdump ()) cs
     | Tcp_keepalive i -> Fmt.pf ppf "keepalive %a" Fmt.(option ~none:(any "none") int) i
     | Padding i -> Fmt.pf ppf "padding %d" i
+    | Extended_error e -> Extended_error.pp ppf e
     | Extension (t, v) -> Fmt.pf ppf "unknown option %d: %a" t (Ohex.pp_hexdump ()) v
 
   let compare_extension a b = match a, b with
@@ -2927,6 +3053,8 @@ module Edns = struct
     | Tcp_keepalive _, _ -> 1 | _, Tcp_keepalive _ -> -1
     | Padding a, Padding b -> Int.compare a b
     | Padding _, _ -> 1 | _, Padding _ -> -1
+    | Extended_error e, Extended_error e' -> Extended_error.compare e e'
+    | Extended_error _, _ -> 1 | _, Extended_error _ -> -1
     | Extension (t, v), Extension (t', v') ->
       andThen (Int.compare t t') (String.compare v v')
 
@@ -2936,6 +3064,7 @@ module Edns = struct
     | Cookie _ -> 10
     | Tcp_keepalive _ -> 11
     | Padding _ -> 12
+    | Extended_error _ -> 15
     | Extension (tag, _) -> tag
 
   let int_to_extension = function
@@ -2943,6 +3072,7 @@ module Edns = struct
     | 10 -> Some `cookie
     | 11 -> Some `tcp_keepalive
     | 12 -> Some `padding
+    | 15 -> Some `extended_error
     | _ -> None
 
   let extension_payload = function
@@ -2956,6 +3086,7 @@ module Edns = struct
          Bytes.set_uint16_be buf 0 i ;
          Bytes.unsafe_to_string buf)
     | Padding i -> String.make i '\x00'
+    | Extended_error e -> Extended_error.encode e
     | Extension (_, v) -> v
 
   let encode_extension t buf off =
@@ -2985,6 +3116,7 @@ module Edns = struct
       in
       Ok (Tcp_keepalive i, len)
     | Some `padding -> Ok (Padding tl, len)
+    | Some `extended_error -> Ok (Extended_error (Extended_error.decode v), len)
     | None -> Ok (Extension (code, v), len)
 
   type t = {
@@ -2999,7 +3131,7 @@ module Edns = struct
 
   let min_payload_size = 512 (* from RFC 6891 Section 6.2.3 *)
 
-  let create ?(extended_rcode = 0) ?(version = 0) ?(dnssec_ok = false)
+  let create ?extended_error ?(extended_rcode = 0) ?(version = 0) ?(dnssec_ok = false)
       ?(payload_size = min_payload_size) ?(extensions = []) () =
     let payload_size =
       if payload_size < min_payload_size then begin
@@ -3008,6 +3140,10 @@ module Edns = struct
         min_payload_size
       end else
         payload_size
+    in
+    let extensions = match extended_error with
+      | None -> extensions
+      | Some e -> Extended_error e :: extensions
     in
     { extended_rcode ; version ; dnssec_ok ; payload_size ; extensions }
 
@@ -4174,6 +4310,9 @@ module Rr_map = struct
     let txt = text Domain_name.root k v in
     Fmt.string ppf txt
 
+  let minimum_ttl t =
+    fold (fun (B (k, v)) acc -> Int32.min (ttl k v) acc) t 0l
+
   let names : type a. a key -> a -> Domain_name.Host_set.t = fun k v ->
     match k, v with
     | Cname, (_, alias) ->
@@ -4305,6 +4444,11 @@ module Name_rr_map = struct
            (List.map (Rr_map.text_b name) (Rr_map.bindings rr_map)))
       ppf
       (Domain_name.Map.bindings map)
+
+  let minimum_ttl t =
+    Domain_name.Map.fold (fun _key rr_map acc ->
+        Int32.min (Rr_map.minimum_ttl rr_map) acc)
+      t 0l
 
   let add name k v dmap =
     let m = match Domain_name.Map.find name dmap with
@@ -5362,6 +5506,17 @@ module Packet = struct
 
   let with_edns t edns = { t with edns }
 
+  let minimum_ttl = function
+    | #request -> 0l
+    | `Notify_ack -> 0l
+    | `Update_ack -> 0l
+    | `Axfr_reply _ -> 0l
+    | `Axfr_partial_reply _ -> 0l
+    | `Ixfr_reply _ -> 0l
+    | `Rcode_error (_, _, None) -> 0l
+    | `Rcode_error (_, _, Some (ans, aut))
+    | `Answer (ans, aut) -> Int32.min (Name_rr_map.minimum_ttl ans) (Name_rr_map.minimum_ttl aut)
+
   let pp_header ppf t =
     let opcode = opcode_data t.data
     and query = match t.data with #request -> true | #reply -> false
@@ -5435,8 +5590,9 @@ module Packet = struct
     | `Full (off, additional, edns, tsig) ->
       (if String.length buf > off then
          let n = String.length buf - off in
-         Log.warn (fun m -> m "received %d extra bytes %a"
-                      n Ohex.pp (String.sub buf off n))) ;
+         let data = String.sub buf off n in
+         Log.debug (fun m -> m "(ignoring) received %u extra bytes %a at the end of additional"
+                       n Ohex.pp data)) ;
       Ok (additional, edns, tsig)
 
   let ext_rcode ?off rcode = function
@@ -5755,7 +5911,7 @@ module Tsig_op = struct
   let no_sign ?mac:_ ?max_size:_ _ _ ~key:_ _ _ = None
 end
 
-let create ~f =
+let create_counter ~f =
   let data : (string, int) Hashtbl.t = Hashtbl.create 7 in
   (fun x ->
      let key = f x in
@@ -5764,10 +5920,9 @@ let create ~f =
   (fun () ->
      Hashtbl.fold (fun key value acc -> Metrics.uint key value :: acc) data [])
 
-let counter_metrics ~f ?static name =
+let counter_metrics ~f name =
   let open Metrics in
   let doc = "Counter metrics" in
-  let incr, get = create ~f in
-  let static = Option.value ~default:(fun () -> []) static in
-  let data thing = incr thing; Data.v (static () @ get ()) in
+  let incr, get = create_counter ~f in
+  let data thing = incr thing; Data.v (get ()) in
   Src.v ~doc ~tags:Metrics.Tags.[] ~data name

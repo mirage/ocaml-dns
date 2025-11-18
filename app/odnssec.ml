@@ -57,6 +57,11 @@ let jump () hostname typ ns =
                          | Error `Msg msg ->
                            Logs.warn (fun m -> m "couldn't validate DS (for %a): %s"
                                          Domain_name.pp requested_domain msg);
+                           acc
+                         | Error `Extended e ->
+                           Logs.warn (fun m -> m "couldn't validate DS (for %a): %a"
+                                         Domain_name.pp requested_domain
+                                         Extended_error.pp e);
                            acc)
                        ds_set Rr_map.Dnskey_set.empty
                    in
@@ -156,10 +161,6 @@ let jump () hostname typ ns =
   | _ -> Error (`Msg "couldn't decode type")
 
 open Cmdliner
-
-let to_presult = function
-  | Ok a -> `Ok a
-  | Error s -> `Error s
 
 let parse_domain : [ `raw ] Domain_name.t Arg.conv =
   Arg.conv'

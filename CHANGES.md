@@ -1,3 +1,49 @@
+### v10.2.2 (2025-10-20)
+
+* Expose a module type insotead of a module for Dns_mirage_resolver_shared.S,
+  and move it to dns-resolver.mirage.shared ocamlfind library (#396 @dinosaure)
+* Expose dns-resolver.shared with Dns_root, Dns_metrics, Dns_block as a public
+  ocamlfind library (#396 @dinosaure)
+* Mention RFC9460 in README (#397 @nickbetteridge)
+
+### v10.2.1 (2025-09-25)
+
+* dns-stub: provide a shared interface with dns-resolver.mirage
+  (named Dns_resolver_mirage_shared) (#394 @hannesm)
+
+### v10.2.0 (2025-08-01)
+
+* dns: add support for extended DNS error (RFC 8914) (#374 @hannesm)
+* dns-resolver: instead of querying a single (ip, query), query up to three
+  (#375 @reynir @hannesm)
+* dns-cache: fix metrics (#377 #379 @hannesm @reynir)
+* dns-cache: support RFC 8020, if there's a NXDomain, nothing is underneath
+  (#390 @hannesm)
+* dns-trie: canonicalize domain name before insertion, reducing allocations
+  (#388 @reynir)
+* dns-server: make number of tries in cache (for IXFR) configurable
+  (#387 @reynir)
+* dns-resolver: add metrics (#376 #378 @hannesm @reynir)
+* dns-resolver: allow update to the primary, and the TLS state (#383 @reynir)
+* dns-resolver: heuristics to detect blocked domains (#380 @reynir)
+* dns-resolver: report extended DNS error when blocking
+  (#385 #384 @reynir @hannesm)
+* dns-resolver: implement opportunistic TLS (#389 @hannesm)
+* dns-resolver: support query name minimisation (RFC 9156) (#391 @hannesm)
+* dns-resolver: features via flags (#392 @hannesm)
+
+### v10.1.0 (2025-05-24)
+
+* dns-mirage-resolver: adapt API to prepare for DoH (#373 @dinosaure @PizieDust
+  @reynir @hannesm)
+* resolver: support DNSSEC
+  - #372 @reynir @hannesm
+  - #361 @reynir @hannesm
+* dns: support SVCB and HTTPS resource records (RFC 9460, #359 @nickbetteridge)
+* dns-cli: avoid deprecated cmdliner values (#367 @hannesm, fixes #366),
+  add app/resolver (#366)
+* resolver: add further tests, fix the loop of a cyclic NS (#368 @hannesm)
+
 ### v10.0.0 (2025-02-07)
 
 * dns-certify: use a pair instead of two separate arguments for the dns-key
