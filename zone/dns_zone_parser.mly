@@ -205,7 +205,7 @@ generic_type s generic_rdata {
                     )
                   ) [] values
                 in
-                Mandatory mandatories::acc
+                Mandatory (List.sort Int.compare mandatories)::acc
               )
               | "alpn" -> (
                 let values = String.split_on_char ',' value in
@@ -222,7 +222,7 @@ generic_type s generic_rdata {
                     (Ipaddr.V4.of_string_exn ipv4)::a
                   ) [] values
                 in
-                Ipv4_hint ipv4s::acc
+                Ipv4_hint (List.rev ipv4s)::acc
               )
               | "ipv6hint" -> (
                 let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
@@ -232,7 +232,7 @@ generic_type s generic_rdata {
                     (parse_ipv6 ipv6)::a
                   ) [] values
                 in
-                Ipv6_hint ipv6s::acc
+                Ipv6_hint (List.rev ipv6s)::acc
               )
               | _ -> (
                 if String.starts_with ~prefix:"key" key then (
@@ -278,6 +278,16 @@ generic_type s generic_rdata {
           ) (None,[]) svc_params
         in
         let svc_params = if Option.is_some mandatory_opt then (Option.get mandatory_opt)::svc_params else svc_params in
+        let svc_param_key = function
+          | Svcb.Mandatory _ -> 0
+          | Svcb.Alpn _ -> 1
+          | Svcb.No_default_alpn -> 2
+          | Svcb.Port _ -> 3
+          | Svcb.Ipv4_hint _ -> 4
+          | Svcb.Ipv6_hint _ -> 6
+          | Svcb.Key (i,_) -> i
+        in
+        let svc_params = List.sort (fun a b -> Int.compare (svc_param_key a) (svc_param_key b)) svc_params in
         let svcb = { Svcb.svc_priority ; target_name ; svc_params } in
         B (Svcb, (0l, Rr_map.Svcb_set.singleton svcb))
         }
@@ -329,7 +339,7 @@ generic_type s generic_rdata {
                       )
                     ) [] values
                   in
-                  Mandatory mandatories::acc
+                  Mandatory (List.sort Int.compare mandatories)::acc
                 )
                 | "alpn" -> (
                   let values = String.split_on_char ',' value in
@@ -346,7 +356,7 @@ generic_type s generic_rdata {
                     (Ipaddr.V4.of_string_exn ipv4)::a
                     ) [] values
                   in
-                  Ipv4_hint ipv4s::acc
+                  Ipv4_hint (List.rev ipv4s)::acc
                 )
                 | "ipv6hint" -> (
                   let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
@@ -356,7 +366,7 @@ generic_type s generic_rdata {
                     (parse_ipv6 ipv6)::a
                     ) [] values
                   in
-                  Ipv6_hint ipv6s::acc
+                  Ipv6_hint (List.rev ipv6s)::acc
                 )
                 | _ -> (
                   if String.starts_with ~prefix:"key" key then (
@@ -402,6 +412,16 @@ generic_type s generic_rdata {
             ) (None,[]) svc_params
           in
           let svc_params = if Option.is_some mandatory_opt then (Option.get mandatory_opt)::svc_params else svc_params in
+          let svc_param_key = function
+            | Https.Mandatory _ -> 0
+            | Https.Alpn _ -> 1
+            | Https.No_default_alpn -> 2
+            | Https.Port _ -> 3
+            | Https.Ipv4_hint _ -> 4
+            | Https.Ipv6_hint _ -> 6
+            | Https.Key (i,_) -> i
+          in
+          let svc_params = List.sort (fun a b -> Int.compare (svc_param_key a) (svc_param_key b)) svc_params in
           let https = { Https.svc_priority ; target_name ; svc_params } in
           B (Https, (0l, Rr_map.Https_set.singleton https))
           }

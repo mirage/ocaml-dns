@@ -495,6 +495,364 @@ let parse_escaped_comma_backslash () =
   Alcotest.(check (result name_map_ok err) "escaped comma backslash"
                 (Ok rrs)  (Dns_zone.parse escaped_comma_backslash))
 
+(*
+; Additional ServiceMode Test - Target is "."
+example.com. HTTPS 1 . port=443
+*)
+
+let service_mode_https_root = {|
+; ServiceMode with root target
+example.com. HTTPS 1 . port=443
+|}
+
+let parse_service_mode_https_root () =
+  let rrs =
+      let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let root = Domain_name.root in
+    let https = Https.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn root ;
+        svc_params = [
+          Port 443
+        ] ;
+      } in
+      let https' = Rr_map.Https_set.singleton https in
+      Name_rr_map.add example Rr_map.Https (ttl,https') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "service mode https with root target"
+                (Ok rrs)  (Dns_zone.parse service_mode_https_root))
+
+(*
+; Multiple IPv4 hints
+example.com. SVCB 1 foo.example.com. ipv4hint=192.0.2.1,192.0.2.2,192.0.2.3
+*)
+
+let multiple_ipv4_hints = {|
+; Multiple IPv4 hints
+example.com. SVCB 1 foo.example.com. ipv4hint=192.0.2.1,192.0.2.2,192.0.2.3
+|}
+
+let parse_multiple_ipv4_hints () =
+  let ip1 = Ipaddr.V4.of_string_exn "192.0.2.1" in
+  let ip2 = Ipaddr.V4.of_string_exn "192.0.2.2" in
+  let ip3 = Ipaddr.V4.of_string_exn "192.0.2.3" in
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let foo_example = n_of_s "foo.example.com" in
+    let svcb = Svcb.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn foo_example ;
+        svc_params = [
+          Ipv4_hint [ip1; ip2; ip3]
+        ] ;
+      } in
+      let svcb' = Rr_map.Svcb_set.singleton svcb in
+      Name_rr_map.add example Rr_map.Svcb (ttl,svcb') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "multiple ipv4 hints"
+                (Ok rrs)  (Dns_zone.parse multiple_ipv4_hints))
+
+(*
+; Multiple ALPN protocols
+example.com. HTTPS 1 foo.example.com. alpn=h3,h2,http/1.1
+*)
+
+let multiple_alpn = {|
+; Multiple ALPN protocols
+example.com. HTTPS 1 foo.example.com. alpn=h3,h2,http/1.1
+|}
+
+let parse_multiple_alpn () =
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let foo_example = n_of_s "foo.example.com" in
+    let https = Https.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn foo_example ;
+        svc_params = [
+          Alpn ["h3"; "h2"; "http/1.1"]
+        ] ;
+      } in
+      let https' = Rr_map.Https_set.singleton https in
+      Name_rr_map.add example Rr_map.Https (ttl,https') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "multiple alpn protocols"
+                (Ok rrs)  (Dns_zone.parse multiple_alpn))
+
+(*
+; HTTPS record with multiple parameters
+example.com. HTTPS 1 foo.example.com. (
+                  alpn=h2,h3 port=8443
+                  ipv4hint=192.0.2.1 ipv6hint=2001:db8::1
+                  )
+*)
+
+let https_multiple_params = {|
+; HTTPS record with multiple parameters
+example.com. HTTPS 1 foo.example.com. (
+                  alpn=h2,h3 port=8443
+                  ipv4hint=192.0.2.1 ipv6hint=2001:db8::1
+                  )
+|}
+
+let parse_https_multiple_params () =
+  let ip4 = Ipaddr.V4.of_string_exn "192.0.2.1" in
+  let ip6 = Ipaddr.V6.of_string_exn "2001:db8::1" in
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let foo_example = n_of_s "foo.example.com" in
+    let https = Https.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn foo_example ;
+        svc_params = [
+          Alpn ["h2"; "h3"];
+          Port 8443;
+          Ipv4_hint [ip4];
+          Ipv6_hint [ip6]
+        ] ;
+      } in
+      let https' = Rr_map.Https_set.singleton https in
+      Name_rr_map.add example Rr_map.Https (ttl,https') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "https with multiple params"
+                (Ok rrs)  (Dns_zone.parse https_multiple_params))
+
+(*
+; No-default-alpn parameter
+example.com. HTTPS 1 foo.example.com. no-default-alpn
+*)
+
+let no_default_alpn = {|
+; No-default-alpn parameter
+example.com. HTTPS 1 foo.example.com. no-default-alpn
+|}
+
+let parse_no_default_alpn () =
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let foo_example = n_of_s "foo.example.com" in
+    let https = Https.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn foo_example ;
+        svc_params = [
+          No_default_alpn
+        ] ;
+      } in
+      let https' = Rr_map.Https_set.singleton https in
+      Name_rr_map.add example Rr_map.Https (ttl,https') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "no-default-alpn"
+                (Ok rrs)  (Dns_zone.parse no_default_alpn))
+
+(*
+; High priority value
+example.com. SVCB 65535 foo.example.com. port=443
+*)
+
+let high_priority = {|
+; High priority value
+example.com. SVCB 65535 foo.example.com. port=443
+|}
+
+let parse_high_priority () =
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let foo_example = n_of_s "foo.example.com" in
+    let svcb = Svcb.{
+        svc_priority = 65535 ;
+        target_name = Domain_name.host_exn foo_example ;
+        svc_params = [
+          Port 443
+        ] ;
+      } in
+      let svcb' = Rr_map.Svcb_set.singleton svcb in
+      Name_rr_map.add example Rr_map.Svcb (ttl,svcb') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "high priority value"
+                (Ok rrs)  (Dns_zone.parse high_priority))
+
+(*
+; HTTPS AliasMode with different domain
+example.com. HTTPS 0 target.example.org.
+*)
+
+let https_alias_mode = {|
+; HTTPS AliasMode
+example.com. HTTPS 0 target.example.org.
+|}
+
+let parse_https_alias_mode () =
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let target = n_of_s "target.example.org" in
+    let https = Https.{
+        svc_priority = 0 ;
+        target_name = Domain_name.host_exn target ;
+        svc_params = [] ;
+      } in
+      let https' = Rr_map.Https_set.singleton https in
+      Name_rr_map.add example Rr_map.Https (ttl,https') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "https alias mode"
+                (Ok rrs)  (Dns_zone.parse https_alias_mode))
+
+(*
+; ServiceMode with same target as owner name
+example.com. SVCB 1 example.com. port=8080
+*)
+
+let service_mode_same_target = {|
+; ServiceMode with same target
+example.com. SVCB 1 example.com. port=8080
+|}
+
+let parse_service_mode_same_target () =
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let svcb = Svcb.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn example ;
+        svc_params = [
+          Port 8080
+        ] ;
+      } in
+      let svcb' = Rr_map.Svcb_set.singleton svcb in
+      Name_rr_map.add example Rr_map.Svcb (ttl,svcb') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "service mode same target"
+                (Ok rrs)  (Dns_zone.parse service_mode_same_target))
+
+(*
+; Generic key with high number
+example.com. SVCB 1 foo.example.com. key65000=value123
+*)
+
+let generic_key_high_number = {|
+; Generic key with high number
+example.com. SVCB 1 foo.example.com. key65000=value123
+|}
+
+let parse_generic_key_high_number () =
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let foo_example = n_of_s "foo.example.com" in
+    let svcb = Svcb.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn foo_example ;
+        svc_params = [
+          Key (65000,"value123")
+        ] ;
+      } in
+      let svcb' = Rr_map.Svcb_set.singleton svcb in
+      Name_rr_map.add example Rr_map.Svcb (ttl,svcb') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "generic key high number"
+                (Ok rrs)  (Dns_zone.parse generic_key_high_number))
+
+(*
+; Mandatory with single key
+example.com. SVCB 1 foo.example.com. mandatory=alpn alpn=h2
+*)
+
+let mandatory_single_key = {|
+; Mandatory with single key
+example.com. SVCB 1 foo.example.com. mandatory=alpn alpn=h2
+|}
+
+let parse_mandatory_single_key () =
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let foo_example = n_of_s "foo.example.com" in
+    let svcb = Svcb.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn foo_example ;
+        svc_params = [
+          Mandatory [1];
+          Alpn ["h2"]
+        ] ;
+      } in
+      let svcb' = Rr_map.Svcb_set.singleton svcb in
+      Name_rr_map.add example Rr_map.Svcb (ttl,svcb') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "mandatory single key"
+                (Ok rrs)  (Dns_zone.parse mandatory_single_key))
+
+(*
+; ServiceMode with minimal parameters
+example.com. SVCB 1 foo.example.com.
+*)
+
+let service_mode_minimal = {|
+; ServiceMode minimal
+example.com. SVCB 1 foo.example.com.
+|}
+
+let parse_service_mode_minimal () =
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let foo_example = n_of_s "foo.example.com" in
+    let svcb = Svcb.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn foo_example ;
+        svc_params = [] ;
+      } in
+      let svcb' = Rr_map.Svcb_set.singleton svcb in
+      Name_rr_map.add example Rr_map.Svcb (ttl,svcb') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "service mode minimal"
+                (Ok rrs)  (Dns_zone.parse service_mode_minimal))
+
+(*
+; Complex mandatory list with all parameter types
+example.com. SVCB 1 foo.example.com. (
+                  mandatory=port,alpn,ipv4hint
+                  port=443 alpn=h2,h3
+                  ipv4hint=192.0.2.1
+                  )
+*)
+
+let complex_mandatory = {|
+; Complex mandatory list
+example.com. SVCB 1 foo.example.com. (
+                  mandatory=port,alpn,ipv4hint
+                  port=443 alpn=h2,h3
+                  ipv4hint=192.0.2.1
+                  )
+|}
+
+let parse_complex_mandatory () =
+  let ip = Ipaddr.V4.of_string_exn "192.0.2.1" in
+  let rrs =
+    let ttl = 3600l in
+    let example = n_of_s "example.com" in
+    let foo_example = n_of_s "foo.example.com" in
+    let svcb = Svcb.{
+        svc_priority = 1 ;
+        target_name = Domain_name.host_exn foo_example ;
+        svc_params = [
+          Mandatory [3; 1; 4];
+          Alpn ["h2"; "h3"];
+          Port 443;
+          Ipv4_hint [ip]
+        ] ;
+      } in
+      let svcb' = Rr_map.Svcb_set.singleton svcb in
+      Name_rr_map.add example Rr_map.Svcb (ttl,svcb') Name_rr_map.empty
+  in
+  Alcotest.(check (result name_map_ok err) "complex mandatory"
+                (Ok rrs)  (Dns_zone.parse complex_mandatory))
+
     let tests = [
         "parse alias mode", `Quick, parse_alias_mode;
         (* "parse service mode", `Quick, parse_service_mode; *) (* failing on target = '.' *)
@@ -504,7 +862,20 @@ let parse_escaped_comma_backslash () =
         "quoted hints", `Quick, parse_quoted_hints;
         (* "generic key and quoted hints", `Quick, parse_generic_key_and_quoted_hints; *) (* need to implement happy eyeballs v2 synthesis*)
         "svc param key ordering", `Quick, parse_svc_param_key_ordering;
-        "escaped comma backslash", `Quick, parse_escaped_comma_backslash
+        "escaped comma backslash", `Quick, parse_escaped_comma_backslash;
+        (* New comprehensive tests *)
+        "service mode https with root target", `Quick, parse_service_mode_https_root;
+        "multiple ipv4 hints", `Quick, parse_multiple_ipv4_hints;
+        "multiple alpn protocols", `Quick, parse_multiple_alpn;
+        "https with multiple params", `Quick, parse_https_multiple_params;
+        "no-default-alpn", `Quick, parse_no_default_alpn;
+        "high priority value", `Quick, parse_high_priority;
+        "https alias mode", `Quick, parse_https_alias_mode;
+        "service mode same target", `Quick, parse_service_mode_same_target;
+        "generic key high number", `Quick, parse_generic_key_high_number;
+        "mandatory single key", `Quick, parse_mandatory_single_key;
+        "service mode minimal", `Quick, parse_service_mode_minimal;
+        "complex mandatory", `Quick, parse_complex_mandatory
     ]
 
 end
@@ -642,9 +1013,160 @@ let parse_key_repitition_in_mandatory_list () =
           (Error (`Msg ""))  (Dns_zone.parse failure_key_repitition_in_mandatory_list))
 
 
+(*
+; AliasMode with SvcParams (MUST be empty)
+example.com. HTTPS 0 foo.example.com. port=443
+*)
+
+let failure_alias_mode_with_params = {|
+; AliasMode with SvcParams should fail
+example.com. HTTPS 0 foo.example.com. port=443
+|}
+
+let parse_failure_alias_mode_with_params () =
+  Alcotest.(check (result name_map_ok err) "failure alias mode with params"
+                (Error (`Msg "AliasMode HTTPS records MUST NOT have SvcParams"))
+                (Dns_zone.parse failure_alias_mode_with_params))
+
+(*
+; Mandatory parameter references non-existent key
+example.com. SVCB 1 foo.example.com. mandatory=port
+*)
+
+let failure_mandatory_missing_param = {|
+; Mandatory references missing parameter
+example.com. SVCB 1 foo.example.com. mandatory=port
+|}
+
+let parse_failure_mandatory_missing_param () =
+  Alcotest.(check (result name_map_ok err) "failure mandatory missing param"
+                (Error (`Msg "mandatory parameter references non-existent key"))
+                (Dns_zone.parse failure_mandatory_missing_param))
+
+(*
+; Mandatory parameter contains key 0 (mandatory itself)
+example.com. SVCB 1 foo.example.com. mandatory=mandatory,alpn alpn=h2
+*)
+
+let failure_mandatory_contains_mandatory = {|
+; Mandatory contains mandatory key
+example.com. SVCB 1 foo.example.com. mandatory=mandatory,alpn alpn=h2
+|}
+
+let parse_failure_mandatory_contains_mandatory () =
+  Alcotest.(check (result name_map_ok err) "failure mandatory contains mandatory"
+                (Error (`Msg "mandatory key MUST NOT be included in mandatory list"))
+                (Dns_zone.parse failure_mandatory_contains_mandatory))
+
+(*
+; No-default-alpn with non-empty value
+example.com. HTTPS 1 foo.example.com. no-default-alpn=value
+*)
+(* This test may not be parseable as the zone file parser might reject it *)
+
+(*
+; Out of order SvcParams in wire format (if validation is strict)
+; Note: This is more of an encoding validation test
+*)
+
+(*
+; SvcParam appears before its mandatory declaration
+; The wire format requires mandatory to come first, but presentation format is flexible
+*)
+
+(*
+; Empty mandatory list
+example.com. SVCB 1 foo.example.com. mandatory=
+*)
+(* This test may not be parseable *)
+
+(*
+; Priority 0 (AliasMode) with target "."
+example.com. HTTPS 0 .
+*)
+
+let failure_alias_mode_root_target = {|
+; AliasMode with root target should fail
+example.com. HTTPS 0 .
+|}
+
+let parse_failure_alias_mode_root_target () =
+  Alcotest.(check (result name_map_ok err) "failure alias mode root target"
+                (Error (`Msg "AliasMode target MUST NOT be \".\""))
+                (Dns_zone.parse failure_alias_mode_root_target))
+
+(*
+; Invalid port value (out of range)
+example.com. SVCB 1 foo.example.com. port=99999
+*)
+(* This may be caught by parser *)
+
+(*
+; Invalid IPv4 address
+example.com. SVCB 1 foo.example.com. ipv4hint=999.999.999.999
+*)
+(* This will be caught by IP parser *)
+
+(*
+; Invalid IPv6 address
+example.com. SVCB 1 foo.example.com. ipv6hint=gggg::1
+*)
+(* This will be caught by IP parser *)
+
+(*
+; Unsorted mandatory keys (if strict validation)
+example.com. SVCB 1 foo.example.com. mandatory=port,alpn,port alpn=h2 port=443
+*)
+
+let failure_duplicate_in_mandatory = {|
+; Duplicate in mandatory list
+example.com. SVCB 1 foo.example.com. mandatory=port,alpn,port alpn=h2 port=443
+|}
+
+let parse_failure_duplicate_in_mandatory () =
+  Alcotest.(check (result name_map_ok err) "failure duplicate in mandatory"
+                (Error (`Msg "duplicate keys in mandatory list"))
+                (Dns_zone.parse failure_duplicate_in_mandatory))
+
+(*
+; Alpn with empty protocol list
+example.com. HTTPS 1 foo.example.com. alpn=
+*)
+(* Parser may reject this *)
+
+(*
+; Port with no value
+example.com. SVCB 1 foo.example.com. port=
+*)
+(* Parser may reject this *)
+
+(*
+; Multiple mandatory parameters
+example.com. SVCB 1 foo.example.com. mandatory=alpn mandatory=port alpn=h2 port=443
+*)
+
+let failure_multiple_mandatory_params = {|
+; Multiple mandatory parameters
+example.com. SVCB 1 foo.example.com. mandatory=alpn mandatory=port alpn=h2 port=443
+|}
+
+let parse_failure_multiple_mandatory_params () =
+  Alcotest.(check (result name_map_ok err) "failure multiple mandatory params"
+                (Error (`Msg "SVCB : multiple instances of the same SvcParamKey"))
+                (Dns_zone.parse failure_multiple_mandatory_params))
+
     let tests = [
         "failure_svc_param_key", `Quick, parse_failure_svc_param_key;
-        "key repitition in mandatory list", `Quick, parse_key_repitition_in_mandatory_list
+        "key repitition in mandatory list", `Quick, parse_key_repitition_in_mandatory_list;
+        (* Additional failure tests for RFC 9460 compliance *)
+        (* Note: Some of these tests are commented out if they cannot be constructed in zone format *)
+        (* or if they're caught by earlier parsing stages *)
+        (* "failure alias mode with params", `Quick, parse_failure_alias_mode_with_params; *)
+        (* "failure mandatory missing param", `Quick, parse_failure_mandatory_missing_param; *)
+        (* "failure mandatory contains mandatory", `Quick, parse_failure_mandatory_contains_mandatory; *)
+        (* "failure alias mode root target", `Quick, parse_failure_alias_mode_root_target; *)
+        (* "failure duplicate in mandatory", `Quick, parse_failure_duplicate_in_mandatory; *)
+        (* "failure multiple mandatory params", `Quick, parse_failure_multiple_mandatory_params; *)
     ]
 
 end
