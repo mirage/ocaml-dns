@@ -250,9 +250,11 @@ generic_type s generic_rdata {
           List.fold_left (fun (m,ps) p ->
             match p with
             | Svcb.Mandatory mandatory_list -> (
+              (* check for multiple mandatory parameters *)
+              if Option.is_some m then parse_error ("SVCB : multiple instances of the same SvcParamKey");
               (* check for multiple instances of same SvcParamKey in mandatory list *)
               let multiple_exists,_ =
-                List.fold_left 
+                List.fold_left
                   (fun (flag,a') k ->
                     if flag then (flag,(k::a')) else (List.exists (fun k' -> k = k') a'),(k::a')) (false,[]) mandatory_list
               in
@@ -288,6 +290,26 @@ generic_type s generic_rdata {
           | Svcb.Key (i,_) -> i
         in
         let svc_params = List.sort (fun a b -> Int.compare (svc_param_key a) (svc_param_key b)) svc_params in
+
+        (* RFC 9460 validations *)
+        (* AliasMode (priority 0) MUST NOT have SvcParams *)
+        if svc_priority = 0 && List.length svc_params > 0 then
+          parse_error "SVCB AliasMode records MUST NOT have SvcParams";
+
+        (* AliasMode (priority 0) target MUST NOT be "." *)
+        if svc_priority = 0 && Domain_name.equal (Domain_name.host_exn target_name) Domain_name.root then
+          parse_error "SVCB AliasMode target MUST NOT be \".\"";
+
+        (* Check that mandatory parameters reference existing keys *)
+        (match mandatory_opt with
+        | Some (Svcb.Mandatory mandatory_list) ->
+            let param_keys = List.map svc_param_key svc_params in
+            List.iter (fun m ->
+              if not (List.mem m param_keys) then
+                parse_error "SVCB mandatory parameter references non-existent key"
+            ) mandatory_list
+        | _ -> ());
+
         let svcb = { Svcb.svc_priority ; target_name ; svc_params } in
         B (Svcb, (0l, Rr_map.Svcb_set.singleton svcb))
         }
@@ -295,6 +317,9 @@ generic_type s generic_rdata {
      {  let svc_priority = $3 in
         let target_name = $5 in
         let svc_params = [] in
+        (* RFC 9460: AliasMode (priority 0) target MUST NOT be "." *)
+        if svc_priority = 0 && Domain_name.equal (Domain_name.host_exn target_name) Domain_name.root then
+          parse_error "HTTPS AliasMode target MUST NOT be \".\"";
         let https = { Https.svc_priority ; target_name ; svc_params } in
         B (Https, (0l, Rr_map.Https_set.singleton https))
       }
@@ -384,9 +409,11 @@ generic_type s generic_rdata {
             List.fold_left (fun (m,ps) p ->
               match p with
               | Https.Mandatory mandatory_list -> (
+                (* check for multiple mandatory parameters *)
+                if Option.is_some m then parse_error ("HTTPS : multiple instances of the same SvcParamKey");
                 (* check for multiple instances of same SvcParamKey in mandatory list *)
                 let multiple_exists,_ =
-                  List.fold_left 
+                  List.fold_left
                     (fun (flag,a') k ->
                       if flag then (flag,(k::a')) else (List.exists (fun k' -> k = k') a'),(k::a')) (false,[]) mandatory_list
                 in
@@ -422,6 +449,26 @@ generic_type s generic_rdata {
             | Https.Key (i,_) -> i
           in
           let svc_params = List.sort (fun a b -> Int.compare (svc_param_key a) (svc_param_key b)) svc_params in
+
+          (* RFC 9460 validations *)
+          (* AliasMode (priority 0) MUST NOT have SvcParams *)
+          if svc_priority = 0 && List.length svc_params > 0 then
+            parse_error "HTTPS AliasMode records MUST NOT have SvcParams";
+
+          (* AliasMode (priority 0) target MUST NOT be "." *)
+          if svc_priority = 0 && Domain_name.equal (Domain_name.host_exn target_name) Domain_name.root then
+            parse_error "HTTPS AliasMode target MUST NOT be \".\"";
+
+          (* Check that mandatory parameters reference existing keys *)
+          (match mandatory_opt with
+          | Some (Https.Mandatory mandatory_list) ->
+              let param_keys = List.map svc_param_key svc_params in
+              List.iter (fun m ->
+                if not (List.mem m param_keys) then
+                  parse_error "HTTPS mandatory parameter references non-existent key"
+              ) mandatory_list
+          | _ -> ());
+
           let https = { Https.svc_priority ; target_name ; svc_params } in
           B (Https, (0l, Rr_map.Https_set.singleton https))
           }

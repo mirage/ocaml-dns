@@ -1,5 +1,6 @@
 
 open Dns
+open Packet
 
 (* a useful reference : https://kalfeher.com/https-records-simple/*)
 
@@ -1025,7 +1026,7 @@ example.com. HTTPS 0 foo.example.com. port=443
 
 let parse_failure_alias_mode_with_params () =
   Alcotest.(check (result name_map_ok err) "failure alias mode with params"
-                (Error (`Msg "AliasMode HTTPS records MUST NOT have SvcParams"))
+                (Error (`Msg "HTTPS AliasMode records MUST NOT have SvcParams"))
                 (Dns_zone.parse failure_alias_mode_with_params))
 
 (*
@@ -1040,7 +1041,7 @@ example.com. SVCB 1 foo.example.com. mandatory=port
 
 let parse_failure_mandatory_missing_param () =
   Alcotest.(check (result name_map_ok err) "failure mandatory missing param"
-                (Error (`Msg "mandatory parameter references non-existent key"))
+                (Error (`Msg "SVCB mandatory parameter references non-existent key"))
                 (Dns_zone.parse failure_mandatory_missing_param))
 
 (*
@@ -1055,7 +1056,7 @@ example.com. SVCB 1 foo.example.com. mandatory=mandatory,alpn alpn=h2
 
 let parse_failure_mandatory_contains_mandatory () =
   Alcotest.(check (result name_map_ok err) "failure mandatory contains mandatory"
-                (Error (`Msg "mandatory key MUST NOT be included in mandatory list"))
+                (Error (`Msg "SVCB param : mandatory not allowed as a mandatory parameter"))
                 (Dns_zone.parse failure_mandatory_contains_mandatory))
 
 (*
@@ -1092,7 +1093,7 @@ example.com. HTTPS 0 .
 
 let parse_failure_alias_mode_root_target () =
   Alcotest.(check (result name_map_ok err) "failure alias mode root target"
-                (Error (`Msg "AliasMode target MUST NOT be \".\""))
+                (Error (`Msg "HTTPS AliasMode target MUST NOT be \".\""))
                 (Dns_zone.parse failure_alias_mode_root_target))
 
 (*
@@ -1125,7 +1126,7 @@ example.com. SVCB 1 foo.example.com. mandatory=port,alpn,port alpn=h2 port=443
 
 let parse_failure_duplicate_in_mandatory () =
   Alcotest.(check (result name_map_ok err) "failure duplicate in mandatory"
-                (Error (`Msg "duplicate keys in mandatory list"))
+                (Error (`Msg "SVCB : multiple instances of the same SvcParamKey in mandatory list"))
                 (Dns_zone.parse failure_duplicate_in_mandatory))
 
 (*
@@ -1159,22 +1160,170 @@ let parse_failure_multiple_mandatory_params () =
         "failure_svc_param_key", `Quick, parse_failure_svc_param_key;
         "key repitition in mandatory list", `Quick, parse_key_repitition_in_mandatory_list;
         (* Additional failure tests for RFC 9460 compliance *)
-        (* Note: Some of these tests are commented out if they cannot be constructed in zone format *)
-        (* or if they're caught by earlier parsing stages *)
-        (* "failure alias mode with params", `Quick, parse_failure_alias_mode_with_params; *)
-        (* "failure mandatory missing param", `Quick, parse_failure_mandatory_missing_param; *)
-        (* "failure mandatory contains mandatory", `Quick, parse_failure_mandatory_contains_mandatory; *)
-        (* "failure alias mode root target", `Quick, parse_failure_alias_mode_root_target; *)
-        (* "failure duplicate in mandatory", `Quick, parse_failure_duplicate_in_mandatory; *)
-        (* "failure multiple mandatory params", `Quick, parse_failure_multiple_mandatory_params; *)
+        "failure alias mode with params", `Quick, parse_failure_alias_mode_with_params;
+        "failure mandatory missing param", `Quick, parse_failure_mandatory_missing_param;
+        "failure mandatory contains mandatory", `Quick, parse_failure_mandatory_contains_mandatory;
+        "failure alias mode root target", `Quick, parse_failure_alias_mode_root_target;
+        "failure duplicate in mandatory", `Quick, parse_failure_duplicate_in_mandatory;
+        "failure multiple mandatory params", `Quick, parse_failure_multiple_mandatory_params;
     ]
+
+end
+
+(* Wire format encoding tests to ensure port length field is correctly encoded *)
+module Encoding = struct
+
+(* Helper to check if string contains substring *)
+let string_contains_substring s sub =
+  try
+    let len = String.length sub in
+    let rec check pos =
+      if pos + len > String.length s then false
+      else if String.sub s pos len = sub then true
+      else check (pos + 1)
+    in
+    check 0
+  with _ -> false
+
+let p_cs =
+  let module M = struct
+    type t = string
+    let pp = Fmt.string
+    let equal = String.equal
+  end in
+  (module M : Alcotest.TESTABLE with type t = M.t)
+
+let t_ok =
+  let module M = struct
+    type t = Packet.t
+    let pp = Packet.pp
+    let equal = Packet.equal
+  end in
+  (module M : Alcotest.TESTABLE with type t = M.t)
+
+let p_err =
+  let module M = struct
+    type t = Packet.err
+    let pp = Packet.pp_err
+    let equal _ _ = true
+  end in
+  (module M : Alcotest.TESTABLE with type t = M.t)
+
+(*
+Test port parameter wire format encoding
+Expected wire format from RFC 9460 D.2:
+00 03  ; key 3
+00 02  ; length 2
+00 35  ; value (53 decimal = 0x35)
+*)
+let encode_port_param () =
+  let ttl = 3600l in
+  let example = n_of_s "example.com" in
+  let foo_example = n_of_s "foo.example.com" in
+  let svcb = Svcb.{
+      svc_priority = 16 ;
+      target_name = Domain_name.host_exn foo_example ;
+      svc_params = [
+        Port 53
+      ] ;
+    } in
+  let svcb' = Rr_map.Svcb_set.singleton svcb in
+  let content = Domain_name.Map.singleton example (Rr_map.singleton Svcb (ttl, svcb')) in
+  let header = 0x1234, Flags.empty in
+  let question = Question.create example Svcb in
+  let packet = Packet.create header question (`Answer (content, Name_rr_map.empty)) in
+  let encoded = fst (Packet.encode `Udp packet) in
+
+  (* Verify round-trip: decode should produce same packet *)
+  Alcotest.(check (result t_ok p_err) "port param encode/decode round-trip"
+              (Ok packet) (Packet.decode encoded));
+
+  (* Verify wire format contains port length field (00 02) after key (00 03) *)
+  (* Search for the port parameter in the encoded data *)
+  (* The pattern we're looking for is: 00 03 00 02 00 35 *)
+  let port_pattern = "\x00\x03\x00\x02\x00\x35" in
+  if not (string_contains_substring encoded port_pattern) then
+    Alcotest.fail "Port parameter missing length field in wire format"
+
+(*
+Test HTTPS record with port=443
+*)
+let encode_https_port () =
+  let ttl = 3600l in
+  let example = n_of_s "example.com" in
+  let root = Domain_name.root in
+  let https = Https.{
+      svc_priority = 1 ;
+      target_name = Domain_name.host_exn root ;
+      svc_params = [
+        Port 443
+      ] ;
+    } in
+  let https' = Rr_map.Https_set.singleton https in
+  let content = Domain_name.Map.singleton example (Rr_map.singleton Https (ttl, https')) in
+  let header = 0x1234, Flags.empty in
+  let question = Question.create example Https in
+  let packet = Packet.create header question (`Answer (content, Name_rr_map.empty)) in
+  let encoded = fst (Packet.encode `Udp packet) in
+
+  (* Verify round-trip *)
+  Alcotest.(check (result t_ok p_err) "https port encode/decode round-trip"
+              (Ok packet) (Packet.decode encoded));
+
+  (* Verify wire format contains port length field *)
+  (* Pattern: 00 03 00 02 01 BB (443 = 0x01BB) *)
+  let port_pattern = "\x00\x03\x00\x02\x01\xBB" in
+  if not (string_contains_substring encoded port_pattern) then
+    Alcotest.fail "HTTPS port parameter missing length field in wire format"
+
+(*
+Test SVCB record with multiple parameters including port
+*)
+let encode_multiple_params_with_port () =
+  let ttl = 3600l in
+  let example = n_of_s "example.com" in
+  let foo_example = n_of_s "foo.example.com" in
+  let ip = Ipaddr.V4.of_string_exn "192.0.2.1" in
+  let svcb = Svcb.{
+      svc_priority = 1 ;
+      target_name = Domain_name.host_exn foo_example ;
+      svc_params = [
+        Alpn ["h2"; "h3"];
+        Port 8443;
+        Ipv4_hint [ip]
+      ] ;
+    } in
+  let svcb' = Rr_map.Svcb_set.singleton svcb in
+  let content = Domain_name.Map.singleton example (Rr_map.singleton Svcb (ttl, svcb')) in
+  let header = 0x1234, Flags.empty in
+  let question = Question.create example Svcb in
+  let packet = Packet.create header question (`Answer (content, Name_rr_map.empty)) in
+  let encoded = fst (Packet.encode `Udp packet) in
+
+  (* Verify wire format contains port length field *)
+  (* Pattern: 00 03 00 02 20 FB (8443 = 0x20FB) *)
+  let port_pattern = "\x00\x03\x00\x02\x20\xFB" in
+  if not (string_contains_substring encoded port_pattern) then
+    Alcotest.fail "Port parameter in multiple params missing length field";
+
+  (* Verify decode succeeds - order may change due to RFC 9460 sorting *)
+  match Packet.decode encoded with
+  | Ok _ -> () (* Success - parameters decoded correctly *)
+  | Error _ -> Alcotest.fail "Failed to decode packet with multiple params"
+
+let tests = [
+  "encode port param wire format", `Quick, encode_port_param;
+  "encode https port wire format", `Quick, encode_https_port;
+  "encode multiple params with port", `Quick, encode_multiple_params_with_port;
+]
 
 end
 
 
 let tests = [
   "rfc9460 passing", Passing.tests ;
-  "rfc9460 failing", Failing.tests
+  "rfc9460 failing", Failing.tests ;
+  "rfc9460 encoding", Encoding.tests
 ]
 
 let () =
