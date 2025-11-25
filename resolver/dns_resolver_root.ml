@@ -59,8 +59,32 @@ let reserved_zone_records =
                                           (add (n "localhost") (* RFC 6761, draft let-localhost-be-localhost *)
                                              empty))))
   in
-  let local_net_name = "127.in-addr.arpa" in
-  Domain_name.Set.add (n local_net_name) zones
+  let rec gen acc pos up = function
+    | n when succ n = up -> List.rev acc
+    | n ->
+      let net = string_of_int n ^ pos in
+      gen (net :: acc) pos up (succ n)
+  in
+  let nets = [ (* RFC 6761 and RFC 6890 *)
+    "0" (* 0.0.0.0/8 *) ;
+    "10" (* 10.0.0.0/8 *) ;
+    "127" (* 127.0.0.0/8 *) ;
+    "254.169" (* "169.254.0.0/16" *) ;
+    "0.0.192" (* "192.0.0.0/24" *) ;
+    "2.0.192" (* "192.0.2.0/24" *) ;
+    "168.192" (* "192.168.0.0/16" *) ;
+    "18.198" ; "19.198" (* "198.18.0.0/15" *) ;
+    "100.51.198" (* "198.51.100.0/24" *) ;
+    "113.0.203" (* "203.0.113.0/24" *) ;
+  ] @ gen [] ".100" 128 64 (* "100.64.0.0/10" ; *)
+    @ gen [] ".172" 32 16 (* "172.16.0.0/12" ; *)
+    @ gen [] "" 256 240 (* "240.0.0.0/4" *)
+  in
+  List.fold_left (fun m net ->
+      let name = net ^ ".in-addr.arpa" in
+      Domain_name.Set.add (n name) m)
+    zones nets
+(* XXX V6 reserved nets (also RFC6890) *)
 
 let stub_soa s =
   let nameserver = Domain_name.prepend_label_exn s "ns"
