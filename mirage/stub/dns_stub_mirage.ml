@@ -87,6 +87,8 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.t -> Dns_trie.t -> unit Lwt.t ;
     push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
     mutable update_tls : Tls.Config.server -> unit ;
+    mutable clients : Ipaddr.Set.t ;
+    record_clients : bool ;
   }
 
   let primary_data { server ; _ } =
@@ -252,6 +254,11 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       let answer = Packet.raw_error buf Rcode.FormErr in
       Lwt.return (Option.map (fun r -> 0l, r) answer)
     | Ok packet ->
+      if t.record_clients then
+        if not (Ipaddr.Set.mem ip t.clients) then begin
+          t.clients <- Ipaddr.Set.add ip t.clients;
+          Dns_resolver_metrics.resolver_stats `Clients
+        end;
       Dns_resolver_metrics.resolver_stats `Queries;
       let start = Mirage_mtime.elapsed_ns () in
       let header, question, data = packet.Packet.header, packet.question, packet.data in
@@ -295,7 +302,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       let len = Cstruct.BE.get_uint16 k 0 in
       read_tls f len
 
-  let create ?(add_reserved = true) ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
+  let create ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let primary =
       if add_reserved then
@@ -308,7 +315,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     let server = Dns_server.Primary.server primary in
     let stream, push = Lwt_stream.create () in
     let update_tls _ = () in
-    let t = { client ; server ; on_update ; push ; update_tls } in
+    let t = { client ; server ; on_update ; push ; update_tls ; record_clients ; clients = Ipaddr.Set.empty } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
       metrics `Udp_queries;
