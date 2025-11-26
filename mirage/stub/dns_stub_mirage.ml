@@ -83,7 +83,6 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   type t = {
     client : Client.t ;
-    reserved : Dns_server.t ;
     mutable server : Dns_server.t ;
     on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.t -> Dns_trie.t -> unit Lwt.t ;
     push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
@@ -241,14 +240,9 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       Lwt.return (Some reply)
 
   (* we're now doing up to three lookups for each request:
-    - in authoritative server (Dns_trie)
-    - in reserved trie (Dns_trie)
+    - in authoritative server (Dns_trie) - includes block and reserved
     - in resolver cache (Dns_cache)
-    - asking a remote resolver
-
-     instead, on startup authoritative (from external) could be merged with
-     reserved (but that makes data store very big and not easy to understand
-     (lots of files for the reserved zones)) *)
+    - asking a remote resolver *)
   let handle t proto ip buf =
     match Packet.decode buf with
     | Error err ->
@@ -264,11 +258,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       (* check header flags: recursion desired (and send recursion available) *)
       (server t proto ip packet header question data buf >>= function
         | Some data -> Lwt.return (Some data)
-        | None ->
-          (* next look in reserved trie! *)
-          match query_server t.reserved question data header proto with
-          | Some data -> metrics `Reserved_answers ; Lwt.return (Some data)
-          | None -> resolve t question data header proto) >|= fun reply ->
+        | None -> resolve t question data header proto) >|= fun reply ->
       let stop = Mirage_mtime.elapsed_ns () in
       Dns_resolver_metrics.response_metric (Int64.sub stop start);
       reply
@@ -307,11 +297,15 @@ module Make (S : Tcpip.Stack.V4V6) = struct
 
   let create ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
+    let primary =
+      let trie = Dns_server.Primary.data primary in
+      let trie' = Dns_trie.insert_map Dns_resolver_root.reserved_zones trie in
+      fst (Dns_server.Primary.with_data primary (Mirage_ptime.now ()) (Mirage_mtime.elapsed_ns ()) trie')
+    in
     let server = Dns_server.Primary.server primary in
     let stream, push = Lwt_stream.create () in
-    let reserved = Dns_server.create Dns_resolver_root.reserved Mirage_crypto_rng.generate in
     let update_tls _ = () in
-    let t = { client ; reserved ; server ; on_update ; push ; update_tls } in
+    let t = { client ; server ; on_update ; push ; update_tls } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
       metrics `Udp_queries;

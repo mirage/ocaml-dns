@@ -52,7 +52,7 @@ let main dnssec qname_min opportunistic =
       (if opportunistic then [ `Opportunistic_tls_authoritative ] else [])
     in
     Dns_resolver.create features ~ip_protocol:`Ipv4_only
-      (Mirage_mtime.elapsed_ns ()) Mirage_crypto_rng.generate primary_t
+      (Mirage_ptime.now ()) (Mirage_mtime.elapsed_ns ()) Mirage_crypto_rng.generate primary_t
   in
   let _resolver = Resolver.resolver ~port:53530 stack resolver in
   let _ : Sys.signal_behavior =
