@@ -52,13 +52,13 @@ This library is published under the 2 clause BSD license.
 * [RFC 5358](https://tools.ietf.org/html/rfc5358) Preventing Use of Recursive Nameservers in Reflector Attacks
 * [RFC 5452](https://tools.ietf.org/html/rfc5452) Measures for Making DNS More Resilient against Forged Answers
 * [RFC 5936](https://tools.ietf.org/html/rfc5936) DNS Zone Transfer Protocol (AXFR)
+* [RFC 6303](https://tools.ietf.org/html/rfc6303) Locally Served DNS Zones
 * [RFC 6594](https://tools.ietf.org/html/rfc6594) Use of the SHA-256 Algorithm with RSA, Digital Signature Algorithm (DSA), and Elliptic Curve DSA (ECDSA) in SSHFP Resource Records
 * [RFC 6605](https://tools.ietf.org/html/rfc6605) Elliptic Curve Digital Signature Algorithm (DSA) for DNSSEC
 * [RFC 6698](https://tools.ietf.org/html/rfc6698.html) The DNS-Based Authentication of Named Entities (DANE) Transport Layer Security (TLS) Protocol: TLSA
 * [RFC 6761](https://tools.ietf.org/html/rfc6761) Special-Use Domain Names
 * `*` [RFC 6762](https://tools.ietf.org/html/rfc6762) Multicast DNS
 * [RFC 6844](https://tools.ietf.org/html/rfc6844) DNS Certification Authority Authorization (CAA) Resource Record
-* [RFC 6890](https://tools.ietf.org/html/rfc6890) Special-Purpose IP Address Registries
 * [RFC 6891](https://tools.ietf.org/html/rfc6891) Extension Mechanisms for DNS (EDNS(0))
 * [RFC 6895](https://tools.ietf.org/html/rfc6895) Domain Name System (DNS) IANA Considerations (BCP 42)
 * [RFC 7129](https://tools.ietf.org/html/rfc7129) Authenticated Denial of Existence in the DNS
