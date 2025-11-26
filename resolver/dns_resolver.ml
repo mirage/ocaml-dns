@@ -80,33 +80,38 @@ type t = {
   record_clients : bool ;
 }
 
-let create ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both) features now rng primary =
+let create ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both) features now ts rng primary =
   let cache = Dns_cache.empty cache_size in
   let cache =
     List.fold_left (fun cache (name, b) ->
-        Dns_cache.set cache now
+        Dns_cache.set cache ts
           name A Dns_cache.Additional
           (`Entry b))
       cache Dns_resolver_root.a_records
   in
   let cache =
     List.fold_left (fun cache (name, b) ->
-        Dns_cache.set cache now
+        Dns_cache.set cache ts
           name Aaaa Dns_cache.Additional
           (`Entry b))
       cache Dns_resolver_root.aaaa_records
   in
   let cache =
-    Dns_cache.set cache now
+    Dns_cache.set cache ts
       Domain_name.root Ns Dns_cache.Additional
       (`Entry Dns_resolver_root.ns_records)
   in
   let cache =
-    Dns_cache.set cache now
+    Dns_cache.set cache ts
       Domain_name.root Ds Dns_cache.Additional
       (`Entry (Int32.max_int, Dnssec.root_ds))
   in
   let features = FS.of_list features in
+  let primary =
+    let trie = Dns_server.Primary.data primary in
+    let trie' = Dns_trie.insert_map Dns_resolver_root.reserved_zones trie in
+    fst (Dns_server.Primary.with_data primary now ts trie')
+  in
   { ip_protocol ; features ; rng ; cache ; primary ; transit = TM.empty ; queried = QM.empty ;
     clients = Ipaddr.Set.empty ; record_clients }
 
