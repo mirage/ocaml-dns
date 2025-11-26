@@ -295,12 +295,15 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       let len = Cstruct.BE.get_uint16 k 0 in
       read_tls f len
 
-  let create ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
+  let create ?(add_reserved = true) ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let primary =
-      let trie = Dns_server.Primary.data primary in
-      let trie' = Dns_trie.insert_map Dns_resolver_root.reserved_zones trie in
-      fst (Dns_server.Primary.with_data primary (Mirage_ptime.now ()) (Mirage_mtime.elapsed_ns ()) trie')
+      if add_reserved then
+        let trie = Dns_server.Primary.data primary in
+        let trie' = Dns_trie.insert_map Dns_resolver_root.reserved_zones trie in
+        fst (Dns_server.Primary.with_data primary (Mirage_ptime.now ()) (Mirage_mtime.elapsed_ns ()) trie')
+      else
+        primary
     in
     let server = Dns_server.Primary.server primary in
     let stream, push = Lwt_stream.create () in
