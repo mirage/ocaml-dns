@@ -89,7 +89,7 @@ let svcb_char_string = svcb_contigious | svcb_quoted
 let svcbkey = (['a'-'z']|['0'-'9']|'-')*
 let svcbval = svcb_char_string
 let svcbvalq = '"' svcbval '"'
-let svcbparam = (svcbkey '=' (svcbval | svcbvalq)) as contents
+let svcbparam = (("no-default-alpn") | (svcbkey '=' (svcbval | svcbvalq))) as contents
 
 rule token = parse
   eol           { state.lineno <- state.lineno + 1;
