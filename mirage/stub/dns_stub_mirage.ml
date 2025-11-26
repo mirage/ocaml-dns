@@ -89,6 +89,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     mutable update_tls : Tls.Config.server -> unit ;
     mutable clients : Ipaddr.Set.t ;
     record_clients : bool ;
+    require_domain : bool ;
   }
 
   let primary_data { server ; _ } =
@@ -265,7 +266,14 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       (* check header flags: recursion desired (and send recursion available) *)
       (server t proto ip packet header question data buf >>= function
         | Some data -> Lwt.return (Some data)
-        | None -> resolve t question data header proto) >|= fun reply ->
+        | None ->
+          let dn, qtyp = question in
+          if Domain_name.count_labels dn = 1 && (qtyp = `K (Rr_map.K A) || qtyp = `K (Rr_map.K Aaaa)) then
+            let data = `Answer (Name_rr_map.empty, Name_rr_map.empty) in
+            let reply = build_reply header question proto data in
+            Lwt.return (Some reply)
+          else
+            resolve t question data header proto) >|= fun reply ->
       let stop = Mirage_mtime.elapsed_ns () in
       Dns_resolver_metrics.response_metric (Int64.sub stop start);
       reply
@@ -302,7 +310,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       let len = Cstruct.BE.get_uint16 k 0 in
       read_tls f len
 
-  let create ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
+  let create ?(require_domain = true) ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let primary =
       if add_reserved then
@@ -315,7 +323,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     let server = Dns_server.Primary.server primary in
     let stream, push = Lwt_stream.create () in
     let update_tls _ = () in
-    let t = { client ; server ; on_update ; push ; update_tls ; record_clients ; clients = Ipaddr.Set.empty } in
+    let t = { client ; server ; on_update ; push ; update_tls ; record_clients ; clients = Ipaddr.Set.empty ; require_domain } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
       metrics `Udp_queries;

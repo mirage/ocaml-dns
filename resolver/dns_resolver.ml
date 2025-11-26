@@ -78,9 +78,10 @@ type t = {
   queried : awaiting list QM.t ;
   mutable clients : Ipaddr.Set.t ;
   record_clients : bool ;
+  require_domain : bool ;
 }
 
-let create ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both) features now ts rng primary =
+let create ?(require_domain = true) ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both) features now ts rng primary =
   let cache = Dns_cache.empty cache_size in
   let cache =
     List.fold_left (fun cache (name, b) ->
@@ -116,7 +117,7 @@ let create ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000)
       primary
   in
   { ip_protocol ; features ; rng ; cache ; primary ; transit = TM.empty ; queried = QM.empty ;
-    clients = Ipaddr.Set.empty ; record_clients }
+    clients = Ipaddr.Set.empty ; record_clients ; require_domain }
 
 let features t = FS.elements t.features
 
@@ -575,9 +576,16 @@ let handle_buf t now ts query_allowed proto sender sport buf =
           Log.debug (fun m -> m "handled delegation %a:%d" Ipaddr.pp sender sport) ;
           handle_delegation t ts proto sender sport res dele
         | `None ->
-          Log.debug (fun m -> m "resolving %a:%d" Ipaddr.pp sender sport) ;
-          (* DNSSEC request DS / DNSKEY / NS from auth *)
-          resolve t ts proto sender sport res
+          let dn, qtyp = res.question in
+          if Domain_name.count_labels dn = 1 && (qtyp = `K (Rr_map.K A) || qtyp = `K (Rr_map.K Aaaa)) then
+            let reply = Packet.create res.header res.question (`Answer (Name_rr_map.empty, Name_rr_map.empty)) in
+            let data, _ = Packet.encode proto reply in
+            t, [ proto, sender, sport, 0l, data ], []
+          else begin
+            Log.debug (fun m -> m "resolving %a:%d" Ipaddr.pp sender sport) ;
+            (* DNSSEC request DS / DNSKEY / NS from auth *)
+            resolve t ts proto sender sport res
+          end
       end
     | _ ->
       Log.err (fun m -> m "ignoring unsolicited packet (query allowed? %b) %a" query_allowed Packet.pp res);

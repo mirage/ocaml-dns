@@ -6,11 +6,11 @@ type t
 type feature =
   [ `Dnssec | `Qname_minimisation | `Opportunistic_tls_authoritative ]
 
-val create : ?add_reserved:bool -> ?record_clients:bool -> ?cache_size:int ->
+val create : ?require_domain:bool -> ?add_reserved:bool -> ?record_clients:bool -> ?cache_size:int ->
   ?ip_protocol:[ `Both | `Ipv4_only | `Ipv6_only ] ->
   feature list -> Ptime.t ->
   int64 -> (int -> string) -> Dns_server.Primary.s -> t
-(** [create ~add_reserved ~record_clients ~cache_size ~ip_protocol features now ts rng primary]
+(** [create ~require_domain ~add_reserved ~record_clients ~cache_size ~ip_protocol features now ts rng primary]
     creates the value of a resolver, pre-filled with root NS and their IP
     addresses. If [ip_protocol] is provided, and set to [`V4_only], only IPv4
     packets will be emitted. If [`V6_only] is set, only IPv6 packets will be
