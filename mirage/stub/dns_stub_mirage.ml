@@ -240,14 +240,9 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       Lwt.return (Some reply)
 
   (* we're now doing up to three lookups for each request:
-    - in authoritative server (Dns_trie)
-    - in reserved trie (Dns_trie)
+    - in authoritative server (Dns_trie) - includes block and reserved
     - in resolver cache (Dns_cache)
-    - asking a remote resolver
-
-     instead, on startup authoritative (from external) could be merged with
-     reserved (but that makes data store very big and not easy to understand
-     (lots of files for the reserved zones)) *)
+    - asking a remote resolver *)
   let handle t proto ip buf =
     match Packet.decode buf with
     | Error err ->
