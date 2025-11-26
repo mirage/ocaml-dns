@@ -105,8 +105,9 @@ let stub_soa s =
     expiry = 300l ; minimum = 300l }
 
 let reserved_zones =
-  let inv s = Rr_map.(B (Soa, stub_soa s)) in
-  Domain_name.Set.fold (fun n acc -> (n, inv n) :: acc) reserved_zone_records []
+  Domain_name.Set.fold (fun n acc ->
+      Domain_name.Map.add n (Rr_map.singleton Soa (stub_soa n)) acc)
+    reserved_zone_records Domain_name.Map.empty
 
 let reserved =
   Domain_name.Set.fold (fun name trie ->
