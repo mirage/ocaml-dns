@@ -7,4 +7,5 @@ module type S = sig
   val primary_data : t -> Dns_trie.t
   val update_primary_data : t -> Dns_trie.t -> unit
   val update_tls : t -> Tls.Config.server -> unit
+  val queries : t -> (Ptime.t * Dns.Packet.Question.t * Ipaddr.t * Dns.Rcode.t * int64 * string) Lwt_condition.t
 end

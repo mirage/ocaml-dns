@@ -19,4 +19,7 @@ module type S = sig
   (** [update_tls t tls_config] updates the tls configuration to [tls_config].
       If the resolver wasn't already listening for TLS connections it will
       start listening. *)
+
+  val queries : t -> (Ptime.t * Dns.Packet.Question.t * Ipaddr.t * Dns.Rcode.t * int64 * string) Lwt_condition.t
+  (** [queries t] returns the stream of resolved DNS queries and their replies. *)
 end
