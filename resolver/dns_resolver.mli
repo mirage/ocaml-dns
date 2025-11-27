@@ -24,6 +24,10 @@ val create : ?require_domain:bool -> ?add_reserved:bool -> ?record_clients:bool 
     6303, 6761, 6762) to the primary server
     (see {!Dns_resolver_root.reserved_zones}).
 
+    The [require_domain] is by default [false]. If enabled, single-label queries
+    for address records (A or AAAA) are immediately replied to with a no data
+    reply.
+
     Some features can be specified, whether DNSSec validation should be done,
     whether query name minimisation should be done, and whether opportunistic
     encryption using TLS to the authoritative should be done.

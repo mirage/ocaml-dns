@@ -81,7 +81,7 @@ type t = {
   require_domain : bool ;
 }
 
-let create ?(require_domain = true) ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both) features now ts rng primary =
+let create ?(require_domain = false) ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000) ?(ip_protocol = `Both) features now ts rng primary =
   let cache = Dns_cache.empty cache_size in
   let cache =
     List.fold_left (fun cache (name, b) ->

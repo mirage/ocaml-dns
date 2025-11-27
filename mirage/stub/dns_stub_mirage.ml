@@ -310,7 +310,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       let len = Cstruct.BE.get_uint16 k 0 in
       read_tls f len
 
-  let create ?(require_domain = true) ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
+  let create ?(require_domain = false) ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000) ?(udp = true) ?(tcp = true) ?(port = 53) ?tls ?(tls_port = 853) ?edns ?nameservers ?timeout ?(on_update = fun ~old:_ ?authenticated_key:_ ~update_source:_ _trie -> Lwt.return_unit) primary ~happy_eyeballs stack : t Lwt.t =
     Client.connect ~cache_size ?edns ?nameservers ?timeout (stack, happy_eyeballs) >|= fun client ->
     let primary =
       if add_reserved then

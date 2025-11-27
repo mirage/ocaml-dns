@@ -30,7 +30,11 @@ module Make (S : Tcpip.Stack.V4V6) : sig
 
       The [add_reserved] is by default [true], and adds reserved zones (from RFC
       6303, 6761, 6762) to the primary server
-      (see {!Dns_resolver_root.reserved_zones}). *)
+      (see {!Dns_resolver_root.reserved_zones}).
+
+      The [require_domain] is by default [false]. If enabled, single-label
+      queries for address records (A or AAAA) are immediately replied to with a
+      no data reply. *)
 
   include Dns_resolver_mirage_shared.S with type t := t
 end
