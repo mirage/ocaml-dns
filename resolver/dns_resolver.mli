@@ -20,6 +20,10 @@ val create : ?add_reserved:bool -> ?record_clients:bool -> ?cache_size:int ->
     Ipaddr.t of all clients around, which may use some memory if it is a public
     resolver.
 
+    The [add_reserved] is by default [true], and adds reserved zones (from RFC
+    6303, 6761, 6762) to the primary server
+    (see {!Dns_resolver_root.reserved_zones}).
+
     Some features can be specified, whether DNSSec validation should be done,
     whether query name minimisation should be done, and whether opportunistic
     encryption using TLS to the authoritative should be done.

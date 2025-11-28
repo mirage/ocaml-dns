@@ -22,7 +22,15 @@ module Make (S : Tcpip.Stack.V4V6) : sig
       registers a stub resolver on the provided protocols [udp], [tcp], [tls]
       using [port] for udp and tcp (defaults to 53), [tls_port] for tls (defaults
       to 853) using the [resolver] configuration. The [timer] is in milliseconds
-      and defaults to 500 milliseconds.*)
+      and defaults to 500 milliseconds.
+
+      If [record_clients] is true (the default), the metrics of the resolver
+      will include the amount of clients.  This keeps a set of Ipaddr.t of all
+      clients around, which may use some memory if it is a public resolver.
+
+      The [add_reserved] is by default [true], and adds reserved zones (from RFC
+      6303, 6761, 6762) to the primary server
+      (see {!Dns_resolver_root.reserved_zones}). *)
 
   include Dns_resolver_mirage_shared.S with type t := t
 end
