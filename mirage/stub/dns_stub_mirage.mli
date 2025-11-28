@@ -10,7 +10,7 @@ module Make (S : Tcpip.Stack.V4V6) : sig
       ?timer_interval:int64 -> ?getaddrinfo:getaddrinfo -> stack -> t Lwt.t
   end
 
-  val create : ?add_reserved:bool -> ?record_clients:bool -> ?cache_size:int -> ?udp:bool -> ?tcp:bool -> ?port:int ->
+  val create : ?require_domain:bool -> ?add_reserved:bool -> ?record_clients:bool -> ?cache_size:int -> ?udp:bool -> ?tcp:bool -> ?port:int ->
     ?tls:Tls.Config.server -> ?tls_port:int ->
     ?edns:[ `Auto | `Manual of Dns.Edns.t | `None ] ->
     ?nameservers:string list ->
@@ -18,7 +18,7 @@ module Make (S : Tcpip.Stack.V4V6) : sig
     ?on_update:(old:Dns_trie.t -> ?authenticated_key:[ `raw ] Domain_name.t ->
                 update_source:Ipaddr.t -> Dns_trie.t -> unit Lwt.t) ->
     Dns_server.Primary.s -> happy_eyeballs:H.t -> S.t -> t Lwt.t
-  (** [create ~add_reserved ~record_clients ~cache_size ~edns ~nameservers ~timeout ~on_update server ~happy_eyeballs stack]
+  (** [create ~require_domain ~add_reserved ~record_clients ~cache_size ~edns ~nameservers ~timeout ~on_update server ~happy_eyeballs stack]
       registers a stub resolver on the provided protocols [udp], [tcp], [tls]
       using [port] for udp and tcp (defaults to 53), [tls_port] for tls (defaults
       to 853) using the [resolver] configuration. The [timer] is in milliseconds
@@ -30,7 +30,11 @@ module Make (S : Tcpip.Stack.V4V6) : sig
 
       The [add_reserved] is by default [true], and adds reserved zones (from RFC
       6303, 6761, 6762) to the primary server
-      (see {!Dns_resolver_root.reserved_zones}). *)
+      (see {!Dns_resolver_root.reserved_zones}).
+
+      The [require_domain] is by default [false]. If enabled, single-label
+      queries for address records (A or AAAA) are immediately replied to with a
+      no data reply. *)
 
   include Dns_resolver_mirage_shared.S with type t := t
 end

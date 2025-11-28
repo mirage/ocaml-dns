@@ -6,11 +6,11 @@ type t
 type feature =
   [ `Dnssec | `Qname_minimisation | `Opportunistic_tls_authoritative ]
 
-val create : ?add_reserved:bool -> ?record_clients:bool -> ?cache_size:int ->
+val create : ?require_domain:bool -> ?add_reserved:bool -> ?record_clients:bool -> ?cache_size:int ->
   ?ip_protocol:[ `Both | `Ipv4_only | `Ipv6_only ] ->
   feature list -> Ptime.t ->
   int64 -> (int -> string) -> Dns_server.Primary.s -> t
-(** [create ~add_reserved ~record_clients ~cache_size ~ip_protocol features now ts rng primary]
+(** [create ~require_domain ~add_reserved ~record_clients ~cache_size ~ip_protocol features now ts rng primary]
     creates the value of a resolver, pre-filled with root NS and their IP
     addresses. If [ip_protocol] is provided, and set to [`V4_only], only IPv4
     packets will be emitted. If [`V6_only] is set, only IPv6 packets will be
@@ -23,6 +23,10 @@ val create : ?add_reserved:bool -> ?record_clients:bool -> ?cache_size:int ->
     The [add_reserved] is by default [true], and adds reserved zones (from RFC
     6303, 6761, 6762) to the primary server
     (see {!Dns_resolver_root.reserved_zones}).
+
+    The [require_domain] is by default [false]. If enabled, single-label queries
+    for address records (A or AAAA) are immediately replied to with a no data
+    reply.
 
     Some features can be specified, whether DNSSec validation should be done,
     whether query name minimisation should be done, and whether opportunistic
