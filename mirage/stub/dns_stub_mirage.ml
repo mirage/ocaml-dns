@@ -269,7 +269,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         | None ->
           let dn, qtyp = question in
           if Domain_name.count_labels dn = 1 && (qtyp = `K (Rr_map.K A) || qtyp = `K (Rr_map.K Aaaa)) then
-            let data = `Answer (Name_rr_map.empty, Name_rr_map.empty) in
+            let data = `Rcode_error (Rcode.NXDomain, Opcode.Query, None) in
             let reply = build_reply header question proto data in
             Lwt.return (Some reply)
           else
