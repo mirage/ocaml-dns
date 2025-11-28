@@ -18,6 +18,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     primary_data : unit -> Dns_trie.t ;
     with_primary_data : Dns_trie.t -> unit ;
     update_tls : Tls.Config.server -> unit ;
+    queries : Dns_resolver_mirage_shared.query_info Lwt_condition.t ;
   }
 
   type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
@@ -422,7 +423,8 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         root ()
       in
       Lwt.async root end ;
-    { push; primary_data; with_primary_data; update_tls }
+    let queries = Lwt_condition.create () in
+    { push; primary_data; with_primary_data; update_tls; queries }
 
   let resolve_external { push; _ } (dst_ip, dst_port) data =
       let th, wk = Lwt.wait () in
@@ -434,4 +436,6 @@ module Make (S : Tcpip.Stack.V4V6) = struct
   let update_primary_data { with_primary_data; _ } data = with_primary_data data
 
   let update_tls { update_tls; _ } tls_config = update_tls tls_config
+
+  let queries { queries ; _ } = queries
 end
