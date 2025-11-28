@@ -1,5 +1,14 @@
 (* (c) 2017, 2018 Hannes Mehnert, all rights reserved *)
 
+type query_info = {
+  fin : Ptime.t;
+  question : Dns.Packet.Question.t;
+  src : Ipaddr.t;
+  rcode : Dns.Rcode.t;
+  time_taken : int64;
+  status : string
+}
+
 module type S = sig
   type t
 
@@ -20,6 +29,6 @@ module type S = sig
       If the resolver wasn't already listening for TLS connections it will
       start listening. *)
 
-  val queries : t -> (Ptime.t * Dns.Packet.Question.t * Ipaddr.t * Dns.Rcode.t * int64 * string) Lwt_condition.t
+  val queries : t -> query_info Lwt_condition.t
   (** [queries t] returns the stream of resolved DNS queries and their replies. *)
 end

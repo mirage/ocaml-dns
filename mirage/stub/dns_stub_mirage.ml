@@ -89,7 +89,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     mutable update_tls : Tls.Config.server -> unit ;
     mutable clients : Ipaddr.Set.t ;
     record_clients : bool ;
-    queries : (Ptime.t * Dns.Packet.Question.t * Ipaddr.t * Dns.Rcode.t * int64 * string) Lwt_condition.t ;
+    queries : Dns_resolver_mirage_shared.query_info Lwt_condition.t ;
   }
 
   let queries { queries ; _ } = queries
@@ -275,7 +275,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       let time_taken = Int64.sub stop start in
       let rcode = Option.value ~default:Rcode.ServFail (Option.map snd reply) in
       Lwt_condition.broadcast t.queries
-        (Mirage_ptime.now (), question, ip, rcode, time_taken, status);
+        { Dns_resolver_mirage_shared.fin = Mirage_ptime.now (); question; src=ip; rcode; time_taken; status };
       Dns_resolver_metrics.response_metric time_taken;
       Option.map fst reply
 
