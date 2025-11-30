@@ -33,12 +33,13 @@ val features : t -> feature list
 
 val handle_buf : t -> Ptime.t -> int64 -> bool -> Dns.proto -> Ipaddr.t ->
   int -> string ->
-  t * (Dns.proto * Ipaddr.t * int * int32 * string) list
+  t * (Dns.proto * Ipaddr.t * int * int32 * string * Dns.Packet.Question.t * Dns.Rcode.t * int64 * string) list
     * (Dns.proto * Ipaddr.t * string) list
 (** [handle_buf t now ts query_or_reply proto sender source-port buf] handles
-   resolution of [buf], which leads to a new [t], a list of answers to be
-    transmitted (quintuple of protocol, ip address, port, minimum ttl, buffer),
-    and a list of queries (triple of protocol, ip address, buffer). *)
+    resolution of [buf], which leads to a new [t], a list of answers to be
+    transmitted (tuple of protocol, ip address, port, minimum ttl, buffer,
+    question, rcode, duration it took, status), and a list of queries (triple of
+    protocol, ip address, buffer). *)
 
 val query_root : t -> int64 -> Dns.proto ->
   t * (Dns.proto * Ipaddr.t * string)
@@ -46,7 +47,7 @@ val query_root : t -> int64 -> Dns.proto ->
    zone. Best invoked by a regular timer. *)
 
 val timer : t -> int64 ->
-  t * (Dns.proto * Ipaddr.t * int * int32 * string) list
+  t * (Dns.proto * Ipaddr.t * int * int32 * string * Dns.Packet.Question.t * Dns.Rcode.t * int64 * string) list
     * (Dns.proto * Ipaddr.t * string) list
 (** [timer t now] potentially retransmits DNS requests and/or sends NXDomain
     answers. *)

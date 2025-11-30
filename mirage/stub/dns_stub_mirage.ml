@@ -255,6 +255,11 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       Dns_resolver_metrics.response_metric 0L;
       Dns_resolver_metrics.resolver_stats `Error;
       let answer = Packet.raw_error buf Rcode.FormErr in
+      Lwt_condition.broadcast t.queries
+        { Dns_resolver_mirage_shared.fin = Mirage_ptime.now ();
+          question = (Domain_name.root, `Any);
+          src=ip; rcode = Rcode.FormErr; time_taken = 0L;
+          status = "decode error" };
       Lwt.return (Option.map (fun r -> 0l, r) answer)
     | Ok packet ->
       if t.record_clients then
