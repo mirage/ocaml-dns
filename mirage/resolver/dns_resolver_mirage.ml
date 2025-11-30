@@ -18,6 +18,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     primary_data : unit -> Dns_trie.t ;
     with_primary_data : Dns_trie.t -> unit ;
     update_tls : Tls.Config.server -> unit ;
+    queries : Dns_resolver_mirage_shared.query_info Lwt_condition.t ;
   }
 
   type tls_flow = { tls_flow : TLS.flow ; mutable linger : Cstruct.t }
@@ -43,6 +44,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     let tls_auth = ref Ipaddr.Map.empty in
     let stream, push = Lwt_stream.create () in
     let opportunistic = List.mem `Opportunistic_tls_authoritative (Dns_resolver.features t) in
+    let queries = Lwt_condition.create () in
 
     let send_tls flow data =
       let len = Cstruct.create 2 in
@@ -259,7 +261,12 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     and handle_query (proto, dst, data) = match proto with
       | `Udp -> maybe_tcp dst server_port data
       | `Tcp -> client_tcp dst server_port ~tls_port:server_tls_port data
-    and handle_answer (proto, dst, dst_port, ttl, data) = match proto with
+    and handle_answer (proto, dst, dst_port, ttl, data, question, rcode, time_taken, status) =
+      let query_info = { Dns_resolver_mirage_shared.fin = Mirage_ptime.now () ;
+                         question ; src = dst ; rcode ; time_taken ; status }
+      in
+      Lwt_condition.broadcast queries query_info;
+      match proto with
       | `Udp -> Dns.send_udp stack port dst dst_port (Cstruct.of_string data)
       | `Tcp ->
         let from_tcp = FM.find_opt (dst, dst_port) !tcp_in in
@@ -422,7 +429,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         root ()
       in
       Lwt.async root end ;
-    { push; primary_data; with_primary_data; update_tls }
+    { push; primary_data; with_primary_data; update_tls; queries }
 
   let resolve_external { push; _ } (dst_ip, dst_port) data =
       let th, wk = Lwt.wait () in
@@ -434,4 +441,6 @@ module Make (S : Tcpip.Stack.V4V6) = struct
   let update_primary_data { with_primary_data; _ } data = with_primary_data data
 
   let update_tls { update_tls; _ } tls_config = update_tls tls_config
+
+  let queries { queries ; _ } = queries
 end

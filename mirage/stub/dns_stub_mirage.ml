@@ -89,7 +89,10 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     mutable update_tls : Tls.Config.server -> unit ;
     mutable clients : Ipaddr.Set.t ;
     record_clients : bool ;
+    queries : Dns_resolver_mirage_shared.query_info Lwt_condition.t ;
   }
+
+  let queries { queries ; _ } = queries
 
   let primary_data { server ; _ } =
     server.Dns_server.data
@@ -126,13 +129,13 @@ module Make (S : Tcpip.Stack.V4V6) = struct
           Dns.Packet.with_edns packet (Some edns)
       in
       let reply = ttl, fst (Packet.encode proto packet) in
-      Some reply
+      Some (reply, Packet.rcode_data data)
     | Error (Rcode.NotAuth, _) -> None
     | Error (rcode, answer) ->
       metrics `Authoritative_errors;
       let data = `Rcode_error (rcode, Packet.opcode_data data, answer) in
       let reply = build_reply header question proto data in
-      Some reply
+      Some (reply, rcode)
 
   let tsig_decode_sign server proto packet buf header question =
     let now = Mirage_ptime.now () in
@@ -142,7 +145,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         `Rcode_error (Rcode.Refused, Packet.opcode_data packet.Packet.data, None)
       in
       let reply = build_reply header question proto data in
-      Error reply
+      Error (reply, Rcode.Refused)
     | Ok k ->
       let key =
         match k with None -> None | Some (keyname, _, _, _) -> Some keyname
@@ -151,11 +154,11 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         let ttl = Packet.minimum_ttl data in
         let packet = Packet.create header question data in
         match k with
-        | None -> Some (ttl, fst (Packet.encode proto packet))
+        | None -> Some ((ttl, fst (Packet.encode proto packet)), Packet.rcode_data data)
         | Some (keyname, _tsig, mac, dnskey) ->
           match Dns_tsig.encode_and_sign ~proto ~mac packet now dnskey keyname with
           | Error s -> Log.err (fun m -> m "error %a while signing answer" Dns_tsig.pp_s s); None
-          | Ok (cs, _) -> Some (ttl, cs)
+          | Ok (cs, _) -> Some ((ttl, cs), Packet.rcode_data data)
       in
       Ok (key, sign)
 
@@ -167,7 +170,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       | Error rcode ->
         let err = `Rcode_error (rcode, Packet.opcode_data packet.Packet.data, None) in
         let reply = build_reply header question proto err in
-        Some reply
+        Some (reply, rcode)
       | Ok axfr ->
         sign (`Axfr_reply axfr)
 
@@ -199,7 +202,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         `Rcode_error (Rcode.NotImp, Packet.opcode_data packet.Packet.data, None)
       in
       let pkt = build_reply header question proto data in
-      Lwt.return (Some pkt)
+      Lwt.return (Some (pkt, Rcode.NotImp))
 
   let resolve t question data header proto =
     metrics `Resolver_queries;
@@ -212,25 +215,25 @@ module Make (S : Tcpip.Stack.V4V6) = struct
           let data = `Rcode_error (Rcode.ServFail, Opcode.Query, None) in
           metrics `Resolver_servfail;
           let reply = build_reply header question proto data in
-          Some reply
+          Some (reply, Rcode.ServFail)
         | Error `No_data (domain, soa) ->
           let answer = (Name_rr_map.empty, Name_rr_map.singleton domain Soa soa) in
           let data = `Answer answer in
           metrics `Resolver_nodata;
           let reply = build_reply header question proto data in
-          Some reply
+          Some (reply, Rcode.NoError)
         | Error `No_domain (domain, soa) ->
           let answer = (Name_rr_map.empty, Name_rr_map.singleton domain Soa soa) in
           let data = `Rcode_error (Rcode.NXDomain, Opcode.Query, Some answer) in
           metrics `Resolver_nodomain;
           let reply = build_reply header question proto data in
-          Some reply
+          Some (reply, Rcode.NXDomain)
         | Ok reply ->
           let answer = (Name_rr_map.singleton name key reply, Name_rr_map.empty) in
           let data = `Answer answer in
           metrics `Resolver_answers;
           let reply = build_reply header question proto data in
-          Some reply
+          Some (reply, Rcode.NoError)
       end
     | _ ->
       Log.err (fun m -> m "not implemented %a, data %a"
@@ -239,7 +242,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       let data = `Rcode_error (Rcode.NotImp, Packet.opcode_data data, None) in
       metrics `Resolver_notimp;
       let reply = build_reply header question proto data in
-      Lwt.return (Some reply)
+      Lwt.return (Some (reply, Rcode.NotImp))
 
   (* we're now doing up to three lookups for each request:
     - in authoritative server (Dns_trie) - includes block and reserved
@@ -252,6 +255,11 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       Dns_resolver_metrics.response_metric 0L;
       Dns_resolver_metrics.resolver_stats `Error;
       let answer = Packet.raw_error buf Rcode.FormErr in
+      Lwt_condition.broadcast t.queries
+        { Dns_resolver_mirage_shared.fin = Mirage_ptime.now ();
+          question = (Domain_name.root, `Any);
+          src=ip; rcode = Rcode.FormErr; time_taken = 0L;
+          status = "decode error" };
       Lwt.return (Option.map (fun r -> 0l, r) answer)
     | Ok packet ->
       if t.record_clients then
@@ -264,11 +272,17 @@ module Make (S : Tcpip.Stack.V4V6) = struct
       let header, question, data = packet.Packet.header, packet.question, packet.data in
       (* check header flags: recursion desired (and send recursion available) *)
       (server t proto ip packet header question data buf >>= function
-        | Some data -> Lwt.return (Some data)
-        | None -> resolve t question data header proto) >|= fun reply ->
+        | Some data -> Lwt.return (Some data, "server")
+        | None ->
+          resolve t question data header proto >|= fun reply ->
+          reply, "resolved") >|= fun (reply, status) ->
       let stop = Mirage_mtime.elapsed_ns () in
-      Dns_resolver_metrics.response_metric (Int64.sub stop start);
-      reply
+      let time_taken = Int64.sub stop start in
+      let rcode = Option.value ~default:Rcode.ServFail (Option.map snd reply) in
+      Lwt_condition.broadcast t.queries
+        { Dns_resolver_mirage_shared.fin = Mirage_ptime.now (); question; src=ip; rcode; time_taken; status };
+      Dns_resolver_metrics.response_metric time_taken;
+      Option.map fst reply
 
   let send_tls flow data =
     let len = Cstruct.create 2 in
@@ -315,7 +329,8 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     let server = Dns_server.Primary.server primary in
     let stream, push = Lwt_stream.create () in
     let update_tls _ = () in
-    let t = { client ; server ; on_update ; push ; update_tls ; record_clients ; clients = Ipaddr.Set.empty } in
+    let queries = Lwt_condition.create () in
+    let t = { client ; server ; on_update ; push ; update_tls ; record_clients ; clients = Ipaddr.Set.empty ; queries } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
       metrics `Udp_queries;

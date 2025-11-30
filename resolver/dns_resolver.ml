@@ -237,7 +237,7 @@ let handle_query ?(retry = 0) t ts awaiting =
       Dns_resolver_metrics.response_metric time;
       let cs, _ = Packet.encode ?max_size awaiting.proto packet in
       let ttl = Packet.minimum_ttl (answer :> Packet.data) in
-      `Answer (ttl, cs), t
+      `Answer (ttl, cs, Packet.rcode_data (answer :> Packet.data)), t
 
 let scrub_it t proto zone edns ts ~signed qtype p =
   match Dns_resolver_utils.scrub zone ~signed qtype p, edns with
@@ -290,12 +290,12 @@ let handle_primary t now ts proto sender sport packet _request buf =
   | Error (e, data) ->
     Log.err (fun m -> m "tsig failed %a" Tsig_op.pp_e e);
     begin match data with
-      | Some data -> `Reply (t, 0l, data)
+      | Some data -> `Reply (t, 0l, data, Rcode.BadKey)
       | None -> `None
     end
   | Ok None ->
     begin match handle_inner None with
-      | `Reply (t, (_, ttl, (out, _))) -> `Reply (t, ttl, out)
+      | `Reply (t, (reply, ttl, (out, _))) -> `Reply (t, ttl, out, Packet.rcode_data reply.data)
       | `None -> `None
       | `Delegation d -> `Delegation d
     end
@@ -305,8 +305,8 @@ let handle_primary t now ts proto sender sport packet _request buf =
       begin match Dns_server.((Primary.server t).tsig_sign) ~max_size ~mac name tsig ~key reply buf with
         | None ->
           Log.warn (fun m -> m "couldn't use %a to tsig sign, using unsigned reply" Domain_name.pp name) ;
-          `Reply (t, ttl, buf)
-        | Some (buf, _) -> `Reply (t, 0l, buf)
+          `Reply (t, ttl, buf, Packet.rcode_data reply.data)
+        | Some (buf, _) -> `Reply (t, 0l, buf, Packet.rcode_data reply.data)
       end
     | `None -> `None
     | `Delegation x -> `Delegation x
@@ -319,7 +319,13 @@ let handle_awaiting_queries ?retry t ts (name, typ) =
       match handle_query ?retry t ts awaiting with
       | `Nothing, t -> t, out_a, out_q
       | `Query pkts, t -> t, out_a, (List.map (fun (pkt, dst) -> (`Udp, dst, pkt)) pkts) @ out_q
-      | `Answer (ttl, pkt), t -> t, (awaiting.proto, awaiting.ip, awaiting.port, ttl, pkt) :: out_a, out_q)
+      | `Answer (ttl, pkt, rcode), t ->
+        let a =
+          awaiting.proto, awaiting.ip, awaiting.port, ttl, pkt,
+          (awaiting.question :> Packet.Question.t), rcode,
+          Int64.sub ts awaiting.ts, "resolved"
+        in
+        t, a :: out_a, out_q)
     (t, [], []) values
 
 let resolve t ts proto sender sport req =
@@ -333,9 +339,12 @@ let resolve t ts proto sender sport req =
     and dnssec_ok = match req.edns with None -> false | Some edns -> edns.Edns.dnssec_ok in
     let awaiting = { ts; retry = 0; proto; zone = Domain_name.root ; edns = req.edns; ip = sender; port = sport; question = (fst req.question, q_type); id = fst req.header; checking_disabled; dnssec_ok } in
     begin match handle_query t ts awaiting with
-      | `Answer (ttl, pkt), t ->
+      | `Answer (ttl, pkt, rcode), t ->
         Log.debug (fun m -> m "answer %a" Packet.Question.pp req.question) ;
-        t, [ (proto, sender, sport, ttl, pkt) ], []
+        let a =
+          proto, sender, sport, ttl, pkt, (awaiting.question :> Packet.Question.t), rcode, 0L, "resolved"
+        in
+        t, [ a ], []
       | `Nothing, t ->
         Log.debug (fun m -> m "nothing %a" Packet.Question.pp req.question) ;
         t, [], [] (* TODO: send a reply!? *)
@@ -350,7 +359,7 @@ let resolve t ts proto sender sport req =
         (`Rcode_error (Rcode.NotImp, Packet.opcode_data req.data, None))
     in
     let buf, _ = Packet.encode proto pkt in
-    t, [ proto, sender, sport, 0l, buf ], []
+    t, [ proto, sender, sport, 0l, buf, req.Packet.question, Rcode.NotImp, 0L, "ignored" ], []
 
 let handle_reply t now ts proto sender sport packet reply =
   match reply, Packet.Question.qtype packet.Packet.question with
@@ -517,7 +526,8 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
         let ttl = Packet.minimum_ttl (reply :> Packet.data) in
         let pkt, _ = Packet.encode ?max_size proto packet in
         Dns_resolver_metrics.response_metric 0L;
-        t, [ proto, sender, sport, ttl, pkt ], []
+        let a = proto, sender, sport, ttl, pkt, req.question, Packet.rcode_data (reply :> Packet.data), 0L, "delegation" in
+        t, [ a ], []
         (* send it out! we've a cache hit here! *)
     end
   | _ ->
@@ -526,7 +536,11 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
       Packet.create (fst req.header, Packet.Flags.empty)
         req.question (`Rcode_error (Rcode.NotImp, Packet.opcode_data req.data, None))
     in
-    t, [ proto, sender, sport, 0l, fst (Packet.encode proto pkt) ], []
+    let a =
+      proto, sender, sport, 0l, fst (Packet.encode proto pkt), req.question,
+      Rcode.NotImp, 0L, "ignored"
+    in
+    t, [ a ], []
 
 let handle_buf t now ts query_allowed proto sender sport buf =
   match Packet.decode buf with
@@ -542,7 +556,9 @@ let handle_buf t now ts query_allowed proto sender sport buf =
                  Packet.pp_err e Ohex.pp buf) ;
     let answer = match Packet.raw_error buf Rcode.FormErr with
       | None -> []
-      | Some data -> [ proto, sender, sport, 0l, data ]
+      | Some data ->
+        [ proto, sender, sport, 0l, data, ((Domain_name.root, `Any) :> Packet.Question.t),
+          Rcode.FormErr, 0L, "decode error" ]
     in
     t, answer, []
   | Ok res ->
@@ -567,10 +583,13 @@ let handle_buf t now ts query_allowed proto sender sport buf =
         end;
       begin
         match handle_primary t.primary now ts proto sender sport res req buf with
-        | `Reply (primary, ttl, pkt) ->
+        | `Reply (primary, ttl, pkt, rcode) ->
           Dns_resolver_metrics.response_metric 0L;
           Log.debug (fun m -> m "handled primary %a:%d" Ipaddr.pp sender sport) ;
-          { t with primary }, [ proto, sender, sport, ttl, pkt ], []
+          let a =
+            proto, sender, sport, ttl, pkt, res.question, rcode, 0L, "primary"
+          in
+          { t with primary }, [ a ], []
         | `Delegation dele ->
           Log.debug (fun m -> m "handled delegation %a:%d" Ipaddr.pp sender sport) ;
           handle_delegation t ts proto sender sport res dele
@@ -633,7 +652,7 @@ let query_root t now proto =
 
 let max_retries = 5
 
-let err_retries t question =
+let err_retries t ts question =
   let t, reqs = find_queries t question in
   t, List.fold_left (fun acc awaiting ->
       Log.debug (fun m -> m "now erroring to %a" pp_key awaiting.question) ;
@@ -642,7 +661,12 @@ let err_retries t question =
           (`Rcode_error (Rcode.ServFail, Opcode.Query, None))
       in
       let buf, _ = Packet.encode awaiting.proto packet in
-      (awaiting.proto, awaiting.ip, awaiting.port, 0l, buf) :: acc)
+      let a =
+        awaiting.proto, awaiting.ip, awaiting.port, 0l, buf,
+        (question :> Packet.Question.t), Rcode.ServFail, Int64.sub ts awaiting.ts,
+        "too many retries"
+      in
+      a :: acc)
     [] reqs
 
 let timer t ts =
@@ -663,7 +687,7 @@ let timer t ts =
       end else begin
         Log.info (fun m -> m "retry limit exceeded for %a at %a!"
                       pp_key (name, typ) Ipaddr.pp awaiting.ip) ;
-        let queried, out_as = err_retries t.queried (name, typ) in
+        let queried, out_as = err_retries t.queried ts (name, typ) in
         ({ t with queried }, out_as @ out_a, out_q)
       end)
     rem (t, [], [])
