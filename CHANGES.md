@@ -1,3 +1,20 @@
+### v10.2.3 (2025-11-30)
+
+* DNS: fix port encoding in HTTPS and SVCB records, add tests
+  (#399 @nickbetteridge)
+* Dns_resolver_root.reserved_zone_records: add private networks, extend with
+  IPv6 networks from RFC 6303 (#401 #402 @hannesm)
+* Dns_resolver_root.reserved_zones: type is now Rr_map.t Domain_name.Map.t
+  (#402 @hannesm)
+* resolver: use Dns_resolver_root.reserved_zones to not lookup private zones
+  in the authoritative nameservers (#403 @hannesm)
+* resolver, stub: guard the usage of Dns_resolver_root.reserved_zones behind the
+  boolean flag `add_reserved` (#404 @hannesm)
+* stub: also record clients (if `record_clients` is provided, default is true)
+  (#405 @hannesm)
+* stub, resolver: add a stream (Lwt_condition.t) of query_info to display the
+  live queries in a web interface (#407 @reynir @hannesm)
+
 ### v10.2.2 (2025-10-20)
 
 * Expose a module type insotead of a module for Dns_mirage_resolver_shared.S,
