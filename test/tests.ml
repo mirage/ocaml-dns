@@ -1007,7 +1007,7 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
     let host = n_of_s "1.1.1.1.in-addr.arpa" in
     let header = 0x1f71, Flags.(add `Recursion_desired (singleton `Recursion_available))
     and content =
-      Name_rr_map.singleton host Ptr (719l, n_of_s "one.one.one.one" |> Domain_name.host_exn)
+      Name_rr_map.singleton host Ptr (719l, n_of_s "one.one.one.one")
     in
     let q = Question.create host Ptr in
     let res = create header q (`Answer (content, Name_rr_map.empty)) in
