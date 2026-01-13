@@ -5861,9 +5861,15 @@ module Packet = struct
 
   let raw_error buf rcode =
     (* copy id from header, retain opcode, set rcode to ServFail
-       if we receive a fragment < 12 bytes, it's not worth bothering *)
-    if String.length buf < 12 then
-      None
+       if we receive a fragment < 4 bytes, it's not worth bothering *)
+    if String.length buf < 4 then
+      let id = if String.length buf < 2 then 0 else String.get_uint16_be buf 0 in
+      let hdr = Bytes.make 12 '\000' in
+      (* manually copy the id from the incoming buf *)
+      Bytes.set_uint16_be hdr 0 id ;
+      (* set rcode *)
+      Bytes.set_uint8 hdr 3 ((Rcode.to_int rcode) land 0xF) ;
+      Some (Bytes.unsafe_to_string hdr)
     else
       let query = String.get_uint8 buf 2 lsr 7 = 0 in
       if not query then (* never reply to an answer! *)
