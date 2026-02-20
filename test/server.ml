@@ -2135,6 +2135,31 @@ $TTL 2560
       Alcotest.(check string_ok "parsing loc zone" (loc_printed) (Loc.to_string loc)) ;
     in List.iter parse_loc loc_strs
 
+  let zone_with_PTR = {|
+$ORIGIN example.
+$TTL 2560
+@	SOA	ns 	root	1	86400	10800	1048576	2560
+@	NS	ns
+_hap._tcp.local. PTR "My Device"._hap._tcp.local.
+|}
+
+  let parse_zone_with_PTR () =
+    let rrs =
+      let z = n_of_s "example" in
+      let ns_name = n_of_s "ns.example" in
+      let ns = 2560l, Domain_name.(Host_set.singleton (host_exn ns_name)) in
+      let soa = { Soa.nameserver = ns_name ; hostmaster = n_of_s "root.example" ;
+                  serial = 1l ; refresh = 86400l ; retry = 10800l ;
+                  expiry = 1048576l ; minimum = 2560l }
+      in
+      let ptr = n_of_s "My Device._hap._tcp.local" in
+      let ptr_entry = n_of_s "_hap._tcp.local" in
+      Name_rr_map.(add ptr_entry Rr_map.Ptr (2560l, ptr)
+                     (add z Rr_map.Ns ns (singleton z Rr_map.Soa soa)))
+    in
+    Alcotest.(check (result name_map_ok err) "parsing zone with PTR"
+                (Ok rrs) (Dns_zone.parse zone_with_PTR))
+
   let tests = [
     "parsing simple zone", `Quick, parse_simple_zone ;
     "parsing simple zone 2", `Quick, parse_simple_zone_2 ;
@@ -2147,6 +2172,7 @@ $TTL 2560
     "parse zone with additional glue and sub", `Quick, parse_zone_with_glue_sub ;
     "parsing numerical subdomain zone", `Quick, parse_numerical_subdomain_zone ;
     "parse locs", `Quick, parse_locs ;
+    "parse zone with PTR", `Quick, parse_zone_with_PTR ;
   ]
 end
 
