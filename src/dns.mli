@@ -274,7 +274,7 @@ end
     [example.com] located at?", you can ask "who is located at
     [3.4.5.6.in-addr.arpa.]?" ([ip6.arpa] for IPv6 addresses). *)
 module Ptr : sig
-  type t = [ `host ] Domain_name.t
+  type t = [ `raw ] Domain_name.t
   (** The type of a PTR record. *)
 
   val pp : t Fmt.t

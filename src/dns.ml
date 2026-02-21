@@ -660,7 +660,7 @@ end
 
 (* domain name pointer - reverse entries *)
 module Ptr = struct
-  type t = [ `host ] Domain_name.t
+  type t = [ `raw ] Domain_name.t
 
   let canonical t = Domain_name.canonical t
 
@@ -669,8 +669,7 @@ module Ptr = struct
   let compare = Domain_name.compare
 
   let decode names buf ~off ~len:_ =
-    let* rname, names, off' = Name.decode names buf ~off in
-    let* ptr = Name.host off rname in
+    let* ptr, names, off' = Name.decode names buf ~off in
     Ok (ptr, names, off')
 
   let encode = Name.encode

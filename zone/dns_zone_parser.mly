@@ -142,7 +142,7 @@ generic_type s generic_rdata {
  | TYPE_SOA s domain s domain s int32 s int32 s int32 s int32 s int32
      { B (Soa, { Soa.nameserver = $3 ; hostmaster = $5 ; serial = $7 ;
                  refresh = $9 ; retry = $11 ; expiry = $13 ; minimum = $15 }) }
- | TYPE_PTR s hostname { B (Ptr, (0l, $3)) }
+ | TYPE_PTR s domain { B (Ptr, (0l, $3)) }
  | TYPE_MX s int16 s hostname
      { let mx = { Mx.preference = $3 ; mail_exchange = $5 } in
        B (Mx, (0l, Rr_map.Mx_set.singleton mx)) }
