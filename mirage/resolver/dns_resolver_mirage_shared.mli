@@ -12,7 +12,7 @@ type query_info = {
 module type S = sig
   type t
 
-  val resolve_external : t -> Ipaddr.t * int -> string -> (int32 * string) Lwt.t
+  val resolve_external : t -> Ipaddr.t * int -> string -> [ `Close | `Data of int32 * string ] Lwt.t
   (** [resolve_external t (ip, port) data] resolves for [(ip, port)] the query
       [data] and returns a pair of the minimum TTL and a response. *)
 
