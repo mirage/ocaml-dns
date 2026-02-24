@@ -1,3 +1,10 @@
+### v10.2.4 (2026-02-24)
+
+* Dns_resolver: propagate timeouts and errors (always reply to a request); esp.
+  for stateful connections (TCP, TLS, OCaml callback) (#411 @reynir)
+* DNS: Ptr uses a `` [`raw] Domain_name.t `` now, instead of a
+  `` [`host] Domain_name.t `` (suggested by @samoht #408, #410 @hannesm)
+
 ### v10.2.3 (2025-11-30)
 
 * DNS: fix port encoding in HTTPS and SVCB records, add tests
