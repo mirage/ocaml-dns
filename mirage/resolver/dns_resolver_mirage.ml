@@ -14,7 +14,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
   module TLS = Tls_mirage.Make(T)
 
   type t = {
-    push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
+    push : (Ipaddr.t * int * string * [ `Close | `Data of (int32 * string) ] Lwt.u) option -> unit ;
     primary_data : unit -> Dns_trie.t ;
     with_primary_data : Dns_trie.t -> unit ;
     update_tls : Tls.Config.server -> unit ;
@@ -261,7 +261,25 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     and handle_query (proto, dst, data) = match proto with
       | `Udp -> maybe_tcp dst server_port data
       | `Tcp -> client_tcp dst server_port ~tls_port:server_tls_port data
-    and handle_answer (proto, dst, dst_port, ttl, data, question, rcode, time_taken, status) =
+    and handle_answer = function
+      | `Don't_answer (dst, dst_port) ->
+        let from_tcp = FM.find_opt (dst, dst_port) !tcp_in in
+        let from_ocaml = FM.find_opt (dst, dst_port) !ocaml_in in
+        begin match from_tcp, from_ocaml with
+          | None, None ->
+            (* XXX: Log something? *)
+            Lwt.return_unit
+          | Some `Tcp flow, None ->
+            T.close flow
+          | Some `Tls flow, None ->
+            TLS.close flow
+          | None, Some wk ->
+            ocaml_in := FM.remove (dst, dst_port) !ocaml_in;
+            Lwt.wakeup wk `Close;
+            Lwt.return_unit
+          | Some _, Some _ -> assert false
+        end
+      | `Answer (proto, dst, dst_port, ttl, data, question, rcode, time_taken, status) ->
       let query_info = { Dns_resolver_mirage_shared.fin = Mirage_ptime.now () ;
                          question ; src = dst ; rcode ; time_taken ; status }
       in
@@ -286,7 +304,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
            | Error () -> tcp_in := FM.remove (dst, dst_port) !tcp_in)
         | None, Some wk -> begin
             ocaml_in := FM.remove (dst, dst_port) !ocaml_in;
-            Lwt.wakeup wk (ttl, data);
+            Lwt.wakeup wk (`Data (ttl, data));
             Lwt.return_unit end
         | Some _, Some _ -> assert false
     and udp_cb lport req ~src ~dst:_ ~src_port buf =

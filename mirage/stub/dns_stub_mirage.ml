@@ -85,7 +85,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     client : Client.t ;
     mutable server : Dns_server.t ;
     on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.t -> Dns_trie.t -> unit Lwt.t ;
-    push : (Ipaddr.t * int * string * (int32 * string) Lwt.u) option -> unit ;
+    push : (Ipaddr.t * int * string * [ `Close | `Data of int32 * string ] Lwt.u) option -> unit ;
     mutable update_tls : Tls.Config.server -> unit ;
     mutable clients : Ipaddr.Set.t ;
     record_clients : bool ;
@@ -377,9 +377,10 @@ module Make (S : Tcpip.Stack.V4V6) = struct
         begin
           handle t `Tcp dst_ip data >|= function
           | None ->
-            Log.warn (fun m -> m "no TCP output")
+            Log.warn (fun m -> m "no TCP output");
+            Lwt.wakeup_later wk `Close
           | Some (ttl, data) ->
-            Lwt.wakeup wk (ttl, data);
+            Lwt.wakeup wk (`Data (ttl, data));
         end >>= fun () ->
         ocaml_cb ()
       | None -> Lwt.return_unit in
