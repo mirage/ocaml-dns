@@ -311,7 +311,7 @@ let handle_primary t now ts proto sender sport packet _request buf =
     | `None -> `None
     | `Delegation x -> `Delegation x
 
-let handle_awaiting_queries ?retry t ts (name, typ) : _ * [ `Don't_answer of _ | `Answer of _ ] list * _ =
+let handle_awaiting_queries ?retry t ts (name, typ) =
   let queried, values = find_queries t.queried (name, typ) in
   let t = { t with queried } in
   List.fold_left (fun (t, out_a, out_q) awaiting ->
@@ -328,7 +328,7 @@ let handle_awaiting_queries ?retry t ts (name, typ) : _ * [ `Don't_answer of _ |
         t, `Answer a :: out_a, out_q)
     (t, [], []) values
 
-let resolve t ts proto sender sport req : _ * [ `Don't_answer of _ | `Answer of _ ] list * _ =
+let resolve t ts proto sender sport req =
   match req.Packet.data, Packet.Question.qtype req.Packet.question with
   | `Query, Some q_type ->
     Log.debug (fun m -> m "resolving %a" Packet.Question.pp req.question) ;
@@ -361,7 +361,7 @@ let resolve t ts proto sender sport req : _ * [ `Don't_answer of _ | `Answer of 
     let buf, _ = Packet.encode proto pkt in
     t, [ `Answer (proto, sender, sport, 0l, buf, req.Packet.question, Rcode.NotImp, 0L, "ignored") ], []
 
-let handle_reply t now ts proto sender sport packet reply : (_ * [ `Don't_answer of _ | `Answer of _ ] list * _, _) result =
+let handle_reply t now ts proto sender sport packet reply =
   match reply, Packet.Question.qtype packet.Packet.question with
   | `Answer _, Some qtype
   | `Rcode_error (Rcode.NXDomain, Opcode.Query, _), Some qtype
@@ -471,7 +471,7 @@ let handle_reply t now ts proto sender sport packet reply : (_ * [ `Don't_answer
     Log.err (fun m -> m "ignoring reply %a" Packet.pp_reply v);
     Error ()
 
-let handle_delegation t ts proto sender sport req (delegation, add_data) : _ * [ `Don't_answer of _ | `Answer of _ ] list * _ =
+let handle_delegation t ts proto sender sport req (delegation, add_data) =
   Log.debug (fun m -> m "handling delegation %a (for %a)" Packet.Answer.pp delegation Packet.pp req) ;
   match req.Packet.data, Packet.Question.qtype req.question with
   | `Query, Some qtype ->
