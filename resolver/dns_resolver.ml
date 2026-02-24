@@ -347,7 +347,7 @@ let resolve t ts proto sender sport req =
         t, [ `Answer a ], []
       | `Don't_answer _ as a, t ->
         Log.debug (fun m -> m "nothing %a" Packet.Question.pp req.question) ;
-        t, [ a ], [] (* TODO: send a reply!? *)
+        t, [ a ], []
       | `Query pkts, t ->
         Log.debug (fun m -> m "query %d %a" (List.length pkts) Packet.Question.pp req.question) ;
         t, [], List.map (fun (packet, dst) -> `Udp, dst, packet) pkts
