@@ -261,7 +261,7 @@ let check_with_warnings trie =
   let has_address name =
     match lookup name Rr_map.A trie with
     | Ok _ -> true
-    | Error (`Delegation _) -> true
+    | Error (`Delegation _ | `NotAuthoritative) -> true
     | _ -> match lookup name Rr_map.Aaaa trie with
       | Ok _ -> true
       | _ -> false
@@ -296,10 +296,9 @@ let check_with_warnings trie =
             else if Domain_name.Host_set.is_empty names then
               Error (`Empty (name, K Ns))
             else
-              let domain = match state' with `None -> name | `Soa zone -> zone in
               Domain_name.Host_set.fold (fun name r ->
                   let* warns = r in
-                  if Domain_name.is_subdomain ~subdomain:name ~domain && (has_address name) then
+                  if not (has_address name) then
                     Ok (`Missing_address name :: warns)
                   else
                     Ok warns) names (Ok warns)
@@ -311,11 +310,9 @@ let check_with_warnings trie =
             else if Rr_map.Mx_set.is_empty mxs then
               Error (`Empty (name, K Mx))
             else
-              let domain = match state' with `None -> name | `Soa zone -> zone in
               Rr_map.Mx_set.fold (fun { mail_exchange ; _ } r ->
                   let* warns = r in
-                  if Domain_name.is_subdomain ~subdomain:mail_exchange ~domain &&
-                    (has_address mail_exchange) then
+                  if not (has_address mail_exchange) then
                     Ok (`Missing_address mail_exchange :: warns)
                   else
                     Ok warns)
