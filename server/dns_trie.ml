@@ -60,8 +60,6 @@ let pp_e ppf = function
 
 let ( let* ) = Result.bind
 
-let guard p err = if p then Ok () else Error err
-
 let ent name map =
   let soa = Rr_map.get Soa map in
   `EmptyNonTerminal (name, soa)
@@ -244,8 +242,9 @@ type zone_check = [ `Missing_soa of [ `raw ] Domain_name.t
                   | `Cname_other of [ `raw ] Domain_name.t
                   | `Bad_ttl of [ `raw ] Domain_name.t * Rr_map.b
                   | `Empty of [ `raw ] Domain_name.t * Rr_map.k
-                  | `Missing_address of [ `host ] Domain_name.t
                   | `Soa_not_a_host of [ `raw ] Domain_name.t * string ]
+
+type zone_check_warning = [ `Missing_address of [ `host ] Domain_name.t ]
 
 let pp_zone_check ppf = function
   | `Missing_soa name -> Fmt.pf ppf "missing soa for %a" Domain_name.pp name
@@ -255,8 +254,10 @@ let pp_zone_check ppf = function
   | `Missing_address name -> Fmt.pf ppf "missing address record for %a" Domain_name.pp name
   | `Soa_not_a_host (name, msg) -> Fmt.pf ppf "%a the SOA nameserver is not a hostname: %s" Domain_name.pp name msg
 
+let pp_zone_check_warning = pp_zone_check
+
 (* TODO: check for no cname loops? and dangling cname!? *)
-let check trie =
+let check_with_warnings trie =
   let has_address name =
     match lookup name Rr_map.A trie with
     | Ok _ -> true
@@ -265,7 +266,7 @@ let check trie =
       | Ok _ -> true
       | _ -> false
   in
-  let rec check_sub names state sub map =
+  let rec check_sub names state sub map warns =
     let name = Domain_name.of_strings_exn names in
     let state' =
       match Rr_map.find Soa map with
@@ -275,19 +276,21 @@ let check trie =
         end
       | Some _ -> `Soa name
     in
-    let* () =
-      guard ((Rr_map.mem Cname map && Rr_map.cardinal map = 1) ||
-             not (Rr_map.mem Cname map)) (`Cname_other name)
+    let* warns =
+      if ((Rr_map.mem Cname map && Rr_map.cardinal map = 1) ||
+          not (Rr_map.mem Cname map)) then
+        Ok warns
+      else Error (`Cname_other name)
     in
-    let* () =
+    let* warns =
       Rr_map.fold (fun v r ->
-          let* () = r in
+          let* warns = r in
           match v with
           | B (Dnskey, (ttl, keys)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Dnskey_set.is_empty keys then
               Error (`Empty (name, Rr_map.K Dnskey))
-            else Ok ()
+            else Ok warns
           | B (Ns, (ttl, names)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Domain_name.Host_set.is_empty names then
@@ -295,13 +298,13 @@ let check trie =
             else
               let domain = match state' with `None -> name | `Soa zone -> zone in
               Domain_name.Host_set.fold (fun name r ->
-                  let* () = r in
-                  if Domain_name.is_subdomain ~subdomain:name ~domain then
-                    guard (has_address name) (`Missing_address name)
+                  let* warns = r in
+                  if Domain_name.is_subdomain ~subdomain:name ~domain && (has_address name) then
+                    Ok (`Missing_address name :: warns)
                   else
-                    Ok ()) names (Ok ())
+                    Ok warns) names (Ok warns)
           | B (Cname, (ttl, _)) ->
-            if ttl < 0l then Error (`Bad_ttl (name, v)) else Ok ()
+            if ttl < 0l then Error (`Bad_ttl (name, v)) else Ok warns
           | B (Mx, (ttl, mxs)) ->
             if ttl < 0l then
               Error (`Bad_ttl (name, v))
@@ -310,18 +313,19 @@ let check trie =
             else
               let domain = match state' with `None -> name | `Soa zone -> zone in
               Rr_map.Mx_set.fold (fun { mail_exchange ; _ } r ->
-                  let* () = r in
-                  if Domain_name.is_subdomain ~subdomain:mail_exchange ~domain then
-                    guard (has_address mail_exchange) (`Missing_address mail_exchange)
+                  let* warns = r in
+                  if Domain_name.is_subdomain ~subdomain:mail_exchange ~domain &&
+                    (has_address mail_exchange) then
+                    Ok (`Missing_address mail_exchange :: warns)
                   else
-                    Ok ())
-                mxs (Ok ())
+                    Ok warns)
+                mxs (Ok warns)
           | B (Ptr, (ttl, name)) ->
-            if ttl < 0l then Error (`Bad_ttl (Domain_name.raw name, v)) else Ok ()
+            if ttl < 0l then Error (`Bad_ttl (Domain_name.raw name, v)) else Ok warns
           | B (Soa, soa) ->
             begin match Domain_name.host soa.nameserver with
               | Error (`Msg m) -> Error (`Soa_not_a_host (soa.nameserver, m))
-              | Ok _ -> Ok ()
+              | Ok _ -> Ok warns
             end
           | B (Txt, (ttl, txts)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
@@ -330,88 +334,94 @@ let check trie =
             else if
               Rr_map.Txt_set.exists (fun s -> String.length s > 0) txts
             then
-              Ok ()
+              Ok warns
             else
               Error (`Empty (name, K Txt))
           | B (A, (ttl, a)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Ipaddr.V4.Set.is_empty a then
               Error (`Empty (name, K A))
-            else Ok ()
+            else Ok warns
           | B (Aaaa, (ttl, aaaa)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Ipaddr.V6.Set.is_empty aaaa then
               Error (`Empty (name, K Aaaa))
-            else Ok ()
+            else Ok warns
           | B (Srv, (ttl, srvs)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Srv_set.is_empty srvs then
               Error (`Empty (name, K Srv))
-            else Ok ()
+            else Ok warns
           | B (Svcb, (ttl, svcbs)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Svcb_set.is_empty svcbs then
               Error (`Empty (name, K Svcb))
-            else Ok ()
+            else Ok warns
           | B (Https, (ttl, httpss)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Https_set.is_empty httpss then
               Error (`Empty (name, K Https))
-            else Ok ()
+            else Ok warns
           | B (Caa, (ttl, caas)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Caa_set.is_empty caas then
               Error (`Empty (name, K Caa))
-            else Ok ()
+            else Ok warns
           | B (Tlsa, (ttl, tlsas)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Tlsa_set.is_empty tlsas then
               Error (`Empty (name, K Tlsa))
-            else Ok ()
+            else Ok warns
           | B (Sshfp, (ttl, sshfps)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Sshfp_set.is_empty sshfps then
               Error (`Empty (name, K Sshfp))
-            else Ok ()
+            else Ok warns
           | B (Ds, (ttl, ds)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Ds_set.is_empty ds then
               Error (`Empty (name, K Ds))
-            else Ok ()
+            else Ok warns
           | B (Rrsig, (ttl, rrs)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Rrsig_set.is_empty rrs then
               Error (`Empty (name, K Rrsig))
-            else Ok ()
+            else Ok warns
           | B (Nsec, (ttl, _rr)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
-            else Ok ()
+            else Ok warns
           | B (Nsec3, (ttl, _rr)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
-            else Ok ()
+            else Ok warns
           | B (Loc, (ttl, locs)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Loc_set.is_empty locs then
               Error (`Empty (name, Rr_map.K Loc))
-            else Ok ()
+            else Ok warns
           | B (Null, (ttl, nulls)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Null_set.is_empty nulls then
               Error (`Empty (name, Rr_map.K Null))
-            else Ok ()
+            else Ok warns
           | B (Unknown x, (ttl, datas)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
             else if Rr_map.Txt_set.is_empty datas then
               Error (`Empty (name, K (Unknown x)))
-            else Ok ())
-        map (Ok ())
+            else Ok warns)
+        map (Ok warns)
     in
-    M.fold (fun lbl (N (sub, map)) r ->
-        let* () = r in
-        check_sub (lbl :: names) state' sub map) sub (Ok ())
+    let* warns =
+      M.fold (fun lbl (N (sub, map)) r ->
+          let* warns = r in
+          check_sub (lbl :: names) state' sub map warns) sub (Ok warns)
+    in
+    Ok warns
   in
   let (N (sub, map)) = trie in
-  check_sub [] `None sub map
+  check_sub [] `None sub map []
+
+let check trie =
+  Result.map ignore (check_with_warnings trie)
 
 let find f name t =
   let name = Canonical.d name in
