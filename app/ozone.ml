@@ -24,11 +24,12 @@ let load_zone zone =
 
 let jump _ zone old =
   let* trie = load_zone zone in
-  let* () =
+  let* warns =
     Result.map_error
       (fun e -> `Msg (Fmt.to_to_string Dns_trie.pp_zone_check e))
-      (Dns_trie.check trie)
+      (Dns_trie.check_with_warnings trie)
   in
+  List.iter (fun warn -> Logs.app (fun m -> m "Warning: %a" Dns_trie.pp_zone_check_warning warn)) warns ;
   Logs.app (fun m -> m "successfully checked zone") ;
   let zones =
     Dns_trie.fold Soa trie
