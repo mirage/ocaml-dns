@@ -1,0 +1,15 @@
+name:         dns-cli
+version:      "%%VERSION_NUM%%"
+origin:	      local/dns-cli
+comment:      OCaml command line DNS utilities
+www:	      https://github.com/mirage/ocaml-dns
+maintainer:   Hannes Mehnert <hannes@mehnert.org>
+prefix:	      /usr/local
+licenselogic: single
+licenses:     [ISCL]
+flatsize:     %%FLATSIZE%%
+categories:   [local]
+desc = <<EOD
+Some utilities for checking DNS zone files, notifying and updating DNS servers.
+
+EOD;

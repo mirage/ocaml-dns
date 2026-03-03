@@ -42,6 +42,8 @@ build: [
   ["dune" "subst"] {dev}
   ["dune" "build" "-p" name "-j" jobs]
   ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+  ["sh" "-ex" "app/packaging/FreeBSD/create_package.sh"] {os = "freebsd"}
+  ["sh" "-ex" "app/packaging/debian/create_package.sh"] {os-family = "debian" | os-family = "ubuntu"}
 ]
 
 synopsis: "Unix command line utilities using uDNS"
