@@ -53,5 +53,15 @@ For authentication via TSIG, a hmac secret needs to be provided.
 
 'ocertify' updates DNS with a certificate signing request, and polls a matching
 certificate. Best used with an letsencrypt unikernel.
+
+'onotify' sends a DNS NOTIFY to a DNS server.
+
+'ozone' checks consistency of a given zone file (and if the previous is provided, it also checks for monotonicity in the serial in the SOA).
+
+'odns' is a DNS client, looking up DNS data.
+
+'odnssec' does DNSsec verification during lookup.
+
+'resolver' is a stand-alone DNS resolver.
 """
 x-maintenance-intent: [ "(latest)" ]
