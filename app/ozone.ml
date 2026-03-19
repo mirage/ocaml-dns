@@ -45,7 +45,7 @@ let jump _ zone old zone_name =
     (match old with
      | None -> Ok ()
      | Some fn ->
-       let* old = load_zone fn in
+       let* old = load_zone ?zone_name fn in
        match Dns_trie.lookup zone Soa trie, Dns_trie.lookup zone Soa old with
        | Ok fresh, Ok old when Soa.newer ~old fresh ->
          Logs.debug (fun m -> m "zone %a newer than old" Domain_name.pp zone) ;
