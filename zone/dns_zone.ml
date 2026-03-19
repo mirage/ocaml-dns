@@ -21,11 +21,14 @@
 let parse buf =
   Dns_zone_state.reset ();
   try
-    let buf =
-      if String.(get buf (pred (length buf))) = '\n' then buf else buf ^ "\n"
-    in
-    let lexbuf = Lexing.from_string buf in
-    Ok (Dns_zone_parser.zfile Dns_zone_lexer.token lexbuf)
+    if String.length buf > 0 then
+      let buf =
+        if String.(get buf (pred (length buf))) = '\n' then buf else buf ^ "\n"
+      in
+      let lexbuf = Lexing.from_string buf in
+      Ok (Dns_zone_parser.zfile Dns_zone_lexer.token lexbuf)
+    else
+      Error (`Msg "couldn't parse empty file")
   with
     | Parsing.Parse_error -> Error (`Msg (Fmt.str "zone parse error at line %d" Dns_zone_state.(state.lineno)))
     | Dns_zone_state.Zone_parse_problem s -> Error (`Msg (Fmt.str "zone parse problem at line %d: %s" Dns_zone_state.(state.lineno) s))
