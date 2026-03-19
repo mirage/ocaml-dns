@@ -8,10 +8,13 @@ open Dns
 
 let ( let* ) = Result.bind
 
-let load_zone zone =
+let load_zone ?zone_name zone =
   let* data = Bos.OS.File.read Fpath.(v zone) in
   let* rrs = Dns_zone.parse data in
-  let domain = Domain_name.of_string_exn Fpath.(basename (v zone)) in
+  let domain =
+    let z = Option.value ~default:Fpath.(basename (v zone)) zone_name in
+    Domain_name.of_string_exn z
+  in
   let bad = Domain_name.Map.filter
       (fun name _ -> not (Domain_name.is_subdomain ~domain ~subdomain:name))
       rrs
@@ -22,8 +25,8 @@ let load_zone zone =
   else
     Ok (Dns_trie.insert_map rrs Dns_trie.empty)
 
-let jump _ zone old =
-  let* trie = load_zone zone in
+let jump _ zone old zone_name =
+  let* trie = load_zone ?zone_name zone in
   let* () =
     Result.map_error
       (fun e -> `Msg (Fmt.to_to_string Dns_trie.pp_zone_check e))
@@ -62,9 +65,13 @@ let oldzone =
   let doc = "Old zone file" in
   Arg.(value & opt (some file) None & info [ "old" ] ~doc ~docv:"ZONE")
 
+let zone_name =
+  let doc = "Zone name (defaults to provided filename)" in
+  Arg.(value & opt (some string) None & info [ "zone-name" ] ~doc ~docv:"ZONE")
+
 let cmd =
   let term =
-    Term.(term_result (const jump $ Dns_cli.setup_log $ newzone $ oldzone))
+    Term.(term_result (const jump $ Dns_cli.setup_log $ newzone $ oldzone $ zone_name))
   and info = Cmd.info "ozone" ~version:"%%VERSION_NUM%%"
   in
   Cmd.v info term
