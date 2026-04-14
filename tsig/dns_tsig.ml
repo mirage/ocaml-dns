@@ -96,7 +96,7 @@ let verify_raw ?mac now name ~key tsig tbs =
   let computed = compute_tsig name tsig ~key:priv (prep ^ tbs) in
   let mac = tsig.Tsig.mac in
   let* () = guard (String.length mac = String.length computed) (`Bad_truncation (name, tsig)) in
-  let* () = guard (String.equal computed mac) (* Eqaf? *) (`Invalid_mac (name, tsig)) in
+  let* () = guard (Eqaf.equal computed mac) (`Invalid_mac (name, tsig)) in
   let* () = guard (Tsig.valid_time now tsig) (`Bad_timestamp (name, tsig, key)) in
   let* tsig =
     Option.to_result ~none:(`Bad_timestamp (name, tsig, key))
