@@ -169,11 +169,19 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
   in
   match key with
   | `P256 key ->
+    let* () =
+      if String.length rrsig.Rrsig.signature >= 64 then Ok ()
+      else Error (`Msg "RRSIG signature data too short for P256 (expected at least 64 bytes)")
+    in
     let signature =
       String.sub rrsig.Rrsig.signature 0 32,
       String.sub rrsig.Rrsig.signature 32 (String.length rrsig.Rrsig.signature - 32) in
     ok_if_true (Mirage_crypto_ec.P256.Dsa.verify ~key signature (hashed ()))
   | `P384 key ->
+    let* () =
+      if String.length rrsig.Rrsig.signature >= 96 then Ok ()
+      else Error (`Msg "RRSIG signature data too short for P384 (expected at least 96 bytes)")
+    in
     let signature =
       String.sub rrsig.Rrsig.signature 0 48,
       String.sub rrsig.Rrsig.signature 48 (String.length rrsig.Rrsig.signature - 48) in
