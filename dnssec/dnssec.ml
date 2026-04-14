@@ -141,15 +141,8 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
       Error (`Extended (`Other, Some msg))
   in
   let digest data =
-    match rrsig.Rrsig.algorithm with
-    | Dnskey.RSA_SHA1 -> Digestif.SHA1.(digest_string data |> to_raw_string)
-    | Dnskey.RSASHA1_NSEC3_SHA1 -> Digestif.SHA1.(digest_string data |> to_raw_string)
-    | Dnskey.RSA_SHA256 -> Digestif.SHA256.(digest_string data |> to_raw_string)
-    | Dnskey.RSA_SHA512 -> Digestif.SHA512.(digest_string data |> to_raw_string)
-    | Dnskey.P256_SHA256 -> Digestif.SHA256.(digest_string data |> to_raw_string)
-    | Dnskey.P384_SHA384 -> Digestif.SHA384.(digest_string data |> to_raw_string)
-    | Dnskey.ED25519 -> Digestif.SHA512.(digest_string data |> to_raw_string)
-    | _ -> assert false (* NOTE(dinosaure): prevent by [algorithm] and [let*]. *)
+    let (module H) = Digestif.module_of_hash' algorithm in
+    H.(digest_string data |> to_raw_string)
   in
   let* () =
     guard (Ptime.is_later ~than:now rrsig.Rrsig.signature_expiration)
@@ -167,24 +160,20 @@ let verify : type a . Ptime.t -> pub -> [`raw] Domain_name.t -> Rrsig.t ->
     else
       Error (`Msg "signature verification failed")
   in
+  let check_signature (module M : Mirage_crypto_ec.Dsa) rrsig =
+    let signature = rrsig.Rrsig.signature in
+    let bl = M.byte_length in
+    if String.length signature = 2 * bl then
+      Ok (String.sub signature 0 bl, String.sub signature bl bl)
+    else
+      Error (`Msg "invalid signature data length")
+  in
   match key with
   | `P256 key ->
-    let* () =
-      if String.length rrsig.Rrsig.signature >= 64 then Ok ()
-      else Error (`Msg "RRSIG signature data too short for P256 (expected at least 64 bytes)")
-    in
-    let signature =
-      String.sub rrsig.Rrsig.signature 0 32,
-      String.sub rrsig.Rrsig.signature 32 (String.length rrsig.Rrsig.signature - 32) in
+    let* signature = check_signature (module Mirage_crypto_ec.P256.Dsa) rrsig in
     ok_if_true (Mirage_crypto_ec.P256.Dsa.verify ~key signature (hashed ()))
   | `P384 key ->
-    let* () =
-      if String.length rrsig.Rrsig.signature >= 96 then Ok ()
-      else Error (`Msg "RRSIG signature data too short for P384 (expected at least 96 bytes)")
-    in
-    let signature =
-      String.sub rrsig.Rrsig.signature 0 48,
-      String.sub rrsig.Rrsig.signature 48 (String.length rrsig.Rrsig.signature - 48) in
+    let* signature = check_signature (module Mirage_crypto_ec.P384.Dsa) rrsig in
     ok_if_true (Mirage_crypto_ec.P384.Dsa.verify ~key signature (hashed ()))
   | `ED25519 key ->
     let msg = data in
