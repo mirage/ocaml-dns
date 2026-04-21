@@ -1,3 +1,21 @@
+### v10.2.5 (2026-04-21)
+
+* dns-tsig: use Eqaf.equal for verifying MAC to allow a constant time comparison
+  (#418 #419 @BusyBitsRocks @hannesm)
+* dnssec: fix length guard (avoid Invalid_argument in String.sub) (#418 #419
+  @BusyBitsRocks @hannesm)
+* Add packaging for dns-cli package (FreeBSD/Debian)
+  2cadd9906f031fc664087d862e61186424de3c3d #416 #417 (@reynir @hannesm)
+* ozone
+  - allow zone name being passed as argument
+    bdfaddb675b4e73176ac802d8d6b220997d74a80
+    f9af27a1a05742e3c237163238216279542cef36
+    (@hannesm)
+  - avoid invalid argument if input is empty
+    71cc46a57130a0f911d7c654d6b8cd9d44ea049f (@hannesm)
+  - handle zone addition and removal gracefully
+    0ce40191dc60a6fc5f1403bde5cccd5f7efc8010 (@hannesm)
+
 ### v10.2.4 (2026-02-24)
 
 * Dns_resolver: propagate timeouts and errors (always reply to a request); esp.
