@@ -39,6 +39,6 @@ sed -e "s:%%FLATSIZE%%:${flatsize}:" -e "/^[Vv]ersion:/s/-/./g" "$pdir/MANIFEST"
 } | sed -e "s:${rootdir}::" >> "$manifest"
 
 export SOURCE_DATE_EPOCH=$(git log -1 --pretty=format:%ct)
-pkg create -r "$rootdir" -M "$manifest" -o $basedir/
+pkg create -t "$SOURCE_DATE_EPOCH" -r "$rootdir" -M "$manifest" -o $basedir/
 mv $basedir/dns-cli-* $basedir/dns-cli.pkg
 echo 'bin: [ "dns-cli.pkg" ]' > $basedir/dns-cli.install
