@@ -45,18 +45,15 @@ let ca_certificate data = {
 let signing_request hostname ?(more_hostnames = []) key =
   let host = Domain_name.to_string hostname in
   let extensions =
-    match more_hostnames with
-    | [] -> X509.Signing_request.Ext.empty
-    | _ ->
-      let ext =
-        let additional = List.map Domain_name.to_string more_hostnames in
-        let gn = X509.General_name.(singleton DNS (host :: additional)) in
-        X509.Extension.(singleton Subject_alt_name (false, gn))
-      in
-      X509.Signing_request.Ext.(singleton Extensions ext)
+    let ext =
+      let additional = List.map Domain_name.to_string more_hostnames in
+      let gn = X509.General_name.(singleton DNS (host :: additional)) in
+      X509.Extension.(singleton Subject_alt_name (false, gn))
+    in
+    X509.Signing_request.Ext.(singleton Extensions ext)
   in
   X509.(Signing_request.create
-          [Distinguished_name.(Relative_distinguished_name.singleton (CN host))]
+          [Distinguished_name.(Relative_distinguished_name.singleton (CN (Common_name.v host)))]
           ~extensions key)
 
 let dns_header rng =
