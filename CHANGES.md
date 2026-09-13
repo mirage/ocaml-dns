@@ -1,3 +1,9 @@
+### v10.2.6 (2026-09-13)
+
+* update to x509 1.2.0 (#423 @hannesm)
+* update README (#422 @hannesm @dinosaure)
+* use warning name instead of number (#420 @hannesm)
+
 ### v10.2.5 (2026-04-21)
 
 * dns-tsig: use Eqaf.equal for verifying MAC to allow a constant time comparison
