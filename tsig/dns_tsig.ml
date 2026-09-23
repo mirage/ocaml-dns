@@ -97,9 +97,9 @@ let verify_raw ?mac now name ~key tsig tbs =
   let mac = tsig.Tsig.mac in
   let* () = guard (String.length mac = String.length computed) (`Bad_truncation (name, tsig)) in
   let* () = guard (Eqaf.equal computed mac) (`Invalid_mac (name, tsig)) in
-  let* () = guard (Tsig.valid_time now tsig) (`Bad_timestamp (name, tsig, key)) in
+  let* () = guard (Tsig.valid_time now tsig) (`Bad_timestamp (name, tsig)) in
   let* tsig =
-    Option.to_result ~none:(`Bad_timestamp (name, tsig, key))
+    Option.to_result ~none:(`Bad_timestamp (name, tsig))
       (Tsig.with_signed tsig now)
   in
   Ok (tsig, mac)
@@ -138,11 +138,12 @@ let verify ?mac now p name ?key tsig tbs =
         | `Bad_truncation (name, tsig) ->
           let tsig = Tsig.with_error (Tsig.with_mac tsig String.empty) Rcode.BadTrunc in
           or_err (add_tsig ~max_size name tsig) err
-        | `Bad_timestamp (name, tsig, key) ->
+        | `Bad_timestamp (name, tsig) ->
           let tsig = Tsig.with_error tsig Rcode.BadTime in
-          match Tsig.with_other tsig (Some now) with
-          | None -> Some err
-          | Some tsig ->
+          match Tsig.with_other tsig (Some now), key with
+          | None, _ -> Some err
+          | _, None -> Some err
+          | Some tsig, Some key ->
             match sign ~max_size ~mac:tsig.Tsig.mac name tsig ~key answer err with
             | None -> Some err
             | Some (buf, _) -> Some buf

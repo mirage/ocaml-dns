@@ -1430,7 +1430,7 @@ end
 module Tsig_op : sig
   type e = [
     | `Bad_key of [ `raw ] Domain_name.t * Tsig.t
-    | `Bad_timestamp of [ `raw ] Domain_name.t * Tsig.t * Dnskey.t
+    | `Bad_timestamp of [ `raw ] Domain_name.t * Tsig.t
     | `Bad_truncation of [ `raw ] Domain_name.t * Tsig.t
     | `Invalid_mac of [ `raw ] Domain_name.t * Tsig.t
   ]
