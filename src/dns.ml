@@ -3474,6 +3474,21 @@ module Rr_map = struct
       Bytes.set_uint16_be buf (off' + 4) rdata_len ;
       names, rdata_end
     in
+    let rotate_list lst =                                                   
+      match lst with                                                        
+      | [] | [_] -> lst                                                   
+      | _ ->               
+        let k = Random.int (List.length lst) in                                            
+        let rec split k acc = function                                       
+          | [] -> List.rev acc                                               
+          | x :: xs as l ->                                                  
+            if k = 0 then                                                    
+              l @ (List.rev acc)                                             
+            else                                                             
+              split (k - 1) (x :: acc) xs                                    
+        in                                                                   
+        split k [] lst   
+      in
     match k, v with
     | Soa, soa -> rr names (Soa.encode soa) off soa.minimum, 1
     | Ns, (ttl, ns) ->
@@ -3486,13 +3501,17 @@ module Rr_map = struct
         mx ((names, off), 0)
     | Cname, (ttl, alias) -> rr names (Cname.encode alias) off ttl, 1
     | A, (ttl, addresses) ->
-      Ipaddr.V4.Set.fold (fun address ((names, off), count) ->
+      let list = Ipaddr.V4.Set.elements addresses in
+      let shuffled = rotate_list list in
+      List.fold_left (fun ((names, off), count) address ->
         rr names (A.encode address) off ttl, succ count)
-        addresses ((names, off), 0)
+        ((names, off), 0) shuffled
     | Aaaa, (ttl, aaaas) ->
-      Ipaddr.V6.Set.fold (fun address ((names, off), count) ->
-          rr names (Aaaa.encode address) off ttl, succ count)
-        aaaas ((names, off), 0)
+      let list = Ipaddr.V6.Set.elements aaaas in
+      let shuffled = rotate_list list in
+      List.fold_left (fun ((names, off), count) address ->
+        rr names (Aaaa.encode address) off ttl, succ count)
+        ((names, off), 0) shuffled
     | Ptr, (ttl, rev) -> rr names (Ptr.encode rev) off ttl, 1
     | Srv, (ttl, srvs) ->
       Srv_set.fold (fun srv ((names, off), count) ->
