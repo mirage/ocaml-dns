@@ -375,6 +375,19 @@ let handle_reply t now ts proto sender sport packet reply =
       match r with
       | None -> Ok (t, [], [])
       | Some (zone, edns) ->
+        let dnskey_before_ds =
+          FS.mem `Dnssec t.features &&
+          (match qtype with `K K Rr_map.Dnskey -> true | _ -> false) &&
+          Result.is_error (snd (Dns_cache.get t.cache ts zone Rr_map.Ds))
+        in
+        if dnskey_before_ds then begin
+          (* without the zone's DS, its DNSKEY set can't be validated, and once
+             cached unvalidated it would never be used (see below): don't cache
+             it, the waiting queries will ask for the DS first *)
+          Log.warn (fun m -> m "DNSKEY reply for %a without a DS in cache, not caching it"
+                       Domain_name.pp zone);
+          Ok (handle_awaiting_queries t ts key)
+        end else
         (* (b) DNSSec verification of RRs *)
         let t, packet, signed =
           if FS.mem `Dnssec t.features then
@@ -413,7 +426,15 @@ let handle_reply t now ts proto sender sport packet reply =
                 let cache, dnskeys = Dns_cache.get t.cache ts zone Rr_map.Dnskey in
                 { t with cache },
                 match dnskeys with
-                | Ok (`Entry (_, dnskey_set), _) -> Some dnskey_set
+                | Ok (`Entry (_, dnskey_set), Dns_cache.AuthoritativeAnswer (Some _)) ->
+                  Some dnskey_set
+                | Ok (`Entry _, _) ->
+                  (* only DNSKEYs validated against the parent's DS are a trust
+                     anchor: an unvalidated set (e.g. no key matches the DS) must
+                     not make the zone's own signatures look authentic *)
+                  Log.warn (fun m -> m "DNSKEYS in cache for %a are not validated"
+                               Domain_name.pp zone);
+                  None
                 | _ ->
                   Log.warn (fun m -> m "no DNSKEYS in cache for %a" Domain_name.pp zone);
                   None
