@@ -16,9 +16,7 @@ val create : ?add_reserved:bool -> ?record_clients:bool -> ?cache_size:int ->
     packets will be emitted. If [`V6_only] is set, only IPv6 packets will be
     emitted. If [`Both] (the default), either IPv4 and IPv6 packets are
     emitted. If [record_clients] is true (the default), the metrics of
-    the resolver will include the amount of clients.  This keeps a set of
-    Ipaddr.t of all clients around, which may use some memory if it is a public
-    resolver.
+    the resolver will include the amount of clients.
 
     The [add_reserved] is by default [true], and adds reserved zones (from RFC
     6303, 6761, 6762) to the primary server

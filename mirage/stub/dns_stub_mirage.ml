@@ -87,7 +87,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     on_update : old:Dns_trie.t -> ?authenticated_key:[`raw] Domain_name.t -> update_source:Ipaddr.t -> Dns_trie.t -> unit Lwt.t ;
     push : (Ipaddr.t * int * string * [ `Close | `Data of int32 * string ] Lwt.u) option -> unit ;
     mutable update_tls : Tls.Config.server -> unit ;
-    mutable clients : Ipaddr.Set.t ;
+    clients : Hll.t ;
     record_clients : bool ;
     queries : Dns_resolver_mirage_shared.query_info Lwt_condition.t ;
   }
@@ -262,11 +262,13 @@ module Make (S : Tcpip.Stack.V4V6) = struct
           status = "decode error" };
       Lwt.return (Option.map (fun r -> 0l, r) answer)
     | Ok packet ->
-      if t.record_clients then
-        if not (Ipaddr.Set.mem ip t.clients) then begin
-          t.clients <- Ipaddr.Set.add ip t.clients;
+      if t.record_clients then begin
+        let x1, x2 = Ipaddr.V6.to_int64 (Ipaddr.to_v6 ip) in
+        let hll = Hll.card t.clients in
+        Hll.add t.clients (Int64.logxor x1 x2);
+        if Float.to_int hll < Float.to_int (Hll.card t.clients) then
           Dns_resolver_metrics.resolver_stats `Clients
-        end;
+      end;
       Dns_resolver_metrics.resolver_stats `Queries;
       let start = Mirage_mtime.elapsed_ns () in
       let header, question, data = packet.Packet.header, packet.question, packet.data in
@@ -330,7 +332,7 @@ module Make (S : Tcpip.Stack.V4V6) = struct
     let stream, push = Lwt_stream.create () in
     let update_tls _ = () in
     let queries = Lwt_condition.create () in
-    let t = { client ; server ; on_update ; push ; update_tls ; record_clients ; clients = Ipaddr.Set.empty ; queries } in
+    let t = { client ; server ; on_update ; push ; update_tls ; record_clients ; clients = Hll.make ~error:0.05 ; queries } in
     let udp_cb ~src ~dst:_ ~src_port buf =
       let buf = Cstruct.to_string buf in
       metrics `Udp_queries;
