@@ -943,7 +943,7 @@ let verify_packet now dnskeys packet =
       let answer = remove_km signed_answer and auth = remove_km signed_authority in
       Ok (`Rcode_error (rc, op, Some (answer, auth)))
     | `Rcode_error (rc, op, None) -> Ok (`Rcode_error (rc, op, None))
-    | x -> Ok x
+    | _ -> Error (`Msg "only answers and rcode_errors are supported yet")
   in
   Ok (Packet.create ~additional:packet.additional ?edns:packet.edns
         ?tsig:packet.tsig packet.header packet.question data)
