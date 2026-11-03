@@ -5889,14 +5889,14 @@ end
 module Tsig_op = struct
   type e = [
     | `Bad_key of [ `raw ] Domain_name.t * Tsig.t
-    | `Bad_timestamp of [ `raw ] Domain_name.t * Tsig.t * Dnskey.t
+    | `Bad_timestamp of [ `raw ] Domain_name.t * Tsig.t
     | `Bad_truncation of [ `raw ] Domain_name.t * Tsig.t
     | `Invalid_mac of [ `raw ] Domain_name.t * Tsig.t
   ]
 
   let pp_e ppf = function
     | `Bad_key (name, tsig) -> Fmt.pf ppf "bad key %a: %a" Domain_name.pp name Tsig.pp tsig
-    | `Bad_timestamp (name, tsig, key) -> Fmt.pf ppf "bad timestamp: %a %a %a" Domain_name.pp name Tsig.pp tsig Dnskey.pp key
+    | `Bad_timestamp (name, tsig) -> Fmt.pf ppf "bad timestamp: %a %a" Domain_name.pp name Tsig.pp tsig
     | `Bad_truncation (name, tsig) -> Fmt.pf ppf "bad truncation %a %a" Domain_name.pp name Tsig.pp tsig
     | `Invalid_mac (name, tsig) -> Fmt.pf ppf "invalid mac %a %a" Domain_name.pp name Tsig.pp tsig
 
