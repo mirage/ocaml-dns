@@ -151,8 +151,9 @@ The format of a nameserver is:
 
     let happy_eyeballs { he ; _ } = he
 
-    let read_udp t ip ip_us ~src ~dst ~src_port:_ data =
+    let read_udp t ip ip_us port ~src ~dst ~src_port data =
       if Ipaddr.compare ip_us dst = 0 && Ipaddr.compare ip src = 0 &&
+         Int.equal port src_port &&
          Cstruct.length data > 12 (* minimum DNS length (header length) *)
       then
         (let id = Cstruct.BE.get_uint16 data 0 in
@@ -399,7 +400,7 @@ The format of a nameserver is:
           let id = Cstruct.BE.get_uint16 tx 0 in
           Lwt.return (generate_udp_port t) >>>= fun udp_port ->
           with_timeout t.timeout_ns
-            (S.UDP.listen (S.udp t.stack) ~port:udp_port (read_udp t dst src);
+            (S.UDP.listen (S.udp t.stack) ~port:udp_port (read_udp t dst src dst_port);
              (S.UDP.write ~src_port:udp_port ~dst ~dst_port (S.udp t.stack) tx >|= function
                | Error e -> Error (`Msg (Fmt.to_to_string S.UDP.pp_error e))
                | Ok () -> Ok ()) >>>= fun () ->
