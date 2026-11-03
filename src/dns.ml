@@ -1925,16 +1925,19 @@ module Bit_map = struct
           Error (`Malformed (off + idx, "block number not increasing"))
         else
           let length = String.get_uint8 buf (idx + 1) in
-          let s = idx + 2 in
-          let rec octet idx =
-            let b = String.get_uint8 buf (s + idx) in
-            let bits = byte_to_bits b in
-            let more = if idx = 0 then empty else octet (idx - 1) in
-            List.fold_left (fun acc b' -> add (idx * 8 + b') acc) more bits
-          in
-          let bits = octet (length - 1) in
-          decode_bit_map_field block (s + length)
-            (union (map (fun b -> b + block * 256) bits) acc)
+          if length = 0 then
+            Error (`Malformed (off + idx, "bit map field length is 0"))
+          else
+            let s = idx + 2 in
+            let rec octet idx =
+              let b = String.get_uint8 buf (s + idx) in
+              let bits = byte_to_bits b in
+              let more = if idx = 0 then empty else octet (idx - 1) in
+              List.fold_left (fun acc b' -> add (idx * 8 + b') acc) more bits
+            in
+            let bits = octet (length - 1) in
+            decode_bit_map_field block (s + length)
+              (union (map (fun b -> b + block * 256) bits) acc)
     in
     decode_bit_map_field (-1) off empty
 
