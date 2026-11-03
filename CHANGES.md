@@ -1,3 +1,18 @@
+### v10.2.7 (2026-11-03)
+
+* Dns_tsig: `Bad_timestamp error variant no longer embeds the Dnskey.t
+  (#424 @hannesm)
+* Dns: Bit_map.decode: length must be above 0 (#425 @hannesm)
+* Dnssec verify_packet: error on non-answer/rcode_error packets (#426 @hannesm)
+* Dns_resolver/Dns_stub: use hyperloglog instead of set - this reduces the
+  memory usage when recording clients (#427 @hannesm)
+* Dns_certify: `query`/`tlsas_to_certchain`: validate certificate against
+  trust anchors (#428 @hannesm)
+* Dns_resolver: restrict accepted/cached records in authority even further
+  (#429 @hannesm)
+* Dns_resolver: only use validated DNSKEYs to verify replies
+  (a830c29c839693fb1cd2cfa5ed0878cf1888e73d, @hhugo)
+
 ### v10.2.6 (2026-09-13)
 
 * update to x509 1.2.0 (#423 @hannesm)
