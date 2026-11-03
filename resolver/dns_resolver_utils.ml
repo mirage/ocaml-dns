@@ -135,9 +135,21 @@ let noerror bailiwick (_, flags) ~signed q_name q_type (answer, authority) addit
       else
         Dns_cache.Additional
     in
+    let restrict_bailiwick name =
+      (* we need to restrict the bailiwick even more for authority to avoid
+         a bad server (or intermediary on-path attacker) to add referals for
+         bailiwick. *)
+      in_bailiwick name &&
+      (Domain_name.equal name bailiwick ||
+       match q_type with
+       | `K (Rr_map.K Ns) when Domain_name.equal name q_name -> true
+       | _ ->
+         not (Domain_name.equal name q_name) &&
+         Domain_name.is_subdomain ~subdomain:q_name ~domain:name)
+    in
     let ns, others, names =
       Domain_name.Map.fold (fun name map (ns_acc, other_acc, s) ->
-          if in_bailiwick name then
+          if restrict_bailiwick name then
             let ns, s =
               match Rr_map.find Ns map with
               | None -> ns_acc, s
