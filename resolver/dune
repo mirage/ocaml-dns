@@ -5,7 +5,7 @@
   (backend bisect_ppx))
  (wrapped false)
  (modules dns_resolver dns_resolver_utils dns_resolver_cache)
- (libraries dns dns.cache dns-server lru duration randomconv dnssec logs dns_resolver_shared))
+ (libraries dns dns.cache dns-server lru duration randomconv dnssec logs grenier.hll dns_resolver_shared))
 
 (library
   (name dns_resolver_shared)

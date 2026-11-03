@@ -25,8 +25,7 @@ module Make (S : Tcpip.Stack.V4V6) : sig
       and defaults to 500 milliseconds.
 
       If [record_clients] is true (the default), the metrics of the resolver
-      will include the amount of clients.  This keeps a set of Ipaddr.t of all
-      clients around, which may use some memory if it is a public resolver.
+      will include the amount of clients.
 
       The [add_reserved] is by default [true], and adds reserved zones (from RFC
       6303, 6761, 6762) to the primary server

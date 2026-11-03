@@ -76,7 +76,7 @@ type t = {
   cache : Dns_cache.t ;
   transit : awaiting TM.t ;
   queried : awaiting list QM.t ;
-  mutable clients : Ipaddr.Set.t ;
+  clients : Hll.t ;
   record_clients : bool ;
 }
 
@@ -116,7 +116,7 @@ let create ?(add_reserved = true) ?(record_clients = true) ?(cache_size = 10000)
       primary
   in
   { ip_protocol ; features ; rng ; cache ; primary ; transit = TM.empty ; queried = QM.empty ;
-    clients = Ipaddr.Set.empty ; record_clients }
+    clients = Hll.make ~error:0.05 ; record_clients }
 
 let features t = FS.elements t.features
 
@@ -577,11 +577,13 @@ let handle_buf t now ts query_allowed proto sender sport buf =
       end
     | #Packet.request as req when query_allowed ->
       Dns_resolver_metrics.resolver_stats `Queries;
-      if t.record_clients then
-        if not (Ipaddr.Set.mem sender t.clients) then begin
-          t.clients <- Ipaddr.Set.add sender t.clients;
+      if t.record_clients then begin
+        let x1, x2 = Ipaddr.V6.to_int64 (Ipaddr.to_v6 sender) in
+        let hll = Hll.card t.clients in
+        Hll.add t.clients (Int64.logxor x1 x2);
+        if Float.to_int hll < Float.to_int (Hll.card t.clients) then
           Dns_resolver_metrics.resolver_stats `Clients
-        end;
+      end;
       begin
         match handle_primary t.primary now ts proto sender sport res req buf with
         | `Reply (primary, ttl, pkt, rcode) ->
