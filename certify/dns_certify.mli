@@ -86,7 +86,7 @@ val cert_matches_csr : ?until:Ptime.t -> Ptime.t -> X509.Signing_request.t ->
 val query : (int -> string) -> Ptime.t -> [ `host ] Domain_name.t ->
   X509.Signing_request.t ->
   (string *
-   (string -> (X509.Certificate.t * X509.Certificate.t list, [> q_err ]) result),
+   (string -> (X509.Certificate.t * X509.Certificate.t list, [> q_err | `Msg of string ]) result),
    [> `Msg of string ]) result
 (** [query rng now csr] is a [buffer] with a DNS TLSA query for the name of
    [csr], and a function that decodes a given answer, either returning a X.509

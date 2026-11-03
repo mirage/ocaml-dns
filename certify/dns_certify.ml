@@ -153,14 +153,15 @@ let cert_matches_csr ?until now csr cert =
   end else
     true
 
-let tlsas_to_certchain host now csr tlsas =
+let tlsas_to_certchain ~host le_name now csr tlsas =
+  let ( let* ) = Result.bind in
   let certificates, ca_certificates =
     Rr_map.Tlsa_set.fold (fun tlsa (certs, cacerts as acc) ->
         if is_certificate tlsa || is_ca_certificate tlsa then
           match X509.Certificate.decode_der tlsa.Tlsa.data with
           | Error (`Msg msg) ->
             Log.warn (fun m -> m "couldn't decode tlsa record %a: %s (%a)"
-                         Domain_name.pp host msg
+                         Domain_name.pp le_name msg
                          Ohex.pp tlsa.Tlsa.data);
             acc
           | Ok cert ->
@@ -171,19 +172,28 @@ let tlsas_to_certchain host now csr tlsas =
         else acc)
       tlsas ([], [])
   in
-  match List.find_opt (cert_matches_csr now csr) certificates with
-  | None -> Error `No_tlsa
-  | Some server_cert ->
-    match List.rev (X509.Validation.build_paths server_cert ca_certificates) with
-    | (_server :: chain) :: _ -> Ok (server_cert, chain)
-    | _ -> Ok (server_cert, []) (* build_paths always returns the server_cert *)
+  let* server, chain =
+    match List.find_opt (cert_matches_csr now csr) certificates with
+    | None -> Error `No_tlsa
+    | Some server_cert ->
+      match List.rev (X509.Validation.build_paths server_cert ca_certificates) with
+      | (_server :: chain) :: _ -> Ok (server_cert, chain)
+      | _ -> Ok (server_cert, []) (* build_paths always returns the server_cert *)
+  in
+  let* anchors = Ca_certs_nss.trust_anchors in
+  let* _ =
+    Result.map_error (fun e -> `Msg (Fmt.to_to_string X509.Validation.pp_validation_error e))
+      (X509.Validation.verify_chain_of_trust ~host:(Some host) ~time:(fun () -> Some now)
+         ~anchors (server :: chain))
+  in
+  Ok (server, chain)
 
 let query rng now host csr =
   match letsencrypt_name host with
   | Error e -> Error e
-  | Ok host ->
+  | Ok le_name ->
     let header = dns_header rng
-    and question = Packet.Question.create host Tlsa
+    and question = Packet.Question.create le_name Tlsa
     in
     let request = Packet.create header question `Query in
     let out, _ = Packet.encode `Tcp request
@@ -193,9 +203,9 @@ let query rng now host csr =
       | Ok reply ->
         match Packet.reply_matches_request ~request reply with
         | Ok (`Answer (answer, _)) ->
-          begin match Name_rr_map.find host Tlsa answer with
+          begin match Name_rr_map.find le_name Tlsa answer with
             | None -> Error `No_tlsa
-            | Some (_, tlsas) -> tlsas_to_certchain host now csr tlsas
+            | Some (_, tlsas) -> tlsas_to_certchain ~host le_name now csr tlsas
           end
         | Ok (`Rcode_error (Rcode.NXDomain, Opcode.Query, _)) -> Error `No_tlsa
         | Ok reply -> Error (`Unexpected_reply reply)

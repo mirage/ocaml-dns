@@ -24,6 +24,7 @@ depends: [
   "mirage-crypto-ec"
   "mirage-crypto-pk" {>= "1.0.0"}
   "mirage-crypto-rng" {>= "1.0.0"}
+  "ca-certs-nss"
 ]
 
 build: [
