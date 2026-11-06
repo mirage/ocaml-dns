@@ -1,3 +1,16 @@
+let ip_to_hll ip =
+  (* from murmurhash3 *)
+  let fmix64 k =
+    let open Int64 in
+    let k = logxor k (shift_right_logical k 33) in
+    let k = mul k 0xff51afd7ed558ccdL in
+    let k = logxor k (shift_right_logical k 33) in
+    let k = mul k 0xc4ceb9fe1a85ec53L in
+    logxor k (shift_right_logical k 33)
+  in
+  let h, l = Ipaddr.V6.to_int64 (Ipaddr.to_v6 ip) in
+  fmix64 (Int64.logxor h l)
+
 let resolver_stats =
   let f = function
     | `Error -> "error"
