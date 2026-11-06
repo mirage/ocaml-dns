@@ -49,6 +49,107 @@ let parse_uint32 s =
 let parse_ipv6 s =
   Ipaddr.V6.of_string_exn s
 
+(* RFC 9460 Appendix A: character-string decoding, returns whether escapes
+   were used *)
+let svcb_unescape s =
+  let s =
+    let l = String.length s in
+    if l >= 2 && s.[0] = '"' && s.[l - 1] = '"' then String.sub s 1 (l - 2) else s
+  in
+  let l = String.length s in
+  let b = Buffer.create l in
+  let is_digit c = c >= '0' && c <= '9' in
+  let rec go i esc =
+    if i >= l then esc
+    else if s.[i] <> '\\' then (Buffer.add_char b s.[i]; go (i + 1) esc)
+    else if i + 1 >= l then parse_error "SVCB: trailing backslash"
+    else if is_digit s.[i + 1] then begin
+      if i + 3 < l && is_digit s.[i + 2] && is_digit s.[i + 3] then begin
+        let n = int_of_string (String.sub s (i + 1) 3) in
+        if n > 255 then parse_error "SVCB: bad escape";
+        Buffer.add_char b (Char.chr n);
+        go (i + 4) true
+      end else parse_error "SVCB: bad escape"
+    end else (Buffer.add_char b s.[i + 1]; go (i + 2) true)
+  in
+  let esc = go 0 false in
+  Buffer.contents b, esc
+
+(* RFC 9460 Appendix A.1: comma-separated list with "\," and "\\" *)
+let svcb_split_list s =
+  let b = Buffer.create 16 and l = String.length s in
+  let rec go acc i =
+    if i >= l then List.rev (Buffer.contents b :: acc)
+    else match s.[i] with
+      | ',' -> let item = Buffer.contents b in Buffer.clear b; go (item :: acc) (i + 1)
+      | '\\' when i + 1 < l -> Buffer.add_char b s.[i + 1]; go acc (i + 2)
+      | '\\' -> parse_error "SVCB: trailing backslash"
+      | c -> Buffer.add_char b c; go acc (i + 1)
+  in
+  let items = go [] 0 in
+  if List.mem "" items then parse_error "SVCB: empty list item";
+  items
+
+let svcb_param s =
+  let key, value = match String.index_opt s '=' with
+    | None -> s, None
+    | Some i -> String.sub s 0 i, Some (String.sub s (i + 1) (String.length s - i - 1))
+  in
+  let k = match Svcb.key_of_string key with
+    | Some k -> k
+    | None -> parse_error ("SVCB: unknown key " ^ key)
+  in
+  let value, esc = match value with
+    | None -> "", false
+    | Some v -> svcb_unescape v
+  in
+  let no_esc () =
+    if esc then parse_error ("SVCB: " ^ key ^ " must not contain escapes")
+  in
+  let list () =
+    no_esc ();
+    let items = String.split_on_char ',' value in
+    if List.mem "" items then parse_error ("SVCB: " ^ key ^ ": empty list item");
+    items
+  in
+  let ip of_string a = match of_string a with
+    | Ok ip -> ip
+    | Error _ -> parse_error ("SVCB: invalid address " ^ a)
+  in
+  if String.length key > 3 && String.sub key 0 3 = "key" then
+    Svcb.Key (k, value)
+  else match k with
+    | 0 ->
+      Svcb.Mandatory (List.map (fun i -> match Svcb.key_of_string i with
+          | Some k -> k
+          | None -> parse_error ("SVCB: unknown key " ^ i)) (list ()))
+    | 1 -> Svcb.Alpn (svcb_split_list value)
+    | 2 ->
+      if value <> "" then parse_error "SVCB: no-default-alpn must not have a value";
+      Svcb.No_default_alpn
+    | 3 ->
+      no_esc ();
+      if value = "" || not (String.for_all (fun c -> c >= '0' && c <= '9') value)
+         || String.length value > 5 || int_of_string value > 65535
+      then parse_error ("SVCB: invalid port " ^ value);
+      Svcb.Port (int_of_string value)
+    | 4 -> Svcb.Ipv4_hint (List.map (ip Ipaddr.V4.of_string) (list ()))
+    | 5 ->
+      no_esc ();
+      (match Base64.decode value with
+       | Ok v when v <> "" -> Svcb.Ech v
+       | _ -> parse_error "SVCB: ech must be base64")
+    | 6 -> Svcb.Ipv6_hint (List.map (ip Ipaddr.V6.of_string) (list ()))
+    | k -> Svcb.Key (k, value)
+
+let svcb_rdata typ priority target params =
+  let params = List.map svcb_param params in
+  if priority = 0 && params <> [] then
+    parse_error (typ ^ " AliasMode must not have SvcParams");
+  match Svcb.v ~priority ~target params with
+  | Ok t -> t
+  | Error (`Msg m) -> parse_error (typ ^ ": " ^ m)
+
 let add_to_map name ~ttl (Rr_map.B (k, v)) =
   let v = Rr_map.with_ttl k v ttl in
   Name_rr_map.add name k v
@@ -157,321 +258,8 @@ generic_type s generic_rdata {
      { let srv = { Srv.priority = $3 ; weight = $5 ; port = $7 ; target = $9 } in
        B (Srv, (0l, Rr_map.Srv_set.singleton srv)) }
      /* RFC 9460 */
- | TYPE_SVCB s int16 s hostname
-     {  let svc_priority = $3 in
-        let target_name = $5 in
-        let svc_params = [] in
-        let svcb = { Svcb.svc_priority ; target_name ; svc_params } in
-        B (Svcb, (0l, Rr_map.Svcb_set.singleton svcb))
-      }
- | TYPE_SVCB s int16 s hostname s svcbparams
-     {  let svc_priority = $3 in
-        let target_name = $5 in
-        let svc_params =
-          List.fold_left (fun acc s ->
-            let tokens = String.split_on_char '=' s in
-            if List.length tokens = 1 then (
-              let key = List.nth tokens 0 in
-              match key with
-              | "no-default-alpn" -> Svcb.No_default_alpn::acc
-              | "ech" -> parse_error "SVCB 'ech' parameter currently reserved"
-              | _ -> parse_error ("Unknown SVCB parameter: "^key)
-            ) else if List.length tokens = 2 then (
-              let key = List.nth tokens 0 in
-              let value = List.nth tokens 1 in
-              match key with
-              | "mandatory" -> (
-                let values = String.split_on_char ',' value in
-                let mandatories =
-                  List.fold_left (fun a p ->
-                    match p with
-                    | "mandatory" ->
-                      parse_error "SVCB param : mandatory not allowed as a mandatory parameter"
-                    | "alpn" -> 1::a
-                    | "no-default-alpn" -> 2::a
-                    | "port" -> 3::a
-                    | "ipv4hint" -> 4::a
-                    | "ech" ->
-                      parse_error "SVCB param : ech is a reserved parameter"
-                    | "ipv6hint" -> 6::a
-                    | _ -> (
-                      if String.starts_with ~prefix:"key" p then (
-                        let len = String.length p in
-                        let key_num = int_of_string (String.sub p 3 (len-3)) in
-                        if key_num <= 6 then (
-                          parse_error ("SVCB mandatory key value should be greater than 6: "^p)
-                        ) else key_num::a
-                      ) else parse_error ("Unknown mandatory parameter: "^p)
-                    )
-                  ) [] values
-                in
-                Mandatory (List.sort Int.compare mandatories)::acc
-              )
-              | "alpn" -> (
-                let values = String.split_on_char ',' value in
-                Alpn values::acc
-              )
-              | "port" -> (
-                Port (int_of_string value)::acc
-              )
-              | "ipv4hint" -> (
-                let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
-                let values = String.split_on_char ',' value in
-                let ipv4s =
-                  List.fold_left (fun a ipv4 ->
-                    (Ipaddr.V4.of_string_exn ipv4)::a
-                  ) [] values
-                in
-                Ipv4_hint (List.rev ipv4s)::acc
-              )
-              | "ipv6hint" -> (
-                let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
-                let values = String.split_on_char ',' value in
-                let ipv6s =
-                  List.fold_left (fun a ipv6 ->
-                    (parse_ipv6 ipv6)::a
-                  ) [] values
-                in
-                Ipv6_hint (List.rev ipv6s)::acc
-              )
-              | _ -> (
-                if String.starts_with ~prefix:"key" key then (
-                  let len = String.length key in
-                  let key_num = int_of_string (String.sub key 3 (len-3)) in
-                  if key_num <= 6 then (
-                    parse_error ("SVCB key parameter should be greater than 6: "^key)
-                  ) else Key (key_num,value)::acc
-                ) else parse_error ("Unknown mandatory parameter: "^key)
-              )
-            ) else parse_error "Cannot have more than one '=' in a SVCB param field"
-          ) [] $7
-        in
-        let mandatory_opt,svc_params =
-          List.fold_left (fun (m,ps) p ->
-            match p with
-            | Svcb.Mandatory mandatory_list -> (
-              (* check for multiple mandatory parameters *)
-              if Option.is_some m then parse_error ("SVCB : multiple instances of the same SvcParamKey");
-              (* check for multiple instances of same SvcParamKey in mandatory list *)
-              let multiple_exists,_ =
-                List.fold_left
-                  (fun (flag,a') k ->
-                    if flag then (flag,(k::a')) else (List.exists (fun k' -> k = k') a'),(k::a')) (false,[]) mandatory_list
-              in
-              if multiple_exists then parse_error ("SVCB : multiple instances of the same SvcParamKey in mandatory list");
-              (Some p),ps
-            )
-            | _ -> (
-              (* check for multiple instances of the same SvcParamKey*)
-              if List.exists
-                (fun k ->
-                  match k, p with
-                  | Svcb.Mandatory _, Mandatory _ -> true
-                  | Alpn _, Alpn _ -> true
-                  | No_default_alpn, No_default_alpn -> true
-                  | Port _, Port _ -> true
-                  | Ipv4_hint _, Ipv4_hint _ -> true
-                  | Ipv6_hint _, Ipv6_hint _ -> true
-                  | Key (k',_), Key (p',_) -> (k' = p')
-                  | _, _ -> false
-                ) ps then parse_error ("SVCB : multiple instances of the same SvcParamKey");
-              m,(p::ps)
-            )
-          ) (None,[]) svc_params
-        in
-        let svc_params = if Option.is_some mandatory_opt then (Option.get mandatory_opt)::svc_params else svc_params in
-        let svc_param_key = function
-          | Svcb.Mandatory _ -> 0
-          | Svcb.Alpn _ -> 1
-          | Svcb.No_default_alpn -> 2
-          | Svcb.Port _ -> 3
-          | Svcb.Ipv4_hint _ -> 4
-          | Svcb.Ipv6_hint _ -> 6
-          | Svcb.Key (i,_) -> i
-        in
-        let svc_params = List.sort (fun a b -> Int.compare (svc_param_key a) (svc_param_key b)) svc_params in
-
-        (* RFC 9460 validations *)
-        (* AliasMode (priority 0) MUST NOT have SvcParams *)
-        if svc_priority = 0 && List.length svc_params > 0 then
-          parse_error "SVCB AliasMode records MUST NOT have SvcParams";
-
-        (* AliasMode (priority 0) target MUST NOT be "." *)
-        if svc_priority = 0 && Domain_name.equal (Domain_name.host_exn target_name) Domain_name.root then
-          parse_error "SVCB AliasMode target MUST NOT be \".\"";
-
-        (* Check that mandatory parameters reference existing keys *)
-        (match mandatory_opt with
-        | Some (Svcb.Mandatory mandatory_list) ->
-            let param_keys = List.map svc_param_key svc_params in
-            List.iter (fun m ->
-              if not (List.mem m param_keys) then
-                parse_error "SVCB mandatory parameter references non-existent key"
-            ) mandatory_list
-        | _ -> ());
-
-        let svcb = { Svcb.svc_priority ; target_name ; svc_params } in
-        B (Svcb, (0l, Rr_map.Svcb_set.singleton svcb))
-        }
- | TYPE_HTTPS s int16 s hostname
-     {  let svc_priority = $3 in
-        let target_name = $5 in
-        let svc_params = [] in
-        (* RFC 9460: AliasMode (priority 0) target MUST NOT be "." *)
-        if svc_priority = 0 && Domain_name.equal (Domain_name.host_exn target_name) Domain_name.root then
-          parse_error "HTTPS AliasMode target MUST NOT be \".\"";
-        let https = { Https.svc_priority ; target_name ; svc_params } in
-        B (Https, (0l, Rr_map.Https_set.singleton https))
-      }
-  | TYPE_HTTPS s int16 s hostname s svcbparams
-      {  let svc_priority = $3 in
-          let target_name = $5 in
-          let svc_params =
-            List.fold_left (fun acc s ->
-              let tokens = String.split_on_char '=' s in
-              if List.length tokens = 1 then (
-                let key = List.nth tokens 0 in
-                match key with
-                | "no-default-alpn" -> Https.No_default_alpn::acc
-                | "ech" -> parse_error "HTTPS 'ech' parameter currently reserved"
-                | _ -> parse_error ("Unknown HTTPS parameter: "^key)
-              ) else if List.length tokens = 2 then (
-                let key = List.nth tokens 0 in
-                let value = List.nth tokens 1 in
-                match key with
-                | "mandatory" -> (
-                  let values = String.split_on_char ',' value in
-                  let mandatories =
-                    List.fold_left (fun a p ->
-                      match p with
-                      | "mandatory" ->
-                        parse_error "HTTPS param : mandatory not allowed as a mandatory parameter"
-                      | "alpn" -> 1::a
-                      | "no-default-alpn" -> 2::a
-                      | "port" -> 3::a
-                      | "ipv4hint" -> 4::a
-                      | "ech" ->
-                        parse_error "HTTPS param : ech is a reserved parameter"
-                      | "ipv6hint" -> 6::a
-                      | _ -> (
-                        if String.starts_with ~prefix:"key" p then (
-                          let len = String.length p in
-                          let key_num = int_of_string (String.sub p 3 (len-3)) in
-                          if key_num <= 6 then (
-                            parse_error ("HTTPS mandatory key value should be greater than 6: "^p)
-                          ) else key_num::a
-                        ) else parse_error ("Unknown mandatory parameter: "^p)
-                      )
-                    ) [] values
-                  in
-                  Mandatory (List.sort Int.compare mandatories)::acc
-                )
-                | "alpn" -> (
-                  let values = String.split_on_char ',' value in
-                  Alpn values::acc
-                )
-                | "port" -> (
-                  Port (int_of_string value)::acc
-                )
-                | "ipv4hint" -> (
-                  let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
-                  let values = String.split_on_char ',' value in
-                  let ipv4s =
-                    List.fold_left (fun a ipv4 ->
-                    (Ipaddr.V4.of_string_exn ipv4)::a
-                    ) [] values
-                  in
-                  Ipv4_hint (List.rev ipv4s)::acc
-                )
-                | "ipv6hint" -> (
-                  let value = String.fold_left (fun a' c -> if c = '"' then a' else a'^(Char.escaped c)) "" value in
-                  let values = String.split_on_char ',' value in
-                  let ipv6s =
-                    List.fold_left (fun a ipv6 ->
-                    (parse_ipv6 ipv6)::a
-                    ) [] values
-                  in
-                  Ipv6_hint (List.rev ipv6s)::acc
-                )
-                | _ -> (
-                  if String.starts_with ~prefix:"key" key then (
-                    let len = String.length key in
-                    let key_num = int_of_string (String.sub key 3 (len-3)) in
-                    if key_num <= 6 then (
-                      parse_error ("HTTPS key parameter should be greater than 6: "^key)
-                    ) else Key (key_num,value)::acc
-                  ) else parse_error ("Unknown mandatory paramter: "^key)
-                )
-              ) else parse_error "Cannot have more than one '=' in a HTTPS param field"
-            ) [] $7
-          in
-          let mandatory_opt,svc_params =
-            List.fold_left (fun (m,ps) p ->
-              match p with
-              | Https.Mandatory mandatory_list -> (
-                (* check for multiple mandatory parameters *)
-                if Option.is_some m then parse_error ("HTTPS : multiple instances of the same SvcParamKey");
-                (* check for multiple instances of same SvcParamKey in mandatory list *)
-                let multiple_exists,_ =
-                  List.fold_left
-                    (fun (flag,a') k ->
-                      if flag then (flag,(k::a')) else (List.exists (fun k' -> k = k') a'),(k::a')) (false,[]) mandatory_list
-                in
-                if multiple_exists then parse_error ("HTTPS : multiple instances of the same SvcParamKey in mandatory list");
-                (Some p),ps
-              )
-              | _ -> (
-                (* check for multiple instances of the same SvcParamKey*)
-                if List.exists
-                  (fun k ->
-                    match k, p with
-                    | Https.Mandatory _, Mandatory _ -> true
-                    | Alpn _, Alpn _ -> true
-                    | No_default_alpn, No_default_alpn -> true
-                    | Port _, Port _ -> true
-                    | Ipv4_hint _, Ipv4_hint _ -> true
-                    | Ipv6_hint _, Ipv6_hint _ -> true
-                    | Key (k',_), Key (p',_) -> (k' = p')
-                    | _, _ -> false
-                  ) ps then parse_error ("HTTPS : multiple instances of the same SvcParamKey");
-                m,(p::ps)
-              )
-            ) (None,[]) svc_params
-          in
-          let svc_params = if Option.is_some mandatory_opt then (Option.get mandatory_opt)::svc_params else svc_params in
-          let svc_param_key = function
-            | Https.Mandatory _ -> 0
-            | Https.Alpn _ -> 1
-            | Https.No_default_alpn -> 2
-            | Https.Port _ -> 3
-            | Https.Ipv4_hint _ -> 4
-            | Https.Ipv6_hint _ -> 6
-            | Https.Key (i,_) -> i
-          in
-          let svc_params = List.sort (fun a b -> Int.compare (svc_param_key a) (svc_param_key b)) svc_params in
-
-          (* RFC 9460 validations *)
-          (* AliasMode (priority 0) MUST NOT have SvcParams *)
-          if svc_priority = 0 && List.length svc_params > 0 then
-            parse_error "HTTPS AliasMode records MUST NOT have SvcParams";
-
-          (* AliasMode (priority 0) target MUST NOT be "." *)
-          if svc_priority = 0 && Domain_name.equal (Domain_name.host_exn target_name) Domain_name.root then
-            parse_error "HTTPS AliasMode target MUST NOT be \".\"";
-
-          (* Check that mandatory parameters reference existing keys *)
-          (match mandatory_opt with
-          | Some (Https.Mandatory mandatory_list) ->
-              let param_keys = List.map svc_param_key svc_params in
-              List.iter (fun m ->
-                if not (List.mem m param_keys) then
-                  parse_error "HTTPS mandatory parameter references non-existent key"
-              ) mandatory_list
-          | _ -> ());
-
-          let https = { Https.svc_priority ; target_name ; svc_params } in
-          B (Https, (0l, Rr_map.Https_set.singleton https))
-          }
+ | TYPE_SVCB s svcb { B (Svcb, (0l, Rr_map.Svcb_set.singleton ($3 "SVCB"))) }
+ | TYPE_HTTPS s svcb { B (Https, (0l, Rr_map.Svcb_set.singleton ($3 "HTTPS"))) }
      /* RFC 3596 */
  | TYPE_TLSA s int8 s int8 s int8 s hex
      { try
@@ -557,6 +345,10 @@ single_hex: charstring
 hex:
    single_hex { $1 }
  | hex s single_hex { $1 ^ $3 }
+
+svcb:
+   int16 s domain { fun typ -> svcb_rdata typ $1 $3 [] }
+ | int16 s domain s svcbparams { fun typ -> svcb_rdata typ $1 $3 $5 }
 
 generic_type: TYPE_GENERIC
      { try parse_uint16 (String.sub $1 4 (String.length $1 - 4))
@@ -686,7 +478,7 @@ hostname: domain { Domain_name.host_exn $1 }
 
 charstrings: charstring { [$1] } | charstrings s charstring { $1 @ [$3] }
 
-charstring: CHARSTRING { $1 } | keyword_or_number { $1 } | AT { "@" }
+charstring: CHARSTRING { $1 } | keyword_or_number { $1 } | AT { "@" } | SVCBPARAM { $1 }
 
 svcbparams: svcbparam { [$1] } | svcbparams s svcbparam { $1 @ [$3] }
 
