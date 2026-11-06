@@ -599,9 +599,8 @@ let handle_buf t now ts query_allowed proto sender sport buf =
     | #Packet.request as req when query_allowed ->
       Dns_resolver_metrics.resolver_stats `Queries;
       if t.record_clients then begin
-        let x1, x2 = Ipaddr.V6.to_int64 (Ipaddr.to_v6 sender) in
         let hll = Hll.card t.clients in
-        Hll.add t.clients (Int64.logxor x1 x2);
+        Hll.add t.clients (Dns_resolver_metrics.ip_to_hll sender);
         if Float.to_int hll < Float.to_int (Hll.card t.clients) then
           Dns_resolver_metrics.resolver_stats `Clients
       end;
