@@ -355,7 +355,7 @@ let check trie =
             else Ok ()
           | B (Https, (ttl, httpss)) ->
             if ttl < 0l then Error (`Bad_ttl (name, v))
-            else if Rr_map.Https_set.is_empty httpss then
+            else if Rr_map.Svcb_set.is_empty httpss then
               Error (`Empty (name, K Https))
             else Ok ()
           | B (Caa, (ttl, caas)) ->

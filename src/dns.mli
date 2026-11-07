@@ -303,9 +303,10 @@ module Srv : sig
   (** [compare a b] compares the service record [a] with [b]. *)
 end
 
-(** Service binding and parameter specification record
+(** Service binding (RFC 9460)
 
-    A Service record (SVCB) specifies a target, its priority, weight and port. *)
+    Used by both SVCB and HTTPS records, which share their wire and
+    presentation formats. *)
 module Svcb : sig
   type svc_param =
     | Mandatory of int list
@@ -313,52 +314,40 @@ module Svcb : sig
     | No_default_alpn
     | Port of int
     | Ipv4_hint of Ipaddr.V4.t list
+    | Ech of string (** ECHConfigList (RFC 9848) *)
     | Ipv6_hint of Ipaddr.V6.t list
-    | Key of int * string
+    | Key of int * string (** any other key, with its wire value *)
+  (** The type of service parameters. *)
 
-  type t = {
+  type t = private {
     svc_priority : int ;
-    target_name : [ `host ] Domain_name.t ;
+    target_name : [ `raw ] Domain_name.t ;
     svc_params : svc_param list ;
   }
-  (** The type for a service binding and parameter specification record. *)
+  (** The type for a service binding. [svc_params] are sorted by key, and
+      each key appears at most once. *)
+
+  val v : priority:int -> target:[ `raw ] Domain_name.t -> svc_param list ->
+    (t, [> `Msg of string ]) result
+  (** [v ~priority ~target params] constructs a service binding. [params] are
+      sorted by key. A [Key (k, v)] with [k] being a key from above is decoded
+      from its wire value [v]. Errors if any key appears more than once, a
+      value is invalid, or a ServiceMode binding is not self-consistent. *)
+
+  val param_key : svc_param -> int
+  (** [param_key p] is the key number of [p]. *)
+
+  val key_of_string : string -> int option
+  (** [key_of_string s] is the key number of the presentation name [s]. *)
+
+  val key_to_string : int -> string
+  (** [key_to_string k] is the presentation name of key [k]. *)
 
   val pp : t Fmt.t
-  (** [pp ppf t] pretty-prints the service binding and parameter
-        specification record. *)
+  (** [pp ppf t] pretty-prints the service binding. *)
 
   val compare : t -> t -> int
-  (** [compare a b] compares the service binding and parameter
-        specificationrecord [a] with [b]. *)
-end
-
-(** Https binding and parameter specification record
-
-    A Https record (HTTPS) specifies a target, its priority, weight and port. *)
-module Https : sig
-  type svc_param =
-    | Mandatory of int list
-    | Alpn of string list
-    | No_default_alpn
-    | Port of int
-    | Ipv4_hint of Ipaddr.V4.t list
-    | Ipv6_hint of Ipaddr.V6.t list
-    | Key of int * string
-
-  type t = {
-    svc_priority : int ;
-    target_name : [ `host ] Domain_name.t ;
-    svc_params : svc_param list ;
-  }
-  (** The type for a service binding and parameter specification record. *)
-
-  val pp : t Fmt.t
-  (** [pp ppf t] pretty-prints the service binding and parameter
-        specification record. *)
-
-  val compare : t -> t -> int
-  (** [compare a b] compares the service binding and parameter
-        specificationrecord [a] with [b]. *)
+  (** [compare a b] compares the service binding [a] with [b]. *)
 end
 
 (** DNS keys
@@ -942,7 +931,6 @@ module Rr_map : sig
   module Txt_set : Set.S with type elt = Txt.t
   module Srv_set : Set.S with type elt = Srv.t
   module Svcb_set : Set.S with type elt = Svcb.t
-  module Https_set : Set.S with type elt = Https.t
   module Dnskey_set : Set.S with type elt = Dnskey.t
   module Caa_set : Set.S with type elt = Caa.t
   module Tlsa_set : Set.S with type elt = Tlsa.t
@@ -972,7 +960,7 @@ module Rr_map : sig
     | Ptr : Ptr.t with_ttl rr
     | Srv : Srv_set.t with_ttl rr
     | Svcb : Svcb_set.t with_ttl rr
-    | Https : Https_set.t with_ttl rr
+    | Https : Svcb_set.t with_ttl rr
     | Dnskey : Dnskey_set.t with_ttl rr
     | Caa : Caa_set.t with_ttl rr
     | Tlsa : Tlsa_set.t with_ttl rr

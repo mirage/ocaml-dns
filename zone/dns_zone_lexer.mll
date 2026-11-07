@@ -76,20 +76,11 @@ let openpar = [' ''\t']* '(' ([' ''\t''\n'] | eol)*
 let closepar = (eol | [' ''\t''\n'])* ')' [' ''\t']*
 let typefoo = (['T''t']['Y''y']['P''p']['E''e'] number) as contents
 
-(* Rfc9460 Appendix A *)
-let svcb_non_special = '!' | ['#'-'\''] | ['*'-':'] | ['<'-'['] | [']'-'~']
-let svcb_non_digit = ['!'-'/'] | [':'-'~']
-let svcb_dec_octet = (('0' | '1') ['0'-'9'] ['0'-'9']) | ('2' ((['0'-'4'] ['0'-'9']) ('5' ['0'-'5'])))
-let svcb_escaped = '\\' (svcb_non_digit | svcb_dec_octet)
-let svcb_contigious = (svcb_non_special | svcb_escaped)+
-let svcb_quoted = '"' (svcb_contigious | (['\\']? ' ')) '"' 
-let svcb_char_string = svcb_contigious | svcb_quoted
-
-(* Rfc9460 2.1 *)
-let svcbkey = (['a'-'z']|['0'-'9']|'-')*
-let svcbval = svcb_char_string
-let svcbvalq = '"' svcbval '"'
-let svcbparam = (("no-default-alpn") | (svcbkey '=' (svcbval | svcbvalq))) as contents
+(* RFC 9460 section 2.1 and Appendix A *)
+let svcbkey = ['a'-'z''0'-'9''-']+
+let svcb_contiguous = ([^'\\'' ''\t''\n''"'';''('')'] | escape)+
+let svcb_quoted = '"' ([^'\\''"'] | escape)* '"'
+let svcbparam = ("no-default-alpn" | (svcbkey '=' (svcb_contiguous | svcb_quoted)?)) as contents
 
 rule token = parse
   eol           { state.lineno <- state.lineno + 1;

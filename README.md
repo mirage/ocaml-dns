@@ -76,6 +76,7 @@ This library is published under the 2 clause BSD license.
 * [RFC 9156](https://tools.ietf.org/html/rfc8914) DNS Query Name Minimisation to Improve Privacy
 * [RFC 9460](https://tools.ietf.org/html/rfc9460) Service Binding and Parameter Specification via the DNS (SVCB and HTTPS Resource Records)
 * [RFC 9539](https://tools.ietf.org/html/rfc9539) Unilateral Opportunistic Deployment of Encrypted Recursive‑to‑Authoritative DNS
+* [RFC 9848](https://tools.ietf.org/html/rfc9848) Bootstrapping TLS Encrypted ClientHello with DNS Service Bindings (the "ech" SvcParamKey)
 * [draft-ietf-dnsop-let-localhost-be-localhost-02](https://tools.ietf.org/html/draft-ietf-dnsop-let-localhost-be-localhost-02) Let 'localhost' be localhost.
 
 `*`: Please note that the RFCs marked with `*` are only partially implemented
