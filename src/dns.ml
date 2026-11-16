@@ -934,7 +934,11 @@ module Svcb = struct
               loop_svc_params off (Alpn alpns'::l)
             )
             | 2 -> ( (* no-default-alpn *)
-              loop_svc_params off (No_default_alpn::l)
+              (* its value MUST be empty (RFC 9460); the length (0) is on the wire *)
+              let param_length = String.get_uint16_be buf off in
+              if param_length <> 0 then
+                invalid_arg "no-default-alpn with a non-empty value";
+              loop_svc_params (off + 2) (No_default_alpn::l)
             )
             | 3 -> ( (* port *)
               let _param_length = String.get_uint16_be buf off in
@@ -1051,6 +1055,8 @@ module Svcb = struct
             )
             | No_default_alpn -> (
               Bytes.set_uint16_be buf off 2;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off 0;  (* empty value *)
               off + 2
             )
             | Port port -> (
@@ -1331,7 +1337,11 @@ module Https = struct
               loop_svc_params off (Alpn alpns'::l)
             )
             | 2 -> ( (* no-default-alpn *)
-              loop_svc_params off (No_default_alpn::l)
+              (* its value MUST be empty (RFC 9460); the length (0) is on the wire *)
+              let param_length = String.get_uint16_be buf off in
+              if param_length <> 0 then
+                invalid_arg "no-default-alpn with a non-empty value";
+              loop_svc_params (off + 2) (No_default_alpn::l)
             )
             | 3 -> ( (* port *)
               let _param_length = String.get_uint16_be buf off in
@@ -1448,6 +1458,8 @@ module Https = struct
             )
             | No_default_alpn -> (
               Bytes.set_uint16_be buf off 2;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off 0;  (* empty value *)
               off + 2
             )
             | Port port -> (

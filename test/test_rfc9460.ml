@@ -1378,8 +1378,54 @@ let text_port_param () =
   Alcotest.(check (result name_map_ok err)) "HTTPS text parses back"
     (Ok (Name_rr_map.singleton example Rr_map.Https httpss)) (Dns_zone.parse (text ^ "\n"))
 
+(* a reply for example.com HTTPS carrying one HTTPS record with the given
+   rdata, as on the wire *)
+let https_reply rdata =
+  let b = Buffer.create 64 in
+  let u16 n = Buffer.add_char b (Char.chr (n lsr 8)); Buffer.add_char b (Char.chr (n land 0xff)) in
+  u16 0x1234; u16 0x8180; u16 1; u16 1; u16 0; u16 0;
+  Buffer.add_string b "\007example\003com\000"; u16 65; u16 1;
+  u16 0xc00c; u16 65; u16 1; u16 0; u16 300; u16 (String.length rdata);
+  Buffer.add_string b rdata;
+  Buffer.contents b
+
+let decoded_https_params rdata =
+  match Packet.decode (https_reply rdata) with
+  | Ok { data = `Answer (answer, _) ; _ } ->
+    (match Name_rr_map.find (n_of_s "example.com") Rr_map.Https answer with
+     | Some (_, s) -> (Rr_map.Https_set.choose s).Https.svc_params
+     | None -> Alcotest.fail "no HTTPS record decoded")
+  | Ok _ -> Alcotest.fail "not an answer"
+  | Error e -> Alcotest.failf "decode error: %a" Packet.pp_err e
+
+(* no-default-alpn has an empty value, but its length (0) is on the wire *)
+let no_default_alpn_wire () =
+  let rdata =
+    "\x00\x01" ^ "\x00"                     (* priority 1, target "." *)
+    ^ "\x00\x01\x00\x03\x02h2"               (* alpn=h2 *)
+    ^ "\x00\x02\x00\x00"                     (* no-default-alpn *)
+    ^ "\x00\x03\x00\x02\x01\xbb"             (* port=443 *)
+  in
+  let expected = Https.[ Alpn [ "h2" ] ; No_default_alpn ; Port 443 ] in
+  Alcotest.(check bool) "decoded" true (decoded_https_params rdata = expected);
+  let https = Https.{ svc_priority = 1 ; target_name = Domain_name.(host_exn root) ;
+                      svc_params = expected } in
+  let example = n_of_s "example.com" in
+  let content = Name_rr_map.singleton example Rr_map.Https (300l, Rr_map.Https_set.singleton https) in
+  let packet = Packet.create (0x1234, Flags.empty) (Question.create example Https)
+      (`Answer (content, Name_rr_map.empty)) in
+  let encoded = fst (Packet.encode `Udp packet) in
+  if not (string_contains_substring encoded rdata) then
+    Alcotest.fail "no-default-alpn not encoded with its zero length";
+  (* a non-empty no-default-alpn value is rejected (RFC 9460) *)
+  let bad = "\x00\x01\x00\x00\x02\x00\x01\xff" in (* no-default-alpn, length 1 *)
+  match Packet.decode (https_reply bad) with
+  | Error _ -> ()
+  | Ok _ -> Alcotest.fail "no-default-alpn with a non-empty value should be rejected"
+
 let tests = [
   "encode port param wire format", `Quick, encode_port_param;
+  "no-default-alpn on the wire", `Quick, no_default_alpn_wire;
   "zone text of the port param", `Quick, text_port_param;
   "decoding keeps the order of params and values", `Quick, decode_keeps_param_order;
   "encode https port wire format", `Quick, encode_https_port;
