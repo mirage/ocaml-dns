@@ -752,9 +752,11 @@ module Svcb = struct
     let mandatory, non_mandatories =
     List.fold_left (fun (mandatory,non_mandatory) svc_p ->
         match svc_p with
-        | Mandatory mandatory_list -> (mandatory_list::mandatory,non_mandatory)
+        (* a record has at most one mandatory SvcParam (RFC 9460; the zone
+           parser rejects duplicates) -- keep the last and drop any others *)
+        | Mandatory mandatory_list -> (Some mandatory_list,non_mandatory)
         | _ ->           (mandatory,svc_p::non_mandatory)
-      ) ([],[]) t.svc_params
+      ) (None,[]) t.svc_params
     in
     let non_mandatories = List.sort (fun a b -> (priority a) - (priority b)) non_mandatories in
     mandatory, non_mandatories
@@ -821,7 +823,7 @@ module Svcb = struct
             | 0 ->
               (match svc_param_a, svc_param_b with
               | Mandatory mandatories_a, Mandatory mandatories_b -> (
-                if List.length mandatories_a <> List.length mandatories_b
+                if List.compare_lengths mandatories_a mandatories_b <> 0
                   then 1
                   else
                   List.fold_left (fun r mandatory_a ->
@@ -837,7 +839,7 @@ module Svcb = struct
                   ) 0 mandatories_a
               )
               | Alpn alpns_a, Alpn alpns_b -> (
-                if List.length alpns_a <> List.length alpns_b
+                if List.compare_lengths alpns_a alpns_b <> 0
                   then 1
                   else
                   List.fold_left (fun r alpn_a ->
@@ -855,7 +857,7 @@ module Svcb = struct
               | No_default_alpn, No_default_alpn -> 0
               | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
               | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
-                if List.length ipv4s_a <> List.length ipv4s_b
+                if List.compare_lengths ipv4s_a ipv4s_b <> 0
                   then 1
                   else
                   List.fold_left (fun r ipv4_a ->
@@ -871,7 +873,7 @@ module Svcb = struct
                   ) 0 ipv4s_a
               )
               | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
-                if List.length ipv6s_a <> List.length ipv6s_b
+                if List.compare_lengths ipv6s_a ipv6s_b <> 0
                   then 1
                   else
                   List.fold_left (fun r ipv6_a ->
@@ -999,8 +1001,8 @@ module Svcb = struct
     let mandatory, non_mandatory = separate_mandatory t in
     (* if there is a mandatory, do this first *)
     let off =
-      if List.length mandatory > 0 then (
-        let mandatory_list = List.hd mandatory in
+      match mandatory with
+      | Some mandatory_list -> (
         Bytes.set_uint16_be buf off 0;
         let off = off + 2 in
         Bytes.set_uint16_be buf off (2 * List.length mandatory_list);
@@ -1014,7 +1016,8 @@ module Svcb = struct
           | [] -> off
         in
         loop off mandatory_list
-      ) else off
+      )
+      | None -> off
     in
     let off =
       let rec loop off params =
@@ -1147,11 +1150,13 @@ module Https = struct
     let mandatory, non_mandatories =
     List.fold_left (fun (mandatory,non_mandatory) svc_p ->
         match svc_p with
+        (* a record has at most one mandatory SvcParam (RFC 9460; the zone
+           parser rejects duplicates) -- keep the last and drop any others *)
         | Mandatory mandatory_list ->
-          (mandatory_list::mandatory,non_mandatory)
+          (Some mandatory_list,non_mandatory)
         | _ ->
           (mandatory,svc_p::non_mandatory)
-      ) ([],[]) t.svc_params
+      ) (None,[]) t.svc_params
     in
     let non_mandatories = List.sort (fun a b -> (priority a) - (priority b)) non_mandatories in
     mandatory, non_mandatories
@@ -1218,7 +1223,7 @@ module Https = struct
             | 0 ->
               (match svc_param_a, svc_param_b with
               | Mandatory mandatories_a, Mandatory mandatories_b -> (
-                if List.length mandatories_a <> List.length mandatories_b
+                if List.compare_lengths mandatories_a mandatories_b <> 0
                   then 1
                   else
                   List.fold_left (fun r mandatory_a ->
@@ -1234,7 +1239,7 @@ module Https = struct
                   ) 0 mandatories_a
               )
               | Alpn alpns_a, Alpn alpns_b -> (
-                if List.length alpns_a <> List.length alpns_b
+                if List.compare_lengths alpns_a alpns_b <> 0
                   then 1
                   else
                   List.fold_left (fun r alpn_a ->
@@ -1252,7 +1257,7 @@ module Https = struct
               | No_default_alpn, No_default_alpn -> 0
               | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
               | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
-                if List.length ipv4s_a <> List.length ipv4s_b
+                if List.compare_lengths ipv4s_a ipv4s_b <> 0
                   then 1
                   else
                   List.fold_left (fun r ipv4_a ->
@@ -1268,7 +1273,7 @@ module Https = struct
                   ) 0 ipv4s_a
               )
               | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
-                if List.length ipv6s_a <> List.length ipv6s_b
+                if List.compare_lengths ipv6s_a ipv6s_b <> 0
                   then 1
                   else
                   List.fold_left (fun r ipv6_a ->
@@ -1396,8 +1401,8 @@ module Https = struct
     let mandatory, non_mandatory = separate_mandatory t in
     (* if there is a mandatory, do this first *)
     let off =
-      if List.length mandatory > 0 then (
-        let mandatory_list = List.hd mandatory in
+      match mandatory with
+      | Some mandatory_list -> (
         Bytes.set_uint16_be buf off 0;
         let off = off + 2 in
         Bytes.set_uint16_be buf off (2 * List.length mandatory_list);
@@ -1411,7 +1416,8 @@ module Https = struct
           | [] -> off
         in
         loop off mandatory_list
-      ) else off
+      )
+      | None -> off
     in
     let off =
       let rec loop off params =
@@ -5338,7 +5344,7 @@ module Packet = struct
 
     let equal (prereq, update) (prereq', update') =
       let eq_list f a b =
-        List.length a = List.length b &&
+        List.compare_lengths a b = 0 &&
         List.fold_left2 (fun acc a b -> acc && f a b) true a b
       in
       Domain_name.Map.equal (eq_list equal_prereq) prereq prereq' &&

@@ -129,7 +129,7 @@ let res =
         | Gmap.Order.Eq -> Dns_cache.compare_rank r r' = 0 && entry_eq t e e'
         | _ -> false
       in
-      List.length a = List.length a' &&
+      List.compare_lengths a a' = 0 &&
       List.for_all (fun e -> List.exists (eq e) a') a
   end in
   (module M: Alcotest.TESTABLE with type t = M.t)
