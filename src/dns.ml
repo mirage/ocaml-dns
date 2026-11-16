@@ -808,6 +808,7 @@ module Svcb = struct
               ) (true,"") ipv6s) in
               " ipv6hint="^ipv6s'
             )
+            | Key (5,v) -> " ech="^(Base64.encode_string v)
             | Key (key,v) -> " key"^(string_of_int key)^"="^v
 
           ) string) ) t.svc_params
@@ -960,10 +961,6 @@ module Svcb = struct
               let ipv4s', off = loop off param_length [] in
               loop_svc_params off (Ipv4_hint ipv4s'::l)
             )
-            | 5 -> ( (* ech *)
-              (* loop_svc_params off (Ech::l) *)
-              loop_svc_params off l
-            )
             | 6 -> ( (* ipv6hint *)
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
@@ -980,7 +977,7 @@ module Svcb = struct
               let ipv6s', off = loop off param_length [] in
               loop_svc_params off (Ipv6_hint ipv6s'::l)
             )
-            | _ -> ( (* decode as keyNNNNN *)
+            | _ -> ( (* decode as keyNNNNN, including ech (key 5) *)
             let key_length = String.get_uint16_be buf off in
             let off = off + 2 in
             let key_value = String.sub buf off key_length in
@@ -1211,6 +1208,7 @@ module Https = struct
               ) (true,"") ipv6s) in
               " ipv6hint="^ipv6s'
             )
+            | Key (5,v) -> " ech="^(Base64.encode_string v)
             | Key (key,v) -> " key"^(string_of_int key)^"="^v
 
           ) string) ) t.svc_params
@@ -1363,10 +1361,6 @@ module Https = struct
               let ipv4s', off = loop off param_length [] in
               loop_svc_params off (Ipv4_hint ipv4s'::l)
             )
-            | 5 -> ( (* ech *)
-              (* loop_svc_params off (Ech::l) *)
-              loop_svc_params off l
-            )
             | 6 -> ( (* ipv6hint *)
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
@@ -1383,7 +1377,7 @@ module Https = struct
               let ipv6s', off = loop off param_length [] in
               loop_svc_params off (Ipv6_hint ipv6s'::l)
             )
-            | _ -> ( (* decode as keyNNNNN *)
+            | _ -> ( (* decode as keyNNNNN, including ech (key 5) *)
             let key_length = String.get_uint16_be buf off in
             let off = off + 2 in
             let key_value = String.sub buf off key_length in
@@ -3979,6 +3973,9 @@ module Rr_map = struct
                         ) (0,"") ipv6_list in
                       p^"ipv6hint="^ipv6s
                   )
+                  | Key (5,v) ->
+                    (* ech (key 5) presentation is base64 of the value *)
+                    p^"ech="^(Base64.encode_string v)
                   | Key (k,v) ->
                     p^"key"^(string_of_int k)^"="^v
                 in
@@ -4039,6 +4036,9 @@ module Rr_map = struct
                         ) (0,"") ipv6_list in
                       p^"ipv6hint="^ipv6s
                   )
+                  | Key (5,v) ->
+                    (* ech (key 5) presentation is base64 of the value *)
+                    p^"ech="^(Base64.encode_string v)
                   | Key (k,v) ->
                     p^"key"^(string_of_int k)^"="^v
                 in

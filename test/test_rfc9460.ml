@@ -1423,8 +1423,40 @@ let no_default_alpn_wire () =
   | Error _ -> ()
   | Ok _ -> Alcotest.fail "no-default-alpn with a non-empty value should be rejected"
 
+(* ech (key 5) is kept as an opaque key=value param, the params after it
+   (here ipv6hint) are decoded, and it is encoded back unchanged *)
+let ech_wire () =
+  let ech = "\x00\x08\xfe\x0d\x00\x04abcd" in
+  let rdata =
+    "\x00\x01" ^ "\x00"                                   (* priority 1, target "." *)
+    ^ "\x00\x01\x00\x03\x02h2"                             (* alpn=h2 *)
+    ^ "\x00\x04\x00\x04\xc0\x00\x02\x01"                   (* ipv4hint=192.0.2.1 *)
+    ^ "\x00\x05\x00" ^ String.make 1 (Char.chr (String.length ech)) ^ ech  (* ech *)
+    ^ "\x00\x06\x00\x10\x20\x01\x0d\xb8" ^ String.make 11 '\x00' ^ "\x01"  (* ipv6hint=2001:db8::1 *)
+  in
+  let expected = Https.[ Alpn [ "h2" ] ;
+                         Ipv4_hint [ Ipaddr.V4.of_string_exn "192.0.2.1" ] ;
+                         Key (5, ech) ;
+                         Ipv6_hint [ Ipaddr.V6.of_string_exn "2001:db8::1" ] ] in
+  Alcotest.(check bool) "decoded" true (decoded_https_params rdata = expected);
+  let https = Https.{ svc_priority = 1 ; target_name = Domain_name.(host_exn root) ;
+                      svc_params = expected } in
+  let example = n_of_s "example.com" in
+  let content = Name_rr_map.singleton example Rr_map.Https (300l, Rr_map.Https_set.singleton https) in
+  let packet = Packet.create (0x1234, Flags.empty) (Question.create example Https)
+      (`Answer (content, Name_rr_map.empty)) in
+  if not (string_contains_substring (fst (Packet.encode `Udp packet)) rdata) then
+    Alcotest.fail "ech not encoded back unchanged";
+  (* ech prints as ech=<base64 of the value>, not key5=<raw> *)
+  let text = Rr_map.text example Rr_map.Https (300l, Rr_map.Https_set.singleton https) in
+  if not (string_contains_substring text "ech=AAj+DQAEYWJjZA==") then
+    Alcotest.failf "ech not printed as ech=<base64>: %S" text;
+  if string_contains_substring text "key5=" then
+    Alcotest.failf "ech still printed as key5=: %S" text
+
 let tests = [
   "encode port param wire format", `Quick, encode_port_param;
+  "ech on the wire", `Quick, ech_wire;
   "no-default-alpn on the wire", `Quick, no_default_alpn_wire;
   "zone text of the port param", `Quick, text_port_param;
   "decoding keeps the order of params and values", `Quick, decode_keeps_param_order;
