@@ -24,7 +24,7 @@ let max_rdata_length =
   *)
   64641
 
-let andThen v f = match v with 0 -> f | x -> x
+let andThen v f = match v with 0 -> f () | x -> x
 let opt_eq f a b = match a, b with
   | Some a, Some b -> f a b
   | None, None -> true
@@ -524,12 +524,12 @@ module Soa = struct
 
   let compare soa soa' =
     andThen (Int32.compare soa.serial soa'.serial)
-      (andThen (Domain_name.compare soa.nameserver soa'.nameserver)
-         (andThen (Domain_name.compare soa.hostmaster soa'.hostmaster)
-            (andThen (Int32.compare soa.refresh soa'.refresh)
-               (andThen (Int32.compare soa.retry soa'.retry)
-                  (andThen (Int32.compare soa.expiry soa'.expiry)
-                     (Int32.compare soa.minimum soa'.minimum))))))
+      (fun () -> andThen (Domain_name.compare soa.nameserver soa'.nameserver)
+         (fun () -> andThen (Domain_name.compare soa.hostmaster soa'.hostmaster)
+            (fun () -> andThen (Int32.compare soa.refresh soa'.refresh)
+               (fun () -> andThen (Int32.compare soa.retry soa'.retry)
+                  (fun () -> andThen (Int32.compare soa.expiry soa'.expiry)
+                     (fun () -> Int32.compare soa.minimum soa'.minimum))))))
 
   let newer ~old soa = Int32.sub soa.serial old.serial > 0l
 
@@ -590,7 +590,7 @@ module Mx = struct
 
   let compare mx mx' =
     andThen (Int.compare mx.preference mx'.preference)
-      (Domain_name.compare mx.mail_exchange mx'.mail_exchange)
+      (fun () -> Domain_name.compare mx.mail_exchange mx'.mail_exchange)
 
   let decode_exn names buf ~off ~len:_ =
     let preference = String.get_uint16_be buf off in
@@ -694,9 +694,9 @@ module Srv = struct
 
   let compare a b =
     andThen (Int.compare a.priority b.priority)
-      (andThen (Int.compare a.weight b.weight)
-         (andThen (Int.compare a.port b.port)
-            (Domain_name.compare a.target b.target)))
+      (fun () -> andThen (Int.compare a.weight b.weight)
+         (fun () -> andThen (Int.compare a.port b.port)
+            (fun () -> Domain_name.compare a.target b.target)))
 
   let decode_exn names buf ~off ~len:_ =
     let priority = String.get_int16_be buf off
@@ -816,8 +816,8 @@ module Svcb = struct
 
   let compare a b =
     andThen (Int.compare a.svc_priority b.svc_priority)
-      (andThen (Domain_name.compare a.target_name b.target_name)
-        (List.fold_left2
+      (fun () -> andThen (Domain_name.compare a.target_name b.target_name)
+        (fun () -> List.fold_left2
           (fun r svc_param_a svc_param_b ->
             match r with
             | 0 ->
@@ -1216,8 +1216,8 @@ module Https = struct
 
   let compare a b =
     andThen (Int.compare a.svc_priority b.svc_priority)
-      (andThen (Domain_name.compare a.target_name b.target_name)
-        (List.fold_left2
+      (fun () -> andThen (Domain_name.compare a.target_name b.target_name)
+        (fun () -> List.fold_left2
           (fun r svc_param_a svc_param_b ->
             match r with
             | 0 ->
@@ -1633,8 +1633,8 @@ module Dnskey = struct
 
   let compare a b =
     andThen (F.compare a.flags b.flags)
-      (andThen (compare_algorithm a.algorithm b.algorithm)
-         (String.compare a.key b.key))
+      (fun () -> andThen (compare_algorithm a.algorithm b.algorithm)
+         (fun () -> String.compare a.key b.key))
 
   let decode_exn names buf ~off ~len =
     let flags = String.get_uint16_be buf off
@@ -1743,14 +1743,14 @@ module Rrsig = struct
 
   let compare a b =
     andThen (Int.compare a.type_covered b.type_covered)
-      (andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
-         (andThen (Int.compare a.label_count b.label_count)
-            (andThen (Int32.compare a.original_ttl b.original_ttl)
-               (andThen (Ptime.compare a.signature_expiration b.signature_expiration)
-                  (andThen (Ptime.compare a.signature_inception b.signature_inception)
-                     (andThen (Int.compare a.key_tag b.key_tag)
-                        (andThen (Domain_name.compare a.signer_name b.signer_name)
-                           (String.compare a.signature b.signature))))))))
+      (fun () -> andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
+         (fun () -> andThen (Int.compare a.label_count b.label_count)
+            (fun () -> andThen (Int32.compare a.original_ttl b.original_ttl)
+               (fun () -> andThen (Ptime.compare a.signature_expiration b.signature_expiration)
+                  (fun () -> andThen (Ptime.compare a.signature_inception b.signature_inception)
+                     (fun () -> andThen (Int.compare a.key_tag b.key_tag)
+                        (fun () -> andThen (Domain_name.compare a.signer_name b.signer_name)
+                           (fun () -> String.compare a.signature b.signature))))))))
 
   let decode_exn names buf ~off ~len =
     let type_covered = String.get_uint16_be buf off
@@ -1871,9 +1871,9 @@ module Ds = struct
 
   let compare a b =
     andThen (Int.compare a.key_tag b.key_tag)
-      (andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
-         (andThen (compare_digest_type a.digest_type b.digest_type)
-            (String.compare a.digest b.digest)))
+      (fun () -> andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
+         (fun () -> andThen (compare_digest_type a.digest_type b.digest_type)
+            (fun () -> String.compare a.digest b.digest)))
 
   let decode_exn names buf ~off ~len =
     let key_tag = String.get_uint16_be buf off
@@ -2007,7 +2007,7 @@ module Nsec = struct
 
   let compare a b =
     andThen (Domain_name.compare a.next_domain b.next_domain)
-      (Bit_map.compare a.types b.types)
+      (fun () -> Bit_map.compare a.types b.types)
 
   let decode_exn names buf ~off ~len =
     let* next_domain, names, off' = Name.decode names buf ~off in
@@ -2070,10 +2070,10 @@ module Nsec3 = struct
 
   let compare a b =
     andThen (compare_flags a.flags b.flags)
-      (andThen (Int.compare a.iterations b.iterations)
-         (andThen (String.compare a.salt b.salt)
-            (andThen (String.compare a.next_owner_hashed b.next_owner_hashed)
-               (Bit_map.compare a.types b.types))))
+      (fun () -> andThen (Int.compare a.iterations b.iterations)
+         (fun () -> andThen (String.compare a.salt b.salt)
+            (fun () -> andThen (String.compare a.next_owner_hashed b.next_owner_hashed)
+               (fun () -> Bit_map.compare a.types b.types))))
 
   let decode_exn names buf ~off ~len =
     let hash_algo = String.get_uint8 buf off in
@@ -2252,14 +2252,12 @@ module Loc = struct
   let pp ppf loc = Fmt.pf ppf "LOC %s" (to_string loc)
 
   let compare a b =
-    List.fold_right andThen [
-      Int32.compare a.latitude b.latitude ;
-      Int32.compare a.longitude b.longitude ;
-      Int32.compare a.altitude b.altitude ;
-      Int.compare a.size b.size ;
-      Int.compare a.horiz_pre b.horiz_pre ;
-      Int.compare a.vert_pre b.vert_pre ;
-    ] 0
+    andThen (Int32.compare a.latitude b.latitude) (fun () ->
+    andThen (Int32.compare a.longitude b.longitude) (fun () ->
+    andThen (Int32.compare a.altitude b.altitude) (fun () ->
+    andThen (Int.compare a.size b.size) (fun () ->
+    andThen (Int.compare a.horiz_pre b.horiz_pre) (fun () ->
+    Int.compare a.vert_pre b.vert_pre)))))
 
   let decode_exn names buf ~off ~len =
     let size = String.get_uint8 buf (off + 1) in
@@ -2315,8 +2313,8 @@ module Caa = struct
 
   let compare a b =
     andThen (Bool.compare a.critical b.critical)
-      (andThen (String.compare a.tag b.tag)
-         (List.fold_left2
+      (fun () -> andThen (String.compare a.tag b.tag)
+         (fun () -> List.fold_left2
             (fun r a b -> match r with 0 -> String.compare a b | x -> x)
             0 a.value b.value))
 
@@ -2464,9 +2462,9 @@ module Tlsa = struct
 
   let compare t1 t2 =
     andThen (compare_cert_usage t1.cert_usage t2.cert_usage)
-      (andThen (compare_selector t1.selector t2.selector)
-         (andThen (compare_matching_type t1.matching_type t2.matching_type)
-            (String.compare t1.data t2.data)))
+      (fun () -> andThen (compare_selector t1.selector t2.selector)
+         (fun () -> andThen (compare_matching_type t1.matching_type t2.matching_type)
+            (fun () -> String.compare t1.data t2.data)))
 
   let decode_exn names buf ~off ~len =
     let usage, selector, matching_type =
@@ -2575,8 +2573,8 @@ module Sshfp = struct
 
   let compare s1 s2 =
     andThen (compare_algorithm s1.algorithm s2.algorithm)
-      (andThen (compare_typ s1.typ s2.typ)
-         (String.compare s1.fingerprint s2.fingerprint))
+      (fun () -> andThen (compare_typ s1.typ s2.typ)
+         (fun () -> String.compare s1.fingerprint s2.fingerprint))
 
   let decode_exn names buf ~off ~len =
     let algo, typ = String.get_uint8 buf off, String.get_uint8 buf (succ off) in
@@ -3010,7 +3008,7 @@ module Extended_error = struct
 
   let compare (t, d) (t', d') =
     andThen (Int.compare (to_int t) (to_int t'))
-      (match d, d' with
+      (fun () -> match d, d' with
        | None, None -> 0
        | None, Some _ -> -1
        | Some _, None -> 1
@@ -3068,7 +3066,7 @@ module Edns = struct
     | Extended_error e, Extended_error e' -> Extended_error.compare e e'
     | Extended_error _, _ -> 1 | _, Extended_error _ -> -1
     | Extension (t, v), Extension (t', v') ->
-      andThen (Int.compare t t') (String.compare v v')
+      andThen (Int.compare t t') (fun () -> String.compare v v')
 
   (* tag is 16 bit, we don't support many *)
   let extension_to_int = function
@@ -3168,10 +3166,10 @@ module Edns = struct
 
   let compare a b =
     andThen (Int.compare a.extended_rcode b.extended_rcode)
-      (andThen (Int.compare a.version b.version)
-         (andThen (Bool.compare a.dnssec_ok b.dnssec_ok)
-            (andThen (Int.compare a.payload_size b.payload_size)
-               (List.fold_left2
+      (fun () -> andThen (Int.compare a.version b.version)
+         (fun () -> andThen (Bool.compare a.dnssec_ok b.dnssec_ok)
+            (fun () -> andThen (Int.compare a.payload_size b.payload_size)
+               (fun () -> List.fold_left2
                   (fun r a b -> if r = 0 then compare_extension a b else r)
                   (Int.compare (List.length a.extensions) (List.length b.extensions))
                   a.extensions b.extensions))))
@@ -4565,7 +4563,7 @@ module Packet = struct
     let compare_id (id, _) (id', _) = Int.compare id id'
 
     let compare (id, flags) (id', flags') =
-      andThen (Int.compare id id') (Flags.compare flags flags')
+      andThen (Int.compare id id') (fun () -> Flags.compare flags flags')
 
     let pp ppf ((id, flags), query, operation, rcode) =
       Fmt.pf ppf "%04X (%s) operation %a rcode @[%a@] flags: @[%a@]"
@@ -4744,7 +4742,7 @@ module Packet = struct
 
     let compare (name, typ) (name', typ') =
       andThen (Domain_name.compare name name')
-        (match typ with
+        (fun () -> match typ with
          | #qtype as a ->
            (match typ' with
             | #qtype as b -> compare_qtype a b
