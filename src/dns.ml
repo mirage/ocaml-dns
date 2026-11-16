@@ -25,6 +25,20 @@ let max_rdata_length =
   64641
 
 let andThen v f = match v with 0 -> f () | x -> x
+
+(* A total order on two lists for use in [compare]: shorter lists compare
+   smaller, equal-length lists element-wise, stopping at the first element
+   that differs. ([List.fold_left2], besides raising on lists of different
+   lengths, does not stop early.) *)
+let compare_lists cmp a b =
+  match List.compare_lengths a b with
+  | 0 ->
+    let rec go a b = match a, b with
+      | x :: a, y :: b -> (match cmp x y with 0 -> go a b | n -> n)
+      | _ -> 0
+    in
+    go a b
+  | n -> n
 let opt_eq f a b = match a, b with
   | Some a, Some b -> f a b
   | None, None -> true
@@ -817,11 +831,9 @@ module Svcb = struct
   let compare a b =
     andThen (Int.compare a.svc_priority b.svc_priority)
       (fun () -> andThen (Domain_name.compare a.target_name b.target_name)
-        (fun () -> List.fold_left2
-          (fun r svc_param_a svc_param_b ->
-            match r with
-            | 0 ->
-              (match svc_param_a, svc_param_b with
+        (fun () -> compare_lists
+          (fun svc_param_a svc_param_b ->
+              match svc_param_a, svc_param_b with
               | Mandatory mandatories_a, Mandatory mandatories_b -> (
                 if List.compare_lengths mandatories_a mandatories_b <> 0
                   then 1
@@ -889,9 +901,8 @@ module Svcb = struct
                   ) 0 ipv6s_a
               )
               | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
-              | _, _ -> 1)
-            | x -> x
-          ) 0 a.svc_params b.svc_params)
+              | _, _ -> 1
+          ) a.svc_params b.svc_params)
       )
 
   let decode names buf ~off ~len =
@@ -1217,11 +1228,9 @@ module Https = struct
   let compare a b =
     andThen (Int.compare a.svc_priority b.svc_priority)
       (fun () -> andThen (Domain_name.compare a.target_name b.target_name)
-        (fun () -> List.fold_left2
-          (fun r svc_param_a svc_param_b ->
-            match r with
-            | 0 ->
-              (match svc_param_a, svc_param_b with
+        (fun () -> compare_lists
+          (fun svc_param_a svc_param_b ->
+              match svc_param_a, svc_param_b with
               | Mandatory mandatories_a, Mandatory mandatories_b -> (
                 if List.compare_lengths mandatories_a mandatories_b <> 0
                   then 1
@@ -1289,9 +1298,8 @@ module Https = struct
                   ) 0 ipv6s_a
               )
               | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
-              | _, _ -> 1)
-            | x -> x
-          ) 0 a.svc_params b.svc_params)
+              | _, _ -> 1
+          ) a.svc_params b.svc_params)
       )
 
   let decode names buf ~off ~len =
@@ -2314,9 +2322,7 @@ module Caa = struct
   let compare a b =
     andThen (Bool.compare a.critical b.critical)
       (fun () -> andThen (String.compare a.tag b.tag)
-         (fun () -> List.fold_left2
-            (fun r a b -> match r with 0 -> String.compare a b | x -> x)
-            0 a.value b.value))
+         (fun () -> compare_lists String.compare a.value b.value))
 
   let decode_exn names buf ~off ~len =
     let critical = String.get_uint8 buf off = 0x80
@@ -3169,10 +3175,7 @@ module Edns = struct
       (fun () -> andThen (Int.compare a.version b.version)
          (fun () -> andThen (Bool.compare a.dnssec_ok b.dnssec_ok)
             (fun () -> andThen (Int.compare a.payload_size b.payload_size)
-               (fun () -> List.fold_left2
-                  (fun r a b -> if r = 0 then compare_extension a b else r)
-                  (Int.compare (List.length a.extensions) (List.length b.extensions))
-                  a.extensions b.extensions))))
+               (fun () -> compare_lists compare_extension a.extensions b.extensions))))
 
   let pp ppf opt =
     Fmt.(pf ppf "EDNS rcode %u version %u dnssec_ok %b payload_size %u extensions %a"
