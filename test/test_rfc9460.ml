@@ -1311,8 +1311,49 @@ let encode_multiple_params_with_port () =
   | Ok _ -> () (* Success - parameters decoded correctly *)
   | Error _ -> Alcotest.fail "Failed to decode packet with multiple params"
 
+(* decoding keeps the order of the SvcParams (ascending key order on the
+   wire) and of the values in each of them (alpn ids are in preference
+   order) *)
+let decode_keeps_param_order () =
+  let example = n_of_s "example.com" in
+  let foo_example = Domain_name.host_exn (n_of_s "foo.example.com") in
+  let v4 = List.map Ipaddr.V4.of_string_exn [ "192.0.2.1" ; "192.0.2.2" ] in
+  let v6 = List.map Ipaddr.V6.of_string_exn [ "2001:db8::1" ; "2001:db8::2" ] in
+  let roundtrip (type a) (k : a Rr_map.key) (rrs : a) =
+    let content = Domain_name.Map.singleton example (Rr_map.singleton k rrs) in
+    let header = 0x1234, Flags.empty in
+    let question = Question.create example k in
+    let packet = Packet.create header question (`Answer (content, Name_rr_map.empty)) in
+    match Packet.decode (fst (Packet.encode `Udp packet)) with
+    | Ok { data = `Answer (answer, _) ; _ } ->
+      (match Name_rr_map.find example k answer with
+       | Some rrs -> rrs
+       | None -> Alcotest.fail "record missing after decoding")
+    | Ok _ -> Alcotest.fail "decoded packet is not an answer"
+    | Error e -> Alcotest.failf "decode failed: %a" Packet.pp_err e
+  in
+  let svcb = Svcb.{
+      svc_priority = 1 ; target_name = foo_example ;
+      svc_params = [ Mandatory [ 1 ; 3 ] ; Alpn [ "h2" ; "h3" ; "http/1.1" ] ;
+                     Port 8443 ; Ipv4_hint v4 ; Ipv6_hint v6 ] } in
+  (match roundtrip Rr_map.Svcb (3600l, Rr_map.Svcb_set.singleton svcb) with
+   | _, s when Rr_map.Svcb_set.cardinal s = 1 ->
+     let svcb' = Rr_map.Svcb_set.choose s in
+     Alcotest.(check bool) "SVCB params in order" true (svcb'.svc_params = svcb.svc_params)
+   | _ -> Alcotest.fail "expected one SVCB record");
+  let https = Https.{
+      svc_priority = 1 ; target_name = foo_example ;
+      svc_params = [ Mandatory [ 1 ; 3 ] ; Alpn [ "h2" ; "h3" ; "http/1.1" ] ;
+                     Port 8443 ; Ipv4_hint v4 ; Ipv6_hint v6 ] } in
+  match roundtrip Rr_map.Https (3600l, Rr_map.Https_set.singleton https) with
+  | _, s when Rr_map.Https_set.cardinal s = 1 ->
+    let https' = Rr_map.Https_set.choose s in
+    Alcotest.(check bool) "HTTPS params in order" true (https'.svc_params = https.svc_params)
+  | _ -> Alcotest.fail "expected one HTTPS record"
+
 let tests = [
   "encode port param wire format", `Quick, encode_port_param;
+  "decoding keeps the order of params and values", `Quick, decode_keeps_param_order;
   "encode https port wire format", `Quick, encode_https_port;
   "encode multiple params with port", `Quick, encode_multiple_params_with_port;
 ]
