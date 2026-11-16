@@ -1351,8 +1351,36 @@ let decode_keeps_param_order () =
     Alcotest.(check bool) "HTTPS params in order" true (https'.svc_params = https.svc_params)
   | _ -> Alcotest.fail "expected one HTTPS record"
 
+(* the zone-file text of a record with a port param is "port=N", and
+   parses back to the same record *)
+let text_port_param () =
+  let example = n_of_s "example.com" in
+  let foo_example = Domain_name.host_exn (n_of_s "foo.example.com") in
+  let check_text name text =
+    if not (string_contains_substring text "port=8443") then
+      Alcotest.failf "%s: no port=8443 in %S" name text;
+    match Dns_zone.parse (text ^ "\n") with
+    | Ok _ -> ()
+    | Error (`Msg m) -> Alcotest.failf "%s: %S does not parse: %s" name text m
+  in
+  let svcb = Svcb.{ svc_priority = 1 ; target_name = foo_example ;
+                    svc_params = [ Alpn [ "h2" ] ; Port 8443 ] } in
+  let svcbs = 3600l, Rr_map.Svcb_set.singleton svcb in
+  let text = Rr_map.text example Rr_map.Svcb svcbs in
+  check_text "SVCB" text;
+  Alcotest.(check (result name_map_ok err)) "SVCB text parses back"
+    (Ok (Name_rr_map.singleton example Rr_map.Svcb svcbs)) (Dns_zone.parse (text ^ "\n"));
+  let https = Https.{ svc_priority = 1 ; target_name = foo_example ;
+                      svc_params = [ Alpn [ "h2" ] ; Port 8443 ] } in
+  let httpss = 3600l, Rr_map.Https_set.singleton https in
+  let text = Rr_map.text example Rr_map.Https httpss in
+  check_text "HTTPS" text;
+  Alcotest.(check (result name_map_ok err)) "HTTPS text parses back"
+    (Ok (Name_rr_map.singleton example Rr_map.Https httpss)) (Dns_zone.parse (text ^ "\n"))
+
 let tests = [
   "encode port param wire format", `Quick, encode_port_param;
+  "zone text of the port param", `Quick, text_port_param;
   "decoding keeps the order of params and values", `Quick, decode_keeps_param_order;
   "encode https port wire format", `Quick, encode_https_port;
   "encode multiple params with port", `Quick, encode_multiple_params_with_port;

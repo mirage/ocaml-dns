@@ -3950,7 +3950,7 @@ module Rr_map = struct
                   | No_default_alpn ->
                     p^"no-default-alpn"
                   | Port port ->
-                    p^"key"^(string_of_int port)
+                    p^"port="^(string_of_int port)
                   | Ipv4_hint ipv4_list -> (
                     let (_,ipv4s) =
                       List.fold_left (fun (i',a') ipv4 ->
@@ -4010,7 +4010,7 @@ module Rr_map = struct
                   | No_default_alpn ->
                     p^"no-default-alpn"
                   | Port port ->
-                    p^"key"^(string_of_int port)
+                    p^"port="^(string_of_int port)
                   | Ipv4_hint ipv4_list -> (
                     let (_,ipv4s) =
                       List.fold_left (fun (i',a') ipv4 ->
