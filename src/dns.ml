@@ -942,7 +942,9 @@ module Svcb = struct
               loop_svc_params (off + 2) (No_default_alpn::l)
             )
             | 3 -> ( (* port *)
-              let _param_length = String.get_uint16_be buf off in
+              (* the value is exactly a 2-byte port (RFC 9460 7.2) *)
+              let param_length = String.get_uint16_be buf off in
+              if param_length <> 2 then invalid_arg "port value is not 2 bytes";
               let off = off + 2 in
               let port = String.get_uint16_be buf off in
               let off = off + 2 in
@@ -1342,7 +1344,9 @@ module Https = struct
               loop_svc_params (off + 2) (No_default_alpn::l)
             )
             | 3 -> ( (* port *)
-              let _param_length = String.get_uint16_be buf off in
+              (* the value is exactly a 2-byte port (RFC 9460 7.2) *)
+              let param_length = String.get_uint16_be buf off in
+              if param_length <> 2 then invalid_arg "port value is not 2 bytes";
               let off = off + 2 in
               let port = String.get_uint16_be buf off in
               let off = off + 2 in

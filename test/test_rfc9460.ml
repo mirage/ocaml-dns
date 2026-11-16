@@ -1454,6 +1454,17 @@ let ech_wire () =
   if string_contains_substring text "key5=" then
     Alcotest.failf "ech still printed as key5=: %S" text
 
+(* a port SvcParam value is exactly 2 bytes (RFC 9460 7.2) *)
+let decode_port_bad_length () =
+  (match decoded_https_params "\x00\x01\x00\x00\x03\x00\x02\x01\xbb" with
+   | [ Https.Port 443 ] -> ()
+   | _ -> Alcotest.fail "valid port did not decode");
+  (* length field 0 but two trailing bytes: the old decoder read them anyway *)
+  let bad = "\x00\x01\x00\x00\x03\x00\x00\x01\xbb" in
+  match Packet.decode (https_reply bad) with
+  | Error _ -> ()
+  | Ok _ -> Alcotest.fail "port with a value that is not 2 bytes should be rejected"
+
 let tests = [
   "encode port param wire format", `Quick, encode_port_param;
   "ech on the wire", `Quick, ech_wire;
@@ -1462,6 +1473,7 @@ let tests = [
   "decoding keeps the order of params and values", `Quick, decode_keeps_param_order;
   "encode https port wire format", `Quick, encode_https_port;
   "encode multiple params with port", `Quick, encode_multiple_params_with_port;
+  "decode port with a bad length", `Quick, decode_port_bad_length;
 ]
 
 end
