@@ -169,16 +169,14 @@ generic_type s generic_rdata {
         let target_name = $5 in
         let svc_params =
           List.fold_left (fun acc s ->
-            let tokens = String.split_on_char '=' s in
-            if List.length tokens = 1 then (
-              let key = List.nth tokens 0 in
+            match String.split_on_char '=' s with
+            | [ key ] -> (
               match key with
               | "no-default-alpn" -> Svcb.No_default_alpn::acc
               | "ech" -> parse_error "SVCB 'ech' parameter currently reserved"
               | _ -> parse_error ("Unknown SVCB parameter: "^key)
-            ) else if List.length tokens = 2 then (
-              let key = List.nth tokens 0 in
-              let value = List.nth tokens 1 in
+            )
+            | [ key ; value ] -> (
               match key with
               | "mandatory" -> (
                 let values = String.split_on_char ',' value in
@@ -243,7 +241,8 @@ generic_type s generic_rdata {
                   ) else Key (key_num,value)::acc
                 ) else parse_error ("Unknown mandatory parameter: "^key)
               )
-            ) else parse_error "Cannot have more than one '=' in a SVCB param field"
+            )
+            | _ -> parse_error "Cannot have more than one '=' in a SVCB param field"
           ) [] $7
         in
         let mandatory_opt,svc_params =
@@ -293,7 +292,7 @@ generic_type s generic_rdata {
 
         (* RFC 9460 validations *)
         (* AliasMode (priority 0) MUST NOT have SvcParams *)
-        if svc_priority = 0 && List.length svc_params > 0 then
+        if svc_priority = 0 && svc_params <> [] then
           parse_error "SVCB AliasMode records MUST NOT have SvcParams";
 
         (* AliasMode (priority 0) target MUST NOT be "." *)
@@ -328,16 +327,14 @@ generic_type s generic_rdata {
           let target_name = $5 in
           let svc_params =
             List.fold_left (fun acc s ->
-              let tokens = String.split_on_char '=' s in
-              if List.length tokens = 1 then (
-                let key = List.nth tokens 0 in
+              match String.split_on_char '=' s with
+              | [ key ] -> (
                 match key with
                 | "no-default-alpn" -> Https.No_default_alpn::acc
                 | "ech" -> parse_error "HTTPS 'ech' parameter currently reserved"
                 | _ -> parse_error ("Unknown HTTPS parameter: "^key)
-              ) else if List.length tokens = 2 then (
-                let key = List.nth tokens 0 in
-                let value = List.nth tokens 1 in
+              )
+              | [ key ; value ] -> (
                 match key with
                 | "mandatory" -> (
                   let values = String.split_on_char ',' value in
@@ -402,7 +399,8 @@ generic_type s generic_rdata {
                     ) else Key (key_num,value)::acc
                   ) else parse_error ("Unknown mandatory paramter: "^key)
                 )
-              ) else parse_error "Cannot have more than one '=' in a HTTPS param field"
+              )
+              | _ -> parse_error "Cannot have more than one '=' in a HTTPS param field"
             ) [] $7
           in
           let mandatory_opt,svc_params =
@@ -452,7 +450,7 @@ generic_type s generic_rdata {
 
           (* RFC 9460 validations *)
           (* AliasMode (priority 0) MUST NOT have SvcParams *)
-          if svc_priority = 0 && List.length svc_params > 0 then
+          if svc_priority = 0 && svc_params <> [] then
             parse_error "HTTPS AliasMode records MUST NOT have SvcParams";
 
           (* AliasMode (priority 0) target MUST NOT be "." *)

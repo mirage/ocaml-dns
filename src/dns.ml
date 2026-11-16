@@ -24,7 +24,21 @@ let max_rdata_length =
   *)
   64641
 
-let andThen v f = match v with 0 -> f | x -> x
+let andThen v f = match v with 0 -> f () | x -> x
+
+(* A total order on two lists for use in [compare]: shorter lists compare
+   smaller, equal-length lists element-wise, stopping at the first element
+   that differs. ([List.fold_left2], besides raising on lists of different
+   lengths, does not stop early.) *)
+let compare_lists cmp a b =
+  match List.compare_lengths a b with
+  | 0 ->
+    let rec go a b = match a, b with
+      | x :: a, y :: b -> (match cmp x y with 0 -> go a b | n -> n)
+      | _ -> 0
+    in
+    go a b
+  | n -> n
 let opt_eq f a b = match a, b with
   | Some a, Some b -> f a b
   | None, None -> true
@@ -524,12 +538,12 @@ module Soa = struct
 
   let compare soa soa' =
     andThen (Int32.compare soa.serial soa'.serial)
-      (andThen (Domain_name.compare soa.nameserver soa'.nameserver)
-         (andThen (Domain_name.compare soa.hostmaster soa'.hostmaster)
-            (andThen (Int32.compare soa.refresh soa'.refresh)
-               (andThen (Int32.compare soa.retry soa'.retry)
-                  (andThen (Int32.compare soa.expiry soa'.expiry)
-                     (Int32.compare soa.minimum soa'.minimum))))))
+      (fun () -> andThen (Domain_name.compare soa.nameserver soa'.nameserver)
+         (fun () -> andThen (Domain_name.compare soa.hostmaster soa'.hostmaster)
+            (fun () -> andThen (Int32.compare soa.refresh soa'.refresh)
+               (fun () -> andThen (Int32.compare soa.retry soa'.retry)
+                  (fun () -> andThen (Int32.compare soa.expiry soa'.expiry)
+                     (fun () -> Int32.compare soa.minimum soa'.minimum))))))
 
   let newer ~old soa = Int32.sub soa.serial old.serial > 0l
 
@@ -590,7 +604,7 @@ module Mx = struct
 
   let compare mx mx' =
     andThen (Int.compare mx.preference mx'.preference)
-      (Domain_name.compare mx.mail_exchange mx'.mail_exchange)
+      (fun () -> Domain_name.compare mx.mail_exchange mx'.mail_exchange)
 
   let decode_exn names buf ~off ~len:_ =
     let preference = String.get_uint16_be buf off in
@@ -694,9 +708,9 @@ module Srv = struct
 
   let compare a b =
     andThen (Int.compare a.priority b.priority)
-      (andThen (Int.compare a.weight b.weight)
-         (andThen (Int.compare a.port b.port)
-            (Domain_name.compare a.target b.target)))
+      (fun () -> andThen (Int.compare a.weight b.weight)
+         (fun () -> andThen (Int.compare a.port b.port)
+            (fun () -> Domain_name.compare a.target b.target)))
 
   let decode_exn names buf ~off ~len:_ =
     let priority = String.get_int16_be buf off
@@ -752,9 +766,11 @@ module Svcb = struct
     let mandatory, non_mandatories =
     List.fold_left (fun (mandatory,non_mandatory) svc_p ->
         match svc_p with
-        | Mandatory mandatory_list -> (mandatory_list::mandatory,non_mandatory)
+        (* a record has at most one mandatory SvcParam (RFC 9460; the zone
+           parser rejects duplicates) -- keep the last and drop any others *)
+        | Mandatory mandatory_list -> (Some mandatory_list,non_mandatory)
         | _ ->           (mandatory,svc_p::non_mandatory)
-      ) ([],[]) t.svc_params
+      ) (None,[]) t.svc_params
     in
     let non_mandatories = List.sort (fun a b -> (priority a) - (priority b)) non_mandatories in
     mandatory, non_mandatories
@@ -814,14 +830,12 @@ module Svcb = struct
 
   let compare a b =
     andThen (Int.compare a.svc_priority b.svc_priority)
-      (andThen (Domain_name.compare a.target_name b.target_name)
-        (List.fold_left2
-          (fun r svc_param_a svc_param_b ->
-            match r with
-            | 0 ->
-              (match svc_param_a, svc_param_b with
+      (fun () -> andThen (Domain_name.compare a.target_name b.target_name)
+        (fun () -> compare_lists
+          (fun svc_param_a svc_param_b ->
+              match svc_param_a, svc_param_b with
               | Mandatory mandatories_a, Mandatory mandatories_b -> (
-                if List.length mandatories_a <> List.length mandatories_b
+                if List.compare_lengths mandatories_a mandatories_b <> 0
                   then 1
                   else
                   List.fold_left (fun r mandatory_a ->
@@ -837,7 +851,7 @@ module Svcb = struct
                   ) 0 mandatories_a
               )
               | Alpn alpns_a, Alpn alpns_b -> (
-                if List.length alpns_a <> List.length alpns_b
+                if List.compare_lengths alpns_a alpns_b <> 0
                   then 1
                   else
                   List.fold_left (fun r alpn_a ->
@@ -855,7 +869,7 @@ module Svcb = struct
               | No_default_alpn, No_default_alpn -> 0
               | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
               | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
-                if List.length ipv4s_a <> List.length ipv4s_b
+                if List.compare_lengths ipv4s_a ipv4s_b <> 0
                   then 1
                   else
                   List.fold_left (fun r ipv4_a ->
@@ -871,7 +885,7 @@ module Svcb = struct
                   ) 0 ipv4s_a
               )
               | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
-                if List.length ipv6s_a <> List.length ipv6s_b
+                if List.compare_lengths ipv6s_a ipv6s_b <> 0
                   then 1
                   else
                   List.fold_left (fun r ipv6_a ->
@@ -887,9 +901,8 @@ module Svcb = struct
                   ) 0 ipv6s_a
               )
               | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
-              | _, _ -> 1)
-            | x -> x
-          ) 0 a.svc_params b.svc_params)
+              | _, _ -> 1
+          ) a.svc_params b.svc_params)
       )
 
   let decode names buf ~off ~len =
@@ -999,8 +1012,8 @@ module Svcb = struct
     let mandatory, non_mandatory = separate_mandatory t in
     (* if there is a mandatory, do this first *)
     let off =
-      if List.length mandatory > 0 then (
-        let mandatory_list = List.hd mandatory in
+      match mandatory with
+      | Some mandatory_list -> (
         Bytes.set_uint16_be buf off 0;
         let off = off + 2 in
         Bytes.set_uint16_be buf off (2 * List.length mandatory_list);
@@ -1014,7 +1027,8 @@ module Svcb = struct
           | [] -> off
         in
         loop off mandatory_list
-      ) else off
+      )
+      | None -> off
     in
     let off =
       let rec loop off params =
@@ -1147,11 +1161,13 @@ module Https = struct
     let mandatory, non_mandatories =
     List.fold_left (fun (mandatory,non_mandatory) svc_p ->
         match svc_p with
+        (* a record has at most one mandatory SvcParam (RFC 9460; the zone
+           parser rejects duplicates) -- keep the last and drop any others *)
         | Mandatory mandatory_list ->
-          (mandatory_list::mandatory,non_mandatory)
+          (Some mandatory_list,non_mandatory)
         | _ ->
           (mandatory,svc_p::non_mandatory)
-      ) ([],[]) t.svc_params
+      ) (None,[]) t.svc_params
     in
     let non_mandatories = List.sort (fun a b -> (priority a) - (priority b)) non_mandatories in
     mandatory, non_mandatories
@@ -1211,14 +1227,12 @@ module Https = struct
 
   let compare a b =
     andThen (Int.compare a.svc_priority b.svc_priority)
-      (andThen (Domain_name.compare a.target_name b.target_name)
-        (List.fold_left2
-          (fun r svc_param_a svc_param_b ->
-            match r with
-            | 0 ->
-              (match svc_param_a, svc_param_b with
+      (fun () -> andThen (Domain_name.compare a.target_name b.target_name)
+        (fun () -> compare_lists
+          (fun svc_param_a svc_param_b ->
+              match svc_param_a, svc_param_b with
               | Mandatory mandatories_a, Mandatory mandatories_b -> (
-                if List.length mandatories_a <> List.length mandatories_b
+                if List.compare_lengths mandatories_a mandatories_b <> 0
                   then 1
                   else
                   List.fold_left (fun r mandatory_a ->
@@ -1234,7 +1248,7 @@ module Https = struct
                   ) 0 mandatories_a
               )
               | Alpn alpns_a, Alpn alpns_b -> (
-                if List.length alpns_a <> List.length alpns_b
+                if List.compare_lengths alpns_a alpns_b <> 0
                   then 1
                   else
                   List.fold_left (fun r alpn_a ->
@@ -1252,7 +1266,7 @@ module Https = struct
               | No_default_alpn, No_default_alpn -> 0
               | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
               | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
-                if List.length ipv4s_a <> List.length ipv4s_b
+                if List.compare_lengths ipv4s_a ipv4s_b <> 0
                   then 1
                   else
                   List.fold_left (fun r ipv4_a ->
@@ -1268,7 +1282,7 @@ module Https = struct
                   ) 0 ipv4s_a
               )
               | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
-                if List.length ipv6s_a <> List.length ipv6s_b
+                if List.compare_lengths ipv6s_a ipv6s_b <> 0
                   then 1
                   else
                   List.fold_left (fun r ipv6_a ->
@@ -1284,9 +1298,8 @@ module Https = struct
                   ) 0 ipv6s_a
               )
               | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
-              | _, _ -> 1)
-            | x -> x
-          ) 0 a.svc_params b.svc_params)
+              | _, _ -> 1
+          ) a.svc_params b.svc_params)
       )
 
   let decode names buf ~off ~len =
@@ -1396,8 +1409,8 @@ module Https = struct
     let mandatory, non_mandatory = separate_mandatory t in
     (* if there is a mandatory, do this first *)
     let off =
-      if List.length mandatory > 0 then (
-        let mandatory_list = List.hd mandatory in
+      match mandatory with
+      | Some mandatory_list -> (
         Bytes.set_uint16_be buf off 0;
         let off = off + 2 in
         Bytes.set_uint16_be buf off (2 * List.length mandatory_list);
@@ -1411,7 +1424,8 @@ module Https = struct
           | [] -> off
         in
         loop off mandatory_list
-      ) else off
+      )
+      | None -> off
     in
     let off =
       let rec loop off params =
@@ -1627,8 +1641,8 @@ module Dnskey = struct
 
   let compare a b =
     andThen (F.compare a.flags b.flags)
-      (andThen (compare_algorithm a.algorithm b.algorithm)
-         (String.compare a.key b.key))
+      (fun () -> andThen (compare_algorithm a.algorithm b.algorithm)
+         (fun () -> String.compare a.key b.key))
 
   let decode_exn names buf ~off ~len =
     let flags = String.get_uint16_be buf off
@@ -1737,14 +1751,14 @@ module Rrsig = struct
 
   let compare a b =
     andThen (Int.compare a.type_covered b.type_covered)
-      (andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
-         (andThen (Int.compare a.label_count b.label_count)
-            (andThen (Int32.compare a.original_ttl b.original_ttl)
-               (andThen (Ptime.compare a.signature_expiration b.signature_expiration)
-                  (andThen (Ptime.compare a.signature_inception b.signature_inception)
-                     (andThen (Int.compare a.key_tag b.key_tag)
-                        (andThen (Domain_name.compare a.signer_name b.signer_name)
-                           (String.compare a.signature b.signature))))))))
+      (fun () -> andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
+         (fun () -> andThen (Int.compare a.label_count b.label_count)
+            (fun () -> andThen (Int32.compare a.original_ttl b.original_ttl)
+               (fun () -> andThen (Ptime.compare a.signature_expiration b.signature_expiration)
+                  (fun () -> andThen (Ptime.compare a.signature_inception b.signature_inception)
+                     (fun () -> andThen (Int.compare a.key_tag b.key_tag)
+                        (fun () -> andThen (Domain_name.compare a.signer_name b.signer_name)
+                           (fun () -> String.compare a.signature b.signature))))))))
 
   let decode_exn names buf ~off ~len =
     let type_covered = String.get_uint16_be buf off
@@ -1865,9 +1879,9 @@ module Ds = struct
 
   let compare a b =
     andThen (Int.compare a.key_tag b.key_tag)
-      (andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
-         (andThen (compare_digest_type a.digest_type b.digest_type)
-            (String.compare a.digest b.digest)))
+      (fun () -> andThen (Dnskey.compare_algorithm a.algorithm b.algorithm)
+         (fun () -> andThen (compare_digest_type a.digest_type b.digest_type)
+            (fun () -> String.compare a.digest b.digest)))
 
   let decode_exn names buf ~off ~len =
     let key_tag = String.get_uint16_be buf off
@@ -2001,7 +2015,7 @@ module Nsec = struct
 
   let compare a b =
     andThen (Domain_name.compare a.next_domain b.next_domain)
-      (Bit_map.compare a.types b.types)
+      (fun () -> Bit_map.compare a.types b.types)
 
   let decode_exn names buf ~off ~len =
     let* next_domain, names, off' = Name.decode names buf ~off in
@@ -2064,10 +2078,10 @@ module Nsec3 = struct
 
   let compare a b =
     andThen (compare_flags a.flags b.flags)
-      (andThen (Int.compare a.iterations b.iterations)
-         (andThen (String.compare a.salt b.salt)
-            (andThen (String.compare a.next_owner_hashed b.next_owner_hashed)
-               (Bit_map.compare a.types b.types))))
+      (fun () -> andThen (Int.compare a.iterations b.iterations)
+         (fun () -> andThen (String.compare a.salt b.salt)
+            (fun () -> andThen (String.compare a.next_owner_hashed b.next_owner_hashed)
+               (fun () -> Bit_map.compare a.types b.types))))
 
   let decode_exn names buf ~off ~len =
     let hash_algo = String.get_uint8 buf off in
@@ -2246,14 +2260,12 @@ module Loc = struct
   let pp ppf loc = Fmt.pf ppf "LOC %s" (to_string loc)
 
   let compare a b =
-    List.fold_right andThen [
-      Int32.compare a.latitude b.latitude ;
-      Int32.compare a.longitude b.longitude ;
-      Int32.compare a.altitude b.altitude ;
-      Int.compare a.size b.size ;
-      Int.compare a.horiz_pre b.horiz_pre ;
-      Int.compare a.vert_pre b.vert_pre ;
-    ] 0
+    andThen (Int32.compare a.latitude b.latitude) (fun () ->
+    andThen (Int32.compare a.longitude b.longitude) (fun () ->
+    andThen (Int32.compare a.altitude b.altitude) (fun () ->
+    andThen (Int.compare a.size b.size) (fun () ->
+    andThen (Int.compare a.horiz_pre b.horiz_pre) (fun () ->
+    Int.compare a.vert_pre b.vert_pre)))))
 
   let decode_exn names buf ~off ~len =
     let size = String.get_uint8 buf (off + 1) in
@@ -2309,10 +2321,8 @@ module Caa = struct
 
   let compare a b =
     andThen (Bool.compare a.critical b.critical)
-      (andThen (String.compare a.tag b.tag)
-         (List.fold_left2
-            (fun r a b -> match r with 0 -> String.compare a b | x -> x)
-            0 a.value b.value))
+      (fun () -> andThen (String.compare a.tag b.tag)
+         (fun () -> compare_lists String.compare a.value b.value))
 
   let decode_exn names buf ~off ~len =
     let critical = String.get_uint8 buf off = 0x80
@@ -2458,9 +2468,9 @@ module Tlsa = struct
 
   let compare t1 t2 =
     andThen (compare_cert_usage t1.cert_usage t2.cert_usage)
-      (andThen (compare_selector t1.selector t2.selector)
-         (andThen (compare_matching_type t1.matching_type t2.matching_type)
-            (String.compare t1.data t2.data)))
+      (fun () -> andThen (compare_selector t1.selector t2.selector)
+         (fun () -> andThen (compare_matching_type t1.matching_type t2.matching_type)
+            (fun () -> String.compare t1.data t2.data)))
 
   let decode_exn names buf ~off ~len =
     let usage, selector, matching_type =
@@ -2569,8 +2579,8 @@ module Sshfp = struct
 
   let compare s1 s2 =
     andThen (compare_algorithm s1.algorithm s2.algorithm)
-      (andThen (compare_typ s1.typ s2.typ)
-         (String.compare s1.fingerprint s2.fingerprint))
+      (fun () -> andThen (compare_typ s1.typ s2.typ)
+         (fun () -> String.compare s1.fingerprint s2.fingerprint))
 
   let decode_exn names buf ~off ~len =
     let algo, typ = String.get_uint8 buf off, String.get_uint8 buf (succ off) in
@@ -3004,7 +3014,7 @@ module Extended_error = struct
 
   let compare (t, d) (t', d') =
     andThen (Int.compare (to_int t) (to_int t'))
-      (match d, d' with
+      (fun () -> match d, d' with
        | None, None -> 0
        | None, Some _ -> -1
        | Some _, None -> 1
@@ -3062,7 +3072,7 @@ module Edns = struct
     | Extended_error e, Extended_error e' -> Extended_error.compare e e'
     | Extended_error _, _ -> 1 | _, Extended_error _ -> -1
     | Extension (t, v), Extension (t', v') ->
-      andThen (Int.compare t t') (String.compare v v')
+      andThen (Int.compare t t') (fun () -> String.compare v v')
 
   (* tag is 16 bit, we don't support many *)
   let extension_to_int = function
@@ -3162,13 +3172,10 @@ module Edns = struct
 
   let compare a b =
     andThen (Int.compare a.extended_rcode b.extended_rcode)
-      (andThen (Int.compare a.version b.version)
-         (andThen (Bool.compare a.dnssec_ok b.dnssec_ok)
-            (andThen (Int.compare a.payload_size b.payload_size)
-               (List.fold_left2
-                  (fun r a b -> if r = 0 then compare_extension a b else r)
-                  (Int.compare (List.length a.extensions) (List.length b.extensions))
-                  a.extensions b.extensions))))
+      (fun () -> andThen (Int.compare a.version b.version)
+         (fun () -> andThen (Bool.compare a.dnssec_ok b.dnssec_ok)
+            (fun () -> andThen (Int.compare a.payload_size b.payload_size)
+               (fun () -> compare_lists compare_extension a.extensions b.extensions))))
 
   let pp ppf opt =
     Fmt.(pf ppf "EDNS rcode %u version %u dnssec_ok %b payload_size %u extensions %a"
@@ -4559,7 +4566,7 @@ module Packet = struct
     let compare_id (id, _) (id', _) = Int.compare id id'
 
     let compare (id, flags) (id', flags') =
-      andThen (Int.compare id id') (Flags.compare flags flags')
+      andThen (Int.compare id id') (fun () -> Flags.compare flags flags')
 
     let pp ppf ((id, flags), query, operation, rcode) =
       Fmt.pf ppf "%04X (%s) operation %a rcode @[%a@] flags: @[%a@]"
@@ -4738,7 +4745,7 @@ module Packet = struct
 
     let compare (name, typ) (name', typ') =
       andThen (Domain_name.compare name name')
-        (match typ with
+        (fun () -> match typ with
          | #qtype as a ->
            (match typ' with
             | #qtype as b -> compare_qtype a b
@@ -5338,7 +5345,7 @@ module Packet = struct
 
     let equal (prereq, update) (prereq', update') =
       let eq_list f a b =
-        List.length a = List.length b &&
+        List.compare_lengths a b = 0 &&
         List.fold_left2 (fun acc a b -> acc && f a b) true a b
       in
       Domain_name.Map.equal (eq_list equal_prereq) prereq prereq' &&
