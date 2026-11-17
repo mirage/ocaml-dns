@@ -1147,7 +1147,7 @@ module A = struct
         in
         Fmt.(list ~sep:(any ", ") pp_one)
       let equal a b =
-        List.length a = List.length b &&
+        List.compare_lengths a b = 0 &&
         List.for_all2 (fun (n,s) (n',s') ->
             Domain_name.equal n n' && Soa.compare s s' = 0)
           a b
