@@ -761,7 +761,7 @@ module Svcb = struct
 
   let pp ppf t =
     Fmt.pf ppf "SVCB svc_priority %d target_name %a svc_params (%a)"
-      t.svc_priority Domain_name.pp t.target_name 
+      t.svc_priority Domain_name.pp t.target_name
       Fmt.(list ~sep:(any " ")
         (using (fun (s:svc_param) ->
             match s with
@@ -815,81 +815,78 @@ module Svcb = struct
   let compare a b =
     andThen (Int.compare a.svc_priority b.svc_priority)
       (andThen (Domain_name.compare a.target_name b.target_name)
-        (List.fold_left2
-          (fun r svc_param_a svc_param_b ->
-            match r with
-            | 0 ->
-              (match svc_param_a, svc_param_b with
-              | Mandatory mandatories_a, Mandatory mandatories_b -> (
-                if List.length mandatories_a <> List.length mandatories_b
-                  then 1
-                  else
-                  List.fold_left (fun r mandatory_a ->
-                    match r with
-                    | 0 -> (
-                      match List.find_opt
-                        (fun mandatory_b ->
-                          mandatory_a = mandatory_b) mandatories_b with
-                      | None -> 1
-                      | Some _ -> 0
-                    )
-                    | x -> x
-                  ) 0 mandatories_a
-              )
-              | Alpn alpns_a, Alpn alpns_b -> (
-                if List.length alpns_a <> List.length alpns_b
-                  then 1
-                  else
-                  List.fold_left (fun r alpn_a ->
-                    match r with
-                    | 0 -> (
-                      match List.find_opt
-                        (fun alpn_b ->
-                          alpn_a = alpn_b) alpns_b with
-                      | None -> 1
-                      | Some _ -> 0
-                    )
-                    | x -> x
-                  ) 0 alpns_a
-              )
-              | No_default_alpn, No_default_alpn -> 0
-              | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
-              | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
-                if List.length ipv4s_a <> List.length ipv4s_b
-                  then 1
-                  else
-                  List.fold_left (fun r ipv4_a ->
-                    match r with
-                    | 0 -> (
-                      match List.find_opt
-                        (fun ipv4_b ->
-                          ipv4_a = ipv4_b) ipv4s_b with
-                      | None -> 1
-                      | Some _ -> 0
-                    )
-                    | x -> x
-                  ) 0 ipv4s_a
-              )
-              | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
-                if List.length ipv6s_a <> List.length ipv6s_b
-                  then 1
-                  else
-                  List.fold_left (fun r ipv6_a ->
-                    match r with
-                    | 0 -> (
-                      match List.find_opt
-                        (fun ipv6_b ->
-                          ipv6_a = ipv6_b) ipv6s_b with
-                      | None -> 1
-                      | Some _ -> 0
-                    )
-                    | x -> x
-                  ) 0 ipv6s_a
-              )
-              | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
-              | _, _ -> 1)
-            | x -> x
-          ) 0 a.svc_params b.svc_params)
+        (List.compare
+          (fun svc_param_a svc_param_b ->
+            (match svc_param_a, svc_param_b with
+             | Mandatory mandatories_a, Mandatory mandatories_b -> (
+                 if List.length mandatories_a <> List.length mandatories_b
+                 then 1
+                 else
+                   List.fold_left (fun r mandatory_a ->
+                       match r with
+                       | 0 -> (
+                           match List.find_opt
+                                   (fun mandatory_b ->
+                                      mandatory_a = mandatory_b) mandatories_b with
+                           | None -> 1
+                           | Some _ -> 0
+                         )
+                       | x -> x
+                     ) 0 mandatories_a
+               )
+             | Alpn alpns_a, Alpn alpns_b -> (
+                 if List.length alpns_a <> List.length alpns_b
+                 then 1
+                 else
+                   List.fold_left (fun r alpn_a ->
+                       match r with
+                       | 0 -> (
+                           match List.find_opt
+                                   (fun alpn_b ->
+                                      alpn_a = alpn_b) alpns_b with
+                           | None -> 1
+                           | Some _ -> 0
+                         )
+                       | x -> x
+                     ) 0 alpns_a
+               )
+             | No_default_alpn, No_default_alpn -> 0
+             | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
+             | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
+                 if List.length ipv4s_a <> List.length ipv4s_b
+                 then 1
+                 else
+                   List.fold_left (fun r ipv4_a ->
+                       match r with
+                       | 0 -> (
+                           match List.find_opt
+                                   (fun ipv4_b ->
+                                      ipv4_a = ipv4_b) ipv4s_b with
+                           | None -> 1
+                           | Some _ -> 0
+                         )
+                       | x -> x
+                     ) 0 ipv4s_a
+               )
+             | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
+                 if List.length ipv6s_a <> List.length ipv6s_b
+                 then 1
+                 else
+                   List.fold_left (fun r ipv6_a ->
+                       match r with
+                       | 0 -> (
+                           match List.find_opt
+                                   (fun ipv6_b ->
+                                      ipv6_a = ipv6_b) ipv6s_b with
+                           | None -> 1
+                           | Some _ -> 0
+                         )
+                       | x -> x
+                     ) 0 ipv6s_a
+               )
+             | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
+             | _, _ -> 1)
+          ) a.svc_params b.svc_params)
       )
 
   let decode names buf ~off ~len =
@@ -1158,7 +1155,7 @@ module Https = struct
 
   let pp ppf t =
     Fmt.pf ppf "HTTPS svc_priority %d target_name %a svc_params (%a)"
-      t.svc_priority Domain_name.pp t.target_name 
+      t.svc_priority Domain_name.pp t.target_name
       Fmt.(list ~sep:(any " ")
         (using (fun (s:svc_param) ->
             match s with
@@ -1212,81 +1209,78 @@ module Https = struct
   let compare a b =
     andThen (Int.compare a.svc_priority b.svc_priority)
       (andThen (Domain_name.compare a.target_name b.target_name)
-        (List.fold_left2
-          (fun r svc_param_a svc_param_b ->
-            match r with
-            | 0 ->
-              (match svc_param_a, svc_param_b with
-              | Mandatory mandatories_a, Mandatory mandatories_b -> (
-                if List.length mandatories_a <> List.length mandatories_b
-                  then 1
-                  else
-                  List.fold_left (fun r mandatory_a ->
-                    match r with
-                    | 0 -> (
-                      match List.find_opt
-                        (fun mandatory_b ->
-                          mandatory_a = mandatory_b) mandatories_b with
-                      | None -> 1
-                      | Some _ -> 0
-                    )
-                    | x -> x
-                  ) 0 mandatories_a
-              )
-              | Alpn alpns_a, Alpn alpns_b -> (
-                if List.length alpns_a <> List.length alpns_b
-                  then 1
-                  else
-                  List.fold_left (fun r alpn_a ->
-                    match r with
-                    | 0 -> (
-                      match List.find_opt
-                        (fun alpn_b ->
-                          alpn_a = alpn_b) alpns_b with
-                      | None -> 1
-                      | Some _ -> 0
-                    )
-                    | x -> x
-                  ) 0 alpns_a
-              )
-              | No_default_alpn, No_default_alpn -> 0
-              | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
-              | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
-                if List.length ipv4s_a <> List.length ipv4s_b
-                  then 1
-                  else
-                  List.fold_left (fun r ipv4_a ->
-                    match r with
-                    | 0 -> (
-                      match List.find_opt
-                        (fun ipv4_b ->
-                          ipv4_a = ipv4_b) ipv4s_b with
-                      | None -> 1
-                      | Some _ -> 0
-                    )
-                    | x -> x
-                  ) 0 ipv4s_a
-              )
-              | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
-                if List.length ipv6s_a <> List.length ipv6s_b
-                  then 1
-                  else
-                  List.fold_left (fun r ipv6_a ->
-                    match r with
-                    | 0 -> (
-                      match List.find_opt
-                        (fun ipv6_b ->
-                          ipv6_a = ipv6_b) ipv6s_b with
-                      | None -> 1
-                      | Some _ -> 0
-                    )
-                    | x -> x
-                  ) 0 ipv6s_a
-              )
-              | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
-              | _, _ -> 1)
-            | x -> x
-          ) 0 a.svc_params b.svc_params)
+        (List.compare
+          (fun svc_param_a svc_param_b ->
+            (match svc_param_a, svc_param_b with
+             | Mandatory mandatories_a, Mandatory mandatories_b -> (
+                 if List.length mandatories_a <> List.length mandatories_b
+                 then 1
+                 else
+                   List.fold_left (fun r mandatory_a ->
+                       match r with
+                       | 0 -> (
+                           match List.find_opt
+                                   (fun mandatory_b ->
+                                      mandatory_a = mandatory_b) mandatories_b with
+                           | None -> 1
+                           | Some _ -> 0
+                         )
+                       | x -> x
+                     ) 0 mandatories_a
+               )
+             | Alpn alpns_a, Alpn alpns_b -> (
+                 if List.length alpns_a <> List.length alpns_b
+                 then 1
+                 else
+                   List.fold_left (fun r alpn_a ->
+                       match r with
+                       | 0 -> (
+                           match List.find_opt
+                                   (fun alpn_b ->
+                                      alpn_a = alpn_b) alpns_b with
+                           | None -> 1
+                           | Some _ -> 0
+                         )
+                       | x -> x
+                     ) 0 alpns_a
+               )
+             | No_default_alpn, No_default_alpn -> 0
+             | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
+             | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
+                 if List.length ipv4s_a <> List.length ipv4s_b
+                 then 1
+                 else
+                   List.fold_left (fun r ipv4_a ->
+                       match r with
+                       | 0 -> (
+                           match List.find_opt
+                                   (fun ipv4_b ->
+                                      ipv4_a = ipv4_b) ipv4s_b with
+                           | None -> 1
+                           | Some _ -> 0
+                         )
+                       | x -> x
+                     ) 0 ipv4s_a
+               )
+             | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
+                 if List.length ipv6s_a <> List.length ipv6s_b
+                 then 1
+                 else
+                   List.fold_left (fun r ipv6_a ->
+                       match r with
+                       | 0 -> (
+                           match List.find_opt
+                                   (fun ipv6_b ->
+                                      ipv6_a = ipv6_b) ipv6s_b with
+                           | None -> 1
+                           | Some _ -> 0
+                         )
+                       | x -> x
+                     ) 0 ipv6s_a
+               )
+             | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
+             | _, _ -> 1)
+          ) a.svc_params b.svc_params)
       )
 
   let decode names buf ~off ~len =
@@ -2310,9 +2304,7 @@ module Caa = struct
   let compare a b =
     andThen (Bool.compare a.critical b.critical)
       (andThen (String.compare a.tag b.tag)
-         (List.fold_left2
-            (fun r a b -> match r with 0 -> String.compare a b | x -> x)
-            0 a.value b.value))
+         (List.compare String.compare a.value b.value))
 
   let decode_exn names buf ~off ~len =
     let critical = String.get_uint8 buf off = 0x80
@@ -3165,10 +3157,7 @@ module Edns = struct
       (andThen (Int.compare a.version b.version)
          (andThen (Bool.compare a.dnssec_ok b.dnssec_ok)
             (andThen (Int.compare a.payload_size b.payload_size)
-               (List.fold_left2
-                  (fun r a b -> if r = 0 then compare_extension a b else r)
-                  (Int.compare (List.length a.extensions) (List.length b.extensions))
-                  a.extensions b.extensions))))
+               (List.compare compare_extension a.extensions b.extensions))))
 
   let pp ppf opt =
     Fmt.(pf ppf "EDNS rcode %u version %u dnssec_ok %b payload_size %u extensions %a"
@@ -5337,12 +5326,8 @@ module Packet = struct
     let empty = Domain_name.Map.empty, Domain_name.Map.empty
 
     let equal (prereq, update) (prereq', update') =
-      let eq_list f a b =
-        List.length a = List.length b &&
-        List.fold_left2 (fun acc a b -> acc && f a b) true a b
-      in
-      Domain_name.Map.equal (eq_list equal_prereq) prereq prereq' &&
-      Domain_name.Map.equal (eq_list equal_update) update update'
+      Domain_name.Map.equal (List.equal equal_prereq) prereq prereq' &&
+      Domain_name.Map.equal (List.equal equal_update) update update'
 
     let pp ppf (prereq, update) =
       Fmt.pf ppf "%a@ %a"
