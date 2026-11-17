@@ -997,7 +997,8 @@ module Svcb = struct
     let mandatory, non_mandatory = separate_mandatory t in
     (* if there is a mandatory, do this first *)
     let off =
-      if List.length mandatory > 0 then (
+      match mandatory with
+      | _ :: _ ->
         let mandatory_list = List.hd mandatory in
         Bytes.set_uint16_be buf off 0;
         let off = off + 2 in
@@ -1012,7 +1013,7 @@ module Svcb = struct
           | [] -> off
         in
         loop off mandatory_list
-      ) else off
+      | [] -> off
     in
     let off =
       let rec loop off params =
@@ -1390,7 +1391,8 @@ module Https = struct
     let mandatory, non_mandatory = separate_mandatory t in
     (* if there is a mandatory, do this first *)
     let off =
-      if List.length mandatory > 0 then (
+      match mandatory with
+      | _ :: _ ->
         let mandatory_list = List.hd mandatory in
         Bytes.set_uint16_be buf off 0;
         let off = off + 2 in
@@ -1405,7 +1407,7 @@ module Https = struct
           | [] -> off
         in
         loop off mandatory_list
-      ) else off
+      | [] -> off
     in
     let off =
       let rec loop off params =
