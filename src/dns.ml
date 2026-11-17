@@ -32,6 +32,12 @@ let opt_eq f a b = match a, b with
   | None, None -> true
   | _ -> false
 
+let sorted_equal cmp a b =
+  (* NOTE(reynir): Asymptotically it's faster (under certain conditions) to
+     first compare lengths, but I expect the lists to be fairly short. So in
+     practice I suspect sorting first will be faster. *)
+  List.compare cmp (List.sort cmp a) (List.sort cmp b)
+
 let guard p err = if p then Ok () else Error err
 
 let src = Logs.Src.create "dns" ~doc:"DNS core"
@@ -820,72 +826,16 @@ module Svcb = struct
     List.compare
       (fun svc_param_a svc_param_b ->
          (match svc_param_a, svc_param_b with
-          | Mandatory mandatories_a, Mandatory mandatories_b -> (
-              if List.length mandatories_a <> List.length mandatories_b
-              then 1
-              else
-                List.fold_left (fun r mandatory_a ->
-                    match r with
-                    | 0 -> (
-                        match List.find_opt
-                                (fun mandatory_b ->
-                                   mandatory_a = mandatory_b) mandatories_b with
-                        | None -> 1
-                        | Some _ -> 0
-                      )
-                    | x -> x
-                  ) 0 mandatories_a
-            )
-          | Alpn alpns_a, Alpn alpns_b -> (
-              if List.length alpns_a <> List.length alpns_b
-              then 1
-              else
-                List.fold_left (fun r alpn_a ->
-                    match r with
-                    | 0 -> (
-                        match List.find_opt
-                                (fun alpn_b ->
-                                   alpn_a = alpn_b) alpns_b with
-                        | None -> 1
-                        | Some _ -> 0
-                      )
-                    | x -> x
-                  ) 0 alpns_a
-            )
+          | Mandatory mandatories_a, Mandatory mandatories_b ->
+              sorted_equal Int.compare mandatories_a mandatories_b
+          | Alpn alpns_a, Alpn alpns_b ->
+              sorted_equal String.compare alpns_a alpns_b
           | No_default_alpn, No_default_alpn -> 0
           | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
-          | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
-              if List.length ipv4s_a <> List.length ipv4s_b
-              then 1
-              else
-                List.fold_left (fun r ipv4_a ->
-                    match r with
-                    | 0 -> (
-                        match List.find_opt
-                                (fun ipv4_b ->
-                                   ipv4_a = ipv4_b) ipv4s_b with
-                        | None -> 1
-                        | Some _ -> 0
-                      )
-                    | x -> x
-                  ) 0 ipv4s_a
-            )
-          | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
-              if List.length ipv6s_a <> List.length ipv6s_b
-              then 1
-              else
-                List.fold_left (fun r ipv6_a ->
-                    match r with
-                    | 0 -> (
-                        match List.find_opt
-                                (fun ipv6_b ->
-                                   ipv6_a = ipv6_b) ipv6s_b with
-                        | None -> 1
-                        | Some _ -> 0
-                      )
-                    | x -> x
-                  ) 0 ipv6s_a
-            )
+          | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b ->
+              sorted_equal Ipaddr.V4.compare ipv4s_a ipv4s_b
+          | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b ->
+              sorted_equal Ipaddr.V6.compare ipv6s_a ipv6s_b
           | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
           | _, _ -> 1)
       ) a.svc_params b.svc_params
@@ -1214,72 +1164,16 @@ module Https = struct
     List.compare
       (fun svc_param_a svc_param_b ->
          (match svc_param_a, svc_param_b with
-          | Mandatory mandatories_a, Mandatory mandatories_b -> (
-              if List.length mandatories_a <> List.length mandatories_b
-              then 1
-              else
-                List.fold_left (fun r mandatory_a ->
-                    match r with
-                    | 0 -> (
-                        match List.find_opt
-                                (fun mandatory_b ->
-                                   mandatory_a = mandatory_b) mandatories_b with
-                        | None -> 1
-                        | Some _ -> 0
-                      )
-                    | x -> x
-                  ) 0 mandatories_a
-            )
-          | Alpn alpns_a, Alpn alpns_b -> (
-              if List.length alpns_a <> List.length alpns_b
-              then 1
-              else
-                List.fold_left (fun r alpn_a ->
-                    match r with
-                    | 0 -> (
-                        match List.find_opt
-                                (fun alpn_b ->
-                                   alpn_a = alpn_b) alpns_b with
-                        | None -> 1
-                        | Some _ -> 0
-                      )
-                    | x -> x
-                  ) 0 alpns_a
-            )
+          | Mandatory mandatories_a, Mandatory mandatories_b ->
+              sorted_equal Int.compare mandatories_a mandatories_b
+          | Alpn alpns_a, Alpn alpns_b ->
+              sorted_equal String.compare alpns_a alpns_b
           | No_default_alpn, No_default_alpn -> 0
           | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
-          | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b -> (
-              if List.length ipv4s_a <> List.length ipv4s_b
-              then 1
-              else
-                List.fold_left (fun r ipv4_a ->
-                    match r with
-                    | 0 -> (
-                        match List.find_opt
-                                (fun ipv4_b ->
-                                   ipv4_a = ipv4_b) ipv4s_b with
-                        | None -> 1
-                        | Some _ -> 0
-                      )
-                    | x -> x
-                  ) 0 ipv4s_a
-            )
-          | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b -> (
-              if List.length ipv6s_a <> List.length ipv6s_b
-              then 1
-              else
-                List.fold_left (fun r ipv6_a ->
-                    match r with
-                    | 0 -> (
-                        match List.find_opt
-                                (fun ipv6_b ->
-                                   ipv6_a = ipv6_b) ipv6s_b with
-                        | None -> 1
-                        | Some _ -> 0
-                      )
-                    | x -> x
-                  ) 0 ipv6s_a
-            )
+          | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b ->
+              sorted_equal Ipaddr.V4.compare ipv4s_a ipv4s_b
+          | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b ->
+              sorted_equal Ipaddr.V6.compare ipv6s_a ipv6s_b
           | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
           | _, _ -> 1)
       ) a.svc_params b.svc_params
