@@ -32,11 +32,8 @@ let opt_eq f a b = match a, b with
   | None, None -> true
   | _ -> false
 
-let sorted_equal cmp a b =
-  (* NOTE(reynir): Asymptotically it's faster (under certain conditions) to
-     first compare lengths, but I expect the lists to be fairly short. So in
-     practice I suspect sorting first will be faster. *)
-  List.compare cmp (List.sort cmp a) (List.sort cmp b)
+let sort_uniq_equal cmp a b =
+  List.compare cmp (List.sort_uniq cmp a) (List.sort_uniq cmp b)
 
 let guard p err = if p then Ok () else Error err
 
@@ -827,15 +824,15 @@ module Svcb = struct
       (fun svc_param_a svc_param_b ->
          (match svc_param_a, svc_param_b with
           | Mandatory mandatories_a, Mandatory mandatories_b ->
-              sorted_equal Int.compare mandatories_a mandatories_b
+              sort_uniq_equal Int.compare mandatories_a mandatories_b
           | Alpn alpns_a, Alpn alpns_b ->
-              sorted_equal String.compare alpns_a alpns_b
+              sort_uniq_equal String.compare alpns_a alpns_b
           | No_default_alpn, No_default_alpn -> 0
           | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
           | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b ->
-              sorted_equal Ipaddr.V4.compare ipv4s_a ipv4s_b
+              sort_uniq_equal Ipaddr.V4.compare ipv4s_a ipv4s_b
           | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b ->
-              sorted_equal Ipaddr.V6.compare ipv6s_a ipv6s_b
+              sort_uniq_equal Ipaddr.V6.compare ipv6s_a ipv6s_b
           | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
           | _, _ -> 1)
       ) a.svc_params b.svc_params
@@ -1165,15 +1162,15 @@ module Https = struct
       (fun svc_param_a svc_param_b ->
          (match svc_param_a, svc_param_b with
           | Mandatory mandatories_a, Mandatory mandatories_b ->
-              sorted_equal Int.compare mandatories_a mandatories_b
+              sort_uniq_equal Int.compare mandatories_a mandatories_b
           | Alpn alpns_a, Alpn alpns_b ->
-              sorted_equal String.compare alpns_a alpns_b
+              sort_uniq_equal String.compare alpns_a alpns_b
           | No_default_alpn, No_default_alpn -> 0
           | Port port_a, Port port_b -> if port_a = port_b then 0 else 1
           | Ipv4_hint ipv4s_a, Ipv4_hint ipv4s_b ->
-              sorted_equal Ipaddr.V4.compare ipv4s_a ipv4s_b
+              sort_uniq_equal Ipaddr.V4.compare ipv4s_a ipv4s_b
           | Ipv6_hint ipv6s_a, Ipv6_hint ipv6s_b ->
-              sorted_equal Ipaddr.V6.compare ipv6s_a ipv6s_b
+              sort_uniq_equal Ipaddr.V6.compare ipv6s_a ipv6s_b
           | Key (k_a,v_a), Key (k_b,v_b) -> if k_a = k_b && v_a = v_b then 0 else 1
           | _, _ -> 1)
       ) a.svc_params b.svc_params
