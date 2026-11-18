@@ -808,6 +808,7 @@ module Svcb = struct
               ) (true,"") ipv6s) in
               " ipv6hint="^ipv6s'
             )
+            | Key (5,v) -> " ech="^(Base64.encode_string v)
             | Key (key,v) -> " key"^(string_of_int key)^"="^v
 
           ) string) ) t.svc_params
@@ -903,7 +904,7 @@ module Svcb = struct
     let svc_params =
       if off < exit_len then (
         let rec loop_svc_params off l =
-          if off = exit_len then l else (
+          if off = exit_len then List.rev l else (
             let key = String.get_uint16_be buf off in
             let off = off + 2 in
             match key with
@@ -911,7 +912,7 @@ module Svcb = struct
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
               let rec loop off remaining mandatories =
-                if remaining = 0 then mandatories, off else
+                if remaining = 0 then List.rev mandatories, off else
                   let mandatories = (String.get_uint16_be buf off)::mandatories in
                   loop (off + 2) (remaining-2) mandatories
               in
@@ -922,7 +923,7 @@ module Svcb = struct
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
               let rec loop off remaining alpns =
-                if remaining = 0 then alpns, off else
+                if remaining = 0 then List.rev alpns, off else
                   let alpn_len = String.get_uint8 buf off in
                   let off = off + 1 in
                   let alpn_value = String.sub buf off alpn_len in
@@ -934,10 +935,16 @@ module Svcb = struct
               loop_svc_params off (Alpn alpns'::l)
             )
             | 2 -> ( (* no-default-alpn *)
-              loop_svc_params off (No_default_alpn::l)
+              (* its value MUST be empty (RFC 9460); the length (0) is on the wire *)
+              let param_length = String.get_uint16_be buf off in
+              if param_length <> 0 then
+                invalid_arg "no-default-alpn with a non-empty value";
+              loop_svc_params (off + 2) (No_default_alpn::l)
             )
             | 3 -> ( (* port *)
-              let _param_length = String.get_uint16_be buf off in
+              (* the value is exactly a 2-byte port (RFC 9460 7.2) *)
+              let param_length = String.get_uint16_be buf off in
+              if param_length <> 2 then invalid_arg "port value is not 2 bytes";
               let off = off + 2 in
               let port = String.get_uint16_be buf off in
               let off = off + 2 in
@@ -947,7 +954,7 @@ module Svcb = struct
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
               let rec loop off remaining ipv4s =
-                if remaining = 0 then ipv4s, off else
+                if remaining = 0 then List.rev ipv4s, off else
                   let ipv4 = Ipaddr.V4.of_int32 (String.get_int32_be buf off) in
                   let off = off + 4 in
                   let ipv4s = ipv4::ipv4s in
@@ -956,15 +963,11 @@ module Svcb = struct
               let ipv4s', off = loop off param_length [] in
               loop_svc_params off (Ipv4_hint ipv4s'::l)
             )
-            | 5 -> ( (* ech *)
-              (* loop_svc_params off (Ech::l) *)
-              loop_svc_params off l
-            )
             | 6 -> ( (* ipv6hint *)
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
               let rec loop off remaining ipv6s =
-                if remaining = 0 then ipv6s, off else
+                if remaining = 0 then List.rev ipv6s, off else
                   let i64_1 = String.get_int64_be buf off in
                   let off = off + 8 in
                   let i64_2 = String.get_int64_be buf off in
@@ -976,7 +979,7 @@ module Svcb = struct
               let ipv6s', off = loop off param_length [] in
               loop_svc_params off (Ipv6_hint ipv6s'::l)
             )
-            | _ -> ( (* decode as keyNNNNN *)
+            | _ -> ( (* decode as keyNNNNN, including ech (key 5) *)
             let key_length = String.get_uint16_be buf off in
             let off = off + 2 in
             let key_value = String.sub buf off key_length in
@@ -1051,6 +1054,8 @@ module Svcb = struct
             )
             | No_default_alpn -> (
               Bytes.set_uint16_be buf off 2;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off 0;  (* empty value *)
               off + 2
             )
             | Port port -> (
@@ -1205,6 +1210,7 @@ module Https = struct
               ) (true,"") ipv6s) in
               " ipv6hint="^ipv6s'
             )
+            | Key (5,v) -> " ech="^(Base64.encode_string v)
             | Key (key,v) -> " key"^(string_of_int key)^"="^v
 
           ) string) ) t.svc_params
@@ -1300,7 +1306,7 @@ module Https = struct
     let svc_params =
       if off < exit_len then (
         let rec loop_svc_params off l =
-          if off = exit_len then l else (
+          if off = exit_len then List.rev l else (
             let key = String.get_uint16_be buf off in
             let off = off + 2 in
             match key with
@@ -1308,7 +1314,7 @@ module Https = struct
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
               let rec loop off remaining mandatories =
-                if remaining = 0 then mandatories, off else
+                if remaining = 0 then List.rev mandatories, off else
                   let mandatories = (String.get_uint16_be buf off)::mandatories in
                   loop (off + 2) (remaining-2) mandatories
               in
@@ -1319,7 +1325,7 @@ module Https = struct
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
               let rec loop off remaining alpns =
-                if remaining = 0 then alpns, off else
+                if remaining = 0 then List.rev alpns, off else
                   let alpn_len = String.get_uint8 buf off in
                   let off = off + 1 in
                   let alpn_value = String.sub buf off alpn_len in
@@ -1331,10 +1337,16 @@ module Https = struct
               loop_svc_params off (Alpn alpns'::l)
             )
             | 2 -> ( (* no-default-alpn *)
-              loop_svc_params off (No_default_alpn::l)
+              (* its value MUST be empty (RFC 9460); the length (0) is on the wire *)
+              let param_length = String.get_uint16_be buf off in
+              if param_length <> 0 then
+                invalid_arg "no-default-alpn with a non-empty value";
+              loop_svc_params (off + 2) (No_default_alpn::l)
             )
             | 3 -> ( (* port *)
-              let _param_length = String.get_uint16_be buf off in
+              (* the value is exactly a 2-byte port (RFC 9460 7.2) *)
+              let param_length = String.get_uint16_be buf off in
+              if param_length <> 2 then invalid_arg "port value is not 2 bytes";
               let off = off + 2 in
               let port = String.get_uint16_be buf off in
               let off = off + 2 in
@@ -1344,7 +1356,7 @@ module Https = struct
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
               let rec loop off remaining ipv4s =
-                if remaining = 0 then ipv4s, off else
+                if remaining = 0 then List.rev ipv4s, off else
                   let ipv4 = Ipaddr.V4.of_int32 (String.get_int32_be buf off) in
                   let off = off + 4 in
                   let ipv4s = ipv4::ipv4s in
@@ -1353,15 +1365,11 @@ module Https = struct
               let ipv4s', off = loop off param_length [] in
               loop_svc_params off (Ipv4_hint ipv4s'::l)
             )
-            | 5 -> ( (* ech *)
-              (* loop_svc_params off (Ech::l) *)
-              loop_svc_params off l
-            )
             | 6 -> ( (* ipv6hint *)
               let param_length = String.get_uint16_be buf off in
               let off = off + 2 in
               let rec loop off remaining ipv6s =
-                if remaining = 0 then ipv6s, off else
+                if remaining = 0 then List.rev ipv6s, off else
                   let i64_1 = String.get_int64_be buf off in
                   let off = off + 8 in
                   let i64_2 = String.get_int64_be buf off in
@@ -1373,7 +1381,7 @@ module Https = struct
               let ipv6s', off = loop off param_length [] in
               loop_svc_params off (Ipv6_hint ipv6s'::l)
             )
-            | _ -> ( (* decode as keyNNNNN *)
+            | _ -> ( (* decode as keyNNNNN, including ech (key 5) *)
             let key_length = String.get_uint16_be buf off in
             let off = off + 2 in
             let key_value = String.sub buf off key_length in
@@ -1448,6 +1456,8 @@ module Https = struct
             )
             | No_default_alpn -> (
               Bytes.set_uint16_be buf off 2;
+              let off = off + 2 in
+              Bytes.set_uint16_be buf off 0;  (* empty value *)
               off + 2
             )
             | Port port -> (
@@ -3950,7 +3960,7 @@ module Rr_map = struct
                   | No_default_alpn ->
                     p^"no-default-alpn"
                   | Port port ->
-                    p^"key"^(string_of_int port)
+                    p^"port="^(string_of_int port)
                   | Ipv4_hint ipv4_list -> (
                     let (_,ipv4s) =
                       List.fold_left (fun (i',a') ipv4 ->
@@ -3967,6 +3977,9 @@ module Rr_map = struct
                         ) (0,"") ipv6_list in
                       p^"ipv6hint="^ipv6s
                   )
+                  | Key (5,v) ->
+                    (* ech (key 5) presentation is base64 of the value *)
+                    p^"ech="^(Base64.encode_string v)
                   | Key (k,v) ->
                     p^"key"^(string_of_int k)^"="^v
                 in
@@ -4010,7 +4023,7 @@ module Rr_map = struct
                   | No_default_alpn ->
                     p^"no-default-alpn"
                   | Port port ->
-                    p^"key"^(string_of_int port)
+                    p^"port="^(string_of_int port)
                   | Ipv4_hint ipv4_list -> (
                     let (_,ipv4s) =
                       List.fold_left (fun (i',a') ipv4 ->
@@ -4027,6 +4040,9 @@ module Rr_map = struct
                         ) (0,"") ipv6_list in
                       p^"ipv6hint="^ipv6s
                   )
+                  | Key (5,v) ->
+                    (* ech (key 5) presentation is base64 of the value *)
+                    p^"ech="^(Base64.encode_string v)
                   | Key (k,v) ->
                     p^"key"^(string_of_int k)^"="^v
                 in

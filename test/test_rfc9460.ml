@@ -1311,10 +1311,169 @@ let encode_multiple_params_with_port () =
   | Ok _ -> () (* Success - parameters decoded correctly *)
   | Error _ -> Alcotest.fail "Failed to decode packet with multiple params"
 
+(* decoding keeps the order of the SvcParams (ascending key order on the
+   wire) and of the values in each of them (alpn ids are in preference
+   order) *)
+let decode_keeps_param_order () =
+  let example = n_of_s "example.com" in
+  let foo_example = Domain_name.host_exn (n_of_s "foo.example.com") in
+  let v4 = List.map Ipaddr.V4.of_string_exn [ "192.0.2.1" ; "192.0.2.2" ] in
+  let v6 = List.map Ipaddr.V6.of_string_exn [ "2001:db8::1" ; "2001:db8::2" ] in
+  let roundtrip (type a) (k : a Rr_map.key) (rrs : a) =
+    let content = Domain_name.Map.singleton example (Rr_map.singleton k rrs) in
+    let header = 0x1234, Flags.empty in
+    let question = Question.create example k in
+    let packet = Packet.create header question (`Answer (content, Name_rr_map.empty)) in
+    match Packet.decode (fst (Packet.encode `Udp packet)) with
+    | Ok { data = `Answer (answer, _) ; _ } ->
+      (match Name_rr_map.find example k answer with
+       | Some rrs -> rrs
+       | None -> Alcotest.fail "record missing after decoding")
+    | Ok _ -> Alcotest.fail "decoded packet is not an answer"
+    | Error e -> Alcotest.failf "decode failed: %a" Packet.pp_err e
+  in
+  let svcb = Svcb.{
+      svc_priority = 1 ; target_name = foo_example ;
+      svc_params = [ Mandatory [ 1 ; 3 ] ; Alpn [ "h2" ; "h3" ; "http/1.1" ] ;
+                     Port 8443 ; Ipv4_hint v4 ; Ipv6_hint v6 ] } in
+  (match roundtrip Rr_map.Svcb (3600l, Rr_map.Svcb_set.singleton svcb) with
+   | _, s when Rr_map.Svcb_set.cardinal s = 1 ->
+     let svcb' = Rr_map.Svcb_set.choose s in
+     Alcotest.(check bool) "SVCB params in order" true (svcb'.svc_params = svcb.svc_params)
+   | _ -> Alcotest.fail "expected one SVCB record");
+  let https = Https.{
+      svc_priority = 1 ; target_name = foo_example ;
+      svc_params = [ Mandatory [ 1 ; 3 ] ; Alpn [ "h2" ; "h3" ; "http/1.1" ] ;
+                     Port 8443 ; Ipv4_hint v4 ; Ipv6_hint v6 ] } in
+  match roundtrip Rr_map.Https (3600l, Rr_map.Https_set.singleton https) with
+  | _, s when Rr_map.Https_set.cardinal s = 1 ->
+    let https' = Rr_map.Https_set.choose s in
+    Alcotest.(check bool) "HTTPS params in order" true (https'.svc_params = https.svc_params)
+  | _ -> Alcotest.fail "expected one HTTPS record"
+
+(* the zone-file text of a record with a port param is "port=N", and
+   parses back to the same record *)
+let text_port_param () =
+  let example = n_of_s "example.com" in
+  let foo_example = Domain_name.host_exn (n_of_s "foo.example.com") in
+  let check_text name text =
+    if not (string_contains_substring text "port=8443") then
+      Alcotest.failf "%s: no port=8443 in %S" name text;
+    match Dns_zone.parse (text ^ "\n") with
+    | Ok _ -> ()
+    | Error (`Msg m) -> Alcotest.failf "%s: %S does not parse: %s" name text m
+  in
+  let svcb = Svcb.{ svc_priority = 1 ; target_name = foo_example ;
+                    svc_params = [ Alpn [ "h2" ] ; Port 8443 ] } in
+  let svcbs = 3600l, Rr_map.Svcb_set.singleton svcb in
+  let text = Rr_map.text example Rr_map.Svcb svcbs in
+  check_text "SVCB" text;
+  Alcotest.(check (result name_map_ok err)) "SVCB text parses back"
+    (Ok (Name_rr_map.singleton example Rr_map.Svcb svcbs)) (Dns_zone.parse (text ^ "\n"));
+  let https = Https.{ svc_priority = 1 ; target_name = foo_example ;
+                      svc_params = [ Alpn [ "h2" ] ; Port 8443 ] } in
+  let httpss = 3600l, Rr_map.Https_set.singleton https in
+  let text = Rr_map.text example Rr_map.Https httpss in
+  check_text "HTTPS" text;
+  Alcotest.(check (result name_map_ok err)) "HTTPS text parses back"
+    (Ok (Name_rr_map.singleton example Rr_map.Https httpss)) (Dns_zone.parse (text ^ "\n"))
+
+(* a reply for example.com HTTPS carrying one HTTPS record with the given
+   rdata, as on the wire *)
+let https_reply rdata =
+  let b = Buffer.create 64 in
+  let u16 n = Buffer.add_char b (Char.chr (n lsr 8)); Buffer.add_char b (Char.chr (n land 0xff)) in
+  u16 0x1234; u16 0x8180; u16 1; u16 1; u16 0; u16 0;
+  Buffer.add_string b "\007example\003com\000"; u16 65; u16 1;
+  u16 0xc00c; u16 65; u16 1; u16 0; u16 300; u16 (String.length rdata);
+  Buffer.add_string b rdata;
+  Buffer.contents b
+
+let decoded_https_params rdata =
+  match Packet.decode (https_reply rdata) with
+  | Ok { data = `Answer (answer, _) ; _ } ->
+    (match Name_rr_map.find (n_of_s "example.com") Rr_map.Https answer with
+     | Some (_, s) -> (Rr_map.Https_set.choose s).Https.svc_params
+     | None -> Alcotest.fail "no HTTPS record decoded")
+  | Ok _ -> Alcotest.fail "not an answer"
+  | Error e -> Alcotest.failf "decode error: %a" Packet.pp_err e
+
+(* no-default-alpn has an empty value, but its length (0) is on the wire *)
+let no_default_alpn_wire () =
+  let rdata =
+    "\x00\x01" ^ "\x00"                     (* priority 1, target "." *)
+    ^ "\x00\x01\x00\x03\x02h2"               (* alpn=h2 *)
+    ^ "\x00\x02\x00\x00"                     (* no-default-alpn *)
+    ^ "\x00\x03\x00\x02\x01\xbb"             (* port=443 *)
+  in
+  let expected = Https.[ Alpn [ "h2" ] ; No_default_alpn ; Port 443 ] in
+  Alcotest.(check bool) "decoded" true (decoded_https_params rdata = expected);
+  let https = Https.{ svc_priority = 1 ; target_name = Domain_name.(host_exn root) ;
+                      svc_params = expected } in
+  let example = n_of_s "example.com" in
+  let content = Name_rr_map.singleton example Rr_map.Https (300l, Rr_map.Https_set.singleton https) in
+  let packet = Packet.create (0x1234, Flags.empty) (Question.create example Https)
+      (`Answer (content, Name_rr_map.empty)) in
+  let encoded = fst (Packet.encode `Udp packet) in
+  if not (string_contains_substring encoded rdata) then
+    Alcotest.fail "no-default-alpn not encoded with its zero length";
+  (* a non-empty no-default-alpn value is rejected (RFC 9460) *)
+  let bad = "\x00\x01\x00\x00\x02\x00\x01\xff" in (* no-default-alpn, length 1 *)
+  match Packet.decode (https_reply bad) with
+  | Error _ -> ()
+  | Ok _ -> Alcotest.fail "no-default-alpn with a non-empty value should be rejected"
+
+(* ech (key 5) is kept as an opaque key=value param, the params after it
+   (here ipv6hint) are decoded, and it is encoded back unchanged *)
+let ech_wire () =
+  let ech = "\x00\x08\xfe\x0d\x00\x04abcd" in
+  let rdata =
+    "\x00\x01" ^ "\x00"                                   (* priority 1, target "." *)
+    ^ "\x00\x01\x00\x03\x02h2"                             (* alpn=h2 *)
+    ^ "\x00\x04\x00\x04\xc0\x00\x02\x01"                   (* ipv4hint=192.0.2.1 *)
+    ^ "\x00\x05\x00" ^ String.make 1 (Char.chr (String.length ech)) ^ ech  (* ech *)
+    ^ "\x00\x06\x00\x10\x20\x01\x0d\xb8" ^ String.make 11 '\x00' ^ "\x01"  (* ipv6hint=2001:db8::1 *)
+  in
+  let expected = Https.[ Alpn [ "h2" ] ;
+                         Ipv4_hint [ Ipaddr.V4.of_string_exn "192.0.2.1" ] ;
+                         Key (5, ech) ;
+                         Ipv6_hint [ Ipaddr.V6.of_string_exn "2001:db8::1" ] ] in
+  Alcotest.(check bool) "decoded" true (decoded_https_params rdata = expected);
+  let https = Https.{ svc_priority = 1 ; target_name = Domain_name.(host_exn root) ;
+                      svc_params = expected } in
+  let example = n_of_s "example.com" in
+  let content = Name_rr_map.singleton example Rr_map.Https (300l, Rr_map.Https_set.singleton https) in
+  let packet = Packet.create (0x1234, Flags.empty) (Question.create example Https)
+      (`Answer (content, Name_rr_map.empty)) in
+  if not (string_contains_substring (fst (Packet.encode `Udp packet)) rdata) then
+    Alcotest.fail "ech not encoded back unchanged";
+  (* ech prints as ech=<base64 of the value>, not key5=<raw> *)
+  let text = Rr_map.text example Rr_map.Https (300l, Rr_map.Https_set.singleton https) in
+  if not (string_contains_substring text "ech=AAj+DQAEYWJjZA==") then
+    Alcotest.failf "ech not printed as ech=<base64>: %S" text;
+  if string_contains_substring text "key5=" then
+    Alcotest.failf "ech still printed as key5=: %S" text
+
+(* a port SvcParam value is exactly 2 bytes (RFC 9460 7.2) *)
+let decode_port_bad_length () =
+  (match decoded_https_params "\x00\x01\x00\x00\x03\x00\x02\x01\xbb" with
+   | [ Https.Port 443 ] -> ()
+   | _ -> Alcotest.fail "valid port did not decode");
+  (* length field 0 but two trailing bytes: the old decoder read them anyway *)
+  let bad = "\x00\x01\x00\x00\x03\x00\x00\x01\xbb" in
+  match Packet.decode (https_reply bad) with
+  | Error _ -> ()
+  | Ok _ -> Alcotest.fail "port with a value that is not 2 bytes should be rejected"
+
 let tests = [
   "encode port param wire format", `Quick, encode_port_param;
+  "ech on the wire", `Quick, ech_wire;
+  "no-default-alpn on the wire", `Quick, no_default_alpn_wire;
+  "zone text of the port param", `Quick, text_port_param;
+  "decoding keeps the order of params and values", `Quick, decode_keeps_param_order;
   "encode https port wire format", `Quick, encode_https_port;
   "encode multiple params with port", `Quick, encode_multiple_params_with_port;
+  "decode port with a bad length", `Quick, decode_port_bad_length;
 ]
 
 end
