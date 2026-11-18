@@ -172,3 +172,8 @@ or
 ```shell
 opam install dns-resolver
 ```
+
+## AI
+
+Contributions involving AI must comply with the rules set out [here](./AI.md).
+If they do not comply, we reserve the right to reject your contribution.
