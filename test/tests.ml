@@ -2431,7 +2431,51 @@ ff 6b 3d 72 73 61 3b 20 70 3d 4d 49 49 42 49 6a
                 "dnskey name_key_of_string is good" (Ok (name, key))
                 (Dnskey.name_key_of_string keydata))
 
+  (* compare of records holding lists (SvcParams, CAA values, EDNS
+     extensions) of different lengths used to raise Invalid_argument
+     "List.fold_left2", even when an earlier field already decides *)
+  let compare_lists_of_different_lengths () =
+    let root = Domain_name.(host_exn root) in
+    let h1 = { Https.svc_priority = 1 ; target_name = root ;
+               svc_params = [ Https.Alpn [ "h2" ; "h3" ] ] }
+    and h2 = { Https.svc_priority = 2 ; target_name = root ;
+               svc_params = [ Https.Alpn [ "h2" ] ; Https.Port 8443 ] } in
+    Alcotest.(check bool) "Https.compare" true (Https.compare h1 h2 <> 0);
+    Alcotest.(check int) "HTTPS set of two" 2
+      (Rr_map.Https_set.cardinal (Rr_map.Https_set.of_list [ h1 ; h2 ]));
+    let s1 = { Svcb.svc_priority = 1 ; target_name = root ;
+               svc_params = [ Svcb.Alpn [ "h2" ] ] }
+    and s2 = { Svcb.svc_priority = 1 ; target_name = root ;
+               svc_params = [ Svcb.Alpn [ "h2" ] ; Svcb.Port 8443 ] } in
+    Alcotest.(check bool) "Svcb.compare" true (Svcb.compare s1 s2 <> 0);
+    let c1 = { Caa.critical = false ; tag = "issue" ; value = [ "a" ] }
+    and c2 = { Caa.critical = false ; tag = "issue" ; value = [ "a" ; "b" ] } in
+    Alcotest.(check bool) "Caa.compare" true (Caa.compare c1 c2 <> 0);
+    let e1 = Edns.create ~extensions:[ Edns.Nsid "" ] ()
+    and e2 = Edns.create ~extensions:[ Edns.Nsid "" ; Edns.Padding 4 ] () in
+    Alcotest.(check bool) "Edns.compare" true (Edns.compare e1 e2 <> 0);
+    (* a reply carrying both HTTPS records decodes *)
+    let host = n_of_s "example.org" in
+    let reply rrs =
+      let answer = Name_rr_map.singleton host Https (300l, Rr_map.Https_set.of_list rrs) in
+      let q = Question.create host Https in
+      fst (encode `Udp (create (0x1234, Flags.empty) q (`Answer (answer, Name_rr_map.empty))))
+    in
+    (* the second record's RR, appended to a reply with the first one *)
+    let p1 = reply [ h1 ] and p2 = reply [ h2 ] in
+    let rr_off = 12 + String.length "\007example\003org\000" + 4 in
+    let both = Bytes.of_string (p1 ^ String.sub p2 rr_off (String.length p2 - rr_off)) in
+    Bytes.set_uint16_be both 6 2;
+    match decode (Bytes.to_string both) with
+    | Ok { data = `Answer (answer, _) ; _ } ->
+      (match Name_rr_map.find host Https answer with
+       | Some (_, s) -> Alcotest.(check int) "two HTTPS records decoded" 2 (Rr_map.Https_set.cardinal s)
+       | None -> Alcotest.fail "no HTTPS records in the answer")
+    | Ok _ -> Alcotest.fail "not an answer"
+    | Error e -> Alcotest.failf "decode error %a" pp_err e
+
   let code_tests = [
+    "compare lists of different lengths", `Quick, compare_lists_of_different_lengths ;
     "bad query", `Quick, bad_query ;
     "regression0", `Quick, regression0 ;
     "regression1", `Quick, regression1 ;
