@@ -1136,7 +1136,69 @@ let resolver_well_behaved = [
   "loop using cname with two entries", `Quick, loop_cname_2;
 ]
 
+(* a delegation in the resolver's own data: "lan" is served by 192.0.2.53 *)
+let stub_resolver features =
+  let zone = name "lan" in
+  let ns = Domain_name.host_exn (name "ns.lan") in
+  let trie =
+    Dns_trie.insert zone Rr_map.Ns (300l, Domain_name.Host_set.singleton ns) Dns_trie.empty
+  in
+  let trie =
+    Dns_trie.insert ns Rr_map.A (300l, Ipaddr.V4.Set.singleton (ip4 "192.0.2.53")) trie
+  in
+  let primary = Dns_server.Primary.create ~rng trie in
+  Dns_resolver.create features Ptime.epoch 0L rng primary
+
+(* A client asks for host.lan, the resolver asks the server of the delegation,
+   which answers (unsigned): what the resolver does next. *)
+let delegation_in_primary features () =
+  let t = stub_resolver features in
+  let client = ip "192.0.2.1" and server = ip "192.0.2.53" in
+  let host = name "host.lan" in
+  let question = Packet.Question.create host Rr_map.A in
+  let buf, _ =
+    let header = 0x1234, Packet.Flags.singleton `Recursion_desired in
+    Packet.encode `Udp (Packet.create header question `Query)
+  in
+  let t, answers, queries =
+    Dns_resolver.handle_buf t Ptime.epoch 0L true `Udp client 1234 buf
+  in
+  Alcotest.(check int "no answer yet" 0 (List.length answers));
+  let query =
+    match queries with
+    | [ `Udp, ip, buf ] when Ipaddr.compare ip server = 0 ->
+      (match Packet.decode buf with
+       | Ok p -> p
+       | Error e -> Alcotest.failf "query: %a" Packet.pp_err e)
+    | _ -> Alcotest.fail "expected one query to the server of the delegation"
+  in
+  Alcotest.(check bool "asks for host.lan" true
+              (Packet.Question.compare query.Packet.question question = 0));
+  let reply, _ =
+    let a = 300l, Ipaddr.V4.Set.singleton (ip4 "192.0.2.10") in
+    let answer = Name_rr_map.singleton host Rr_map.A a, Name_rr_map.empty in
+    let header = fst query.header, Packet.Flags.singleton `Authoritative in
+    Packet.encode `Udp (Packet.create header query.question (`Answer answer))
+  in
+  let _, answers, queries =
+    Dns_resolver.handle_buf t Ptime.epoch 0L true `Udp server 53 reply
+  in
+  Alcotest.(check int "no more query" 0 (List.length queries));
+  match answers with
+  | [ `Answer (_, ip, port, _, _, _, rcode, _, _) ] ->
+    Alcotest.(check bool "to the client" true
+                (Ipaddr.compare ip client = 0 && port = 1234));
+    Alcotest.(check bool "no error" true (Rcode.compare rcode Rcode.NoError = 0))
+  | _ -> Alcotest.fail "expected one answer to the client"
+
+let delegation_tests = [
+  "delegation in the primary data", `Quick, delegation_in_primary [] ;
+  "delegation in the primary data, DNSSEC", `Quick,
+  delegation_in_primary [ `Dnssec ] ;
+]
+
 let tests = [
+  "delegation", delegation_tests ;
   "follow_cname", follow_cname_tests ;
   "scrub", scrub_tests ;
   "handle query", handle_query_tests ;

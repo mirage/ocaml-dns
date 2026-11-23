@@ -492,11 +492,15 @@ let handle_reply t now ts proto sender sport packet reply =
     Log.err (fun m -> m "ignoring reply %a" Packet.pp_reply v);
     Error ()
 
+(* A delegation found in the resolver's own (primary) data is configuration,
+   e.g. a private zone served on the LAN and not delegated publicly: its
+   answers are trusted as they come, not DNSSEC-validated (there is no chain
+   of trust to it, and chasing one never ends). *)
 let handle_delegation t ts proto sender sport req (delegation, add_data) =
   Log.debug (fun m -> m "handling delegation %a (for %a)" Packet.Answer.pp delegation Packet.pp req) ;
   match req.Packet.data, Packet.Question.qtype req.question with
   | `Query, Some qtype ->
-    let dnssec = FS.mem `Dnssec t.features && not (Packet.Flags.mem `Checking_disabled (snd req.header))
+    let dnssec = false
     and dnssec_ok = match req.edns with None -> false | Some edns -> edns.Edns.dnssec_ok
     in
     let r, cache = Dns_resolver_cache.answer ~dnssec ~dnssec_ok t.cache ts (fst req.question) qtype in
@@ -532,7 +536,7 @@ let handle_delegation t ts proto sender sport req (delegation, add_data) =
             Log.debug (fun m -> m "found ip %a, maybe querying %a"
                            Ipaddr.pp ip pp_key (name, qtype)) ;
             (* TODO is Domain_name.root correct here? *)
-            let checking_disabled = Packet.Flags.mem `Checking_disabled (snd req.header)
+            let checking_disabled = true (* trusted, see above *)
             and dnssec_ok = match req.edns with None -> false | Some edns -> edns.Edns.dnssec_ok
             in
             let await = { ts; retry = 0; proto; zone = Domain_name.root; edns = req.edns; ip = sender; port = sport; question = (fst req.question, qtype); id = fst req.header; checking_disabled; dnssec_ok } in
